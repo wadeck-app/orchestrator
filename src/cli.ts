@@ -461,7 +461,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'setup-task': {
-      const { WindowsTask } = require('@wadeck/shared-scraper') as typeof import('@wadeck/shared-scraper');
+      const { WindowsTask } = require('@wadeck-app/shared-scraper') as typeof import('@wadeck-app/shared-scraper');
       const nodePath    = process.execPath.replace(/\//g, '\\');
       const projectDir  = path.join(path.dirname(process.argv[1] ?? __filename), '..').replace(/\//g, '\\');
       const runnerJs    = path.join(projectDir, 'scripts', 'task-runner.js');
@@ -487,7 +487,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'remove-task': {
-      const { WindowsTask } = require('@wadeck/shared-scraper') as typeof import('@wadeck/shared-scraper');
+      const { WindowsTask } = require('@wadeck-app/shared-scraper') as typeof import('@wadeck-app/shared-scraper');
       const nodePath    = process.execPath.replace(/\//g, '\\');
       const projectDir  = path.join(path.dirname(process.argv[1] ?? __filename), '..').replace(/\//g, '\\');
       const runnerJs    = path.join(projectDir, 'scripts', 'task-runner.js');

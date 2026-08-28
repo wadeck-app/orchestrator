@@ -34,6 +34,7 @@
     "@wadeck-app:registry": "https://npm.pkg.github.com/"
   },
   "dependencies": {
+    "@wadeck-app/shared-scraper": "*",
     "@wadeck/singleton-daemon-kit": "2026.8.23-067-33331611",
     "node-cron": "^4.6.0"
   },
