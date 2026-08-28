@@ -524,7 +524,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
 export async function main(): Promise<void> {
   const fs = require('node:fs') as typeof import('node:fs');
-  const { createDaemonClient } = require('@wadeck/singleton-daemon-kit') as typeof import('@wadeck/singleton-daemon-kit');
+  const { createDaemonClient } = require('@wadeck-app/singleton-daemon-kit') as typeof import('@wadeck-app/singleton-daemon-kit');
   const { spawn } = require('node:child_process') as typeof import('node:child_process');
   const { makeCommands } = require('./commands.js') as typeof import('./commands.js');
   const { Registry } = require('./registry.js') as typeof import('./registry.js');

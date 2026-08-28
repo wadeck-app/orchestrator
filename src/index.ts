@@ -2,7 +2,7 @@ import path   from 'node:path';
 import os     from 'node:os';
 import fs     from 'node:fs';
 
-import { createDaemon } from '@wadeck/singleton-daemon-kit';
+import { createDaemon } from '@wadeck-app/singleton-daemon-kit';
 
 import { Registry }    from './registry.js';
 import { State }       from './state.js';
