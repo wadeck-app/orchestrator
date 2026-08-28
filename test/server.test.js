@@ -2,7 +2,7 @@
 
 /**
  * Integration tests for the orchestrator daemon command map.
- * Uses createTestDaemon() from @wadeck/singleton-daemon-kit so tests
+ * Uses createTestDaemon() from @wadeck-app/singleton-daemon-kit so tests
  * exercise the real command dispatch without a manual HTTP server.
  */
 
@@ -12,7 +12,7 @@ const fs      = require('node:fs');
 const path    = require('node:path');
 const os      = require('node:os');
 
-const { createTestDaemon }  = require('@wadeck/singleton-daemon-kit');
+const { createTestDaemon }  = require('@wadeck-app/singleton-daemon-kit');
 const { Registry }          = require('../src/registry');
 const { State }             = require('../src/state');
 const { Scheduler }         = require('../src/scheduler');
