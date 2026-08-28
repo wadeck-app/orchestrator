@@ -22,7 +22,7 @@ func configDirFromArgs(args []string) string {
 			return arg
 		}
 	}
-	return launcher.DefaultConfigDir("orchestrator")
+	return launcher.DefaultConfigDir("{{.DefaultConfigDir}}")
 }
 
 func main() {
@@ -34,12 +34,16 @@ func main() {
 
 	launcher.Run(launcher.Config{
 		ConfigDir:  configDirFromArgs(os.Args[1:]),
-		NodeScript: filepath.Join(exeDir, "index.js"),
-		AppName:    "Orchestrator",
-		CLIFlags:   []string{},
-		SilentFlags: []string{},
-		// UpdateCmd: run by the launcher after the daemon exits when config.update sentinel is present.
-		// On Windows, the launcher exits before running this so orchestrator.exe is no longer locked.
-		UpdateCmd: []string{"npm", "install", "-g", "@wadeck-app/orchestrator-cli"},
+		NodeScript: filepath.Join(exeDir, "{{.NodeScript}}"),
+		AppName:    "{{.AppName}}",
+		CLIFlags:   []string{
+			{{range .CLIFlags}}{{end}}
+		},
+		SilentFlags: []string{
+			{{range .SilentFlags}}{{end}}
+		},
+		UpdateCmd: []string{
+			{{range .UpdateCmd}}{{end}}
+		},
 	})
 }
