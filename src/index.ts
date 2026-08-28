@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
 
   // Init updateManager before try/finally so scheduleUpdate fires even on crash paths.
-  // @wadeck/shared-cli is ESM-only — use dynamic import() from a CJS module context.
-  const { UpdateManager } = await import('@wadeck/shared-cli');
+  // @wadeck-app/shared-cli is ESM-only — use dynamic import() from a CJS module context.
+  const { UpdateManager } = await import('@wadeck-app/shared-cli');
   const updateManager = new UpdateManager('@wadeck-app/orchestrator-cli', CONFIG_DIR);
 
   let updateScheduled = false;
