@@ -1,0 +1,46 @@
+{
+  "name": "@wadeck/orchestrator-cli",
+  "version": "0.2.0",
+  "description": "Cross-platform job orchestrator daemon and CLI",
+  "main": "dist/index.js",
+  "bin": {
+    "orch":         "bin/orch.js",
+    "orchestrator": "bin/orch.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "launcher-go/dist/",
+    "tray-go/dist/"
+  ],
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "node --test --require tsx/cjs test/**/*.test.js",
+    "test:w": "node --test --watch --require tsx/cjs test/**/*.test.js",
+    "build-launcher": "cd launcher-go && GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w -H windowsgui\" -o dist/orchestrator.exe . && GOOS=darwin GOARCH=arm64 go build -ldflags=\"-s -w\" -o dist/orchestrator_darwin_arm64 . && GOOS=darwin GOARCH=amd64 go build -ldflags=\"-s -w\" -o dist/orchestrator_darwin_amd64 .",
+    "build-tray": "npx tsx scripts/build-tray-binary.ts",
+    "gen-icons": "npx tsx scripts/generate-icons.ts",
+    "bundle-updater": "esbuild src/updater/UpdaterMain.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck/singleton-daemon-kit",
+    "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
+    "clean": "rimraf dist dist-bundle"
+  },
+  "publishConfig": {
+    "@wadeck:registry": "https://gitlab.com/api/v4/projects/84445653/packages/npm/"
+  },
+  "dependencies": {
+    "@wadeck/singleton-daemon-kit": "2026.8.23-067-33331611",
+    "node-cron": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "sharp": "^0.33.0",
+    "esbuild": "^0.25.12",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
