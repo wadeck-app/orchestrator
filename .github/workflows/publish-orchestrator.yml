@@ -1,7 +1,5 @@
 name: CI / Publish
 
-env:
-    GITHUB_NPM_REGISTRY_PATH: //npm.pkg.github.com/
 
 on:
     push:
@@ -104,12 +102,7 @@ jobs:
             - name: Bundle updater
               run: npm run bundle-updater
 
-            - name: Configure GitHub Packages registry
-              run: |
-                  echo "@wadeck-app:registry=https:${GITHUB_NPM_REGISTRY_PATH}" >> ~/.npmrc
-                  echo "${GITHUB_NPM_REGISTRY_PATH}:_authToken=${GITHUB_TOKEN}" >> ~/.npmrc
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
             - name: Publish
               run: npm publish --tag ${{ steps.version.outputs.dist_tag }}
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
