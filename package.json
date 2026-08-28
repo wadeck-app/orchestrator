@@ -22,7 +22,7 @@
     "build-launcher": "cd launcher-go && GOOS=windows GOARCH=amd64 go build -ldflags=\"-s -w -H windowsgui\" -o dist/orchestrator.exe . && GOOS=darwin GOARCH=arm64 go build -ldflags=\"-s -w\" -o dist/orchestrator_darwin_arm64 . && GOOS=darwin GOARCH=amd64 go build -ldflags=\"-s -w\" -o dist/orchestrator_darwin_amd64 .",
     "build-tray": "npx tsx scripts/build-tray-binary.ts",
     "gen-icons": "npx tsx scripts/generate-icons.ts",
-    "bundle-updater": "esbuild src/updater/UpdaterMain.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck/singleton-daemon-kit",
+    "bundle-updater": "esbuild src/updater/UpdaterMain.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck-app/singleton-daemon-kit",
     "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
     "clean": "rimraf dist dist-bundle"
   },
@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@wadeck-app/shared-cli": "^2026.8.28-007-f471d994",
-    "@wadeck/singleton-daemon-kit": "2026.8.23-067-33331611",
+    "@wadeck-app/singleton-daemon-kit": "^2026.8.28-071-c253e8d8",
     "node-cron": "^4.6.0"
   },
   "devDependencies": {
