@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   // Init updateManager before try/finally so scheduleUpdate fires even on crash paths.
   // @wadeck/shared-cli is ESM-only — use dynamic import() from a CJS module context.
   const { UpdateManager } = await import('@wadeck/shared-cli');
-  const updateManager = new UpdateManager('@wadeck/orchestrator-cli', CONFIG_DIR);
+  const updateManager = new UpdateManager('@wadeck-app/orchestrator-cli', CONFIG_DIR);
 
   let updateScheduled = false;
   const scheduleUpdate = (): void => {

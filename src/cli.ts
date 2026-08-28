@@ -603,7 +603,7 @@ export async function main(): Promise<void> {
 
   // Read and display any pending update notice from the background updater.
   const { UpdateManager: CliUpdateManager } = await import('@wadeck/shared-cli');
-  const cliUpdateManager = new CliUpdateManager('@wadeck/orchestrator-cli', configDir);
+  const cliUpdateManager = new CliUpdateManager('@wadeck-app/orchestrator-cli', configDir);
   const cliUpdateState = cliUpdateManager.readAndClearState();
   if (cliUpdateState?.status === 'success') process.stderr.write(`[orch] Updated to v${cliUpdateState.newVersion}\n`);
   if (cliUpdateState?.status === 'rolled-back') process.stderr.write(`[orch] Rollback to v${cliUpdateState.previousVersion}\n`);

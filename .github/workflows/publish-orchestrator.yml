@@ -1,7 +1,7 @@
-name: Publish @wadeck/orchestrator
+name: Publish @wadeck-app/orchestrator
 
 env:
-    GITLAB_NPM_REGISTRY_PATH: //gitlab.com/api/v4/projects/84445653/packages/npm/
+    GITHUB_NPM_REGISTRY_PATH: //npm.pkg.github.com/
 
 on:
     push:
@@ -28,6 +28,8 @@ on:
 jobs:
     publish:
         runs-on: ubuntu-latest
+        permissions:
+            packages: write
         steps:
             - uses: actions/checkout@v5
               with:
@@ -41,44 +43,13 @@ jobs:
               with:
                   go-version: '1.26'
 
-            - name: Validate tokens
-              run: |
-                  READ=$(echo "${GITLAB_NPM_READ_TOKEN}" | tr -d '[:space:]')
-                  [ -z "$READ" ] && echo "::error::GITLAB_NPM_READ_TOKEN is empty" && exit 1
-                  echo "READ token: ${READ:0:9}*** (length: ${#READ})"
-                  HTTP_READ=$(curl -s -o /dev/null -w "%{http_code}" \
-                    -H "Authorization: Bearer ${READ}" \
-                    "https://gitlab.com/api/v4/projects/84445653/packages/pypi/simple/")
-                  case "$HTTP_READ" in
-                    200) echo "READ token: read_package_registry OK" ;;
-                    401) echo "::error::GITLAB_NPM_READ_TOKEN invalid or expired (HTTP 401)" ; exit 1 ;;
-                    403) echo "::error::GITLAB_NPM_READ_TOKEN lacks read_package_registry scope (HTTP 403)" ; exit 1 ;;
-                    *)   echo "::warning::READ token probe returned HTTP ${HTTP_READ} -- continuing" ;;
-                  esac
-                  WRITE=$(echo "${GITLAB_NPM_WRITE_TOKEN}" | tr -d '[:space:]')
-                  [ -z "$WRITE" ] && echo "::error::GITLAB_NPM_WRITE_TOKEN is empty" && exit 1
-                  HTTP_WRITE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST \
-                    -H "Authorization: Bearer ${WRITE}" \
-                    "https://gitlab.com/api/v4/projects/84445653/packages/pypi")
-                  case "$HTTP_WRITE" in
-                    400) echo "WRITE token: write_package_registry OK" ;;
-                    403) echo "::error::GITLAB_NPM_WRITE_TOKEN lacks write_package_registry scope (HTTP 403)" ; exit 1 ;;
-                    401) echo "::error::GITLAB_NPM_WRITE_TOKEN invalid or expired (HTTP 401)" ; exit 1 ;;
-                    *)   echo "::warning::WRITE token probe returned HTTP ${HTTP_WRITE} -- continuing" ;;
-                  esac
-              env:
-                  GITLAB_NPM_READ_TOKEN: ${{ secrets.GITLAB_NPM_READ_TOKEN }}
-                  GITLAB_NPM_WRITE_TOKEN: ${{ secrets.GITLAB_NPM_WRITE_TOKEN }}
-
-            - name: Configure GitLab npm registry (read -- for npm install)
+            - name: Configure GitLab npm registry (read -- for @wadeck/shared-scraper)
               run: |
                   TOKEN=$(echo "${GITLAB_NPM_READ_TOKEN}" | tr -d '[:space:]')
-                  echo "@wadeck:registry=https:${GITLAB_NPM_REGISTRY_PATH}" >> ~/.npmrc
-                  echo "${GITLAB_NPM_REGISTRY_PATH}:_authToken=${TOKEN}" >> ~/.npmrc
+                  [ -z "$TOKEN" ] && echo "::error::GITLAB_NPM_READ_TOKEN is empty" && exit 1
+                  echo "@wadeck:registry=https://gitlab.com/api/v4/projects/84445653/packages/npm/" >> ~/.npmrc
+                  echo "//gitlab.com/api/v4/projects/84445653/packages/npm/:_authToken=${TOKEN}" >> ~/.npmrc
                   echo "auth-type=legacy" >> ~/.npmrc
-                  echo "=== whoami ===" && curl -s "https:${GITLAB_NPM_REGISTRY_PATH}-/whoami" \
-                    -H "Authorization: Bearer ${TOKEN}" || true
-                  echo ""
               env:
                   GITLAB_NPM_READ_TOKEN: ${{ secrets.GITLAB_NPM_READ_TOKEN }}
 
@@ -111,17 +82,12 @@ jobs:
             - name: Bundle updater
               run: npm run bundle-updater
 
-            - name: Configure GitLab npm registry (write -- for npm publish)
+            - name: Configure GitHub Packages registry
               run: |
-                  TOKEN=$(echo "${GITLAB_NPM_WRITE_TOKEN}" | tr -d '[:space:]')
-                  [ -z "$TOKEN" ] && echo "::error::GITLAB_NPM_WRITE_TOKEN is empty" && exit 1
-                  echo "WRITE token: ${TOKEN:0:9}*** (length: ${#TOKEN})"
-                  echo "@wadeck:registry=https:${GITLAB_NPM_REGISTRY_PATH}" >> ~/.npmrc
-                  echo "${GITLAB_NPM_REGISTRY_PATH}:_authToken=${TOKEN}" >> ~/.npmrc
-                  echo "auth-type=legacy" >> ~/.npmrc
-                  echo "=== .npmrc (token masked) ===" && sed 's/_authToken=.*/_authToken=***/' ~/.npmrc
+                  echo "@wadeck-app:registry=https:${GITHUB_NPM_REGISTRY_PATH}" >> ~/.npmrc
+                  echo "${GITHUB_NPM_REGISTRY_PATH}:_authToken=${GITHUB_TOKEN}" >> ~/.npmrc
               env:
-                  GITLAB_NPM_WRITE_TOKEN: ${{ secrets.GITLAB_NPM_WRITE_TOKEN }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Publish
               run: npm publish --tag ${{ steps.version.outputs.dist_tag }}

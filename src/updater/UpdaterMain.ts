@@ -1,4 +1,4 @@
-// UpdaterMain.ts -- background auto-update entry point for @wadeck/orchestrator-cli.
+// UpdaterMain.ts -- background auto-update entry point for @wadeck-app/orchestrator-cli.
 // Bundled by CI as dist/orchestrator-updater.cjs (esbuild, platform=node, format=cjs).
 // Spawned as a detached process by UpdateManager.scheduleBackgroundUpdate().
 // Must NOT import any orchestrator runtime modules -- only node: builtins are safe here.
@@ -14,10 +14,10 @@ const execFileAsync = promisify(execFile);
 // Injected by esbuild at bundle time; falls back to 'dev' when running from source.
 declare const __ORCH_VERSION__: string;
 
-const PKG_NAME = process.env['UPDATER_PKG_NAME'] ?? '@wadeck/orchestrator-cli';
+const PKG_NAME = process.env['UPDATER_PKG_NAME'] ?? '@wadeck-app/orchestrator-cli';
 
 // Registry URL -- same as publishConfig in package.json.
-const REGISTRY = 'https://gitlab.com/api/v4/packages/npm/';
+const REGISTRY = 'https://npm.pkg.github.com/';
 
 // Minimal semver comparison: returns true when a <= b (ignores pre-release suffix).
 export function semverLte(a: string, b: string): boolean {
