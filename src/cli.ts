@@ -1,6 +1,7 @@
 import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, LivenessConfig } from './types.js';
+import { WindowsTask } from './windows/WindowsTask.js';
 
 const DEFAULT_CONFIG_DIR =
   process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator');
@@ -461,12 +462,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'setup-task': {
-      const { WindowsTask } = require('@wadeck-app/shared-scraper') as typeof import('@wadeck-app/shared-scraper');
       const nodePath    = process.execPath.replace(/\//g, '\\');
       const projectDir  = path.join(path.dirname(process.argv[1] ?? __filename), '..').replace(/\//g, '\\');
       const runnerJs    = path.join(projectDir, 'scripts', 'task-runner.js');
       const launcherVbs = path.join(configDir, 'orchestrator-launcher.vbs');
-      const task = new (WindowsTask as unknown as new (opts: Record<string, string>) => { install(): void })({
+      const task = new WindowsTask({
         taskName:    'Orchestrator-Sync',
         projectDir,
         nodePath,
@@ -487,12 +487,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'remove-task': {
-      const { WindowsTask } = require('@wadeck-app/shared-scraper') as typeof import('@wadeck-app/shared-scraper');
       const nodePath    = process.execPath.replace(/\//g, '\\');
       const projectDir  = path.join(path.dirname(process.argv[1] ?? __filename), '..').replace(/\//g, '\\');
       const runnerJs    = path.join(projectDir, 'scripts', 'task-runner.js');
       const launcherVbs = path.join(configDir, 'orchestrator-launcher.vbs');
-      const task = new (WindowsTask as unknown as new (opts: Record<string, string>) => { uninstall(): void })({
+      const task = new WindowsTask({
         taskName:    'Orchestrator-Sync',
         projectDir,
         nodePath,
