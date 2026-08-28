@@ -8,4 +8,4 @@ require wadeck.ch/singleton-daemon-kit/go-launcher v0.0.0
 
 require golang.org/x/sys v0.47.0 // indirect
 
-replace wadeck.ch/singleton-daemon-kit/go-launcher => ../../../node_modules/@wadeck/singleton-daemon-kit/go-launcher
+replace wadeck.ch/singleton-daemon-kit/go-launcher => ../node_modules/@wadeck-app/singleton-daemon-kit/go-launcher

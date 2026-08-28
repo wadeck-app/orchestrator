@@ -40,6 +40,6 @@ func main() {
 		SilentFlags: []string{},
 		// UpdateCmd: run by the launcher after the daemon exits when config.update sentinel is present.
 		// On Windows, the launcher exits before running this so orchestrator.exe is no longer locked.
-		UpdateCmd: []string{"npm", "install", "-g", "@wadeck/orchestrator"},
+		UpdateCmd: []string{"npm", "install", "-g", "@wadeck-app/orchestrator-cli"},
 	})
 }
