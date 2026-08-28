@@ -69,6 +69,8 @@ jobs:
             - uses: actions/setup-node@v5
               with:
                   node-version: '24'
+                  registry-url: 'https://npm.pkg.github.com'
+                  scope: '@wadeck-app'
 
             - uses: actions/setup-go@v5
               with:
