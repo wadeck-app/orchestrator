@@ -19,7 +19,7 @@
     "build": "tsc",
     "test": "node --test --require tsx/cjs test/**/*.test.js",
     "test:w": "node --test --watch --require tsx/cjs test/**/*.test.js",
-    "build-launcher": "node scripts/build-launcher.mjs",
+    "build-launcher": "node ci/scripts/build-launcher.mjs",
     "build-tray": "npx tsx scripts/build-tray-binary.ts",
     "gen-icons": "npx tsx scripts/generate-icons.ts",
     "bundle-updater": "esbuild src/updater/UpdaterMain.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck-app/singleton-daemon-kit",
@@ -34,7 +34,7 @@
     "@wadeck-app:registry": "https://npm.pkg.github.com/"
   },
   "dependencies": {
-    "@wadeck-app/shared-cli": "^2026.8.28-007-f471d994",
+    "@wadeck-app/shared-cli": "2026.8.29-013-b6f66b89",
     "@wadeck-app/singleton-daemon-kit": "^2026.8.28-071-c253e8d8",
     "node-cron": "^4.6.0"
   },
