@@ -442,7 +442,8 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       if (subCmd === 'update') {
         const cp = require('node:child_process') as typeof import('node:child_process');
         const fsNode = require('node:fs') as typeof import('node:fs');
-        const updaterPath = path.join(path.dirname(process.argv[1] ?? __filename), 'orchestrator-updater.cjs');
+        // __dirname is dist/ when compiled; process.argv[1] is bin/orch.js — use __dirname
+        const updaterPath = path.join(__dirname, 'orchestrator-updater.cjs');
         if (!fsNode.existsSync(updaterPath)) {
           console.error(`[fail] Updater not found: ${updaterPath} (dev mode -- no bundle)`);
           process.exit(1);
