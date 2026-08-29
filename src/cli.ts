@@ -143,14 +143,17 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   const configDir   = deps.configDir   ?? DEFAULT_CONFIG_DIR;
   const forceJson   = has(argv, '--json');
 
-  // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson
-  try {
-    const { mkdirSync, appendFileSync } = await import('node:fs');
-    const logsDir = path.join(configDir, 'logs');
-    const today = new Date().toISOString().slice(0, 10);
-    mkdirSync(logsDir, { recursive: true });
-    appendFileSync(path.join(logsDir, `${today}.ndjson`), JSON.stringify({ ts: new Date().toISOString(), level: 'info', msg: `cmd: orch ${argv.join(' ')}` }) + '\n');
-  } catch { /* never block the CLI on logging failure */ }
+  // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson (skip 'logs' itself to avoid creating file before existence check)
+  const cleanCmd = argv.filter(a => a !== '--json');
+  if (cleanCmd[0] !== 'logs' && cleanCmd[1] !== 'logs') {
+    try {
+      const { mkdirSync, appendFileSync } = await import('node:fs');
+      const logsDir = path.join(configDir, 'logs');
+      const today = new Date().toISOString().slice(0, 10);
+      mkdirSync(logsDir, { recursive: true });
+      appendFileSync(path.join(logsDir, `${today}.ndjson`), JSON.stringify({ ts: new Date().toISOString(), level: 'info', msg: `cmd: orch ${argv.join(' ')}` }) + '\n');
+    } catch { /* never block the CLI on logging failure */ }
+  }
 
   // --- Global flags that don't require a running daemon ---
 
@@ -424,10 +427,9 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         const fsNode = require('node:fs') as typeof import('node:fs');
         const today = new Date().toISOString().slice(0, 10);
         const logFile = path.join(configDir, 'logs', `${today}.ndjson`);
-        process.stderr.write(`[orch] log file: ${logFile}\n`);
-        if (!fsNode.existsSync(logFile)) {
-          console.error(`[fail] No log file for today: ${logFile}`);
-          process.exit(1);
+                if (!fsNode.existsSync(logFile)) {
+          process.stdout.write(`[orch] No log file for today: ${logFile}\n`);
+          return;
         }
         if (!follow) {
           process.stdout.write(fsNode.readFileSync(logFile, 'utf8'));
