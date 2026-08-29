@@ -110,7 +110,7 @@ jobs:
             - name: Tag as latest
               run: |
                   PKG=$(node -e "process.stdout.write(require('./package.json').name)")
-                  VER="${{ steps.version.outputs.version }}"
-                  npm dist-tag add "${PKG}@${VER}" latest --registry https://npm.pkg.github.com/
+                  ACTUAL_VER=$(npm view "${PKG}" dist-tags.edge --registry https://npm.pkg.github.com/ 2>/dev/null)
+                  npm dist-tag add "${PKG}@${ACTUAL_VER}" latest --registry https://npm.pkg.github.com/
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
