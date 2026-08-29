@@ -422,6 +422,26 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         return;
       }
 
+      if (subCmd === 'version') {
+        const fsNode = require('node:fs') as typeof import('node:fs');
+        process.stdout.write(`orch v${version} (installed)\n`);
+        try {
+          const cp = require('node:child_process') as typeof import('node:child_process');
+          const NPM_CLI = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+          const USE_CLI = fsNode.existsSync(NPM_CLI);
+          const winHide = process.platform === 'win32' ? { windowsHide: true as const } : {};
+          const result = USE_CLI
+            ? cp.execFileSync(process.execPath, [NPM_CLI, 'view', '@wadeck-app/orchestrator-cli', 'dist-tags.latest'], { encoding: 'utf8', timeout: 15000, ...winHide })
+            : cp.execFileSync('npm', ['view', '@wadeck-app/orchestrator-cli', 'dist-tags.latest'], { encoding: 'utf8', timeout: 15000, ...winHide });
+          const latest = result.trim();
+          process.stdout.write(`Latest (latest): v${latest}\n`);
+          if (version === latest) process.stdout.write('Up to date.\n');
+        } catch (err) {
+          process.stderr.write(`Could not fetch latest version: ${String(err)}\n`);
+        }
+        return;
+      }
+
       if (subCmd === 'logs') {
         const follow = has(cliRest, '--follow') || has(cliRest, '-f');
         const fsNode = require('node:fs') as typeof import('node:fs');
