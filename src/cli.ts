@@ -423,7 +423,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         const follow = has(cliRest, '--follow') || has(cliRest, '-f');
         const fsNode = require('node:fs') as typeof import('node:fs');
         const today = new Date().toISOString().slice(0, 10);
-        const logFile = path.join(configDir, 'logs', `orchestrator-${today}.log`);
+        const logFile = path.join(configDir, 'logs', `${today}.ndjson`);
         process.stderr.write(`[orch] log file: ${logFile}\n`);
         if (!fsNode.existsSync(logFile)) {
           console.error(`[fail] No log file for today: ${logFile}`);
@@ -529,7 +529,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       const follow = has(rest, '--follow') || has(rest, '-f');
       const fsNode = require('node:fs') as typeof import('node:fs');
       const today = new Date().toISOString().slice(0, 10);
-      const logFile = path.join(configDir, 'logs', `orchestrator-${today}.log`);
+      const logFile = path.join(configDir, 'logs', `${today}.ndjson`);
       process.stderr.write(`[orch] log file: ${logFile}\n`);
       if (!fsNode.existsSync(logFile)) {
         process.stdout.write(`[orch] No log file for today: ${logFile}\n`);
