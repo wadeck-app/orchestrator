@@ -161,7 +161,10 @@ export async function main(): Promise<void> {
     try { current = __ORCH_VERSION__; }
     catch { return; } // dev mode -- skip
 
-    if (semverLte(latest, current)) return; // already up to date
+    if (semverLte(latest, current)) {
+        if (force) process.stdout.write(`[orch] Already up to date (v${current})\n`);
+        return;
+    }
 
     // Step 1: Write config.update sentinel — Go launcher (T8) will run updateCmd after node exits
     const sentinelPath = path.join(configDir, 'config.update');
