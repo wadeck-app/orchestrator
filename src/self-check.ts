@@ -63,10 +63,10 @@ export async function runSelfCheck(quiet = false): Promise<void> {
   for (const check of checks) {
     try {
       await check.fn();
-      if (!quiet) console.error(`  ✓ ${check.name}`);
+      if (!quiet) console.error(`  [ok] ${check.name}`);
       passed++;
     } catch (e) {
-      if (!quiet) console.error(`  ✗ ${check.name}: ${(e as Error).message}`);
+      if (!quiet) console.error(`  [fail] ${check.name}: ${(e as Error).message}`);
       failed++;
     }
   }

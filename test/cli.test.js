@@ -366,7 +366,7 @@ describe('orch cli self-check', () => {
       process.exit = origExit;
     }
     assert.ok(stderrLines.length > 0, 'self-check must write to stderr');
-    assert.ok(stderrLines.join('\n').includes('✓') || stderrLines.join('\n').includes('self-check'), 'stderr must include check output');
+    assert.ok(stderrLines.join('\n').includes('[ok]') || stderrLines.join('\n').includes('self-check'), 'stderr must include check output');
     assert.equal(stdoutLines.length, 0, 'self-check must not write to stdout (console.log)');
   });
 
