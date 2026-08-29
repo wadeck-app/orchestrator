@@ -143,6 +143,15 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   const configDir   = deps.configDir   ?? DEFAULT_CONFIG_DIR;
   const forceJson   = has(argv, '--json');
 
+  // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson
+  try {
+    const { mkdirSync, appendFileSync } = await import('node:fs');
+    const logsDir = path.join(configDir, 'logs');
+    const today = new Date().toISOString().slice(0, 10);
+    mkdirSync(logsDir, { recursive: true });
+    appendFileSync(path.join(logsDir, `${today}.ndjson`), JSON.stringify({ ts: new Date().toISOString(), level: 'info', msg: `cmd: orch ${argv.join(' ')}` }) + '\n');
+  } catch { /* never block the CLI on logging failure */ }
+
   // --- Global flags that don't require a running daemon ---
 
   if (has(argv, '--version')) {
@@ -411,7 +420,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       }
 
       if (subCmd === 'logs') {
-        const follow = has(cliRest, '--follow');
+        const follow = has(cliRest, '--follow') || has(cliRest, '-f');
         const fsNode = require('node:fs') as typeof import('node:fs');
         const today = new Date().toISOString().slice(0, 10);
         const logFile = path.join(configDir, 'logs', `orchestrator-${today}.log`);
@@ -517,7 +526,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     // Top-level alias for `orch cli logs`
     case 'logs': {
-      const follow = has(rest, '--follow');
+      const follow = has(rest, '--follow') || has(rest, '-f');
       const fsNode = require('node:fs') as typeof import('node:fs');
       const today = new Date().toISOString().slice(0, 10);
       const logFile = path.join(configDir, 'logs', `orchestrator-${today}.log`);
