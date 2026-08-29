@@ -63,7 +63,7 @@ export async function runSelfCheck(quiet = false): Promise<void> {
   for (const check of checks) {
     try {
       await check.fn();
-      if (!quiet) console.log(`  ✓ ${check.name}`);
+      if (!quiet) console.error(`  ✓ ${check.name}`);
       passed++;
     } catch (e) {
       if (!quiet) console.error(`  ✗ ${check.name}: ${(e as Error).message}`);
@@ -71,6 +71,6 @@ export async function runSelfCheck(quiet = false): Promise<void> {
     }
   }
 
-  if (!quiet) console.log(`\nself-check: ${passed} passed, ${failed} failed`);
+  if (!quiet) console.error(`\nself-check: ${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

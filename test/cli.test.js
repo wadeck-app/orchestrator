@@ -345,6 +345,31 @@ describe('orch cli self-check', () => {
     assert.equal(exitCode, 1);
   });
 
+  test('self-check writes output to stderr (Go launcher compat)', async () => {
+    const { runSelfCheck } = require('../src/self-check.ts');
+    const stderrLines = [];
+    const origErr = console.error;
+    const origLog = console.log;
+    const origExit = process.exit;
+    console.error = (...a) => stderrLines.push(a.join(' '));
+    // console.log must not be called — detect if it is
+    const stdoutLines = [];
+    console.log = (...a) => stdoutLines.push(a.join(' '));
+    process.exit = (code) => { throw Object.assign(new Error('exit'), { exitCode: code }); };
+    try {
+      await runSelfCheck(false);
+    } catch (e) {
+      if (!e || e.message !== 'exit') throw e;
+    } finally {
+      console.error = origErr;
+      console.log = origLog;
+      process.exit = origExit;
+    }
+    assert.ok(stderrLines.length > 0, 'self-check must write to stderr');
+    assert.ok(stderrLines.join('\n').includes('✓') || stderrLines.join('\n').includes('self-check'), 'stderr must include check output');
+    assert.equal(stdoutLines.length, 0, 'self-check must not write to stdout (console.log)');
+  });
+
   test('CLI_SELF_CHECK_QUIET suppresses all output', async () => {
     const { runCli } = require('../src/cli.ts');
     const origExit = process.exit;
