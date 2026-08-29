@@ -223,6 +223,51 @@ describe('unknown command', () => {
 });
 
 // ---------------------------------------------------------------------------
+// orch logs (top-level alias, Decision #TBD)
+// ---------------------------------------------------------------------------
+
+describe('orch logs (top-level)', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+
+  test('does not exit with error when log file exists', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-test-'));
+    const logsDir = path.join(dir, 'logs');
+    fs.mkdirSync(logsDir);
+    const today = new Date().toISOString().slice(0, 10);
+    const logFile = path.join(logsDir, `orchestrator-${today}.log`);
+    fs.writeFileSync(logFile, 'test log line\n');
+    try {
+      const written = [];
+      const origWrite = process.stdout.write.bind(process.stdout);
+      process.stdout.write = (chunk) => { written.push(chunk); return true; };
+      const { exitCode } = await run(['logs'], { deps: { configDir: dir } });
+      process.stdout.write = origWrite;
+      assert.equal(exitCode, 0, 'orch logs must exit 0 when log file exists');
+      assert.ok(written.join('').includes('test log line'), 'orch logs must print log contents');
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  test('prints message and exits 0 when no log file for today', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-nofile-'));
+    try {
+      const written = [];
+      const origWrite = process.stdout.write.bind(process.stdout);
+      process.stdout.write = (chunk) => { written.push(chunk); return true; };
+      const { exitCode } = await run(['logs'], { deps: { configDir: dir } });
+      process.stdout.write = origWrite;
+      assert.equal(exitCode, 0, 'orch logs must exit 0 with helpful message when no log file');
+      assert.ok(written.join('').includes('No log file'), 'must mention missing log file');
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // --version, --pid, --help (Decision #20)
 // ---------------------------------------------------------------------------
 

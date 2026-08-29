@@ -94,6 +94,9 @@ Job mutation:
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
 
+Logs:
+  orch logs [--follow]         Read today's orchestrator log file; --follow tails it
+
 Global flags:
   --json                       Force JSON output
   --version                    Print version and exit
@@ -510,6 +513,42 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         process.exit(1);
       }
       break;
+    }
+
+    // Top-level alias for `orch cli logs`
+    case 'logs': {
+      const follow = has(rest, '--follow');
+      const fsNode = require('node:fs') as typeof import('node:fs');
+      const today = new Date().toISOString().slice(0, 10);
+      const logFile = path.join(configDir, 'logs', `orchestrator-${today}.log`);
+      process.stderr.write(`[orch] log file: ${logFile}\n`);
+      if (!fsNode.existsSync(logFile)) {
+        process.stdout.write(`[orch] No log file for today: ${logFile}\n`);
+        return;
+      }
+      if (!follow) {
+        process.stdout.write(fsNode.readFileSync(logFile, 'utf-8'));
+        return;
+      }
+      process.stderr.write(`[orch] Following ${logFile} (Ctrl+C to stop)\n`);
+      let offset = 0;
+      function readNewBytes(): void {
+        try {
+          const stat = fsNode.statSync(logFile);
+          if (stat.size <= offset) return;
+          const buf = Buffer.alloc(stat.size - offset);
+          const fd = fsNode.openSync(logFile, 'r');
+          fsNode.readSync(fd, buf, 0, buf.length, offset);
+          fsNode.closeSync(fd);
+          offset = stat.size;
+          process.stdout.write(buf.toString('utf-8'));
+        } catch { /* ignore transient read errors */ }
+      }
+      readNewBytes();
+      const watcher = fsNode.watch(logFile, () => { readNewBytes(); });
+      watcher.on('error', (err: Error) => { process.stderr.write(`[orch] Watch error: ${String(err)}\n`); });
+      await new Promise<void>(() => {}); // keep alive until Ctrl+C
+      return;
     }
 
     default: {
