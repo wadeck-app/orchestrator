@@ -236,7 +236,7 @@ describe('orch logs (top-level)', () => {
     const logsDir = path.join(dir, 'logs');
     fs.mkdirSync(logsDir);
     const today = new Date().toISOString().slice(0, 10);
-    const logFile = path.join(logsDir, `orchestrator-${today}.log`);
+    const logFile = path.join(logsDir, `${today}.ndjson`);
     fs.writeFileSync(logFile, 'test log line\n');
     try {
       const written = [];
