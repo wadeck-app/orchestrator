@@ -3,3 +3,4 @@ dist/
 dist-bundle/
 .env.local
 *.log
+.idea/
