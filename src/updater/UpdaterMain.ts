@@ -10,9 +10,10 @@ import * as path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-// On Windows, npm is a .cmd script -- execFile without shell:true cannot find it.
-const NPM_CMD = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const NPM_SHELL = process.platform === 'win32' ? { shell: true as const } : {};
+// Use node + npm-cli.js directly to avoid DEP0190 deprecation warning (shell:true + args).
+// npm-cli.js is co-located with node.exe in the npm global installation.
+const NPM_CLI_JS = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+const USE_NPM_CLI = fs.existsSync(NPM_CLI_JS);
 
 // Injected by esbuild at bundle time; falls back to 'dev' when running from source.
 declare const __ORCH_VERSION__: string;
@@ -111,6 +112,13 @@ function getCheckIntervalMs(): number {
   }
 }
 
+function execNpm(args: string[], opts: { timeout: number }): Promise<{ stdout: string }> {
+  if (USE_NPM_CLI) {
+    return execFileAsync(process.execPath, [NPM_CLI_JS, ...args], opts);
+  }
+  return execFileAsync('npm', args, opts);
+}
+
 export async function main(): Promise<void> {
   const configDir = orchConfigDir();
   fs.mkdirSync(configDir, { recursive: true });
@@ -138,9 +146,9 @@ export async function main(): Promise<void> {
     // Check latest version on registry
     let latest: string;
     try {
-      const { stdout } = await execFileAsync(
-        NPM_CMD,['view', PKG_NAME, 'dist-tags.latest', '--registry', REGISTRY],
-        { timeout: 15_000, ...NPM_SHELL },
+      const { stdout } = await execNpm(
+        ['view', PKG_NAME, 'dist-tags.latest', '--registry', REGISTRY],
+        { timeout: 15_000 },
       );
       latest = stdout.trim();
     } catch (e) {
