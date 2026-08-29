@@ -136,7 +136,7 @@ export async function main(): Promise<void> {
     let latest: string;
     try {
       const { stdout } = await execFileAsync(
-        'npm', ['view', PKG_NAME, 'dist-tags.edge', '--registry', REGISTRY],
+        'npm', ['view', PKG_NAME, 'dist-tags.latest', '--registry', REGISTRY],
         { timeout: 15_000 },
       );
       latest = stdout.trim();
