@@ -10,6 +10,9 @@ import * as path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+// On Windows, npm is a .cmd script -- execFile without shell:true cannot find it.
+const NPM_CMD = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const NPM_SHELL = process.platform === 'win32' ? { shell: true as const } : {};
 
 // Injected by esbuild at bundle time; falls back to 'dev' when running from source.
 declare const __ORCH_VERSION__: string;
@@ -136,8 +139,8 @@ export async function main(): Promise<void> {
     let latest: string;
     try {
       const { stdout } = await execFileAsync(
-        'npm', ['view', PKG_NAME, 'dist-tags.latest', '--registry', REGISTRY],
-        { timeout: 15_000 },
+        NPM_CMD,['view', PKG_NAME, 'dist-tags.latest', '--registry', REGISTRY],
+        { timeout: 15_000, ...NPM_SHELL },
       );
       latest = stdout.trim();
     } catch (e) {
