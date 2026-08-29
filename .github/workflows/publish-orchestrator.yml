@@ -106,3 +106,11 @@ jobs:
               run: npm publish --tag ${{ steps.version.outputs.dist_tag }}
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Tag as latest
+              run: |
+                  PKG=$(node -e "process.stdout.write(require('./package.json').name)")
+                  VER="${{ steps.version.outputs.version }}"
+                  npm dist-tag add "${PKG}@${VER}" latest
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
