@@ -9,9 +9,7 @@
   },
   "files": [
     "bin/",
-    "dist/",
-    "launcher-go/dist/",
-    "tray-go/dist/"
+    "dist/"
   ],
   "scripts": {
     "start": "tsx src/index.ts",
@@ -32,6 +30,11 @@
   },
   "publishConfig": {
     "@wadeck-app:registry": "https://npm.pkg.github.com/"
+  },
+  "optionalDependencies": {
+    "@wadeck-app/orchestrator-cli-win32-x64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-darwin-arm64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-darwin-x64": ">=0.0.0-0"
   },
   "dependencies": {
     "@wadeck-app/shared-cli": "^2026.8.30-019-02a40819",

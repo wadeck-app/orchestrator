@@ -20,6 +20,18 @@ const TRAY_BINARY =
       ? 'orchestrator-tray-arm64'
       : 'orchestrator-tray-amd64';
 
+// Binary name as stored inside the platform package (arch is encoded in the package name itself).
+const PLATFORM_TRAY_BINARY = process.platform === 'win32' ? 'orchestrator-tray.exe' : 'orchestrator-tray';
+
+const _PLATFORM_PKG: Record<string, string> = {
+  'win32-x64':    '@wadeck-app/orchestrator-cli-win32-x64',
+  'darwin-arm64': '@wadeck-app/orchestrator-cli-darwin-arm64',
+  'darwin-x64':   '@wadeck-app/orchestrator-cli-darwin-x64',
+};
+const _platformArch = process.arch === 'arm64' ? 'arm64' : 'x64';
+const _platformKey  = `${process.platform}-${_platformArch}`;
+const _platformPkg  = _PLATFORM_PKG[_platformKey];
+
 interface FailureEntry {
   id:       string;
   label:    string;
@@ -186,6 +198,15 @@ export class TrayManager extends EventEmitter {
   }
 
   private _findBinary(): string | null {
+    // Try the platform package first (production install via optionalDependencies).
+    if (_platformPkg) {
+      try {
+        return require.resolve(`${_platformPkg}/${PLATFORM_TRAY_BINARY}`);
+      } catch {
+        // Platform package not installed — fall through to local paths (dev/CI builds).
+      }
+    }
+    // Fallback: local paths used during development or legacy installs.
     const candidates = [
       path.join(__dirname, TRAY_BINARY),
       path.join(__dirname, '..', 'tray-go', 'dist', TRAY_BINARY),

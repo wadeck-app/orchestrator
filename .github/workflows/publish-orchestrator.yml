@@ -95,6 +95,26 @@ jobs:
                   version-input: ${{ github.event.inputs.version || '' }}
                   breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
+            - name: Generate platform package directories
+              run: bash ci/scripts/generate-platform-packages.sh
+
+            - name: Copy binaries to platform packages
+              run: bash ci/scripts/copy-binaries.sh
+
+            - name: Set version in platform packages
+              run: |
+                  for pkg in orchestrator-cli-win32-x64 orchestrator-cli-darwin-arm64 orchestrator-cli-darwin-x64; do
+                    (cd "packages/$pkg" && npm pkg set version="${{ steps.version.outputs.version }}")
+                  done
+
+            - name: Publish platform packages
+              run: |
+                  for pkg in orchestrator-cli-win32-x64 orchestrator-cli-darwin-arm64 orchestrator-cli-darwin-x64; do
+                    (cd "packages/$pkg" && npm publish --tag ${{ steps.version.outputs.dist_tag }})
+                  done
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
             - name: Set version
               run: npm pkg set version="${{ steps.version.outputs.version }}"
 
