@@ -1,5 +1,7 @@
 'use strict';
 
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { OrchestratorCommands, Job, RuntimeEntry } from './types.js';
 import type { Registry } from './registry.js';
 import type { State }    from './state.js';
@@ -13,6 +15,7 @@ export function makeCommands(
   registry: Registry,
   state:    State,
   scheduler: Scheduler,
+  configDir: string,
 ): OrchestratorCommands {
   return {
     'list-jobs':   () => registry.list(),
@@ -43,9 +46,12 @@ export function makeCommands(
 
     'list-state': () => state.getAll() as Record<string, RuntimeEntry>,
 
-    // quit and restart are handled by the SDK's shutdown mechanism;
-    // these stubs exist so TypeScript knows they are valid command names.
-    'quit':    () => {},
-    'restart': () => {},
+    // quit is handled by the SDK's /quit route; stub so TypeScript accepts it.
+    'quit': () => {},
+    // restart: write config.restart sentinel so the Go launcher re-spawns the daemon, then exit.
+    'restart': () => {
+      try { writeFileSync(join(configDir, 'config.restart'), '1'); } catch { /* ignore */ }
+      process.exit(0);
+    },
   };
 }

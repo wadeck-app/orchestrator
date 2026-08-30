@@ -520,7 +520,7 @@ export async function main(): Promise<void> {
   const dummyRegistry = new Registry(path.join(configDir, 'registry.json'));
   const dummyState    = new State(path.join(configDir, 'state.json'));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const commands = makeCommands(dummyRegistry, dummyState, null as any);
+  const commands = makeCommands(dummyRegistry, dummyState, null as any, configDir);
 
   const client = createDaemonClient({ configDir, commands });
 
