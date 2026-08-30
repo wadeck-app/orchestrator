@@ -71,6 +71,6 @@ export async function runSelfCheck(quiet = false): Promise<void> {
     }
   }
 
-  if (!quiet) console.error(`\nself-check: ${passed} passed, ${failed} failed`);
+  if (!quiet) console.error(`self-check: ${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }
