@@ -1,5 +1,5 @@
 // AUTO-GENERATION script — run: npm run gen-icons -w packages/orchestrator
-// Generates src/tray-icons.ts from the Lucide list-clock SVG at 32x32.
+// Generates src/tray-icons.ts from the Lucide list-clock SVG at 64x64.
 // Supports a configurable tray color (default white) matching wdrive's approach.
 
 import sharp from 'sharp';
@@ -14,7 +14,7 @@ const DEFAULT_COLOR = '#FFFFFF';
 
 // Lucide list-clock (24×24 viewport, stroke-width 2, round caps/joins)
 function listClockSvg(color: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 12H3"/>
   <path d="M16 6H3"/>
   <path d="M12 18H3"/>
@@ -25,7 +25,7 @@ function listClockSvg(color: string): string {
 
 // Error state: same icon with a red circle overlay (bottom-right)
 function listClockErrorSvg(color: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 12H3"/>
   <path d="M16 6H3"/>
   <path d="M12 18H3"/>
@@ -36,14 +36,14 @@ function listClockErrorSvg(color: string): string {
 }
 
 async function svgToPng(svg: string): Promise<Buffer> {
-  return sharp(Buffer.from(svg)).resize(32, 32).png().toBuffer();
+  return sharp(Buffer.from(svg)).resize(64, 64).png().toBuffer();
 }
 
 async function main(): Promise<void> {
   const lines: string[] = [
     `// AUTO-GENERATED — do not edit manually.`,
     `// Re-run: npm run gen-icons -w packages/orchestrator`,
-    `// Lucide list-clock, 32x32 PNG base64 — ${COLORS.length} colors × 2 states`,
+    `// Lucide list-clock, 64x64 PNG base64 — ${COLORS.length} colors × 2 states`,
     ``,
     `export type IconState = 'idle' | 'error';`,
     `export type IconSet = Record<IconState, string>;`,
