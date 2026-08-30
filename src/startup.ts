@@ -103,7 +103,7 @@ export function enableStartup(configDir: string): StartupResult {
       diag.push('plist=written');
     } catch (e) { return { ok: false, error: `Failed to write plist: ${(e as Error).message}` }; }
 
-    try { execFileSync('launchctl', ['enable', target], { stdio: 'pipe' }); diag.push('enable=ok'); }
+    try { execFileSync('launchctl', ['enable', target], { stdio: 'pipe', windowsHide: true }); diag.push('enable=ok'); }
     catch (e) { diag.push(`enable=failed(${(e as Error).message?.trim()})`); }
 
     return { ok: true, detail: diag.join(' | ') };
@@ -113,7 +113,7 @@ export function enableStartup(configDir: string): StartupResult {
     const valueName = buildRegValueName(configDir);
     const value     = buildWindowsCommand(configDir);
     try {
-      execFileSync('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe' });
+      execFileSync('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe', windowsHide: true });
     } catch (e) { return { ok: false, error: `reg.exe failed: ${(e as Error).message}` }; }
     return { ok: true, detail: `registry key set: ${REG_KEY}\\${valueName}` };
   }
@@ -129,10 +129,10 @@ export function disableStartup(configDir: string): StartupResult {
     const target    = `gui/${uid}/${LAUNCH_AGENT_LABEL}`;
     const diag: string[] = [];
 
-    try { execFileSync('launchctl', ['bootout', target],  { stdio: 'pipe' }); diag.push('bootout=ok'); }
+    try { execFileSync('launchctl', ['bootout', target],  { stdio: 'pipe', windowsHide: true }); diag.push('bootout=ok'); }
     catch (e) { diag.push(`bootout=skipped(${(e as Error).message?.trim()})`); }
 
-    try { execFileSync('launchctl', ['disable', target], { stdio: 'pipe' }); diag.push('disable=ok'); }
+    try { execFileSync('launchctl', ['disable', target], { stdio: 'pipe', windowsHide: true }); diag.push('disable=ok'); }
     catch (e) { diag.push(`disable=failed(${(e as Error).message?.trim()})`); }
 
     try { fs.unlinkSync(plistPath); diag.push('plist=removed'); }
@@ -143,7 +143,7 @@ export function disableStartup(configDir: string): StartupResult {
 
   if (process.platform === 'win32') {
     const valueName = buildRegValueName(configDir);
-    try { execFileSync('reg', ['delete', REG_KEY, '/v', valueName, '/f'], { stdio: 'pipe' }); }
+    try { execFileSync('reg', ['delete', REG_KEY, '/v', valueName, '/f'], { stdio: 'pipe', windowsHide: true }); }
     catch { /* already absent */ }
     return { ok: true, detail: `registry key removed: ${REG_KEY}\\${valueName}` };
   }
@@ -156,7 +156,7 @@ export function isStartupEnabled(configDir: string): boolean {
   if (process.platform === 'win32') {
     try {
       const out = execFileSync('reg', ['query', REG_KEY, '/v', buildRegValueName(configDir)],
-        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
       return out.includes(process.execPath);
     } catch { return false; }
   }
