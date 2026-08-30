@@ -73,7 +73,12 @@ async function main(): Promise<void> {
     await scheduler.start();
 
     trayManager.on('quit',    () => process.exit(0));
-    trayManager.on('restart', () => process.exit(0));
+    trayManager.on('restart', () => {
+      // Write config.restart sentinel so Go launcher restarts the daemon after exit.
+      const { writeFileSync } = require('node:fs') as typeof import('node:fs');
+      try { writeFileSync(path.join(CONFIG_DIR, 'config.restart'), '1'); } catch { /* ignore */ }
+      process.exit(0);
+    });
     await trayManager.start();
 
     // Read and log any update state written by the background updater on previous run.

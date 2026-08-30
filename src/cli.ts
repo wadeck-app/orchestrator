@@ -529,6 +529,7 @@ export async function main(): Promise<void> {
     const child = spawn(process.execPath, [daemonPath], {
       detached: true,
       stdio: 'ignore',
+      windowsHide: true,
       env: { ...process.env, ORCH_CONFIG_DIR: configDir },
     });
     child.unref();
