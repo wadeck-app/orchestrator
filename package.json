@@ -36,7 +36,7 @@
   "dependencies": {
     "@wadeck-app/shared-cli": "^2026.8.30-019-02a40819",
     "@wadeck-app/shared-updater": "^2026.8.30-003-5afad81b",
-    "@wadeck-app/singleton-daemon-kit": "^2026.8.30-077-f2b635cd",
+    "@wadeck-app/singleton-daemon-kit": "^2026.8.30-078-e56ab1d2",
     "node-cron": "^4.6.0"
   },
   "devDependencies": {

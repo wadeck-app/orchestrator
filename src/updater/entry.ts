@@ -106,8 +106,10 @@ async function main(): Promise<void> {
     }
 
     // Step 3: Write update state so new version displays "Updated to X.Y.Z" at startup.
+    // Write update-available (not success) — Go launcher applies the update after daemon exits.
+    // The daemon will read this on next start and show "[orch] Updated to vX" if install succeeded.
     writeState(stateFilePath(configDir), {
-      status: 'success',
+      status: 'update-available',
       currentVersion,
       targetVersion: latestVersion,
       previousVersion: currentVersion,
