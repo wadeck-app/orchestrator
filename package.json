@@ -4,7 +4,7 @@
   "description": "Cross-platform job orchestrator daemon and CLI",
   "main": "dist/index.js",
   "bin": {
-    "orch":         "bin/orch.js",
+    "orch": "bin/orch.js",
     "orchestrator": "bin/orch.js"
   },
   "files": [
@@ -22,7 +22,7 @@
     "build-launcher": "node ci/scripts/build-launcher.mjs",
     "build-tray": "npx tsx scripts/build-tray-binary.ts",
     "gen-icons": "npx tsx scripts/generate-icons.ts",
-    "bundle-updater": "esbuild src/updater/UpdaterMain.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck-app/singleton-daemon-kit",
+    "bundle-updater": "esbuild src/updater/entry.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck-app/singleton-daemon-kit",
     "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
     "clean": "rimraf dist dist-bundle"
   },
@@ -34,14 +34,15 @@
     "@wadeck-app:registry": "https://npm.pkg.github.com/"
   },
   "dependencies": {
-    "@wadeck-app/shared-cli": "2026.8.29-015-a451d65f",
+    "@wadeck-app/shared-cli": "^2026.8.30-019-02a40819",
+    "@wadeck-app/shared-updater": "^2026.8.30-003-5afad81b",
     "@wadeck-app/singleton-daemon-kit": "^2026.8.28-071-c253e8d8",
     "node-cron": "^4.6.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "sharp": "^0.33.0",
     "esbuild": "^0.25.12",
+    "sharp": "^0.33.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"
   },

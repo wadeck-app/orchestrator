@@ -2,6 +2,12 @@ import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, LivenessConfig } from './types.js';
 import { WindowsTask } from './windows/WindowsTask.js';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { logCliInvocation } = require('@wadeck-app/shared-cli/CliLogger') as typeof import('@wadeck-app/shared-cli/CliLogger');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { parseDuration } = require('@wadeck-app/shared-cli/Duration') as typeof import('@wadeck-app/shared-cli/Duration');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { cliVersionCommand, cliUpdateCommand, cliLogsCommand, warnUnknownArgs } = require('@wadeck-app/shared-cli/CliMetaCommands') as typeof import('@wadeck-app/shared-cli/CliMetaCommands');
 
 const DEFAULT_CONFIG_DIR =
   process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator');
@@ -22,19 +28,6 @@ function has(argv: string[], name: string): boolean {
   return argv.includes(name);
 }
 
-function parseDuration(s: string): number {
-  const match = s.match(/^(\d+(?:\.\d+)?)(s|m|h|d)$/);
-  if (!match) throw new Error(`Invalid duration: "${s}"`);
-  const value = parseFloat(match[1]!);
-  const unit  = match[2]!;
-  switch (unit) {
-    case 's': return Math.round(value * 1000);
-    case 'm': return Math.round(value * 60 * 1000);
-    case 'h': return Math.round(value * 3600 * 1000);
-    case 'd': return Math.round(value * 86400 * 1000);
-    default:  throw new Error(`Invalid duration: "${s}"`);
-  }
-}
 
 function buildLiveness(argv: string[]): LivenessConfig | null {
   const strategy = flag(argv, '--liveness-strategy');
@@ -143,16 +136,10 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   const configDir   = deps.configDir   ?? DEFAULT_CONFIG_DIR;
   const forceJson   = has(argv, '--json');
 
-  // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson (skip 'logs' itself to avoid creating file before existence check)
+  // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson
   const cleanCmd = argv.filter(a => a !== '--json');
   if (cleanCmd[0] !== 'logs' && cleanCmd[1] !== 'logs') {
-    try {
-      const { mkdirSync, appendFileSync } = await import('node:fs');
-      const logsDir = path.join(configDir, 'logs');
-      const today = new Date().toISOString().slice(0, 10);
-      mkdirSync(logsDir, { recursive: true });
-      appendFileSync(path.join(logsDir, `${today}.ndjson`), JSON.stringify({ ts: new Date().toISOString(), level: 'info', msg: `cmd: orch ${argv.join(' ')}` }) + '\n');
-    } catch { /* never block the CLI on logging failure */ }
+    try { logCliInvocation(configDir, 'orch', argv); } catch { /* never block */ }
   }
 
   // --- Global flags that don't require a running daemon ---
@@ -423,74 +410,29 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       }
 
       if (subCmd === 'version') {
-        const fsNode = require('node:fs') as typeof import('node:fs');
-        process.stdout.write(`orch v${version} (installed)\n`);
-        try {
-          const cp = require('node:child_process') as typeof import('node:child_process');
-          const NPM_CLI = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-          const USE_CLI = fsNode.existsSync(NPM_CLI);
-          const winHide = process.platform === 'win32' ? { windowsHide: true as const } : {};
-          const result = USE_CLI
-            ? cp.execFileSync(process.execPath, [NPM_CLI, 'view', '@wadeck-app/orchestrator-cli', 'dist-tags.latest'], { encoding: 'utf8', timeout: 15000, ...winHide })
-            : cp.execFileSync('npm', ['view', '@wadeck-app/orchestrator-cli', 'dist-tags.latest'], { encoding: 'utf8', timeout: 15000, ...winHide });
-          const latest = result.trim();
-          process.stdout.write(`Latest (latest): v${latest}\n`);
-          if (version === latest) process.stdout.write('Up to date.\n');
-        } catch (err) {
-          process.stderr.write(`Could not fetch latest version: ${String(err)}\n`);
-        }
+        warnUnknownArgs(cliRest, [], 'orch cli version');
+        await cliVersionCommand('@wadeck-app/orchestrator-cli', version);
         return;
       }
 
       if (subCmd === 'logs') {
-        const follow = has(cliRest, '--follow') || has(cliRest, '-f');
-        const fsNode = require('node:fs') as typeof import('node:fs');
-        const today = new Date().toISOString().slice(0, 10);
-        const logFile = path.join(configDir, 'logs', `${today}.ndjson`);
-                if (!fsNode.existsSync(logFile)) {
-          process.stdout.write(`[orch] No log file for today: ${logFile}\n`);
-          return;
-        }
-        if (!follow) {
-          process.stdout.write(fsNode.readFileSync(logFile, 'utf8'));
-          return;
-        }
-        // follow mode: print existing content then watch for new bytes
-        let offset = 0;
-        const printNew = (): void => {
-          const stat = fsNode.statSync(logFile);
-          if (stat.size <= offset) return;
-          const buf = Buffer.alloc(stat.size - offset);
-          const fd = fsNode.openSync(logFile, 'r');
-          fsNode.readSync(fd, buf, 0, buf.length, offset);
-          fsNode.closeSync(fd);
-          offset = stat.size;
-          process.stdout.write(buf);
-        };
-        printNew();
-        fsNode.watch(logFile, () => { printNew(); });
-        await new Promise<void>(() => {}); // keep alive until Ctrl+C
+        warnUnknownArgs(cliRest, ['--follow', '-f'], 'orch cli logs');
+        await cliLogsCommand(configDir, { follow: has(cliRest, '--follow') || has(cliRest, '-f') });
         return;
       }
 
       if (subCmd === 'update') {
-        const cp = require('node:child_process') as typeof import('node:child_process');
-        const fsNode = require('node:fs') as typeof import('node:fs');
-        // __dirname is dist/ when compiled; process.argv[1] is bin/orch.js — use __dirname
         const updaterPath = path.join(__dirname, 'orchestrator-updater.cjs');
-        if (!fsNode.existsSync(updaterPath)) {
-          console.error(`[fail] Updater not found: ${updaterPath} (dev mode -- no bundle)`);
+        const fsCheck = require('node:fs') as typeof import('node:fs');
+        if (!fsCheck.existsSync(updaterPath)) {
+          process.stderr.write(`[fail] Updater not found: ${updaterPath} (dev mode -- no bundle)\n`);
           process.exit(1);
         }
-        process.stderr.write('[orch] Running foreground update...\n');
-        const result = cp.spawnSync(process.execPath, [updaterPath], {
-          stdio: 'inherit',
-          env: { ...process.env, UPDATER_FORCE: '1' },
-        });
-        process.exit(result.status ?? 1);
+        await cliUpdateCommand(updaterPath, '@wadeck-app/orchestrator-cli', { rawArgs: cliRest });
         return;
       }
 
+      warnUnknownArgs([String(subCmd ?? '')], ['self-check', 'version', 'logs', 'update', '--help', '-h', 'help'], 'orch cli');
       console.error(`Unknown cli subcommand: "${String(subCmd)}". Run: orch cli --help`);
       process.exit(1);
       break;
@@ -548,37 +490,8 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     // Top-level alias for `orch cli logs`
     case 'logs': {
-      const follow = has(rest, '--follow') || has(rest, '-f');
-      const fsNode = require('node:fs') as typeof import('node:fs');
-      const today = new Date().toISOString().slice(0, 10);
-      const logFile = path.join(configDir, 'logs', `${today}.ndjson`);
-      process.stderr.write(`[orch] log file: ${logFile}\n`);
-      if (!fsNode.existsSync(logFile)) {
-        process.stdout.write(`[orch] No log file for today: ${logFile}\n`);
-        return;
-      }
-      if (!follow) {
-        process.stdout.write(fsNode.readFileSync(logFile, 'utf-8'));
-        return;
-      }
-      process.stderr.write(`[orch] Following ${logFile} (Ctrl+C to stop)\n`);
-      let offset = 0;
-      function readNewBytes(): void {
-        try {
-          const stat = fsNode.statSync(logFile);
-          if (stat.size <= offset) return;
-          const buf = Buffer.alloc(stat.size - offset);
-          const fd = fsNode.openSync(logFile, 'r');
-          fsNode.readSync(fd, buf, 0, buf.length, offset);
-          fsNode.closeSync(fd);
-          offset = stat.size;
-          process.stdout.write(buf.toString('utf-8'));
-        } catch { /* ignore transient read errors */ }
-      }
-      readNewBytes();
-      const watcher = fsNode.watch(logFile, () => { readNewBytes(); });
-      watcher.on('error', (err: Error) => { process.stderr.write(`[orch] Watch error: ${String(err)}\n`); });
-      await new Promise<void>(() => {}); // keep alive until Ctrl+C
+      warnUnknownArgs(rest, ['--follow', '-f'], 'orch logs');
+      await cliLogsCommand(configDir, { follow: has(rest, '--follow') || has(rest, '-f') });
       return;
     }
 
@@ -675,9 +588,9 @@ export async function main(): Promise<void> {
   const { UpdateManager: CliUpdateManager } = await import('@wadeck-app/shared-cli');
   const cliUpdateManager = new CliUpdateManager('@wadeck-app/orchestrator-cli', configDir);
   const cliUpdateState = cliUpdateManager.readAndClearState();
-  if (cliUpdateState?.status === 'success') process.stderr.write(`[orch] Updated to v${cliUpdateState.newVersion}\n`);
+  if (cliUpdateState?.status === 'success') process.stderr.write(`[orch] Updated to v${cliUpdateState.targetVersion ?? cliUpdateState.newVersion}\n`);
   if (cliUpdateState?.status === 'rolled-back') process.stderr.write(`[orch] Rollback to v${cliUpdateState.previousVersion}\n`);
-  if (cliUpdateState?.status === 'update-failed') process.stderr.write(`[orch] Update failed (${cliUpdateState.reason})\n`);
+  if (cliUpdateState?.status === 'failed') process.stderr.write(`[orch] Update failed (${cliUpdateState.error ?? cliUpdateState.reason})\n`);
 
   await runCli(process.argv.slice(2), { send, startDaemon, configDir });
 }
