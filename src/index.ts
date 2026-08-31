@@ -55,6 +55,11 @@ async function main(): Promise<void> {
         port:   activePort,
         uptime: Math.floor(process.uptime()),
       }),
+      // Expose active job count in GET /health so the updater can defer during active jobs
+      health: () => ({
+        status: 'ok' as const,
+        active_jobs: Object.values(state.getAll()).filter(e => e.exitCode === null).length,
+      }),
       hooks: {
         onStart: (port: number) => {
           activePort = port;
