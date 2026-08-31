@@ -44,16 +44,16 @@ jobs:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Build TypeScript
-              run: npm run build
+              run: npm run build --workspace=packages/orchestrator-cli
 
             - name: Build Go launchers
-              run: npm run build-launcher
+              run: npm run build-launcher --workspace=packages/orchestrator-cli
 
             - name: Build tray binary
-              run: npm run build-tray
+              run: npm run build-tray --workspace=packages/orchestrator-cli
 
             - name: Run tests
-              run: npm test
+              run: npm test --workspace=packages/orchestrator-cli
 
     publish:
         needs: build-and-test
@@ -80,13 +80,13 @@ jobs:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Build TypeScript
-              run: npm run build
+              run: npm run build --workspace=packages/orchestrator-cli
 
             - name: Build Go launchers
-              run: npm run build-launcher
+              run: npm run build-launcher --workspace=packages/orchestrator-cli
 
             - name: Build tray binary
-              run: npm run build-tray
+              run: npm run build-tray --workspace=packages/orchestrator-cli
 
             - name: Compute version
               id: version
@@ -96,10 +96,10 @@ jobs:
                   breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
             - name: Generate platform package directories
-              run: bash ci/scripts/generate-platform-packages.sh
+              run: bash packages/orchestrator-cli/ci/scripts/generate-platform-packages.sh
 
             - name: Copy binaries to platform packages
-              run: bash ci/scripts/copy-binaries.sh
+              run: bash packages/orchestrator-cli/ci/scripts/copy-binaries.sh
 
             - name: Set version in platform packages
               run: |
@@ -116,12 +116,12 @@ jobs:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Set version
-              run: npm pkg set version="${{ steps.version.outputs.version }}"
+              run: npm pkg set version="${{ steps.version.outputs.version }}" --workspace=packages/orchestrator-cli
 
             - name: Bundle updater
-              run: npm run bundle-updater
+              run: npm run bundle-updater --workspace=packages/orchestrator-cli
 
             - name: Publish
-              run: npm publish --tag ${{ steps.version.outputs.dist_tag }}
+              run: npm publish --workspace=packages/orchestrator-cli --tag ${{ steps.version.outputs.dist_tag }}
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

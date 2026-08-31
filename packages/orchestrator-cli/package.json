@@ -1,0 +1,55 @@
+{
+  "name": "@wadeck-app/orchestrator-cli",
+  "version": "0.2.0",
+  "description": "Cross-platform job orchestrator daemon and CLI",
+  "main": "dist/index.js",
+  "bin": {
+    "orch": "bin/orch.js",
+    "orchestrator": "bin/orch.js"
+  },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "test": "node --test --require tsx/cjs test/**/*.test.js",
+    "test:w": "node --test --watch --require tsx/cjs test/**/*.test.js",
+    "build-launcher": "node ci/scripts/build-launcher.mjs",
+    "build-tray": "npx tsx scripts/build-tray-binary.ts",
+    "gen-icons": "npx tsx scripts/generate-icons.ts",
+    "bundle-updater": "esbuild src/updater/entry.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck-app/singleton-daemon-kit",
+    "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
+    "clean": "rimraf dist dist-bundle"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wadeck-app/orchestrator.git"
+  },
+  "publishConfig": {
+    "@wadeck-app:registry": "https://npm.pkg.github.com/"
+  },
+  "optionalDependencies": {
+    "@wadeck-app/orchestrator-cli-darwin-arm64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-darwin-x64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-win32-x64": ">=0.0.0-0"
+  },
+  "dependencies": {
+    "@wadeck-app/shared-cli": "^2026.8.31-022-55ef14e0",
+    "@wadeck-app/shared-updater": "^2026.8.31-006-6811218a",
+    "@wadeck-app/singleton-daemon-kit": "2026.8.30-082-8c02b26d",
+    "node-cron": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.25.12",
+    "sharp": "^0.33.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
