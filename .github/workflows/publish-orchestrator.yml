@@ -55,6 +55,12 @@ jobs:
             - name: Build orch-server
               run: npm run build --workspace=packages/orch-server
 
+            - name: Bundle orch-server into orchestrator-cli
+              run: |
+                  mkdir -p packages/orchestrator-cli/server
+                  cp -r packages/orch-server/dist packages/orchestrator-cli/server/dist
+                  cp -r packages/orch-server/public packages/orchestrator-cli/server/public
+
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli
 
@@ -102,6 +108,12 @@ jobs:
 
             - name: Build orch-server
               run: npm run build --workspace=packages/orch-server
+
+            - name: Bundle orch-server into orchestrator-cli
+              run: |
+                  mkdir -p packages/orchestrator-cli/server
+                  cp -r packages/orch-server/dist packages/orchestrator-cli/server/dist
+                  cp -r packages/orch-server/public packages/orchestrator-cli/server/public
 
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli

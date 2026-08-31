@@ -25,6 +25,7 @@ export interface DashboardPortInfo {
 }
 
 export function writeDashboardPort(configDir: string, port: number, pid: number): void {
+  fs.mkdirSync(configDir, { recursive: true });
   const info: DashboardPortInfo = { port, pid, startedAt: new Date().toISOString() };
   fs.writeFileSync(path.join(configDir, 'config.dashboard'), JSON.stringify(info, null, 2), 'utf8');
 }
