@@ -43,6 +43,18 @@ jobs:
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+            - name: Build orch-ui
+              run: npm run build --workspace=packages/orch-ui
+
+            - name: Build orch-app
+              run: npm run build --workspace=packages/orch-app
+
+            - name: Copy orch-app to orch-server public
+              run: npm run copy-app --workspace=packages/orch-server
+
+            - name: Build orch-server
+              run: npm run build --workspace=packages/orch-server
+
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli
 
@@ -53,7 +65,7 @@ jobs:
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
             - name: Run tests
-              run: npm test --workspace=packages/orchestrator-cli
+              run: npm test --workspace=packages/orchestrator-cli --workspace=packages/orch-server --if-present
 
     publish:
         needs: build-and-test
@@ -78,6 +90,18 @@ jobs:
               run: npm install --prefer-offline
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build orch-ui
+              run: npm run build --workspace=packages/orch-ui
+
+            - name: Build orch-app
+              run: npm run build --workspace=packages/orch-app
+
+            - name: Copy orch-app to orch-server public
+              run: npm run copy-app --workspace=packages/orch-server
+
+            - name: Build orch-server
+              run: npm run build --workspace=packages/orch-server
 
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli
