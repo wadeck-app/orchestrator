@@ -1,9 +1,0 @@
-{
-  "appName": "orchestrator",
-  "displayName": "Orchestrator",
-  "nodeScript": "index.js",
-  "defaultConfigDir": "orchestrator",
-  "updateCmd": ["npm", "install", "-g", "@wadeck-app/orchestrator-cli"],
-  "cliFlags": [],
-  "silentFlags": []
-}

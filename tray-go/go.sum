@@ -1,8 +1,0 @@
-github.com/go-webgpu/goffi v0.5.5 h1:xLWMhnJq+GrejlhTC3iVt3q8ozRbmYSq8kzuw6MKlgE=
-github.com/go-webgpu/goffi v0.5.5/go.mod h1:wfoxNsJkU+5RFbV1kNN1kunhc1lFHuJKK3zpgx08/uM=
-github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
-github.com/godbus/dbus/v5 v5.2.2/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
-github.com/gogpu/systray v0.1.1 h1:7/D6wM/iM7HqA1lkcUODhtYa62LLB0nDqqiTRqYvOD8=
-github.com/gogpu/systray v0.1.1/go.mod h1:0gNVIQwI7DfnaZisSfRfOLRjThLsvNNKbQhNYiDow9M=
-golang.org/x/sys v0.46.0 h1:noSf2Fq6F8DBgS+LysIkx7rIExoNHJsxOAtPp4rthXw=
-golang.org/x/sys v0.46.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
