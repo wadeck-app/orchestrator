@@ -32,13 +32,13 @@
     "@wadeck-app:registry": "https://npm.pkg.github.com/"
   },
   "optionalDependencies": {
-    "@wadeck-app/orchestrator-cli-win32-x64": ">=0.0.0-0",
     "@wadeck-app/orchestrator-cli-darwin-arm64": ">=0.0.0-0",
-    "@wadeck-app/orchestrator-cli-darwin-x64": ">=0.0.0-0"
+    "@wadeck-app/orchestrator-cli-darwin-x64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-win32-x64": ">=0.0.0-0"
   },
   "dependencies": {
     "@wadeck-app/shared-cli": "^2026.8.30-019-02a40819",
-    "@wadeck-app/shared-updater": "^2026.8.30-004-6230bb40",
+    "@wadeck-app/shared-updater": "^2026.8.31-006-6811218a",
     "@wadeck-app/singleton-daemon-kit": "2026.8.30-082-8c02b26d",
     "node-cron": "^4.6.0"
   },

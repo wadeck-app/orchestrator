@@ -9,6 +9,8 @@
 import { runUpdater, execNpm } from '@wadeck-app/shared-updater';
 import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import * as http from 'node:http';
 
 declare const __ORCH_VERSION__: string;
 
@@ -25,6 +27,42 @@ try {
   // Skip self-check if npm root is unavailable.
 }
 
+/**
+ * Query GET /health on the orchestrator daemon. Returns the parsed JSON body, or null
+ * if the daemon is unreachable, the request times out, or the response is not valid JSON.
+ */
+function queryDaemonHealth(port: number, token: string, timeoutMs: number): Promise<Record<string, unknown> | null> {
+  return new Promise((resolve) => {
+    const req = http.get(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: '/health',
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body) as Record<string, unknown>);
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
 runUpdater({
   pkgName: PKG_NAME,
   configDir,
@@ -33,6 +71,25 @@ runUpdater({
   restartDaemon: {
     portFile: join(configDir, 'config.port'),
     healthTokenFile: join(configDir, 'health_token'),
+  },
+  onUpdateAvailable: async (_newVersion: string) => {
+    try {
+      const portJson = readFileSync(join(configDir, 'config.port'), 'utf8');
+      const { port } = JSON.parse(portJson) as { port: number };
+      const token = readFileSync(join(configDir, 'health_token'), 'utf8').trim();
+      const health = await queryDaemonHealth(port, token, 3_000);
+      const activeJobs =
+        (health !== null && typeof health['active_jobs'] === 'number' && health['active_jobs']) ||
+        (health !== null && typeof health['running'] === 'number' && health['running']) ||
+        0;
+      if (activeJobs > 0) {
+        // Critical jobs are running — defer the update to avoid disruption.
+        return { defer: true, retryIn: 60_000 };
+      }
+    } catch {
+      // Daemon unreachable, config files missing, or JSON parse error → apply now.
+    }
+    return 'apply-now';
   },
 }).catch(err => {
   process.stderr.write(`[orchestrator-updater] fatal: ${err}\n`);
