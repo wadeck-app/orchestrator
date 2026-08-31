@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc --build tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "copy-app": "node scripts/copy-app.mjs",
+    "build:full": "npm run build && npm run copy-app"
   },
   "dependencies": {
     "fastify": "^5.0.0",

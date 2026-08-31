@@ -12,26 +12,28 @@ import { logsRoutes } from './routes/logs.js';
 import { heartbeatRoute } from './routes/heartbeat.js';
 
 // Parse CLI args
-function parseArgs(): { configDir: string; basePort: number } {
+function parseArgs(): { configDir: string; basePort: number; appDir: string | null } {
   const args = process.argv.slice(2);
   let configDir = '';
   let basePort = 47950;
+  let appDir: string | null = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--config-dir' && args[i + 1]) configDir = args[++i];
     if (args[i] === '--base-port' && args[i + 1]) basePort = parseInt(args[++i], 10);
+    if (args[i] === '--app-dir' && args[i + 1]) appDir = args[++i];
   }
   if (!configDir) {
     process.stderr.write('Error: --config-dir is required\n');
     process.exit(1);
   }
-  return { configDir, basePort };
+  return { configDir, basePort, appDir };
 }
 
-const { configDir, basePort } = parseArgs();
+const { configDir, basePort, appDir: appDirArg } = parseArgs();
 const timeoutMs = Number(process.env.ORCH_DASHBOARD_IDLE_TIMEOUT_MS ?? '600000');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.resolve(__dirname, '../public');
+const publicDir = appDirArg ?? path.resolve(__dirname, '../public');
 const hasPublic = fs.existsSync(publicDir);
 
 const proxy = new DaemonProxy(configDir);
