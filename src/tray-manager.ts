@@ -122,7 +122,7 @@ export class TrayManager extends EventEmitter {
         items.push({ id: `fail-${f.id}`, type: 'normal', title: label, enabled: false });
       }
     } else {
-      items.push({ id: 'status', type: 'normal', title: '✓ All jobs OK', enabled: false });
+      items.push({ id: 'status', type: 'normal', title: 'All jobs OK', enabled: false });
     }
 
     items.push({ id: 'sep3',           type: 'separator', title: '',             enabled: false });
