@@ -10,6 +10,8 @@ import { Scheduler }   from './scheduler.js';
 import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
 import { TrayManager } from './tray-manager.js';
+import { DashboardManager } from './dashboard-manager.js';
+import { findOrchServerBinary } from './dashboard-binary.js';
 import type { OrchestratorCommands } from './types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -40,7 +42,16 @@ async function main(): Promise<void> {
     const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'));
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
     const scheduler   = new Scheduler(registry, state, { configDir: CONFIG_DIR });
-    const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version);
+
+    let dashboardManager: DashboardManager | null = null;
+    try {
+      const serverBinary = findOrchServerBinary();
+      dashboardManager = new DashboardManager(CONFIG_DIR, serverBinary);
+    } catch {
+      // orch-server not built yet -- dashboard unavailable
+    }
+
+    const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version, undefined, dashboardManager);
 
     // Captured in onStart so versionExtra can reference it without a circular dep
     let activePort = 0;
@@ -71,6 +82,7 @@ async function main(): Promise<void> {
           daemonLog.close();
           void scheduler.stop();
           void trayManager.stop();
+          void dashboardManager?.stop();
         },
       },
     });

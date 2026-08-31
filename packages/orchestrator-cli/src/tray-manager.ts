@@ -10,6 +10,7 @@ import type { State } from './state.js';
 import type { Registry } from './registry.js';
 import type { Scheduler } from './scheduler.js';
 import type { Job } from './types.js';
+import type { DashboardManager } from './dashboard-manager.js';
 
 const MAX_FAILURES = 5;
 
@@ -55,6 +56,7 @@ export class TrayManager extends EventEmitter {
     private readonly _registry:  Registry,
     private readonly _version:   string,
     private readonly _trayColor?: string,
+    private readonly _dashboardManager?: DashboardManager | null,
   ) {
     super();
     this._startupEnabled = isStartupEnabled(_configDir);
@@ -125,8 +127,9 @@ export class TrayManager extends EventEmitter {
       items.push({ id: 'status', type: 'normal', title: 'All jobs OK', enabled: false });
     }
 
-    items.push({ id: 'sep3',           type: 'separator', title: '',             enabled: false });
-    items.push({ id: 'open-logs',      type: 'normal',    title: 'Open logs',    enabled: true });
+    items.push({ id: 'sep3',             type: 'separator', title: '',               enabled: false });
+    items.push({ id: 'open-dashboard',   type: 'normal',    title: 'Open Dashboard', enabled: this._dashboardManager != null });
+    items.push({ id: 'open-logs',        type: 'normal',    title: 'Open logs',      enabled: true });
     items.push({ id: 'startup-toggle', type: 'normal',    title: 'Start at login', enabled: true, checked: this._startupEnabled });
     items.push({ id: 'sep4',           type: 'separator', title: '',             enabled: false });
     items.push({ id: 'restart',        type: 'normal',    title: 'Restart',      enabled: true });
@@ -216,6 +219,19 @@ export class TrayManager extends EventEmitter {
 
   private _handleClick(id: string): void {
     switch (id) {
+      case 'open-dashboard': {
+        const dm = this._dashboardManager;
+        if (dm) {
+          if (!dm.isRunning()) {
+            dm.start()
+              .then(() => { setTimeout(() => dm.openBrowser(), 500); })
+              .catch((err: Error) => { console.error('[tray] failed to start dashboard server:', err.message); });
+          } else {
+            dm.openBrowser();
+          }
+        }
+        break;
+      }
       case 'open-logs': {
         const logsDir = path.join(this._configDir, 'logs');
         const cmd = process.platform === 'win32' ? 'explorer.exe' : 'open';
