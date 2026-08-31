@@ -392,27 +392,28 @@ describe('orch cli self-check', () => {
 
   test('self-check writes output to stderr (Go launcher compat)', async () => {
     const { runSelfCheck } = require('../src/self-check.ts');
-    const stderrLines = [];
-    const origErr = console.error;
-    const origLog = console.log;
+    const stderrChunks = [];
+    const stdoutChunks = [];
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    const origStdoutWrite = process.stdout.write.bind(process.stdout);
     const origExit = process.exit;
-    console.error = (...a) => stderrLines.push(a.join(' '));
-    // console.log must not be called — detect if it is
-    const stdoutLines = [];
-    console.log = (...a) => stdoutLines.push(a.join(' '));
+    // Intercept process.stderr.write (used by shared runSelfCheck)
+    process.stderr.write = (...args) => { stderrChunks.push(String(args[0])); return true; };
+    // console.log / process.stdout.write must not be called
+    process.stdout.write = (...args) => { stdoutChunks.push(String(args[0])); return true; };
     process.exit = (code) => { throw Object.assign(new Error('exit'), { exitCode: code }); };
     try {
       await runSelfCheck(false);
     } catch (e) {
       if (!e || e.message !== 'exit') throw e;
     } finally {
-      console.error = origErr;
-      console.log = origLog;
+      process.stderr.write = origStderrWrite;
+      process.stdout.write = origStdoutWrite;
       process.exit = origExit;
     }
-    assert.ok(stderrLines.length > 0, 'self-check must write to stderr');
-    assert.ok(stderrLines.join('\n').includes('[ok]') || stderrLines.join('\n').includes('self-check'), 'stderr must include check output');
-    assert.equal(stdoutLines.length, 0, 'self-check must not write to stdout (console.log)');
+    assert.ok(stderrChunks.length > 0, 'self-check must write to stderr');
+    assert.ok(stderrChunks.join('').includes('[ok]'), 'stderr must include [ok] check output');
+    assert.equal(stdoutChunks.length, 0, 'self-check must not write to stdout');
   });
 
   test('CLI_SELF_CHECK_QUIET suppresses all output', async () => {
