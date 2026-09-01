@@ -514,6 +514,30 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
             process.exit(0);
           } catch { /* stale file, continue */ }
         }
+        // Auto-start daemon if not running
+        const daemonPortFile = path.join(configDir, 'config.port');
+        const isDaemonRunning = (): boolean => {
+          try {
+            if (!fs.existsSync(daemonPortFile)) return false;
+            const stat = fs.statSync(daemonPortFile);
+            return (Date.now() - stat.mtimeMs) < 60_000;
+          } catch { return false; }
+        };
+        if (!isDaemonRunning()) {
+          console.log('Orchestrator daemon is not running -- starting it...');
+          startDaemon();
+          // Wait up to 10s for daemon port file to appear
+          const deadline = Date.now() + 10_000;
+          await new Promise<void>((resolve, reject) => {
+            const tick = (): void => {
+              if (isDaemonRunning()) { resolve(); return; }
+              if (Date.now() >= deadline) { reject(new Error('Daemon did not start within 10s')); return; }
+              setTimeout(tick, 200);
+            };
+            tick();
+          });
+          console.log('Orchestrator daemon started.');
+        }
         const { spawn } = require('node:child_process') as typeof import('node:child_process');
         const { createInterface } = require('node:readline') as typeof import('node:readline');
         const child = spawn(process.execPath, [serverBinary, '--config-dir', configDir, '--base-port', '47950'], {

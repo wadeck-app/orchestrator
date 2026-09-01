@@ -444,3 +444,65 @@ describe('orch cli self-check', () => {
     assert.equal(logged.length, 0, 'quiet mode must produce no output');
   });
 });
+
+// ---------------------------------------------------------------------------
+// orch server start -- daemon auto-start
+// ---------------------------------------------------------------------------
+
+describe('orch server start -- daemon auto-start', () => {
+  // BUG REGRESSION: when the daemon is not running (no config.port),
+  // 'orch server start' must call startDaemon() automatically before starting
+  // the dashboard server. Without this, the UI loads but shows 503 "daemon not running".
+  test('calls startDaemon when config.port is absent', async () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { spawn } = require('node:child_process');
+    const { createInterface } = require('node:readline');
+
+    const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-server-autostart-'));
+    // No config.port -- daemon not running
+    let daemonStartCalled = false;
+
+    // startDaemon mock: writes a fake config.port so waitForDaemon resolves
+    const mockStartDaemon = () => {
+      daemonStartCalled = true;
+      fs.writeFileSync(path.join(configDir, 'config.port'), JSON.stringify({
+        sdkVersion: 1, port: 19997, pid: 99998, startedAt: new Date().toISOString(),
+      }));
+    };
+
+    // Start server via runCli -- it will spawn the actual server binary
+    // We need to kill it after verification
+    const SERVER_BIN = path.join(__dirname, '..', 'server', 'dist', 'index.js');
+    if (!fs.existsSync(SERVER_BIN)) {
+      // Skip if server binary not built (CI should always have it)
+      return;
+    }
+
+    const origExit = process.exit;
+    process.exit = () => { throw Object.assign(new Error('exit'), { exitCode: 0 }); };
+    try {
+      await runCli(['server', 'start'], {
+        send: async () => ({}),
+        startDaemon: mockStartDaemon,
+        configDir,
+      });
+    } catch (e) {
+      if (!(e instanceof Error) || e.message !== 'exit') throw e;
+    } finally {
+      process.exit = origExit;
+      // Stop the dashboard server if it started
+      const dashFile = path.join(configDir, 'config.dashboard');
+      if (fs.existsSync(dashFile)) {
+        try {
+          const info = JSON.parse(fs.readFileSync(dashFile, 'utf8'));
+          process.kill(info.pid, 'SIGTERM');
+        } catch { /* already gone */ }
+        try { fs.unlinkSync(dashFile); } catch { /* ok */ }
+      }
+    }
+
+    assert.ok(daemonStartCalled, 'startDaemon must be called automatically when config.port is absent');
+  });
+});
