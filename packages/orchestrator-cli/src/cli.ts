@@ -3,6 +3,7 @@ import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, LivenessConfig } from './types.js';
 import { WindowsTask } from './windows/WindowsTask.js';
+import { getErrorMessage } from './fsUtil.js';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { logCliInvocation } = require('@wadeck-app/shared-cli/CliLogger') as typeof import('@wadeck-app/shared-cli/CliLogger');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -237,7 +238,12 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     case 'list': {
       const verbose = has(rest, '--verbose');
-      const jobs = await send('list-jobs') as Array<Record<string, unknown>>;
+      const [jobs, stateMap] = await Promise.all([
+        send('list-jobs') as Promise<Array<Record<string, unknown>>>,
+        verbose
+          ? (send('list-state') as Promise<Record<string, Array<Record<string, unknown>>>>)
+          : Promise.resolve({} as Record<string, Array<Record<string, unknown>>>),
+      ]);
       if (!jobs?.length) {
         output(forceJson || !process.stdout.isTTY ? [] : 'No jobs registered.', forceJson);
         break;
@@ -254,8 +260,14 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         } else {
           scheduleDisplay = j['schedule'] != null ? String(j['schedule']) : String(j['delaySeconds']) + 's';
         }
+        // violations-suppress: shared/no-emoji CLI terminal indicator - intentional visual marker for enabled/disabled state
         const line  = `${j['enabled'] ? '✓' : '✗'} ${String(j['id']).padEnd(24)} ${String(j['type']).padEnd(8)} ${scheduleDisplay}`;
-        const extra = verbose ? `  last=${String(j['lastRunAt'] ?? '-')}  exit=${String(j['lastExitCode'] ?? '-')}` : '';
+        let extra = '';
+        if (verbose) {
+          const history = stateMap[String(j['id'])];
+          const lastRun = Array.isArray(history) && history.length > 0 ? history[0] : null;
+          extra = `  last=${String(lastRun?.['startedAt'] ?? '-')}  exit=${String(lastRun?.['exitCode'] ?? '-')}`;
+        }
         console.log(line + extra);
       }
       break;
@@ -543,6 +555,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         const child = spawn(process.execPath, [serverBinary, '--config-dir', configDir, '--base-port', '47950'], {
           stdio: ['ignore', 'pipe', 'inherit'],
           detached: true,
+          windowsHide: true,
         });
         const rl = createInterface({ input: child.stdout! });
         await new Promise<void>((resolve, reject) => {
@@ -628,10 +641,12 @@ export async function main(): Promise<void> {
 
   const configDir = DEFAULT_CONFIG_DIR;
 
-  // Dummy command stubs — only used for type inference by the SDK client (not executed)
+  // Dummy command stubs - only used for type inference by the SDK client (not executed)
   const dummyRegistry = new Registry(path.join(configDir, 'registry.json'));
   const dummyState    = new State(path.join(configDir, 'state.json'));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // violations-suppress: ts/no-unsafe-type-cast dummy Scheduler cast for type inference only - never executed
   const commands = makeCommands(dummyRegistry, dummyState, null as any, configDir);
 
   const client = createDaemonClient({ configDir, commands });
@@ -672,8 +687,9 @@ export async function main(): Promise<void> {
       return c.send(command, payload);
     };
 
-    return doSend().catch(async (e: Error) => {
-      const isDaemonDown = e.message?.includes('not running') || e.message?.includes('ECONNREFUSED') || e.message?.includes('ENOENT');
+    return doSend().catch(async (e: unknown) => {
+      const msg = getErrorMessage(e);
+      const isDaemonDown = msg.includes('not running') || msg.includes('ECONNREFUSED') || msg.includes('ENOENT');
       if (isDaemonDown && !_autoStarted) {
         _autoStarted = true;
         startDaemon();
@@ -683,16 +699,16 @@ export async function main(): Promise<void> {
           process.exit(2);
         }
         // Retry once after auto-start
-        return doSend().catch((e2: Error) => {
-          console.error(`Error: ${e2.message}`);
+        return doSend().catch((e2: unknown) => {
+          console.error(`Error: ${getErrorMessage(e2)}`);
           process.exit(1);
         });
       }
-      if (e.message?.includes('not found') || e.message?.includes('Not found')) {
-        console.error(`Error: ${e.message}`);
+      if (msg.includes('not found') || msg.includes('Not found')) {
+        console.error(`Error: ${msg}`);
         process.exit(3);
       }
-      console.error(`Error: ${e.message}`);
+      console.error(`Error: ${msg}`);
       process.exit(1);
     });
   }
@@ -709,5 +725,5 @@ export async function main(): Promise<void> {
 }
 
 if (require.main === module) {
-  main().catch((e: Error) => { console.error(e.message); process.exit(1); });
+  main().catch((e: unknown) => { console.error(getErrorMessage(e)); process.exit(1); });
 }

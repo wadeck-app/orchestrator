@@ -32,6 +32,7 @@ function cli(...args) {
     return execSync(`"${TSX}" "${CLI}" ${args.join(' ')}`, {
       env: { ...process.env, ORCH_CONFIG_DIR: CONFIG },
       encoding: 'utf8',
+      windowsHide: true,
     }).trim();
   } catch (e) {
     return e.stdout?.trim() ?? '';

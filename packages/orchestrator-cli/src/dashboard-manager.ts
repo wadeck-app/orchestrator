@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFile } from 'node:child_process';
+import { getErrorMessage } from './fsUtil.js';
 
 const KILL_TIMEOUT_MS = 3000;
 
@@ -132,12 +133,14 @@ export class DashboardManager {
     }
     const url = `http://localhost:${port}`;
     if (process.platform === 'win32') {
+      // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
       execFile('explorer.exe', [url], (err) => {
-        if (err) console.error('[dashboard] open browser failed:', err.message);
+        if (err) console.error('[dashboard] open browser failed:', getErrorMessage(err));
       });
     } else {
+      // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
       execFile('open', [url], (err) => {
-        if (err) console.error('[dashboard] open browser failed:', err.message);
+        if (err) console.error('[dashboard] open browser failed:', getErrorMessage(err));
       });
     }
   }

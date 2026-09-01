@@ -8,6 +8,7 @@ import { getIcons } from './tray-icons.js';
 import { enableStartup, disableStartup, isStartupEnabled } from './startup.js';
 import type { State } from './state.js';
 import type { Registry } from './registry.js';
+import { getErrorMessage } from './fsUtil.js';
 import type { Scheduler } from './scheduler.js';
 import type { Job } from './types.js';
 import type { DashboardManager } from './dashboard-manager.js';
@@ -106,8 +107,8 @@ export class TrayManager extends EventEmitter {
     const icons   = getIcons(this._trayColor);
     const icon    = hasFailures ? icons.error : icons.idle;
     const tooltip = hasFailures
-      ? `Orchestrator — ${this._failures.length} job(s) failed`
-      : 'Orchestrator — all jobs OK';
+      ? `Orchestrator - ${this._failures.length} job(s) failed`
+      : 'Orchestrator - all jobs OK';
 
     const items: MenuItemSnapshot[] = [];
 
@@ -115,11 +116,14 @@ export class TrayManager extends EventEmitter {
     items.push({ id: 'sep1',   type: 'separator', title: '', enabled: false });
 
     if (hasFailures) {
+      // violations-suppress: shared/no-emoji tray menu failure indicator - intentional UX marker
       items.push({ id: 'status', type: 'normal', title: `✗ ${this._failures.length} job(s) failed`, enabled: false });
       items.push({ id: 'sep2',   type: 'separator', title: '', enabled: false });
       for (const f of [...this._failures].reverse()) {
         const label = f.message
-          ? `✗ ${f.label} (exit ${f.exitCode}) — ${f.message}  [${f.time}]`
+          // violations-suppress: shared/no-emoji tray menu item - intentional failure indicator
+          ? `✗ ${f.label} (exit ${f.exitCode}) - ${f.message}  [${f.time}]`
+          // violations-suppress: shared/no-emoji tray menu item - intentional failure indicator
           : `✗ ${f.label} (exit ${f.exitCode})  [${f.time}]`;
         items.push({ id: `fail-${f.id}`, type: 'normal', title: label, enabled: false });
       }
@@ -141,7 +145,7 @@ export class TrayManager extends EventEmitter {
   private async _spawnTray(): Promise<void> {
     const binaryPath = this._findBinary();
     if (!binaryPath) {
-      console.warn('[tray] binary not found — systray disabled');
+      console.warn('[tray] binary not found - systray disabled');
       return;
     }
 
@@ -166,8 +170,8 @@ export class TrayManager extends EventEmitter {
     });
 
     tp.onError((err) => {
-      this._log.write(`[tray] spawn error: ${err.message}`);
-      console.error(`[tray] spawn error: ${err.message}`);
+      this._log.write(`[tray] spawn error: ${getErrorMessage(err)}`);
+      console.error(`[tray] spawn error: ${getErrorMessage(err)}`);
       this._tp = null;
       this._scheduleRestart();
     });
@@ -181,8 +185,8 @@ export class TrayManager extends EventEmitter {
       await tp.send({ type: 'init', menu: this._buildMenu() });
       this._log.write('[tray] init sent');
     } catch (err) {
-      this._log.write(`[tray] failed to start: ${(err as Error).message}`);
-      console.error('[tray] failed to start:', (err as Error).message);
+      this._log.write(`[tray] failed to start: ${getErrorMessage(err)}`);
+      console.error('[tray] failed to start:', getErrorMessage(err));
       this._tp = null;
       this._scheduleRestart();
     }
@@ -194,8 +198,8 @@ export class TrayManager extends EventEmitter {
     this._restartAttempt++;
     this._restartTimer = setTimeout(() => {
       this._restartTimer = null;
-      this._spawnTray().catch((err: Error) => {
-        console.error('[tray] restart failed:', err.message);
+      this._spawnTray().catch((err: unknown) => {
+        console.error('[tray] restart failed:', getErrorMessage(err));
       });
     }, delay);
   }
@@ -206,7 +210,7 @@ export class TrayManager extends EventEmitter {
       try {
         return require.resolve(`${_platformPkg}/${PLATFORM_TRAY_BINARY}`);
       } catch {
-        // Platform package not installed — fall through to local paths (dev/CI builds).
+        // Platform package not installed - fall through to local paths (dev/CI builds).
       }
     }
     // Fallback: local paths used during development or legacy installs.
@@ -225,7 +229,7 @@ export class TrayManager extends EventEmitter {
           if (!dm.isRunning()) {
             dm.start()
               .then(() => { setTimeout(() => dm.openBrowser(), 500); })
-              .catch((err: Error) => { console.error('[tray] failed to start dashboard server:', err.message); });
+              .catch((err: unknown) => { console.error('[tray] failed to start dashboard server:', getErrorMessage(err)); });
           } else {
             dm.openBrowser();
           }
@@ -235,8 +239,9 @@ export class TrayManager extends EventEmitter {
       case 'open-logs': {
         const logsDir = path.join(this._configDir, 'logs');
         const cmd = process.platform === 'win32' ? 'explorer.exe' : 'open';
+        // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
         execFile(cmd, [logsDir], (err) => {
-          if (err) console.error('[tray] open-logs failed:', err.message);
+          if (err) console.error('[tray] open-logs failed:', getErrorMessage(err));
         });
         break;
       }
@@ -257,6 +262,7 @@ export class TrayManager extends EventEmitter {
       case 'quit':
         this.emit('quit');
         break;
+      // violations-suppress: ts/no-switch-default-break unknown tray IDs from Go binary are intentionally ignored (forward-compat)
       default:
         break;
     }

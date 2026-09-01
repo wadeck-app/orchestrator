@@ -30,7 +30,8 @@
     "url": "https://github.com/wadeck-app/orchestrator.git"
   },
   "publishConfig": {
-    "@wadeck-app:registry": "https://npm.pkg.github.com/"
+    "@wadeck-app:registry": "https://npm.pkg.github.com/",
+    "access": "public"
   },
   "optionalDependencies": {
     "@wadeck-app/orchestrator-cli-darwin-arm64": ">=0.0.0-0",

@@ -26,5 +26,5 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const toUnix = p => p.replace(/\\/g, '/');
 console.log('Building orchestrator launcher via SDK build.sh...');
-execFileSync('bash', [toUnix(BUILD_SH), toUnix(CONFIG), toUnix(OUT_DIR), toUnix(TMPL)], { stdio: 'inherit' });
+execFileSync('bash', [toUnix(BUILD_SH), toUnix(CONFIG), toUnix(OUT_DIR), toUnix(TMPL)], { stdio: 'inherit', windowsHide: true });
 console.log('Launcher binaries built successfully.');
