@@ -22,7 +22,9 @@ const currentVersion = typeof __ORCH_VERSION__ !== 'undefined' ? __ORCH_VERSION_
 try {
   const npmRoot = execNpm(['root', '-g'], { timeout: 10_000 }).trim();
   const selfCheckCmd = `${process.execPath} ${join(npmRoot, PKG_NAME, 'dist', 'cli.js')} cli self-check`;
-  process.env['UPDATER_SELF_CHECK_CMD'] = selfCheckCmd;
+  if (!process.env['UPDATER_SELF_CHECK_CMD']) {
+    process.env['UPDATER_SELF_CHECK_CMD'] = selfCheckCmd;
+  }
 } catch {
   // Skip self-check if npm root is unavailable.
 }
