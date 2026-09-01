@@ -50,14 +50,24 @@ export class DaemonProxy {
     const port = readDaemonPort(this._configDir);
     const token = readHealthToken(this._configDir);
     const url = `http://127.0.0.1:${port}/${command}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload ?? {}),
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload ?? {}),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      // fetch throws on ECONNREFUSED, ETIMEDOUT, AbortError -- all mean daemon unreachable
+      throw new DaemonUnavailableError();
+    }
+    if (res.status === 401 || res.status === 404) {
+      throw new DaemonUnavailableError();
+    }
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Daemon RPC error ${res.status}: ${text}`);
