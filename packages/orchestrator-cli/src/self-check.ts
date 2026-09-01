@@ -65,6 +65,18 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           return { name: 'scheduler-class', ok: false, detail: (err as Error).message };
         }
       },
+      // Check: server-binary -- verify orch-server is bundled inside this package
+      async () => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { findOrchServerBinary } = require('./dashboard-binary.js') as typeof import('./dashboard-binary.js');
+          const p = findOrchServerBinary();
+          if (!p) throw new Error('server binary path is empty');
+          return { name: 'server-binary', ok: true };
+        } catch (err) {
+          return { name: 'server-binary', ok: false, detail: (err as Error).message };
+        }
+      },
       // Check: package-version -- verify package.json version is present
       async () => {
         try {

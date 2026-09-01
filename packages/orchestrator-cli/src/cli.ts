@@ -1,3 +1,4 @@
+import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, LivenessConfig } from './types.js';
@@ -86,6 +87,11 @@ Job mutation:
 
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
+
+Dashboard:
+  orch server start            Start the web dashboard server (opens browser)
+  orch server stop             Stop the web dashboard server
+  orch server status           Show dashboard server status and URL
 
 Logs:
   orch logs [--follow]         Read today's orchestrator log file; --follow tails it
@@ -486,6 +492,88 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         process.exit(1);
       }
       break;
+    }
+
+    case 'server': {
+      const sub = rest[0];
+      const dashPortFile = path.join(configDir, 'config.dashboard');
+      if (sub === 'start') {
+        let serverBinary: string;
+        try {
+          const { findOrchServerBinary } = require('./dashboard-binary.js') as typeof import('./dashboard-binary.js');
+          serverBinary = findOrchServerBinary();
+        } catch (e) {
+          console.error(`Dashboard server not available: ${(e as Error).message}`);
+          process.exit(1);
+        }
+        // Check if already running
+        if (fs.existsSync(dashPortFile)) {
+          try {
+            const info = JSON.parse(fs.readFileSync(dashPortFile, 'utf8')) as { port: number; pid: number };
+            console.log(`Dashboard already running at http://localhost:${info.port}`);
+            process.exit(0);
+          } catch { /* stale file, continue */ }
+        }
+        const { spawn } = require('node:child_process') as typeof import('node:child_process');
+        const { createInterface } = require('node:readline') as typeof import('node:readline');
+        const child = spawn(process.execPath, [serverBinary, '--config-dir', configDir, '--base-port', '47950'], {
+          stdio: ['ignore', 'pipe', 'inherit'],
+          detached: true,
+        });
+        const rl = createInterface({ input: child.stdout! });
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Dashboard server did not start within 10s')), 10000);
+          rl.on('line', (line: string) => {
+            try {
+              const msg = JSON.parse(line) as { type: string; port?: number };
+              if (msg.type === 'ready') {
+                clearTimeout(timer);
+                console.log(`Dashboard started at http://localhost:${msg.port}`);
+                resolve();
+              }
+            } catch { /* non-JSON line, ignore */ }
+          });
+          child.on('error', (err: Error) => { clearTimeout(timer); reject(err); });
+        });
+        child.unref();
+        process.exit(0);
+      } else if (sub === 'stop') {
+        if (!fs.existsSync(dashPortFile)) {
+          console.log('Dashboard server is not running.');
+          process.exit(0);
+        }
+        const info = JSON.parse(fs.readFileSync(dashPortFile, 'utf8')) as { pid: number };
+        try {
+          process.kill(info.pid, 'SIGTERM');
+          fs.unlinkSync(dashPortFile);
+          console.log('Dashboard server stopped.');
+        } catch (e) {
+          console.error(`Failed to stop dashboard server: ${(e as Error).message}`);
+          process.exit(1);
+        }
+        process.exit(0);
+      } else if (sub === 'status') {
+        if (!fs.existsSync(dashPortFile)) {
+          console.log('Dashboard server: stopped');
+          process.exit(0);
+        }
+        const info = JSON.parse(fs.readFileSync(dashPortFile, 'utf8')) as { port: number; pid: number; startedAt: string };
+        const url = `http://localhost:${info.port}`;
+        let alive = false;
+        try {
+          const res = await fetch(`${url}/api/heartbeat`, { method: 'POST', signal: AbortSignal.timeout(2000) });
+          alive = res.status === 204;
+        } catch { /* not reachable */ }
+        if (alive) {
+          console.log(`Dashboard server: running  pid=${info.pid}  url=${url}  started=${info.startedAt}`);
+        } else {
+          console.log(`Dashboard server: stale (pid=${info.pid} not responding -- run "orch server stop" to clean up)`);
+        }
+        process.exit(0);
+      } else {
+        console.error('Usage: orch server start|stop|status');
+        process.exit(1);
+      }
     }
 
     // Top-level alias for `orch cli logs`
