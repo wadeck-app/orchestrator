@@ -14,6 +14,8 @@ interface PortInfo {
   startedAt: string;
 }
 
+interface DaemonInfo { port: number; pid: number; startedAt: string; }
+
 function readDaemonPort(configDir: string): number {
   const filePath = path.join(configDir, 'config.port');
   let raw: string;
@@ -25,8 +27,16 @@ function readDaemonPort(configDir: string): number {
   const stat = fs.statSync(filePath);
   const ageMs = Date.now() - stat.mtimeMs;
   if (ageMs > 60_000) throw new DaemonUnavailableError();
-  const info = JSON.parse(raw) as PortInfo;
-  return info.port;
+  return (JSON.parse(raw) as DaemonInfo).port;
+}
+
+function readHealthToken(configDir: string): string {
+  const tokenPath = path.join(configDir, 'health_token');
+  try {
+    return fs.readFileSync(tokenPath, 'utf8').trim();
+  } catch {
+    throw new DaemonUnavailableError();
+  }
 }
 
 export class DaemonProxy {
@@ -38,16 +48,21 @@ export class DaemonProxy {
 
   async send(command: string, payload?: unknown): Promise<unknown> {
     const port = readDaemonPort(this._configDir);
+    const token = readHealthToken(this._configDir);
     const url = `http://127.0.0.1:${port}/${command}`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
       body: JSON.stringify(payload ?? {}),
     });
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Daemon RPC error ${res.status}: ${text}`);
     }
-    return res.json();
+    const body = await res.json() as { ok: boolean; result?: unknown };
+    return body.result;
   }
 }
