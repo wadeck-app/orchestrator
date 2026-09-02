@@ -46,6 +46,10 @@ export function makeCommands(
 
     'list-state': () => state.getAll(),
 
+    'list-failures': () => state.getUnacknowledgedFailures(),
+
+    'ack-failures': () => { state.acknowledgeAll(); return {}; },
+
     // quit is handled by the SDK's /quit route; stub so TypeScript accepts it.
     'quit': () => {},
     // restart: write config.restart sentinel so the Go launcher re-spawns the daemon, then exit.

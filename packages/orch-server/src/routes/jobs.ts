@@ -93,4 +93,18 @@ export async function jobsRoutes(
       return reply.code(204).send();
     });
   });
+
+  fastify.get('/api/failures', async (_req, reply) => {
+    return guard(reply, async () => {
+      const failures = await proxy.send('list-failures');
+      return reply.send(failures);
+    });
+  });
+
+  fastify.post('/api/failures/ack', async (_req, reply) => {
+    return guard(reply, async () => {
+      await proxy.send('ack-failures');
+      return reply.code(204).send();
+    });
+  });
 }

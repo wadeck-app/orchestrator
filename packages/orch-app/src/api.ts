@@ -5,6 +5,11 @@ export interface JobWithState {
   runHistory: RuntimeEntry[];
 }
 
+export interface FailureEntry {
+  jobId: string;
+  entry: RuntimeEntry;
+}
+
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
@@ -33,4 +38,8 @@ export const api = {
     apiFetch<void>(`/api/jobs/${id}/enable`, { method: 'POST' }),
   disableJob: (id: string) =>
     apiFetch<void>(`/api/jobs/${id}/disable`, { method: 'POST' }),
+  listFailures: () =>
+    apiFetch<FailureEntry[]>('/api/failures'),
+  acknowledgeFailures: () =>
+    apiFetch<void>('/api/failures/ack', { method: 'POST' }),
 };

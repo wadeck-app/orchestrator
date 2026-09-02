@@ -42,10 +42,16 @@ interface FailureEntry {
   time:     string;
 }
 
+const SUCCESS_FLASH_MS = 5_000;
+const SUCCESS_ICON_COLOR = '#6EE7B7';
+
 export class TrayManager extends EventEmitter {
-  private _tp:             TrayProcess | null = null;
-  private _restartAttempt  = 0;
-  private _restartTimer:   ReturnType<typeof setTimeout> | null = null;
+  private _tp:               TrayProcess | null = null;
+  private _intentionalStop   = false;  // true during kill-before-restart/quit; suppresses onExit restart
+  private _restartAttempt    = 0;
+  private _restartTimer:     ReturnType<typeof setTimeout> | null = null;
+  private _successTimer:   ReturnType<typeof setTimeout> | null = null;
+  private _showSuccess     = false;
   private _startupEnabled: boolean;
   private readonly _failures: FailureEntry[] = [];
   private readonly _log:      DailyLogger;
@@ -68,6 +74,13 @@ export class TrayManager extends EventEmitter {
     this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job }) => {
       this._onJobFinished(ev);
     });
+    // Synchronous exit hook: kills tray-go even when process.exit() is called directly
+    // (e.g. via the `orch restart` CLI RPC path which bypasses trayManager.stop()).
+    process.on('exit', () => {
+      if (this._tp && !this._tp.killed) {
+        try { this._tp.process.kill('SIGKILL'); } catch { /* ignore */ }
+      }
+    });
     await this._spawnTray();
   }
 
@@ -75,6 +88,10 @@ export class TrayManager extends EventEmitter {
     if (this._restartTimer) {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
+    }
+    if (this._successTimer) {
+      clearTimeout(this._successTimer);
+      this._successTimer = null;
     }
     if (this._tp) {
       await this._tp.kill();
@@ -93,6 +110,14 @@ export class TrayManager extends EventEmitter {
     } else {
       const idx = this._failures.findIndex((f) => f.id === id);
       if (idx !== -1) this._failures.splice(idx, 1);
+      // Flash a green success icon for SUCCESS_FLASH_MS, then revert
+      this._showSuccess = true;
+      if (this._successTimer) clearTimeout(this._successTimer);
+      this._successTimer = setTimeout(() => {
+        this._showSuccess = false;
+        this._successTimer = null;
+        this._refresh();
+      }, SUCCESS_FLASH_MS);
     }
     this._refresh();
   }
@@ -105,10 +130,16 @@ export class TrayManager extends EventEmitter {
   private _buildMenu(): MenuSnapshot {
     const hasFailures = this._failures.length > 0;
     const icons   = getIcons(this._trayColor);
-    const icon    = hasFailures ? icons.error : icons.idle;
+    const successIcons = getIcons(SUCCESS_ICON_COLOR);
+    const icon =
+      hasFailures      ? icons.error :
+      this._showSuccess ? successIcons.idle :
+      icons.idle;
     const tooltip = hasFailures
       ? `Orchestrator - ${this._failures.length} job(s) failed`
-      : 'Orchestrator - all jobs OK';
+      : this._showSuccess
+        ? 'Orchestrator - last job succeeded'
+        : 'Orchestrator - all jobs OK';
 
     const items: MenuItemSnapshot[] = [];
 
@@ -116,17 +147,17 @@ export class TrayManager extends EventEmitter {
     items.push({ id: 'sep1',   type: 'separator', title: '', enabled: false });
 
     if (hasFailures) {
-      // violations-suppress: shared/no-emoji tray menu failure indicator - intentional UX marker
-      items.push({ id: 'status', type: 'normal', title: `✗ ${this._failures.length} job(s) failed`, enabled: false });
+      items.push({ id: 'status', type: 'normal', title: `[fail] ${this._failures.length} job(s) failed`, enabled: false });
       items.push({ id: 'sep2',   type: 'separator', title: '', enabled: false });
       for (const f of [...this._failures].reverse()) {
         const label = f.message
-          // violations-suppress: shared/no-emoji tray menu item - intentional failure indicator
-          ? `✗ ${f.label} (exit ${f.exitCode}) - ${f.message}  [${f.time}]`
-          // violations-suppress: shared/no-emoji tray menu item - intentional failure indicator
-          : `✗ ${f.label} (exit ${f.exitCode})  [${f.time}]`;
+          ? `[fail] ${f.label} (exit ${f.exitCode}) - ${f.message}  [${f.time}]`
+          : `[fail] ${f.label} (exit ${f.exitCode})  [${f.time}]`;
         items.push({ id: `fail-${f.id}`, type: 'normal', title: label, enabled: false });
       }
+      items.push({ id: 'ack-failures', type: 'normal', title: 'Acknowledge failures', enabled: true });
+    } else if (this._showSuccess) {
+      items.push({ id: 'status', type: 'normal', title: '[ok] Last job succeeded', enabled: false });
     } else {
       items.push({ id: 'status', type: 'normal', title: 'All jobs OK', enabled: false });
     }
@@ -164,7 +195,7 @@ export class TrayManager extends EventEmitter {
     tp.onExit((code) => {
       this._log.write(`[tray] process exited with code=${code} stderr=${JSON.stringify(tp.capturedStderr().slice(-500))}`);
       this._tp = null;
-      if (code !== 0 && code !== null) {
+      if (!this._intentionalStop && code !== 0 && code !== null) {
         this._scheduleRestart();
       }
     });
@@ -173,7 +204,7 @@ export class TrayManager extends EventEmitter {
       this._log.write(`[tray] spawn error: ${getErrorMessage(err)}`);
       console.error(`[tray] spawn error: ${getErrorMessage(err)}`);
       this._tp = null;
-      this._scheduleRestart();
+      if (!this._intentionalStop) this._scheduleRestart();
     });
 
     tp.onClicked((id) => this._handleClick(id));
@@ -256,12 +287,32 @@ export class TrayManager extends EventEmitter {
         this._refresh();
         break;
       }
-      case 'restart':
-        this.emit('restart');
+      case 'ack-failures':
+        this._failures.length = 0;
+        this._state.acknowledgeAll();
+        this._refresh();
         break;
-      case 'quit':
-        this.emit('quit');
+      case 'restart': {
+        // Set flag BEFORE kill so onExit knows not to schedule a restart.
+        const killAndRestart = async () => {
+          this._intentionalStop = true;
+          if (this._tp && !this._tp.killed) await this._tp.kill();
+          this._tp = null;
+          this.emit('restart');
+        };
+        void killAndRestart();
         break;
+      }
+      case 'quit': {
+        const killAndQuit = async () => {
+          this._intentionalStop = true;
+          if (this._tp && !this._tp.killed) await this._tp.kill();
+          this._tp = null;
+          this.emit('quit');
+        };
+        void killAndQuit();
+        break;
+      }
       // violations-suppress: ts/no-switch-default-break unknown tray IDs from Go binary are intentionally ignored (forward-compat)
       default:
         break;

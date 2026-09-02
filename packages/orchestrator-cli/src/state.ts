@@ -92,6 +92,34 @@ export class State {
     return copy;
   }
 
+  getUnacknowledgedFailures(): Array<{ jobId: string; entry: RuntimeEntry }> {
+    this._ensure();
+    const result: Array<{ jobId: string; entry: RuntimeEntry }> = [];
+    for (const [jobId, entries] of Object.entries(this._cache!)) {
+      if (!entries || entries.length === 0) continue;
+      const latest = entries[0]!;
+      if (latest.exitCode !== null && latest.exitCode !== 0 && !latest.acknowledgedAt) {
+        result.push({ jobId, entry: { ...latest } });
+      }
+    }
+    return result;
+  }
+
+  acknowledgeAll(): void {
+    this._ensure();
+    const now = new Date().toISOString();
+    let changed = false;
+    for (const entries of Object.values(this._cache!)) {
+      if (!entries || entries.length === 0) continue;
+      const latest = entries[0]!;
+      if (latest.exitCode !== null && latest.exitCode !== 0 && !latest.acknowledgedAt) {
+        latest.acknowledgedAt = now;
+        changed = true;
+      }
+    }
+    if (changed) this._flush();
+  }
+
   clear(id: string): void {
     this._ensure();
     if (this._cache![id] !== undefined) {

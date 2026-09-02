@@ -1,21 +1,83 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { GenericPageRunner } from '@wadeck-app/dsl-renderer';
+import type { GenericPageRunnerProps } from '@wadeck-app/dsl-renderer';
 import { useHeartbeat } from './hooks/useHeartbeat.js';
-import { JobListPage } from './pages/JobListPage.js';
-import { JobDetailPage } from './pages/JobDetailPage.js';
-import { JobFormPage } from './pages/JobFormPage.js';
-import { LogViewerPage } from './pages/LogViewerPage.js';
+import { appRegistry } from './registry.js';
+import { fetcher } from './fetcher.js';
+import { api } from './api.js';
+import type { FailureEntry } from './api.js';
+import { FailureBanner } from '@wadeck-app/orch-ui';
+
+import jobListYaml from './dsl/pages/job-list.yaml?raw';
+import jobDetailYaml from './dsl/pages/job-detail.yaml?raw';
+import jobFormNewYaml from './dsl/pages/job-form-new.yaml?raw';
+import jobFormEditYaml from './dsl/pages/job-form-edit.yaml?raw';
+import jobLogsYaml from './dsl/pages/job-logs.yaml?raw';
+
+
+function KeyedPageRunner(props: Omit<GenericPageRunnerProps, 'key'> & { baseKey: string }) {
+  const params = useParams();
+  const paramSuffix = Object.values(params).filter(Boolean).join('/');
+  const key = paramSuffix ? `${props.baseKey}/${paramSuffix}` : props.baseKey;
+  return <GenericPageRunner key={key} yamlText={props.yamlText} registry={props.registry} fetcher={props.fetcher} />;
+}
+
+function useFailures() {
+  const [failures, setFailures] = useState<FailureEntry[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api.listFailures();
+      setFailures(data);
+    } catch {
+      // daemon may be unavailable transiently — keep previous state
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    timerRef.current = setInterval(() => { void refresh(); }, 30_000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [refresh]);
+
+  const acknowledge = useCallback(async () => {
+    try {
+      await api.acknowledgeFailures();
+      setFailures([]);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  return { failures, acknowledge };
+}
 
 export default function App() {
   useHeartbeat();
+  const { failures, acknowledge } = useFailures();
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-bg">
+        <FailureBanner failures={failures} onAcknowledge={acknowledge} />
         <Routes>
-          <Route path="/" element={<JobListPage />} />
-          <Route path="/jobs/new" element={<JobFormPage />} />
-          <Route path="/jobs/:id" element={<JobDetailPage />} />
-          <Route path="/jobs/:id/edit" element={<JobFormPage />} />
-          <Route path="/jobs/:id/logs" element={<LogViewerPage />} />
+          <Route path="/" element={
+            <GenericPageRunner key="/" yamlText={jobListYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/new" element={
+            <GenericPageRunner key="/jobs/new" yamlText={jobFormNewYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/:id" element={
+            <KeyedPageRunner baseKey="/jobs" yamlText={jobDetailYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/:id/edit" element={
+            <KeyedPageRunner baseKey="/jobs/edit" yamlText={jobFormEditYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/:id/logs" element={
+            <KeyedPageRunner baseKey="/jobs/logs" yamlText={jobLogsYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </BrowserRouter>

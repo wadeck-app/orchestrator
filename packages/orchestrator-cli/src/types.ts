@@ -41,6 +41,7 @@ export interface RuntimeEntry {
   exitCode: number | null;
   pid: number | null;
   triggeredBy?: TriggerSource;
+  acknowledgedAt?: string;
 }
 
 export interface RegistryData {
@@ -63,6 +64,8 @@ export type OrchestratorCommands = {
   'edit-job':    (payload?: unknown) => Job;
   'trigger-job': (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number }>;
   'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;
+  'list-failures': (payload?: unknown) => Array<{ jobId: string; entry: RuntimeEntry }>;
+  'ack-failures':  (payload?: unknown) => Record<string, never>;
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };
