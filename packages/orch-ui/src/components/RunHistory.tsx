@@ -1,25 +1,17 @@
 import React from 'react';
-import type { RuntimeEntry, TriggerSource } from '../types.js';
+import type { RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
+import { TriggerBadge } from './TriggerBadge.js';
+
+export interface RunHistoryProps {
+  entries: RuntimeEntry[];
+}
 
 /**
  * @registryCategory composite
  * @registryTags history table runs
  */
-interface Props {
-  entries: RuntimeEntry[];
-}
-
-function TriggerBadge({ source }: { source?: TriggerSource }): React.ReactElement {
-  const s = source ?? { kind: 'cron' };
-  if (s.kind === 'cron') {
-    return <span className="text-xs px-1.5 py-0.5 rounded bg-muted/20 text-muted">cron</span>;
-  }
-  const label = s.ip ? `manual · ${s.ip}` : 'manual';
-  return <span className="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent" title={s.userAgent}>{label}</span>;
-}
-
-export function RunHistory({ entries }: Props): React.ReactElement {
+export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
   if (!entries || entries.length === 0) {
     return <p className="text-sm text-muted italic">No runs yet</p>;
   }

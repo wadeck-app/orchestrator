@@ -1,0 +1,8 @@
+$route: /jobs/new
+
+$type: PageContent
+sections:
+  - $type: BackLink
+    to: /
+    label: Back to jobs
+  - $type: JobFormSection

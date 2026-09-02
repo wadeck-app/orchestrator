@@ -1,0 +1,16 @@
+$route: /jobs/:id/edit
+
+$sources:
+  jobData:
+    url: GET /api/jobs/{id}
+    params:
+      id: $route.id
+
+$type: PageContent
+sections:
+  - $type: BackLink
+    to: /jobs/$route.id
+    label: Back to job
+  - $type: JobFormSection
+    jobId: $route.id
+    initial: $sources.jobData

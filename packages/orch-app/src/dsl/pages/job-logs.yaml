@@ -1,0 +1,11 @@
+$route: /jobs/:id/logs
+
+$type: PageContent
+sections:
+  - $type: BackLink
+    to: /jobs/$route.id
+    label: Back to job
+  - $type: PageHeader
+    title: Logs
+  - $type: LogViewer
+    jobId: $route.id
