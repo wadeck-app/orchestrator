@@ -52,8 +52,8 @@ export function JobDetailActions({ job, jobId }: JobDetailActionsProps): React.R
   return (
     <div>
       <Link to="/" className={BACK_LINK_CLS}><ArrowLeft size={14} />Back</Link>
-      <span className={typeBadgeCls}>{job.type}</span>
-      <div className="flex items-center gap-2 mb-4 mt-3">
+      <div className="flex items-center gap-3 mb-4">
+        <span className={typeBadgeCls}>{job.type}</span>
         <JobToggle job={job} />
         <TriggerButton jobId={jobId} onTrigger={handleTrigger} />
       </div>

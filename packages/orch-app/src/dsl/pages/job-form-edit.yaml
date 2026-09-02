@@ -9,7 +9,6 @@ $sources:
 $type: PageContent
 sections:
   - $type: BackLink
-    to: /jobs/$route.id
     label: Back to job
   - $type: JobFormSection
     jobId: $route.id
