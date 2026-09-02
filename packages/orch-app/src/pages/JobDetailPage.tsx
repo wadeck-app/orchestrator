@@ -44,7 +44,7 @@ export function JobDetailPage() {
     );
   }
 
-  const { job, lastRun } = data;
+  const { job, runHistory } = data;
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -111,8 +111,8 @@ export function JobDetailPage() {
       </div>
 
       <div className="mb-6">
-        <h2 className="text-sm font-medium text-gray-700 mb-2">Last run</h2>
-        <RunHistory lastRun={lastRun} />
+        <h2 className="text-sm font-medium text-gray-700 mb-2">Run history</h2>
+        <RunHistory entries={runHistory ?? []} />
       </div>
 
       <div className="flex gap-3 flex-wrap">
