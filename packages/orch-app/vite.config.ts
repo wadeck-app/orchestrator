@@ -11,6 +11,14 @@ export default defineConfig(async () => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      // Fixed filenames so the running HTTP server never gets stale hash mismatches
+      rollupOptions: {
+        output: {
+          entryFileNames: 'assets/index.js',
+          chunkFileNames: 'assets/[name].js',
+          assetFileNames: 'assets/[name].[ext]',
+        },
+      },
     },
     base: '/',
     optimizeDeps: {

@@ -42,25 +42,31 @@ function useFailures() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [refresh]);
 
-  const acknowledge = useCallback(async () => {
+  const acknowledgeAll = useCallback(async () => {
     try {
       await api.acknowledgeFailures();
       setFailures([]);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, []);
 
-  return { failures, acknowledge };
+  // Individual ack: call acknowledgeAll (server acks all), then remove locally
+  const acknowledgeOne = useCallback(async (jobId: string) => {
+    try {
+      await api.acknowledgeFailures();
+      setFailures(prev => prev.filter(f => f.jobId !== jobId));
+    } catch { /* ignore */ }
+  }, []);
+
+  return { failures, acknowledgeOne, acknowledgeAll };
 }
 
 export default function App() {
   useHeartbeat();
-  const { failures, acknowledge } = useFailures();
+  const { failures, acknowledgeOne, acknowledgeAll } = useFailures();
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-bg">
-        <FailureBanner failures={failures} onAcknowledge={acknowledge} />
+        <FailureBanner failures={failures} onAcknowledge={acknowledgeOne} onAcknowledgeAll={acknowledgeAll} />
         <Routes>
           <Route path="/" element={
             <GenericPageRunner key="/" yamlText={jobListYaml} registry={appRegistry} fetcher={fetcher} />

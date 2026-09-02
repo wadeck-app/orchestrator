@@ -10,6 +10,7 @@ import { findFreePort, writeDashboardPort, deleteDashboardPort } from './port.js
 import { jobsRoutes } from './routes/jobs.js';
 import { logsRoutes } from './routes/logs.js';
 import { heartbeatRoute } from './routes/heartbeat.js';
+// eventsRoute is co-located in heartbeat.ts (workaround for Fastify v5 + @fastify/static route loss)
 
 // Parse CLI args
 function parseArgs(): { configDir: string; basePort: number; appDir: string | null } {
@@ -60,18 +61,18 @@ await server.register(fastifyCors, {
   },
 });
 
+await server.register(jobsRoutes, { proxy, idleTimer });
+await server.register(logsRoutes, { configDir, idleTimer });
+await server.register(heartbeatRoute, { idleTimer, proxy });
+
 // Static file serving (orch-app dist)
 if (hasPublic) {
   await server.register(fastifyStatic, {
     root: publicDir,
-    wildcard: false,
   });
 }
 
-// API routes
-await server.register(jobsRoutes, { proxy, idleTimer });
-await server.register(logsRoutes, { configDir, idleTimer });
-await server.register(heartbeatRoute, { idleTimer });
+// events SSE registered via register() - required in Fastify v5 after init phase
 
 // SPA fallback
 server.setNotFoundHandler((_req, reply) => {

@@ -9,28 +9,58 @@ export interface FailureEntry {
 
 export interface FailureBannerProps {
   failures: FailureEntry[];
-  onAcknowledge: () => void;
+  onAcknowledge: (jobId: string) => void;
+  onAcknowledgeAll: () => void;
 }
 
-export function FailureBanner({ failures, onAcknowledge }: FailureBannerProps): React.ReactElement | null {
+// @formatter:off
+const PANEL_CLS  = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2 w-72';
+const CARD_CLS   = 'bg-surface border border-border rounded-lg shadow-lg overflow-hidden';
+const HEADER_CLS = 'flex items-center gap-2 px-3 py-2 bg-muted-bg border-b border-border';
+const BODY_CLS   = 'flex items-center justify-between px-3 py-2';
+// @formatter:on
+
+export function FailureBanner({ failures, onAcknowledge, onAcknowledgeAll }: FailureBannerProps): React.ReactElement | null {
   if (failures.length === 0) return null;
-  const names = failures.map(f => f.jobLabel ?? f.jobId).join(', ');
+
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2 bg-surface border-b border-border text-sm">
-      <div className="flex items-center gap-2 min-w-0">
-        {/* violations-suppress: tailwind/no-raw-color-class no semantic token for inline status dot */}
-        <span className="shrink-0 w-2 h-2 rounded-full bg-red-500" />
-        <span className="text-content font-medium shrink-0">
-          {failures.length} job{failures.length > 1 ? 's' : ''} failed:
-        </span>
-        <span className="text-muted truncate">{names}</span>
-      </div>
-      <button
-        onClick={onAcknowledge}
-        className="shrink-0 px-3 py-1 rounded border border-border text-xs font-medium text-content hover:bg-muted-bg transition-colors"
-      >
-        Acknowledge
-      </button>
+    <div className={PANEL_CLS} role="alert" aria-live="polite">
+      {failures.map(f => {
+        const time = f.entry.startedAt
+          ? new Date(f.entry.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '';
+        return (
+          <div key={f.jobId} className={CARD_CLS}>
+            <div className={HEADER_CLS}>
+              {/* violations-suppress: tailwind/no-raw-color-class no semantic token for status dot */}
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+              <span className="text-sm font-medium text-content truncate flex-1">
+                {f.jobLabel ?? f.jobId}
+              </span>
+              <span className="text-xs text-muted shrink-0">{time}</span>
+            </div>
+            <div className={BODY_CLS}>
+              <span className="text-xs text-muted">
+                exit {f.entry.exitCode ?? '?'}
+              </span>
+              <button
+                onClick={() => onAcknowledge(f.jobId)}
+                className="text-xs px-2 py-1 rounded border border-border text-content hover:bg-muted-bg transition-colors"
+              >
+                Acknowledge
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      {failures.length > 1 && (
+        <button
+          onClick={onAcknowledgeAll}
+          className="self-end text-xs px-3 py-1.5 rounded border border-border bg-surface text-muted hover:bg-muted-bg transition-colors shadow"
+        >
+          Acknowledge all ({failures.length})
+        </button>
+      )}
     </div>
   );
 }
