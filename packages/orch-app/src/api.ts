@@ -2,7 +2,7 @@ import type { Job, RuntimeEntry } from './types.js';
 
 export interface JobWithState {
   job: Job;
-  lastRun: RuntimeEntry | null;
+  runHistory: RuntimeEntry[];
 }
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
