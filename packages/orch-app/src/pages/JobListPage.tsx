@@ -27,7 +27,8 @@ export function JobListPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = items.filter(({ job, lastRun }) => {
+  const filtered = items.filter(({ job, runHistory }) => {
+    const lastRun = runHistory[0] ?? null;
     const matchSearch =
       !search ||
       job.label.toLowerCase().includes(search.toLowerCase()) ||
@@ -108,11 +109,11 @@ export function JobListPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map(({ job, lastRun }) => (
+        {filtered.map(({ job, runHistory }) => (
           <JobCard
             key={job.id}
             job={job}
-            lastRun={lastRun}
+            lastRun={runHistory[0] ?? null}
             onClick={() => navigate(`/jobs/${job.id}`)}
             onTrigger={async (id) => { await api.triggerJob(id); }}
             onToggle={async (id, enabled) => {
