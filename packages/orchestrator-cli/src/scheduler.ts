@@ -1,11 +1,11 @@
 import cron from 'node-cron';
-import { exec, type ChildProcess } from 'node:child_process';
+import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { DailyLogger }   from './logger.js';
-import type { Job } from './types.js';
+import type { Job, TriggerSource } from './types.js';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 
@@ -33,7 +33,15 @@ export class Scheduler extends EventEmitter {
     super();
     this._registry  = registry;
     this._state     = state;
-    this._spawn     = options.spawn     ?? ((cmd, cwd) => exec(cmd, { cwd: cwd ?? process.cwd() }));
+    this._spawn     = options.spawn     ?? ((cmd, cwd) => {
+      const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
+      const [bin, ...args] = parts;
+      return nodeSpawn(bin!, args, {
+        cwd: cwd ?? process.cwd(),
+        windowsHide: true,   // suppress CMD windows on Windows
+        shell: true,
+      });
+    });
     this._liveness  = options.liveness  ?? checkLiveness;
     this._now       = options.now       ?? (() => new Date());
     this._configDir = options.configDir ?? (
@@ -91,10 +99,10 @@ export class Scheduler extends EventEmitter {
     this._timeouts.clear();
   }
 
-  async trigger(id: string): Promise<{ pid: number | null } | { exitCode: number }> {
+  async trigger(id: string, source: TriggerSource = { kind: 'manual' }): Promise<{ pid: number | null } | { exitCode: number }> {
     const job = this._registry.get(id);
     if (!job) throw new Error(`Job not found: "${id}"`);
-    return this._fire(job);
+    return this._fire(job, source);
   }
 
   private _scheduleCron(job: Job): void {
@@ -108,12 +116,12 @@ export class Scheduler extends EventEmitter {
     void this._fire(job);
   }
 
-  private async _fire(job: Job): Promise<{ pid: number | null } | { exitCode: number }> {
+  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<{ pid: number | null } | { exitCode: number }> {
     const startedAt = this._now().toISOString();
     const child = this._spawn(job.command, job.cwd ?? undefined);
     const pid   = child.pid ?? null;
 
-    this._state.record(job.id, { startedAt, exitCode: null, pid });
+    this._state.record(job.id, { startedAt, exitCode: null, pid, triggeredBy: trigger });
 
     // Per-job rotating log: tee stdout/stderr to file + terminal.
     // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log
@@ -133,7 +141,7 @@ export class Scheduler extends EventEmitter {
     const done = new Promise<{ exitCode: number }>((resolve) => {
       child.on('close', (code) => {
         const exitCode = code ?? 1;
-        this._state.record(job.id, { startedAt, exitCode, pid });
+        this._state.record(job.id, { startedAt, exitCode, pid, triggeredBy: trigger });
         jobLogger.close();
         this.emit('job-finished', { id: job.id, exitCode, job });
         resolve({ exitCode });

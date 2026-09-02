@@ -40,11 +40,11 @@ export function makeCommands(
     },
 
     'trigger-job': (p) => {
-      const { id } = p as { id: string };
-      return scheduler.trigger(id);
+      const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
+      return scheduler.trigger(id, { kind: 'manual', ip, userAgent });
     },
 
-    'list-state': () => state.getAll() as Record<string, RuntimeEntry>,
+    'list-state': () => state.getAll(),
 
     // quit is handled by the SDK's /quit route; stub so TypeScript accepts it.
     'quit': () => {},

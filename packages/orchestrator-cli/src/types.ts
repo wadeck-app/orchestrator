@@ -32,10 +32,15 @@ export interface StartupResult {
   error?: string;
 }
 
+export type TriggerSource =
+  | { kind: 'cron' }
+  | { kind: 'manual'; ip?: string; userAgent?: string };
+
 export interface RuntimeEntry {
   startedAt: string;
   exitCode: number | null;
   pid: number | null;
+  triggeredBy?: TriggerSource;
 }
 
 export interface RegistryData {
@@ -44,7 +49,7 @@ export interface RegistryData {
 }
 
 export interface StateData {
-  jobs: Record<string, RuntimeEntry>;
+  jobs: Record<string, RuntimeEntry[]>;
 }
 
 /** RPC command map for the orchestrator daemon (used with singleton-daemon-kit). */
@@ -57,7 +62,7 @@ export type OrchestratorCommands = {
   'disable-job': (payload?: unknown) => void;
   'edit-job':    (payload?: unknown) => Job;
   'trigger-job': (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number }>;
-  'list-state':  (payload?: unknown) => Record<string, RuntimeEntry>;
+  'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };

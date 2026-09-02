@@ -2,21 +2,51 @@ import fs from 'node:fs';
 import type { RuntimeEntry, StateData } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 
+const MAX_HISTORY = 20;
+
 export class State {
   private readonly _file: string;
-  private _cache: Record<string, RuntimeEntry> | null = null;
+  private _cache: Record<string, RuntimeEntry[]> | null = null;
 
   constructor(filePath: string) {
     this._file = filePath;
   }
 
   private _ensure(): void {
-    if (this._cache === null) {
-      const raw = fs.existsSync(this._file)
-        ? (readJsonFile<StateData>(this._file) ?? { jobs: {} })
-        : { jobs: {} };
-      this._cache = raw.jobs;
-      if (!fs.existsSync(this._file)) this._flush();
+    if (this._cache !== null) return;
+    if (fs.existsSync(this._file)) {
+      const raw = readJsonFile<StateData>(this._file) ?? { jobs: {} };
+      // Migrate legacy single-entry format: { jobs: { id: RuntimeEntry } } → arrays
+      const migrated: Record<string, RuntimeEntry[]> = {};
+      for (const [id, value] of Object.entries(raw.jobs)) {
+        if (Array.isArray(value)) {
+          migrated[id] = value as RuntimeEntry[];
+        } else if (value && typeof value === 'object') {
+          migrated[id] = [value as RuntimeEntry];
+        }
+      }
+      // Deduplicate entries that share the same startedAt (artifact of the old
+      // record() bug that prepended the in-flight null-exitCode entry AND the final entry).
+      // Keep only the entry with the non-null exitCode; fall back to the first if all are null.
+      for (const id of Object.keys(migrated)) {
+        const seen = new Map<string, RuntimeEntry>();
+        for (const entry of migrated[id]!) {
+          const prev = seen.get(entry.startedAt);
+          if (!prev || (prev.exitCode === null && entry.exitCode !== null)) {
+            seen.set(entry.startedAt, entry);
+          }
+        }
+        // Preserve original order (most-recent first)
+        migrated[id] = migrated[id]!.filter((e, i, arr) =>
+          arr.findIndex(x => x.startedAt === e.startedAt) === i
+            ? seen.get(e.startedAt) === e
+            : false
+        );
+      }
+      this._cache = migrated;
+    } else {
+      this._cache = {};
+      this._flush();
     }
   }
 
@@ -26,21 +56,39 @@ export class State {
 
   record(id: string, entry: RuntimeEntry): void {
     this._ensure();
-    this._cache![id] = { startedAt: entry.startedAt, exitCode: entry.exitCode ?? null, pid: entry.pid ?? null };
+    const normalized: RuntimeEntry = {
+      startedAt: entry.startedAt,
+      exitCode: entry.exitCode ?? null,
+      pid: entry.pid ?? null,
+      ...(entry.triggeredBy !== undefined && { triggeredBy: entry.triggeredBy }),
+    };
+    const existing = this._cache![id] ?? [];
+    // If the most-recent entry has the same startedAt, update it in-place rather than
+    // prepending a duplicate. This covers the start→finish pair the scheduler records:
+    // first call has exitCode=null (in-flight), second has the actual exit code.
+    const head = existing[0];
+    if (head && head.startedAt === normalized.startedAt) {
+      this._cache![id] = [normalized, ...existing.slice(1)];
+    } else {
+      this._cache![id] = [normalized, ...existing].slice(0, MAX_HISTORY);
+    }
     this._flush();
   }
 
   get(id: string): RuntimeEntry | null {
     this._ensure();
-    const e = this._cache![id];
-    return e ? { ...e } : null;
+    const arr = this._cache![id];
+    if (!arr || arr.length === 0) return null;
+    return { ...arr[0] };
   }
 
-  getAll(): Record<string, RuntimeEntry> {
+  getAll(): Record<string, RuntimeEntry[]> {
     this._ensure();
     if (!fs.existsSync(this._file)) this._flush();
-    const copy: Record<string, RuntimeEntry> = {};
-    for (const [k, v] of Object.entries(this._cache!)) copy[k] = { ...v };
+    const copy: Record<string, RuntimeEntry[]> = {};
+    for (const [k, arr] of Object.entries(this._cache!)) {
+      copy[k] = arr.map(e => ({ ...e }));
+    }
     return copy;
   }
 

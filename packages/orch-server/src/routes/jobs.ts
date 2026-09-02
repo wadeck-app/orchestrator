@@ -28,7 +28,7 @@ export async function jobsRoutes(
       ]);
       const result = jobs.map((job) => ({
         job,
-        lastRun: state[job.id] ?? null,
+        runHistory: (state[job.id] as unknown[] | undefined) ?? [],
       }));
       return reply.send(result);
     });
@@ -41,7 +41,7 @@ export async function jobsRoutes(
         proxy.send('get-job', { id }),
         proxy.send('list-state') as Promise<Record<string, unknown>>,
       ]);
-      return reply.send({ job, lastRun: state[id] ?? null });
+      return reply.send({ job, runHistory: (state[id] as unknown[] | undefined) ?? [] });
     });
   });
 
@@ -71,7 +71,9 @@ export async function jobsRoutes(
   fastify.post('/api/jobs/:id/trigger', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };
-      await proxy.send('trigger-job', { id });
+      const ip        = req.ip;
+      const userAgent = req.headers['user-agent'];
+      await proxy.send('trigger-job', { id, ip, userAgent });
       return reply.code(204).send();
     });
   });

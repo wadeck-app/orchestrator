@@ -3,4 +3,4 @@ dist/
 dist-bundle/
 .env.local
 *.log
-.idea/
+.idea/.wwebjs_cache/
