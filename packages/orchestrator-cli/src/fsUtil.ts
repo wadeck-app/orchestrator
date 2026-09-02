@@ -16,3 +16,7 @@ export function readJsonFile<T>(filePath: string): T | null {
     return null;
   }
 }
+
+export function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}

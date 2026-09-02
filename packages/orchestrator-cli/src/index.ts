@@ -69,7 +69,7 @@ async function main(): Promise<void> {
       // Expose active job count in GET /health so the updater can defer during active jobs
       health: () => ({
         status: 'ok' as const,
-        active_jobs: Object.values(state.getAll()).filter(e => e.exitCode === null).length,
+        active_jobs: Object.values(state.getAll()).filter(entries => entries.some(e => e.exitCode === null)).length,
       }),
       hooks: {
         onStart: (port: number) => {
