@@ -85,6 +85,19 @@ export class TrayManager extends EventEmitter {
     } catch { /* already dead */ }
   }
 
+  // Kill ALL running tray binaries by image name — prevents orphan accumulation.
+  // Safer than PID-based kill since PID tracking can get out of sync.
+  private _killAllTrayBinaries(): void {
+    const binary = path.basename(this._findBinary() ?? 'orchestrator-tray.exe');
+    try {
+      if (process.platform === 'win32') {
+        execFileSync('taskkill', ['/F', '/IM', binary], { stdio: 'ignore' });
+      } else {
+        execFileSync('pkill', ['-f', binary], { stdio: 'ignore' });
+      }
+    } catch { /* no tray processes running — that's fine */ }
+  }
+
   private _writeTrayPid(pid: number): void {
     try { fs.writeFileSync(this._trayPidFile, String(pid), 'utf8'); } catch { /* ignore */ }
   }
@@ -93,38 +106,29 @@ export class TrayManager extends EventEmitter {
     try { fs.unlinkSync(this._trayPidFile); } catch { /* ignore */ }
   }
 
-  private _killOrphanTray(): void {
-    try {
-      const raw = fs.readFileSync(this._trayPidFile, 'utf8').trim();
-      const pid = parseInt(raw, 10);
-      if (!isNaN(pid) && pid > 0) this._killByPid(pid);
-    } catch { /* no PID file */ }
-    this._clearTrayPid();
-  }
-
   async start(): Promise<void> {
-    // Kill any tray registered by a previous daemon session before spawning a new one.
-    this._killOrphanTray();
+    // Kill ALL existing tray binaries before spawning a fresh one.
+    // Set intentionalStop FIRST so any onExit callbacks from the killed processes
+    // don't schedule a restart (the new spawn below handles that).
+    this._intentionalStop = true;
+    this._killAllTrayBinaries();
+    this._clearTrayPid();
+    this._intentionalStop = false;
 
     this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job }) => {
       this._onJobFinished(ev);
     });
-    // Synchronous exit hook: kills tray-go even when process.exit() is called directly
-    // (e.g. via the `orch restart` CLI RPC path which bypasses trayManager.stop()).
+    // Synchronous backup exit hook: ensures tray is killed even if triggerRestart()
+    // was bypassed (e.g. direct process.exit() call from tests or edge cases).
+    // When triggerRestart() ran correctly, _tp is already null and _intentionalStop is true.
     process.on('exit', () => {
-      // Set _intentionalStop so any pending onExit handlers don't schedule restarts
-      // after the kill below fires the tray's close event.
       this._intentionalStop = true;
-      // Kill via in-memory reference first, then fall back to PID file.
-      const tp = this._tp;
-      const pid = (tp && !tp.killed) ? tp.process.pid : undefined;
-      if (pid) {
-        // Send graceful exit first (synchronous stdin write), then force-kill.
-        // The Go systray binary can resist taskkill /F but always respects {type:exit}.
-        try { tp!.process.stdin?.write(JSON.stringify({ type: 'exit' }) + '\n'); } catch { }
-        this._killByPid(pid);
+      // Only kill if the tray wasn't already gracefully killed by triggerRestart/triggerQuit.
+      if (this._tp && !this._tp.killed) {
+        const pid = this._tp.process.pid;
+        if (pid) this._killByPid(pid);
       } else {
-        // _tp already null (e.g. killed by _scheduleRestart) — use PID file fallback.
+        // Fallback: read PID file in case _tp reference was lost.
         try {
           const raw = fs.readFileSync(this._trayPidFile, 'utf8').trim();
           const filePid = parseInt(raw, 10);
@@ -134,6 +138,22 @@ export class TrayManager extends EventEmitter {
       this._clearTrayPid();
     });
     await this._spawnTray();
+  }
+
+  /** Gracefully kill the tray then emit 'restart'. Used by tray click AND CLI 'restart' command. */
+  async triggerRestart(): Promise<void> {
+    this._intentionalStop = true;
+    if (this._tp && !this._tp.killed) await this._tp.kill();
+    this._tp = null;
+    this.emit('restart');
+  }
+
+  /** Gracefully kill the tray then emit 'quit'. Used by tray click AND CLI 'quit' command. */
+  async triggerQuit(): Promise<void> {
+    this._intentionalStop = true;
+    if (this._tp && !this._tp.killed) await this._tp.kill();
+    this._tp = null;
+    this.emit('quit');
   }
 
   async stop(): Promise<void> {
@@ -274,8 +294,11 @@ export class TrayManager extends EventEmitter {
       // Record PID so the next daemon session can kill this orphan on startup.
       if (tp.process.pid) this._writeTrayPid(tp.process.pid);
       this._log.write('[tray] ready, sending init');
-      await tp.send({ type: 'init', menu: this._buildMenu() });
-      this._log.write('[tray] init sent');
+      // Write init DIRECTLY and synchronously to stdin — this guarantees it arrives
+      // before any message that may have been queued via tp.send() from other code paths.
+      const initLine = JSON.stringify({ type: 'init', menu: this._buildMenu() }) + '\n';
+      tp.process.stdin!.write(initLine);
+      this._log.write('[tray] init sent (direct write)');
     } catch (err) {
       this._log.write(`[tray] failed to start: ${getErrorMessage(err)}`);
       console.error('[tray] failed to start:', getErrorMessage(err));
@@ -357,27 +380,12 @@ export class TrayManager extends EventEmitter {
         this._state.acknowledgeAll();
         this._refresh();
         break;
-      case 'restart': {
-        // Set flag BEFORE kill so onExit knows not to schedule a restart.
-        const killAndRestart = async () => {
-          this._intentionalStop = true;
-          if (this._tp && !this._tp.killed) await this._tp.kill();
-          this._tp = null;
-          this.emit('restart');
-        };
-        void killAndRestart();
+      case 'restart':
+        void this.triggerRestart();
         break;
-      }
-      case 'quit': {
-        const killAndQuit = async () => {
-          this._intentionalStop = true;
-          if (this._tp && !this._tp.killed) await this._tp.kill();
-          this._tp = null;
-          this.emit('quit');
-        };
-        void killAndQuit();
+      case 'quit':
+        void this.triggerQuit();
         break;
-      }
       // violations-suppress: ts/no-switch-default-break unknown tray IDs from Go binary are intentionally ignored (forward-compat)
       default:
         break;

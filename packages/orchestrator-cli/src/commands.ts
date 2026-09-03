@@ -6,6 +6,7 @@ import type { OrchestratorCommands, Job, RuntimeEntry } from './types.js';
 import type { Registry } from './registry.js';
 import type { State }    from './state.js';
 import type { Scheduler } from './scheduler.js';
+import type { TrayManager } from './tray-manager.js';
 
 /**
  * Builds the OrchestratorCommands map for use with createDaemon() and createTestDaemon().
@@ -16,6 +17,7 @@ export function makeCommands(
   state:    State,
   scheduler: Scheduler,
   configDir: string,
+  trayManager?: TrayManager,
 ): OrchestratorCommands {
   return {
     'list-jobs':   () => registry.list(),
@@ -52,10 +54,21 @@ export function makeCommands(
 
     // quit is handled by the SDK's /quit route; stub so TypeScript accepts it.
     'quit': () => {},
-    // restart: write config.restart sentinel so the Go launcher re-spawns the daemon, then exit.
+
+    // restart: gracefully kill the tray (sends {type:exit} via stdin) THEN exit so the
+    // Go launcher re-spawns the daemon. Using trayManager.triggerRestart() ensures the same
+    // clean kill path as the tray "Restart" button, preventing orphan tray processes.
+    // NOTE: config.restart is written by the index.ts 'restart' event handler AFTER tray is
+    // killed — do NOT write it here, or the Go launcher would spawn a second daemon before
+    // this one exits, causing multiple daemon/tray instances.
     'restart': () => {
-      try { writeFileSync(join(configDir, 'config.restart'), '1'); } catch { /* ignore */ }
-      process.exit(0);
+      if (trayManager) {
+        void trayManager.triggerRestart();
+        // triggerRestart() kills the tray then emits 'restart' → index.ts writes config.restart + process.exit(0)
+      } else {
+        try { writeFileSync(join(configDir, 'config.restart'), '1'); } catch { /* ignore */ }
+        process.exit(0);
+      }
     },
   };
 }
