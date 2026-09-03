@@ -5,6 +5,7 @@ import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { DailyLogger }   from './logger.js';
+import { ensureTmpDir }  from './fsUtil.js';
 import type { Job, TriggerSource } from './types.js';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -22,10 +23,11 @@ interface SchedulerOptions {
 export class Scheduler extends EventEmitter {
   private readonly _registry:  Registry;
   private readonly _state:     State;
-  private readonly _spawn:     SpawnFn;
+  private _spawn:              SpawnFn;
   private readonly _liveness:  LivenessFn;
   private readonly _now:       () => Date;
   private readonly _configDir: string;
+  private readonly _tmpDir:    string;
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -33,20 +35,32 @@ export class Scheduler extends EventEmitter {
     super();
     this._registry  = registry;
     this._state     = state;
+    // Default spawn is set below after _tmpDir is resolved.
     this._spawn     = options.spawn     ?? ((cmd, cwd) => {
       const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
       const [bin, ...args] = parts;
-      return nodeSpawn(bin!, args, {
-        cwd: cwd ?? os.homedir(),
-        windowsHide: true,   // suppress CMD windows on Windows
-        shell: true,
-      });
+      return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true });
     });
     this._liveness  = options.liveness  ?? checkLiveness;
     this._now       = options.now       ?? (() => new Date());
     this._configDir = options.configDir ?? (
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
+    // Ensure tmp dir exists; used as default cwd for jobs that don't specify one.
+    this._tmpDir = ensureTmpDir(this._configDir);
+    // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
+    if (!options.spawn) {
+      const tmpDir = this._tmpDir;
+      this._spawn = (cmd, cwd) => {
+        const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
+        const [bin, ...args] = parts;
+        return nodeSpawn(bin!, args, {
+          cwd: cwd ?? tmpDir,
+          windowsHide: true,
+          shell: true,
+        });
+      };
+    }
   }
 
   async start(): Promise<void> {

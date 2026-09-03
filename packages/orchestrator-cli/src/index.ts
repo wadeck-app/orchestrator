@@ -6,6 +6,7 @@ import { createDaemon } from '@wadeck-app/singleton-daemon-kit';
 
 import { Registry }    from './registry.js';
 import { State }       from './state.js';
+import { cleanTmpDir } from './fsUtil.js';
 import { Scheduler }   from './scheduler.js';
 import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
@@ -22,6 +23,7 @@ const CONFIG_DIR: string =
 
 async function main(): Promise<void> {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  cleanTmpDir(path.join(CONFIG_DIR, 'tmp'), { maxAgeDays: 7, maxSizeMb: 100 });
 
   // Init updateManager before try/finally so scheduleUpdate fires even on crash paths.
   // @wadeck-app/shared-cli is ESM-only — use dynamic import() from a CJS module context.
