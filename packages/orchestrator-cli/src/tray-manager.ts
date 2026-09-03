@@ -78,7 +78,7 @@ export class TrayManager extends EventEmitter {
   private _killByPid(pid: number): void {
     try {
       if (process.platform === 'win32') {
-        execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore' });
+        execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
       } else {
         process.kill(pid, 'SIGKILL');
       }
@@ -91,7 +91,7 @@ export class TrayManager extends EventEmitter {
     const binary = path.basename(this._findBinary() ?? 'orchestrator-tray.exe');
     try {
       if (process.platform === 'win32') {
-        execFileSync('taskkill', ['/F', '/IM', binary], { stdio: 'ignore' });
+        execFileSync('taskkill', ['/F', '/IM', binary], { stdio: 'ignore', windowsHide: true });
       } else {
         execFileSync('pkill', ['-f', binary], { stdio: 'ignore' });
       }
