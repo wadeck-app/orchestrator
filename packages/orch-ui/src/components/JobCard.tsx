@@ -77,7 +77,7 @@ export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: Props
       <p className="text-xs text-muted mb-3">
         {runHistory[0]
           ? `Last run: ${relativeTime(runHistory[0].startedAt)}`
-          : 'Last run: never'}
+          : 'Last run: Never'}
       </p>
 
       <div className="flex justify-end">

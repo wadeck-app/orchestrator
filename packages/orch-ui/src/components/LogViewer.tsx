@@ -10,6 +10,26 @@ const LOG_BODY_CLS   = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mon
 // @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
 
+const URL_RE = /(file:\/\/\/[^\s]+|https?:\/\/[^\s]+)/g;
+
+function linkify(line: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(line)) !== null) {
+    if (m.index > last) parts.push(line.slice(last, m.index));
+    parts.push(
+      // violations-suppress: tailwind/no-raw-color-class link inside dark terminal — no semantic token for terminal-link color
+      <a key={m.index} href={m[0]} target="_blank" rel="noopener noreferrer"
+        className="underline opacity-80 hover:opacity-100">{m[0]}</a>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) parts.push(line.slice(last));
+  return parts.length > 0 ? parts : line;
+}
+
 export interface LogViewerProps {
   jobId: string;
   apiBase?: string;
@@ -79,7 +99,12 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
       >
         {lines.length === 0 && connected
           ? <span className="text-gray-500">No log output yet</span>
-          : lines.join('\n')}
+          : lines.map((line, i) => (
+            <React.Fragment key={i}>
+              {linkify(line)}
+              {i < lines.length - 1 ? '\n' : null}
+            </React.Fragment>
+          ))}
       </pre>
       {/* violations-suppress-end: tailwind/no-raw-color-class */}
     </div>

@@ -158,9 +158,9 @@ export function JobCardGrid({ items, onExport, onImport }: JobCardGridProps): Re
                   <td className="py-2 pr-4 text-content font-medium">{job.label}</td>
                   <td className="py-2 pr-4 text-muted">{job.type}</td>
                   <td className="py-2 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
-                  <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} /></td>
+                  <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={last?.exitCode === null && runHistory.length > 0} /></td>
                   <td className="py-2 pr-4 text-xs text-muted">
-                    {last ? relativeTime(last.startedAt) : 'never'}
+                    {last ? relativeTime(last.startedAt) : 'Never'}
                   </td>
                   <td className="py-2">
                     {/* violations-suppress: react/no-raw-button inline table action button - no accessible Button variant fits this compact cell context */}
