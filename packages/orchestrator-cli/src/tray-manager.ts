@@ -47,6 +47,7 @@ const SUCCESS_ICON_COLOR = '#6EE7B7';
 
 export class TrayManager extends EventEmitter {
   private _tp:               TrayProcess | null = null;
+  private _spawning          = false;   // guard: prevent concurrent _spawnTray() calls
   private _intentionalStop   = false;  // true during kill-before-restart/quit; suppresses onExit restart
   private _restartAttempt    = 0;
   private _restartTimer:     ReturnType<typeof setTimeout> | null = null;
@@ -111,9 +112,16 @@ export class TrayManager extends EventEmitter {
     // Synchronous exit hook: kills tray-go even when process.exit() is called directly
     // (e.g. via the `orch restart` CLI RPC path which bypasses trayManager.stop()).
     process.on('exit', () => {
+      // Set _intentionalStop so any pending onExit handlers don't schedule restarts
+      // after the kill below fires the tray's close event.
+      this._intentionalStop = true;
       // Kill via in-memory reference first, then fall back to PID file.
-      const pid = (this._tp && !this._tp.killed) ? this._tp.process.pid : undefined;
+      const tp = this._tp;
+      const pid = (tp && !tp.killed) ? tp.process.pid : undefined;
       if (pid) {
+        // Send graceful exit first (synchronous stdin write), then force-kill.
+        // The Go systray binary can resist taskkill /F but always respects {type:exit}.
+        try { tp!.process.stdin?.write(JSON.stringify({ type: 'exit' }) + '\n'); } catch { }
         this._killByPid(pid);
       } else {
         // _tp already null (e.g. killed by _scheduleRestart) — use PID file fallback.
@@ -219,8 +227,14 @@ export class TrayManager extends EventEmitter {
   }
 
   private async _spawnTray(): Promise<void> {
+    if (this._spawning) {
+      this._log.write('[tray] _spawnTray() called while already spawning — skipped');
+      return;
+    }
+    this._spawning = true;
     const binaryPath = this._findBinary();
     if (!binaryPath) {
+      this._spawning = false;
       console.warn('[tray] binary not found - systray disabled');
       return;
     }
@@ -265,8 +279,12 @@ export class TrayManager extends EventEmitter {
     } catch (err) {
       this._log.write(`[tray] failed to start: ${getErrorMessage(err)}`);
       console.error('[tray] failed to start:', getErrorMessage(err));
+      // Explicitly kill the tray that failed to init so it doesn't linger as an orphan.
+      if (tp.process.pid && !tp.killed) this._killByPid(tp.process.pid);
       this._tp = null;
       this._scheduleRestart();
+    } finally {
+      this._spawning = false;
     }
   }
 
