@@ -85,7 +85,7 @@ export class TrayManager extends EventEmitter {
     } catch { /* already dead */ }
   }
 
-  // Kill ALL running tray binaries by image name — prevents orphan accumulation.
+  // Kill ALL running tray binaries by image name - prevents orphan accumulation.
   // Safer than PID-based kill since PID tracking can get out of sync.
   private _killAllTrayBinaries(): void {
     const binary = path.basename(this._findBinary() ?? 'orchestrator-tray.exe');
@@ -93,9 +93,9 @@ export class TrayManager extends EventEmitter {
       if (process.platform === 'win32') {
         execFileSync('taskkill', ['/F', '/IM', binary], { stdio: 'ignore', windowsHide: true });
       } else {
-        execFileSync('pkill', ['-f', binary], { stdio: 'ignore' });
+        execFileSync('pkill', ['-f', binary], { stdio: 'ignore', windowsHide: true });
       }
-    } catch { /* no tray processes running — that's fine */ }
+    } catch { /* no tray processes running - that's fine */ }
   }
 
   private _writeTrayPid(pid: number): void {
@@ -248,7 +248,7 @@ export class TrayManager extends EventEmitter {
 
   private async _spawnTray(): Promise<void> {
     if (this._spawning) {
-      this._log.write('[tray] _spawnTray() called while already spawning — skipped');
+      this._log.write('[tray] _spawnTray() called while already spawning - skipped');
       return;
     }
     this._spawning = true;
@@ -294,7 +294,7 @@ export class TrayManager extends EventEmitter {
       // Record PID so the next daemon session can kill this orphan on startup.
       if (tp.process.pid) this._writeTrayPid(tp.process.pid);
       this._log.write('[tray] ready, sending init');
-      // Write init DIRECTLY and synchronously to stdin — this guarantees it arrives
+      // Write init DIRECTLY and synchronously to stdin - this guarantees it arrives
       // before any message that may have been queued via tp.send() from other code paths.
       const initLine = JSON.stringify({ type: 'init', menu: this._buildMenu() }) + '\n';
       tp.process.stdin!.write(initLine);
