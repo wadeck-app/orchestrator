@@ -70,26 +70,60 @@ export class TrayManager extends EventEmitter {
     this._log = new DailyLogger(path.join(_configDir, 'logs', 'tray'), 'tray');
   }
 
+  private get _trayPidFile(): string {
+    return path.join(this._configDir, 'config.tray-pid');
+  }
+
+  private _killByPid(pid: number): void {
+    try {
+      if (process.platform === 'win32') {
+        execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore' });
+      } else {
+        process.kill(pid, 'SIGKILL');
+      }
+    } catch { /* already dead */ }
+  }
+
+  private _writeTrayPid(pid: number): void {
+    try { fs.writeFileSync(this._trayPidFile, String(pid), 'utf8'); } catch { /* ignore */ }
+  }
+
+  private _clearTrayPid(): void {
+    try { fs.unlinkSync(this._trayPidFile); } catch { /* ignore */ }
+  }
+
+  private _killOrphanTray(): void {
+    try {
+      const raw = fs.readFileSync(this._trayPidFile, 'utf8').trim();
+      const pid = parseInt(raw, 10);
+      if (!isNaN(pid) && pid > 0) this._killByPid(pid);
+    } catch { /* no PID file */ }
+    this._clearTrayPid();
+  }
+
   async start(): Promise<void> {
+    // Kill any tray registered by a previous daemon session before spawning a new one.
+    this._killOrphanTray();
+
     this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job }) => {
       this._onJobFinished(ev);
     });
     // Synchronous exit hook: kills tray-go even when process.exit() is called directly
     // (e.g. via the `orch restart` CLI RPC path which bypasses trayManager.stop()).
-    // Uses taskkill on Windows because child.kill() is unreliable for GUI processes there.
     process.on('exit', () => {
-      if (this._tp && !this._tp.killed) {
-        const pid = this._tp.process.pid;
-        if (pid) {
-          try {
-            if (process.platform === 'win32') {
-              execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore' });
-            } else {
-              this._tp.process.kill('SIGKILL');
-            }
-          } catch { /* ignore */ }
-        }
+      // Kill via in-memory reference first, then fall back to PID file.
+      const pid = (this._tp && !this._tp.killed) ? this._tp.process.pid : undefined;
+      if (pid) {
+        this._killByPid(pid);
+      } else {
+        // _tp already null (e.g. killed by _scheduleRestart) — use PID file fallback.
+        try {
+          const raw = fs.readFileSync(this._trayPidFile, 'utf8').trim();
+          const filePid = parseInt(raw, 10);
+          if (!isNaN(filePid) && filePid > 0) this._killByPid(filePid);
+        } catch { /* no PID file */ }
       }
+      this._clearTrayPid();
     });
     await this._spawnTray();
   }
@@ -107,6 +141,7 @@ export class TrayManager extends EventEmitter {
       await this._tp.kill();
       this._tp = null;
     }
+    this._clearTrayPid();
     this._log.close();
   }
 
@@ -222,6 +257,8 @@ export class TrayManager extends EventEmitter {
     try {
       await tp.ready();
       this._restartAttempt = 0;
+      // Record PID so the next daemon session can kill this orphan on startup.
+      if (tp.process.pid) this._writeTrayPid(tp.process.pid);
       this._log.write('[tray] ready, sending init');
       await tp.send({ type: 'init', menu: this._buildMenu() });
       this._log.write('[tray] init sent');
