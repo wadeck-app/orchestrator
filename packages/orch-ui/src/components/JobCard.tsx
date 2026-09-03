@@ -28,6 +28,18 @@ const CARD_CLS       = 'rounded-lg border border-border p-4 shadow-sm hover:shad
 const TYPE_BADGE_BASE = 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0';
 // @formatter:on
 
+export function relativeTime(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const s = Math.floor(diffMs / 1000);
+  if (s < 60)  return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24)  return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 function jobListBadge(runHistory: RuntimeEntry[]): React.ReactElement {
   if (runHistory.length === 0) return <span className={BADGE_NEVER}>Never run</span>;
   const last = runHistory[0]!;
@@ -58,10 +70,15 @@ export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: Props
         <EnableToggle job={job} onToggle={onToggle} />
       </div>
 
-      <div className="flex items-center gap-3 mb-3">
+      <div className="flex items-center gap-3 mb-1">
         {jobListBadge(runHistory)}
         <NextFireCountdown job={job} />
       </div>
+      <p className="text-xs text-muted mb-3">
+        {runHistory[0]
+          ? `Last run: ${relativeTime(runHistory[0].startedAt)}`
+          : 'Last run: never'}
+      </p>
 
       <div className="flex justify-end">
         <TriggerButton jobId={job.id} onTrigger={onTrigger} />

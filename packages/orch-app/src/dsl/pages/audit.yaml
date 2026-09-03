@@ -1,0 +1,7 @@
+$route: /audit
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: Audit log
+  - $type: AuditLog

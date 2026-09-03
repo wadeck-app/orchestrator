@@ -7,6 +7,19 @@ export interface RunHistoryProps {
   entries: RuntimeEntry[];
 }
 
+function formatDuration(entry: RuntimeEntry): string {
+  if (entry.exitCode === null) return 'running…';
+  if (!entry.finishedAt) return '-';
+  const ms = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
+  if (ms < 0) return '-';
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  const rem = Math.round(s % 60);
+  return `${m}m ${rem}s`;
+}
+
 /**
  * @registryCategory composite
  * @registryTags history table runs
@@ -21,6 +34,7 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
       <thead>
         <tr className="text-left text-muted border-b">
           <th className="pb-1 font-medium">Started</th>
+          <th className="pb-1 font-medium">Duration</th>
           <th className="pb-1 font-medium">Result</th>
           <th className="pb-1 font-medium">Triggered by</th>
           <th className="pb-1 font-medium">PID</th>
@@ -34,6 +48,7 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
           return (
             <tr key={i}>
               <td className="py-1 pr-4 text-content">{formatted}</td>
+              <td className="py-1 pr-4 text-muted">{formatDuration(entry)}</td>
               <td className="py-1 pr-4"><JobStatusBadge exitCode={entry.exitCode} /></td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
               <td className="py-1 text-muted">{entry.pid ?? '-'}</td>

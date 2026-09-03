@@ -38,6 +38,7 @@ export type TriggerSource =
 
 export interface RuntimeEntry {
   startedAt: string;
+  finishedAt?: string;
   exitCode: number | null;
   pid: number | null;
   triggeredBy?: TriggerSource;
@@ -66,6 +67,8 @@ export type OrchestratorCommands = {
   'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;
   'list-failures': (payload?: unknown) => Array<{ jobId: string; entry: RuntimeEntry }>;
   'ack-failures':  (payload?: unknown) => Record<string, never>;
+  'list-audit':    (payload?: unknown) => Array<{ ts: string; event: string; [key: string]: unknown }>;
+  'get-schedule':  (payload?: unknown) => Array<{ jobId: string; label: string; next: string[] }>;
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };

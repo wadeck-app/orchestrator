@@ -4,6 +4,7 @@ import { LayoutGrid, LayoutList } from 'lucide-react';
 import type { Job, RuntimeEntry } from '../types.js';
 import { JobCard } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
+import { relativeTime } from './JobCard.js';
 import { getErrorMessage } from '../types.js';
 
 export interface JobWithHistory { job: Job; runHistory: RuntimeEntry[]; }
@@ -24,13 +25,17 @@ const CHIP_INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg te
 const SEARCH_CLS    = 'flex-1 border border-border rounded-md px-3 py-2 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
 // @formatter:on
 
-export interface JobCardGridProps { items?: JobWithHistory[]; }
+export interface JobCardGridProps {
+  items?: JobWithHistory[];
+  onExport?: () => void;
+  onImport?: () => void;
+}
 
 /**
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, onExport, onImport }: JobCardGridProps): React.ReactElement {
   const navigate   = useNavigate();
   const [search, setSearch]   = useState('');
   const [filter, setFilter]   = useState<FilterType>('all');
@@ -91,6 +96,18 @@ export function JobCardGrid({ items }: JobCardGridProps): React.ReactElement {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {onExport && (
+            // violations-suppress: react/no-raw-button icon action - no Button variant for compact secondary actions
+            <button onClick={onExport} className="px-3 py-2 text-sm border border-border rounded-md text-muted hover:bg-muted-bg" title="Export jobs as JSON">
+              Export
+            </button>
+          )}
+          {onImport && (
+            // violations-suppress: react/no-raw-button icon action - no Button variant for compact secondary actions
+            <button onClick={onImport} className="px-3 py-2 text-sm border border-border rounded-md text-muted hover:bg-muted-bg" title="Import jobs from JSON">
+              Import
+            </button>
+          )}
           {/* violations-suppress: react/no-raw-button navigation button - Button component does not support href/onClick+navigate pattern */}
           <button
             onClick={() => navigate('/jobs/new')}
@@ -129,6 +146,7 @@ export function JobCardGrid({ items }: JobCardGridProps): React.ReactElement {
               <th className="pb-2 font-medium">Type</th>
               <th className="pb-2 font-medium">Schedule</th>
               <th className="pb-2 font-medium">Status</th>
+              <th className="pb-2 font-medium">Last run</th>
               <th className="pb-2 font-medium">Actions</th>
             </tr>
           </thead>
@@ -141,6 +159,9 @@ export function JobCardGrid({ items }: JobCardGridProps): React.ReactElement {
                   <td className="py-2 pr-4 text-muted">{job.type}</td>
                   <td className="py-2 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
                   <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} /></td>
+                  <td className="py-2 pr-4 text-xs text-muted">
+                    {last ? relativeTime(last.startedAt) : 'never'}
+                  </td>
                   <td className="py-2">
                     {/* violations-suppress: react/no-raw-button inline table action button - no accessible Button variant fits this compact cell context */}
                     <button className="text-xs px-2 py-1 bg-primary text-on-primary rounded hover:bg-primary-hover"

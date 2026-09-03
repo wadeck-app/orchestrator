@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { GenericPageRunner } from '@wadeck-app/dsl-renderer';
 import type { GenericPageRunnerProps } from '@wadeck-app/dsl-renderer';
 import { useHeartbeat } from './hooks/useHeartbeat.js';
@@ -9,12 +9,13 @@ import { api } from './api.js';
 import type { FailureEntry } from './api.js';
 import { FailureBanner } from '@wadeck-app/orch-ui';
 
-import jobListYaml from './dsl/pages/job-list.yaml?raw';
-import jobDetailYaml from './dsl/pages/job-detail.yaml?raw';
+import jobListYaml    from './dsl/pages/job-list.yaml?raw';
+import jobDetailYaml  from './dsl/pages/job-detail.yaml?raw';
 import jobFormNewYaml from './dsl/pages/job-form-new.yaml?raw';
 import jobFormEditYaml from './dsl/pages/job-form-edit.yaml?raw';
-import jobLogsYaml from './dsl/pages/job-logs.yaml?raw';
-
+import jobLogsYaml    from './dsl/pages/job-logs.yaml?raw';
+import auditYaml      from './dsl/pages/audit.yaml?raw';
+import scheduleYaml   from './dsl/pages/schedule.yaml?raw';
 
 function KeyedPageRunner(props: Omit<GenericPageRunnerProps, 'key'> & { baseKey: string }) {
   const params = useParams();
@@ -31,9 +32,7 @@ function useFailures() {
     try {
       const data = await api.listFailures();
       setFailures(data);
-    } catch {
-      // daemon may be unavailable transiently — keep previous state
-    }
+    } catch { /* daemon may be unavailable transiently — keep previous state */ }
   }, []);
 
   useEffect(() => {
@@ -43,13 +42,9 @@ function useFailures() {
   }, [refresh]);
 
   const acknowledgeAll = useCallback(async () => {
-    try {
-      await api.acknowledgeFailures();
-      setFailures([]);
-    } catch { /* ignore */ }
+    try { await api.acknowledgeFailures(); setFailures([]); } catch { /* ignore */ }
   }, []);
 
-  // Individual ack: call acknowledgeAll (server acks all), then remove locally
   const acknowledgeOne = useCallback(async (jobId: string) => {
     try {
       await api.acknowledgeFailures();
@@ -60,12 +55,23 @@ function useFailures() {
   return { failures, acknowledgeOne, acknowledgeAll };
 }
 
+function NavBar() {
+  return (
+    <nav className="flex items-center gap-4 px-4 py-2 border-b border-border bg-surface text-sm">
+      <Link to="/" className="text-content hover:text-primary font-medium">Jobs</Link>
+      <Link to="/schedule" className="text-muted hover:text-primary">Schedule</Link>
+      <Link to="/audit" className="text-muted hover:text-primary">Audit log</Link>
+    </nav>
+  );
+}
+
 export default function App() {
   useHeartbeat();
   const { failures, acknowledgeOne, acknowledgeAll } = useFailures();
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-bg">
+        <NavBar />
         <FailureBanner failures={failures} onAcknowledge={acknowledgeOne} onAcknowledgeAll={acknowledgeAll} />
         <Routes>
           <Route path="/" element={
@@ -82,6 +88,12 @@ export default function App() {
           } />
           <Route path="/jobs/:id/logs" element={
             <KeyedPageRunner baseKey="/jobs/logs" yamlText={jobLogsYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/audit" element={
+            <GenericPageRunner key="/audit" yamlText={auditYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/schedule" element={
+            <GenericPageRunner key="/schedule" yamlText={scheduleYaml} registry={appRegistry} fetcher={fetcher} />
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -42,4 +42,21 @@ export const api = {
     apiFetch<FailureEntry[]>('/api/failures'),
   acknowledgeFailures: () =>
     apiFetch<void>('/api/failures/ack', { method: 'POST', body: '{}' }),
+  listAudit: (limit = 100) =>
+    apiFetch<Array<{ ts: string; event: string; [key: string]: unknown }>>(`/api/audit?limit=${limit}`),
+  getSchedule: () =>
+    apiFetch<Array<{ jobId: string; label: string; next: string[] }>>('/api/schedule'),
+  exportJobs: async () => {
+    const res = await fetch('/api/jobs/export');
+    if (!res.ok) throw new Error(res.statusText);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `orchestrator-jobs-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+  importJobs: (data: { jobs: unknown[] }) =>
+    apiFetch<{ imported: number }>('/api/jobs/import', { method: 'POST', body: JSON.stringify(data) }),
 };

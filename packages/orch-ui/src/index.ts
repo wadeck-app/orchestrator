@@ -21,6 +21,9 @@ export type { FailureEntry as FailureBannerEntry } from './components/FailureBan
 export { JobConfigDisplay } from './components/JobConfigDisplay.js';
 export { JobToggle } from './components/JobToggle.js';
 export { JobDetailActions } from './components/JobDetailActions.js';
+export { AuditLog } from './components/AuditLog.js';
+export type { AuditEntry } from './components/AuditLog.js';
+export { ScheduleTimeline } from './components/ScheduleTimeline.js';
 export type { JobWithHistory } from './components/JobListSection.js';
-export type { Job, RuntimeEntry, MissedFiring } from './types.js';
+export type { Job, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';
 export { getErrorMessage } from './types.js';

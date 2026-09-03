@@ -1,0 +1,7 @@
+$route: /schedule
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: Upcoming schedule
+  - $type: ScheduleTimeline

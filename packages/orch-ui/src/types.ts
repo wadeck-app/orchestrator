@@ -1,5 +1,12 @@
 // Shared domain types (duplicated from orchestrator-cli to avoid circular dep)
 export type MissedFiring = 'catch-up' | 'skip';
+export type LivenessStrategy = 'none' | 'portFile' | 'pidFile' | 'command';
+
+export interface LivenessConfig {
+  strategy: LivenessStrategy;
+  portFile?: string;
+  command?: string;
+}
 
 export interface Job {
   id: string;
@@ -12,6 +19,7 @@ export interface Job {
   enabled: boolean;
   triggerMode: 'fire-and-forget' | 'wait';
   missedFiring?: MissedFiring;
+  liveness?: LivenessConfig | null;
   onExitCode?: Record<string, string>;
 }
 
@@ -27,7 +35,9 @@ export type TriggerSource =
 
 export interface RuntimeEntry {
   startedAt: string;
+  finishedAt?: string;
   exitCode: number | null;
   pid: number | null;
   triggeredBy?: TriggerSource;
+  acknowledgedAt?: string;
 }

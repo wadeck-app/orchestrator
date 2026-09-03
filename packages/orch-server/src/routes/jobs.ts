@@ -107,4 +107,49 @@ export async function jobsRoutes(
       return reply.code(204).send();
     });
   });
+
+  fastify.get('/api/jobs/export', async (_req, reply) => {
+    return guard(reply, async () => {
+      const jobs = await proxy.send('list-jobs') as unknown[];
+      const payload = JSON.stringify({ version: 1, jobs }, null, 2);
+      return reply
+        .header('Content-Type', 'application/json')
+        .header('Content-Disposition', `attachment; filename="orchestrator-jobs-${new Date().toISOString().slice(0, 10)}.json"`)
+        .send(payload);
+    });
+  });
+
+  fastify.post('/api/jobs/import', async (req, reply) => {
+    return guard(reply, async () => {
+      const body = req.body as { jobs?: unknown[] };
+      if (!body?.jobs || !Array.isArray(body.jobs)) {
+        return reply.code(400).send({ error: 'invalid-payload: expected { jobs: [] }' });
+      }
+      const results: Array<{ id: string; status: string }> = [];
+      for (const job of body.jobs) {
+        try {
+          await proxy.send('add-job', job);
+          results.push({ id: (job as { id?: string }).id ?? '?', status: 'imported' });
+        } catch (e) {
+          results.push({ id: (job as { id?: string }).id ?? '?', status: 'error' });
+        }
+      }
+      return reply.send({ imported: results.filter(r => r.status === 'imported').length, results });
+    });
+  });
+
+  fastify.get('/api/schedule', async (_req, reply) => {
+    return guard(reply, async () => {
+      const schedule = await proxy.send('get-schedule');
+      return reply.send(schedule);
+    });
+  });
+
+  fastify.get('/api/audit', async (req, reply) => {
+    return guard(reply, async () => {
+      const limit = Math.min(Number((req.query as { limit?: string }).limit ?? 100), 500);
+      const entries = await proxy.send('list-audit', { limit });
+      return reply.send(entries);
+    });
+  });
 }

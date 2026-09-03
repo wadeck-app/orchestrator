@@ -10,6 +10,7 @@ import { cleanTmpDir } from './fsUtil.js';
 import { Scheduler }   from './scheduler.js';
 import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
+import { AuditLogger } from './audit.js';
 import { TrayManager } from './tray-manager.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
@@ -43,7 +44,10 @@ async function main(): Promise<void> {
 
     const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'));
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
+    const audit       = new AuditLogger(CONFIG_DIR);
     const scheduler   = new Scheduler(registry, state, { configDir: CONFIG_DIR });
+
+    audit.log('daemon.start', { pid: process.pid, version });
 
     let dashboardManager: DashboardManager | null = null;
     try {
@@ -55,6 +59,11 @@ async function main(): Promise<void> {
 
     const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version, undefined, dashboardManager);
 
+    // Audit job events
+    scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: { label: string } }) => {
+      audit.log('job.completed', { jobId: ev.id, label: ev.job.label, exitCode: ev.exitCode });
+    });
+
     // Captured in onStart so versionExtra can reference it without a circular dep
     let activePort = 0;
 
@@ -62,7 +71,7 @@ async function main(): Promise<void> {
       configDir:   CONFIG_DIR,
       appVersion:  version,
       port:        47900,
-      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager),
+      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,

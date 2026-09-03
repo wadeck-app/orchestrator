@@ -155,7 +155,8 @@ export class Scheduler extends EventEmitter {
     const done = new Promise<{ exitCode: number }>((resolve) => {
       child.on('close', (code) => {
         const exitCode = code ?? 1;
-        this._state.record(job.id, { startedAt, exitCode, pid, triggeredBy: trigger });
+        const finishedAt = this._now().toISOString();
+        this._state.record(job.id, { startedAt, finishedAt, exitCode, pid, triggeredBy: trigger });
         jobLogger.close();
         this.emit('job-finished', { id: job.id, exitCode, job });
         resolve({ exitCode });
