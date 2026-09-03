@@ -41,5 +41,5 @@ export const api = {
   listFailures: () =>
     apiFetch<FailureEntry[]>('/api/failures'),
   acknowledgeFailures: () =>
-    apiFetch<void>('/api/failures/ack', { method: 'POST' }),
+    apiFetch<void>('/api/failures/ack', { method: 'POST', body: '{}' }),
 };

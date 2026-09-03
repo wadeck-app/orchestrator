@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { DailyLogger } from './logger.js';
@@ -76,9 +76,19 @@ export class TrayManager extends EventEmitter {
     });
     // Synchronous exit hook: kills tray-go even when process.exit() is called directly
     // (e.g. via the `orch restart` CLI RPC path which bypasses trayManager.stop()).
+    // Uses taskkill on Windows because child.kill() is unreliable for GUI processes there.
     process.on('exit', () => {
       if (this._tp && !this._tp.killed) {
-        try { this._tp.process.kill('SIGKILL'); } catch { /* ignore */ }
+        const pid = this._tp.process.pid;
+        if (pid) {
+          try {
+            if (process.platform === 'win32') {
+              execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore' });
+            } else {
+              this._tp.process.kill('SIGKILL');
+            }
+          } catch { /* ignore */ }
+        }
       }
     });
     await this._spawnTray();
