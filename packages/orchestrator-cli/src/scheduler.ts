@@ -37,7 +37,7 @@ export class Scheduler extends EventEmitter {
       const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
       const [bin, ...args] = parts;
       return nodeSpawn(bin!, args, {
-        cwd: cwd ?? process.cwd(),
+        cwd: cwd ?? os.homedir(),
         windowsHide: true,   // suppress CMD windows on Windows
         shell: true,
       });
