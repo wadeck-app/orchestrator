@@ -21,7 +21,8 @@ const node = process.execPath;
 function run(cmd, args, cwd = ROOT) {
   console.log(`$ ${cmd} ${args.join(' ')}`);
   // shell:true required on Windows for .cmd scripts (npm.cmd, etc.)
-  execFileSync(cmd, args, { cwd, stdio: 'inherit', shell: isWin });
+  // windowsHide:true prevents any CMD window from flashing on screen.
+  execFileSync(cmd, args, { cwd, stdio: 'inherit', shell: isWin, windowsHide: true });
 }
 
 // 1. Build orch-server
