@@ -149,7 +149,7 @@ async function main(): Promise<void> {
     // The updater: npm install -g @wadeck/orchestrator-cli@edge → orch cli self-check → rollback if failed.
     scheduleUpdate();
     // unref() ensures the interval never prevents the process from exiting on SIGTERM.
-    setInterval(() => updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs'), 4 * 60 * 60 * 1000).unref();
+    setInterval(() => updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs'), 30 * 60 * 1000).unref();
   } finally {
     // Fire once on crash path; no-op if already scheduled above.
     scheduleUpdate();
