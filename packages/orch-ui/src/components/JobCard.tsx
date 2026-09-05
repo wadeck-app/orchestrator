@@ -97,13 +97,14 @@ export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: Props
           <div className="flex items-center gap-0.5 ml-auto">
             {Array.from({ length: 5 }, (_, i) => {
               const entry = runHistory[i];
+              // violations-suppress-start: tailwind/no-raw-color-class pass/fail/running dot colors have no semantic-token equivalents in design system
               let cls = 'bg-border';
               if (entry) {
                 if (entry.exitCode === null) cls = 'bg-gray-400';
-                // violations-suppress: tailwind/no-raw-color-class pass/fail dot colors have no semantic-token equivalents
                 else if (entry.exitCode === 0) cls = 'bg-green-500';
                 else cls = 'bg-red-500';
               }
+              // violations-suppress-end: tailwind/no-raw-color-class
               return <span key={i} className={`w-1.5 h-1.5 rounded-full ${cls}`} />;
             })}
           </div>

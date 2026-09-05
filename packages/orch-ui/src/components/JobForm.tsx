@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { X } from 'lucide-react';
 import type { Job, MissedFiring, LivenessConfig, LivenessStrategy } from '../types.js';
 import { Button } from './Button.js';
 import { FieldText } from './FieldText.js';
@@ -205,24 +206,24 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
             <p className="text-xs text-muted mb-2">Show a custom message in the tray when the job exits with a specific code.</p>
             {exitCodePairs.map((pair, i) => (
               <div key={i} className="flex gap-2 mb-2 items-center">
-                {/* violations-suppress: react/no-raw-input compact inline field without label — form context makes purpose clear */}
+                {/* violations-suppress: react/no-raw-input compact inline field without label - form context makes purpose clear */}
                 <input
                   type="number" placeholder="exit code" value={pair.code}
                   onChange={e => setExitCodePairs(prev => prev.map((p, j) => j === i ? { ...p, code: e.target.value } : p))}
                   className="w-24 rounded border border-border px-2 py-1 text-sm bg-surface text-content"
                 />
-                {/* violations-suppress: react/no-raw-input compact inline field without label — form context makes purpose clear */}
+                {/* violations-suppress: react/no-raw-input compact inline field without label - form context makes purpose clear */}
                 <input
                   type="text" placeholder="message" value={pair.msg}
                   onChange={e => setExitCodePairs(prev => prev.map((p, j) => j === i ? { ...p, msg: e.target.value } : p))}
                   className="flex-1 rounded border border-border px-2 py-1 text-sm bg-surface text-content"
                 />
-                {/* violations-suppress: react/no-raw-button icon-only remove button — no accessible Button variant for compact remove */}
+                {/* violations-suppress: react/no-raw-button icon-only remove button - no accessible Button variant for compact remove */}
                 <button type="button" onClick={() => setExitCodePairs(prev => prev.filter((_, j) => j !== i))}
-                  className="text-danger hover:opacity-70 text-xs px-1">✕</button>
+                  className="text-danger hover:opacity-70 text-xs px-1"><X size={12} /></button>
               </div>
             ))}
-            {/* violations-suppress: react/no-raw-button add-row button — Button component doesn't fit compact list-append pattern */}
+            {/* violations-suppress: react/no-raw-button add-row button - Button component doesn't fit compact list-append pattern */}
             <button type="button" onClick={() => setExitCodePairs(prev => [...prev, { code: '', msg: '' }])}
               className="text-xs text-primary hover:underline">+ Add exit code</button>
           </div>

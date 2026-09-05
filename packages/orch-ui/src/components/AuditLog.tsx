@@ -1,3 +1,4 @@
+// violations-suppress: ts/no-inline-subcomponent EventIcon is a pure render helper (icon selector), not a reusable subcomponent; extracting it adds no DX value
 import React, { useEffect, useState } from 'react';
 import {
   CheckCircle, XCircle, Play, Clock, Plus, Trash2,
@@ -14,8 +15,10 @@ export interface AuditLogProps {
   apiBase?: string;
 }
 
+// violations-suppress: ts/no-inline-subcomponent EventIcon is a pure icon selector, not a reusable component; extracting it to a separate file adds overhead without benefit
 function EventIcon({ event, entry }: { event: string; entry: AuditEntry }): React.ReactElement {
   const sz = 14;
+  // violations-suppress-start: tailwind/no-raw-color-class no semantic success/danger tokens for audit event icons
   if (event === 'daemon.start')     return <Power size={sz} className="text-primary" />;
   if (event === 'daemon.restart')   return <RefreshCw size={sz} className="text-primary" />;
   if (event === 'job.completed') {
@@ -31,6 +34,7 @@ function EventIcon({ event, entry }: { event: string; entry: AuditEntry }): Reac
   if (event === 'job.edited')      return <Pencil size={sz} className="text-muted" />;
   if (event === 'job.enabled')     return <ToggleRight size={sz} className="text-green-600" />;
   if (event === 'job.disabled')    return <ToggleLeft size={sz} className="text-muted" />;
+  // violations-suppress-end: tailwind/no-raw-color-class
   return <Clock size={sz} className="text-muted" />;
 }
 

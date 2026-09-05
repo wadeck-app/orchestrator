@@ -18,6 +18,7 @@ export function readJsonFile<T>(filePath: string): T | null {
 }
 
 export function getErrorMessage(e: unknown): string {
+  // violations-suppress: ts/no-err-message-direct this IS the canonical getErrorMessage implementation
   return e instanceof Error ? e.message : String(e);
 }
 

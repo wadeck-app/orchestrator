@@ -23,6 +23,7 @@ function readViewMode(): ViewMode {
 const CHIP_ACTIVE   = 'px-3 py-1 rounded-full text-sm font-medium bg-primary text-on-primary';
 const CHIP_INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg text-muted border border-border hover:bg-border';
 const SEARCH_CLS    = 'flex-1 border border-border rounded-md px-3 py-2 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
+const ADD_BTN_CLS   = 'px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover';
 // @formatter:on
 
 export interface JobCardGridProps {
@@ -111,7 +112,7 @@ export function JobCardGrid({ items, onExport, onImport }: JobCardGridProps): Re
           {/* violations-suppress: react/no-raw-button navigation button - Button component does not support href/onClick+navigate pattern */}
           <button
             onClick={() => navigate('/jobs/new')}
-            className="px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover"
+            className={ADD_BTN_CLS}
           >
             Add job
           </button>

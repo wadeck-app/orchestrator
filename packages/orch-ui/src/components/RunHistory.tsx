@@ -8,7 +8,7 @@ export interface RunHistoryProps {
 }
 
 function formatDuration(entry: RuntimeEntry): string {
-  if (entry.exitCode === null) return 'running…';
+  if (entry.exitCode === null) return 'running...';
   if (!entry.finishedAt) return '-';
   const ms = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
   if (ms < 0) return '-';

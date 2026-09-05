@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
 
+// @formatter:off
+const DATE_HDR_CLS = 'text-xs font-semibold text-muted uppercase tracking-wide pt-3 pb-1 border-b border-border';
+// @formatter:on
+
 interface ScheduleEntry {
   jobId: string;
   label: string;
@@ -80,7 +84,7 @@ export function ScheduleTimeline({ apiBase = '' }: ScheduleTimelineProps): React
         return (
           <React.Fragment key={i}>
             {showDate && (
-              <p className="text-xs font-semibold text-muted uppercase tracking-wide pt-3 pb-1 border-b border-border">
+              <p className={DATE_HDR_CLS}>
                 {date}
               </p>
             )}
