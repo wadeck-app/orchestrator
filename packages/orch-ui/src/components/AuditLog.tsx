@@ -102,7 +102,7 @@ export function AuditLog({ apiBase = '' }: AuditLogProps): React.ReactElement {
   return (
     <div className="space-y-0.5">
       {entries.map((e, i) => (
-        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-muted-bg text-sm">
+        <div key={i} className="flex items-center gap-3 py-2 rounded hover:bg-muted-bg text-sm">
           <span className="shrink-0 flex items-center justify-center w-5">
             <EventIcon event={e.event} entry={e} />
           </span>
