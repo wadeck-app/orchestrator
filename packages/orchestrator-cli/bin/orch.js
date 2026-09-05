@@ -49,12 +49,31 @@ const cliBundlePath = path.join(__dirname, '..', 'dist', 'cli.js');
 // The daemon entry point (long-running) — used as LAUNCHER_BUNDLE_OVERRIDE for 'start'.
 // The Go launcher keeps this process alive and watches for sentinel files on exit.
 const daemonBundlePath = path.join(__dirname, '..', 'dist', 'index.js');
-const args = process.argv.slice(2);
+const _rawArgs = process.argv.slice(2);
+
+// --cli-background / --cli-foreground: explicit stdio override flags (strip before passing to command).
+var _hasBackground = _rawArgs.includes('--cli-background');
+var _hasForeground = _rawArgs.includes('--cli-foreground');
+const args = _rawArgs.filter(function(a) { return a !== '--cli-background' && a !== '--cli-foreground'; });
+
+var _stdio;
+if (!_hasBackground && !_hasForeground) {
+  // Auto-detect: pipe context (non-TTY) → NUL handles to prevent AllocConsole() from libuv
+  // when a GUI-parent (orch.exe SUBSYSTEM:WINDOWS) passes PIPE handles.
+  _stdio = process.stdin.isTTY ? 'inherit' : 'ignore';
+} else {
+  _stdio = 'ignore';
+  for (var _i = 0; _i < _rawArgs.length; _i++) {
+    if (_rawArgs[_i] === '--cli-background') _stdio = 'ignore';
+    if (_rawArgs[_i] === '--cli-foreground') _stdio = 'inherit';
+  }
+}
 
 function runWithExit(bin, binArgs, bundleOverride) {
   try {
     execFileSync(bin, binArgs, {
-      stdio: 'inherit',
+      stdio: _stdio,
+      windowsHide: true,
       env: { ...process.env, LAUNCHER_BUNDLE_OVERRIDE: bundleOverride },
     });
   } catch (err) {
