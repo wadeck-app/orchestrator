@@ -209,3 +209,31 @@ describe('record() - in-flight update (same startedAt)', () => {
     assert.equal(s.getAll()['job-a'].length, 2, 'two entries for two distinct runs');
   });
 });
+
+describe('getResourceBaseline', () => {
+  test('returns null when fewer than 3 runs have resource data', () => {
+    const s = new State(tmpFile());
+    s.record('job-r', { startedAt: '2026-09-05T10:00:00Z', exitCode: 0, pid: 1, peakCpuPct: 10, peakRamMb: 50 });
+    s.record('job-r', { startedAt: '2026-09-05T11:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 12, peakRamMb: 55 });
+    assert.equal(s.getResourceBaseline('job-r'), null, 'null when < 3 data points');
+  });
+
+  test('returns correct average for 3+ runs', () => {
+    const s = new State(tmpFile());
+    s.record('job-r', { startedAt: '2026-09-05T08:00:00Z', exitCode: 0, pid: 1, peakCpuPct: 10, peakRamMb: 100 });
+    s.record('job-r', { startedAt: '2026-09-05T09:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 20, peakRamMb: 200 });
+    s.record('job-r', { startedAt: '2026-09-05T10:00:00Z', exitCode: 0, pid: 3, peakCpuPct: 30, peakRamMb: 300 });
+    const b = s.getResourceBaseline('job-r');
+    assert.ok(b !== null, 'baseline should exist with 3 runs');
+    assert.equal(b.cpuPct, 20, 'avg CPU = 20');
+    assert.equal(b.ramMb, 200, 'avg RAM = 200');
+  });
+
+  test('ignores runs without resource data', () => {
+    const s = new State(tmpFile());
+    s.record('job-r', { startedAt: '2026-09-05T07:00:00Z', exitCode: 0, pid: 1 });  // no resource data
+    s.record('job-r', { startedAt: '2026-09-05T08:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 10, peakRamMb: 100 });
+    s.record('job-r', { startedAt: '2026-09-05T09:00:00Z', exitCode: 0, pid: 3, peakCpuPct: 20, peakRamMb: 200 });
+    assert.equal(s.getResourceBaseline('job-r'), null, 'only 2 runs have resource data - should be null');
+  });
+});

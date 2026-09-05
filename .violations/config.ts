@@ -42,7 +42,5 @@ export default {
     },
     // DSL pages must decompose from dsl-ui primitives, not wrap entire pages in one monolithic component
     './.violations/rules/dsl-no-monolithic-page.ts': true,
-    // No unicode symbols (arrows, checkmarks, etc.) in JSX — use Lucide icons instead
-    './.violations/rules/no-unicode-symbol.ts': true,
   },
 } satisfies ViolationsConfig

@@ -52,6 +52,8 @@ export interface RuntimeEntry {
   pid: number | null;
   triggeredBy?: TriggerSource;
   acknowledgedAt?: string;
+  peakCpuPct?: number;
+  peakRamMb?: number;
 }
 
 export interface RegistryData {
@@ -77,8 +79,9 @@ export type OrchestratorCommands = {
   'list-failures': (payload?: unknown) => Array<{ jobId: string; entry: RuntimeEntry }>;
   'ack-failures':  (payload?: unknown) => Record<string, never>;
   'list-audit':    (payload?: unknown) => Array<{ ts: string; event: string; [key: string]: unknown }>;
-  'get-schedule':  (payload?: unknown) => Array<{ jobId: string; label: string; next: string[] }>;
-  'get-uptime':    (payload?: unknown) => Record<string, number | null>;
+  'get-schedule':           (payload?: unknown) => Array<{ jobId: string; label: string; next: string[] }>;
+  'get-uptime':             (payload?: unknown) => Record<string, number | null>;
+  'get-resource-baseline':  (payload?: unknown) => { cpuPct: number; ramMb: number } | null;
   'list-webhooks': (payload?: unknown) => import('./webhook-manager.js').WebhookConfig[];
   'add-webhook':   (payload?: unknown) => void;
   'remove-webhook':(payload?: unknown) => void;

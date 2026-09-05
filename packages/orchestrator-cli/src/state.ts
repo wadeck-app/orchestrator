@@ -60,7 +60,11 @@ export class State {
       startedAt: entry.startedAt,
       exitCode: entry.exitCode ?? null,
       pid: entry.pid ?? null,
-      ...(entry.triggeredBy !== undefined && { triggeredBy: entry.triggeredBy }),
+      ...(entry.triggeredBy  !== undefined && { triggeredBy:  entry.triggeredBy  }),
+      ...(entry.finishedAt   !== undefined && { finishedAt:   entry.finishedAt   }),
+      ...(entry.acknowledgedAt !== undefined && { acknowledgedAt: entry.acknowledgedAt }),
+      ...(entry.peakCpuPct   !== undefined && { peakCpuPct:   entry.peakCpuPct   }),
+      ...(entry.peakRamMb    !== undefined && { peakRamMb:    entry.peakRamMb    }),
     };
     const existing = this._cache![id] ?? [];
     // If the most-recent entry has the same startedAt, update it in-place rather than
@@ -140,6 +144,18 @@ export class State {
     if (entries.length < 3) return null;
     const successes = entries.filter(e => e.exitCode === 0).length;
     return (successes / entries.length) * 100;
+  }
+
+  getResourceBaseline(id: string, n = 10): { cpuPct: number; ramMb: number } | null {
+    this._ensure();
+    // Only use successful runs - failed/killed runs have abnormal resource usage that would bias the baseline
+    const entries = (this._cache![id] ?? [])
+      .filter(e => e.exitCode === 0 && e.peakCpuPct != null && e.peakRamMb != null)
+      .slice(0, n);
+    if (entries.length < 3) return null;
+    const cpuPct = entries.reduce((s, e) => s + (e.peakCpuPct ?? 0), 0) / entries.length;
+    const ramMb  = entries.reduce((s, e) => s + (e.peakRamMb  ?? 0), 0) / entries.length;
+    return { cpuPct, ramMb };
   }
 
   getConsecutiveFailures(id: string): number {

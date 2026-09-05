@@ -92,6 +92,11 @@ export function makeCommands(
       return result;
     },
 
+    'get-resource-baseline': (p) => {
+      const { jobId } = p as { jobId: string };
+      return state.getResourceBaseline(jobId) ?? null;
+    },
+
     'get-schedule': () => {
       return registry.list()
         .filter(j => j.type === 'cron' && j.enabled && j.schedule)

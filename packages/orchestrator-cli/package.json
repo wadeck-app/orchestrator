@@ -45,7 +45,8 @@
     "@wadeck-app/shared-updater": "^2026.8.31-006-6811218a",
     "@wadeck-app/singleton-daemon-kit": "2026.8.30-082-8c02b26d",
     "fastify": "^5.0.0",
-    "node-cron": "^4.6.0"
+    "node-cron": "^4.6.0",
+    "pidusage": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

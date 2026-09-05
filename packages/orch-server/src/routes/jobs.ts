@@ -162,6 +162,14 @@ export async function jobsRoutes(
     });
   });
 
+  fastify.get('/api/jobs/:jobId/resource-baseline', async (req, reply) => {
+    return guard(reply, async () => {
+      const { jobId } = req.params as { jobId: string };
+      const baseline = await proxy.send('get-resource-baseline', { jobId }) as { cpuPct: number; ramMb: number } | null;
+      return reply.send(baseline ?? null);
+    });
+  });
+
   fastify.get('/api/webhooks', async (_req, reply) => {
     return guard(reply, async () => reply.send(await proxy.send('list-webhooks')));
   });

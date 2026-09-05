@@ -8,6 +8,8 @@ import { DailyLogger }   from './logger.js';
 import { ensureTmpDir }  from './fsUtil.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
+// pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
+import pidusage from 'pidusage';
 import type { Job, TriggerSource } from './types.js';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -176,6 +178,40 @@ export class Scheduler extends EventEmitter {
     this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
     this.emit('job-started', { id: job.id });
 
+    // Resource monitoring: sample CPU/RAM every 2s, enforce auto-budget thresholds
+    let peakCpuPct = 0;
+    let peakRamMb  = 0;
+    let softAlertSent = false;
+    const baseline      = this._state.getResourceBaseline(job.id);
+    const softThreshold = baseline ? { cpuPct: baseline.cpuPct * 1.2, ramMb: baseline.ramMb * 1.2 } : null;
+    const hardThreshold = baseline ? { cpuPct: baseline.cpuPct * 2.0, ramMb: baseline.ramMb * 2.0 } : null;
+    let resourceTimer: ReturnType<typeof setInterval> | null = null;
+    if (pid) {
+      resourceTimer = setInterval(() => {
+        if (child.killed) { clearInterval(resourceTimer!); return; }
+        pidusage(pid!).then(stats => {
+          const cpuPct = stats.cpu;
+          const ramMb  = stats.memory / 1024 / 1024;
+          if (cpuPct > peakCpuPct) peakCpuPct = cpuPct;
+          if (ramMb  > peakRamMb)  peakRamMb  = ramMb;
+          if (hardThreshold && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb)) {
+            // Hard budget exceeded: kill
+            const msg = `[warn] Hard resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% threshold: ${hardThreshold.cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB threshold: ${hardThreshold.ramMb.toFixed(0)}MB) - killing`;
+            process.stderr.write(msg + '\n');
+            this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold });
+            clearInterval(resourceTimer!);
+            child.kill('SIGTERM');
+            setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+          } else if (!softAlertSent && softThreshold && (cpuPct > softThreshold.cpuPct || ramMb > softThreshold.ramMb)) {
+            softAlertSent = true;
+            const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
+            process.stderr.write(msg + '\n');
+            this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
+          }
+        }).catch(() => { clearInterval(resourceTimer!); });
+      }, 2000);
+    }
+
     // Per-job rotating log: tee stdout/stderr to file + terminal.
     // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log
     const jobLogger = new DailyLogger(
@@ -208,6 +244,7 @@ export class Scheduler extends EventEmitter {
     const done = new Promise<{ exitCode: number }>((resolve) => {
       child.on('close', (code) => {
         if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+        if (resourceTimer !== null) clearInterval(resourceTimer);
         const exitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
         const durationMs = Date.now() - new Date(startedAt).getTime();
@@ -216,7 +253,11 @@ export class Scheduler extends EventEmitter {
         const prev = this._state.get(job.id);
         const wasFailure = prev !== null && prev.exitCode !== null && prev.exitCode !== 0;
 
-        this._state.record(job.id, { startedAt, finishedAt, exitCode, pid, triggeredBy: trigger });
+        this._state.record(job.id, {
+          startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
+          peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
+          peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
+        });
         jobLogger.close();
         this.emit('job-finished', { id: job.id, exitCode, job });
 

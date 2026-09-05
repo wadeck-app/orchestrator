@@ -35,6 +35,8 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
         <tr className="text-left text-muted border-b">
           <th className="pb-1 font-medium">Started</th>
           <th className="pb-1 font-medium">Duration</th>
+          <th className="pb-1 font-medium">Peak CPU</th>
+          <th className="pb-1 font-medium">Peak RAM</th>
           <th className="pb-1 font-medium">Result</th>
           <th className="pb-1 font-medium">Triggered by</th>
           <th className="pb-1 font-medium">PID</th>
@@ -49,6 +51,8 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
             <tr key={i}>
               <td className="py-1 pr-4 text-content">{formatted}</td>
               <td className="py-1 pr-4 text-muted">{formatDuration(entry)}</td>
+              <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
+              <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
               <td className="py-1 pr-4"><JobStatusBadge exitCode={entry.exitCode} /></td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
               <td className="py-1 text-muted">{entry.pid ?? '-'}</td>

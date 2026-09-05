@@ -40,7 +40,7 @@ Last updated: 2026-09-05
 - [x] **MON-04** — SLA window monitoring
   - Flag job if not completed within configurable window after scheduled time
 
-- [ ] **MON-05** — CPU/RAM monitoring per job
+- [x] **MON-05** — CPU/RAM monitoring per job
   - Monitor resource usage per job PID during execution
   - Document: whether limiting is possible or "resource budget" approach
 

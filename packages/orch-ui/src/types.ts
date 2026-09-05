@@ -49,4 +49,6 @@ export interface RuntimeEntry {
   pid: number | null;
   triggeredBy?: TriggerSource;
   acknowledgedAt?: string;
+  peakCpuPct?: number;
+  peakRamMb?: number;
 }
