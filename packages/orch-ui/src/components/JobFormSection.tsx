@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Job } from '../types.js';
 import { getErrorMessage } from '../types.js';
@@ -20,40 +20,31 @@ export interface JobFormSectionProps {
 export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onSuccess, onCancel }: JobFormSectionProps): React.ReactElement {
   const navigate = useNavigate();
   const isEdit = Boolean(jobId);
-  const [resolved, setResolved] = useState<Partial<Job> | undefined>(initial?.job);
-  const [loading, setLoading] = useState(isEdit && !initial);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isEdit || !jobId || initial) return;
-    setLoading(true);
-    fetch(`/api/jobs/${jobId}`)
-      .then((r) => r.ok ? r.json() : r.json().then((e: unknown) => Promise.reject(new Error((e as { error?: string }).error ?? 'Not found'))))
-      .then((data: { job: Job }) => { setResolved(data.job); setLoading(false); })
-      .catch((e: unknown) => { setError(getErrorMessage(e)); setLoading(false); });
-  }, [isEdit, jobId, initial]);
+  // Data for edit mode comes from initial prop (injected via $sources.jobData in YAML).
+  // No internal fetch — that is the DSL data layer's responsibility.
+  const [error, setError] = React.useState<string | null>(null);
 
   const handleSubmit = async (data: Partial<Job>) => {
-    if (onSubmitProp) { await onSubmitProp(data); return; }
-    const res = isEdit && jobId
-      ? await fetch(`/api/jobs/${jobId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-      : await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    setError(null);
+    try {
+      if (onSubmitProp) {
+        await onSubmitProp(data);
+        return;
+      }
+      const res = isEdit && jobId
+        ? await fetch(`/api/jobs/${jobId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        : await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error((err as { error: string }).error ?? res.statusText);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error((err as { error: string }).error ?? res.statusText);
+      }
+      const result: Job = await res.json();
+      if (onSuccess) { onSuccess(result.id); } else { navigate(`/jobs/${result.id}`); }
+    } catch (e) {
+      setError(getErrorMessage(e));
     }
-    const result: Job = await res.json();
-    if (onSuccess) { onSuccess(result.id); } else { navigate(`/jobs/${result.id}`); }
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -62,7 +53,7 @@ export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onSucce
       </h1>
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
       <JobForm
-        initial={resolved}
+        initial={initial?.job}
         onSubmit={handleSubmit}
         onCancel={() => onCancel ? onCancel() : navigate(-1)}
       />

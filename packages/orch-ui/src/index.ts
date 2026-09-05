@@ -21,8 +21,12 @@ export type { FailureEntry as FailureBannerEntry } from './components/FailureBan
 export { JobConfigDisplay } from './components/JobConfigDisplay.js';
 export { JobToggle } from './components/JobToggle.js';
 export { JobDetailActions } from './components/JobDetailActions.js';
-export { AuditLog } from './components/AuditLog.js';
-export type { AuditEntry } from './components/AuditLog.js';
+export { AuditEntryIcon } from './components/AuditEntryIcon.js';
+export type { AuditEntryIconProps } from './components/AuditEntryIcon.js';
+export { AuditEntryRow } from './components/AuditEntryRow.js';
+export type { AuditEntry, AuditEntryRowProps } from './components/AuditEntryRow.js';
+export { AuditEntryList } from './components/AuditEntryList.js';
+export type { AuditEntryListProps } from './components/AuditEntryList.js';
 export { ScheduleTimeline } from './components/ScheduleTimeline.js';
 export { NavBar } from './components/NavBar.js';
 export { JobSearchBar } from './components/JobSearchBar.js';

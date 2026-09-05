@@ -6,3 +6,7 @@ sections:
     to: /
     label: Back to jobs
   - $type: JobFormSection
+    $id: jobForm
+    $outputs:
+      onSubmit: [formData]
+      onSuccess: [id]
