@@ -39,19 +39,11 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
-      { find: '@wadeck-app/dsl-renderer', replacement: path.join(nodeModules, '@wadeck-app/dsl-renderer/dist/index.js') },
-      { find: '@wadeck-app/dsl-ui',       replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/dist/index.js') },
-      // Resolve subpath .js imports from dsl-ui/src/ (generated entries.tsx uses these)
-      {
-        find: /^@wadeck-app\/dsl-ui\/src\/(.+)\.js$/,
-        replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/src/$1.tsx'),
-      },
-      // Resolve subpath .js imports from orch-ui/src/ (generated entries.tsx uses these)
-      {
-        find: /^\.\.\/\.\.\/\.\.\/orch-ui\/src\/(.+)\.js$/,
-        replacement: path.join(__dirname, '../orch-ui/src/$1.tsx'),
-      },
-      { find: '@wadeck-app/orch-ui',       replacement: path.join(orchUiSrc, 'index.ts') },
+      // Exact-match aliases for package roots (regex prevents prefix-matching subpath imports)
+      { find: /^@wadeck-app\/dsl-renderer$/, replacement: path.join(nodeModules, '@wadeck-app/dsl-renderer/dist/index.js') },
+      { find: /^@wadeck-app\/dsl-ui$/,       replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/dist/index.js') },
+      { find: /^@wadeck-app\/orch-ui$/,       replacement: path.join(orchUiSrc, 'index.ts') },
+      // Subpath imports (@wadeck-app/dsl-ui/src/...) fall through to the resolveId plugin
     ],
   },
   test: {

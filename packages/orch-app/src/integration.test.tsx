@@ -107,7 +107,7 @@ sections:
     job: $sources.jobData.job
   - $type: Section
     title: Run history
-    children:
+    items:
       - $type: RunHistory
         entries: $sources.jobData.runHistory
   - $type: JobDetailActions
