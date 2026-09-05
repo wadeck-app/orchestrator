@@ -12,6 +12,9 @@ export interface JobWithHistory { job: Job; runHistory: RuntimeEntry[]; uptimePe
 type ViewMode = 'grid' | 'list';
 
 const VIEW_MODE_KEY = 'orch-view-mode';
+// @formatter:off
+const ADD_JOB_BTN_CLS = 'px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover';
+// @formatter:on
 
 function readViewMode(): ViewMode {
   try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) ?? 'grid'; }
@@ -33,11 +36,11 @@ function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
 
 export interface JobCardGridProps {
   items?: JobWithHistory[];
-  // Filter props — driven by DSL $vars (JobSearchBar + JobFilterChips)
+  // Filter props -- driven by DSL $vars (JobSearchBar + JobFilterChips)
   search?: string;
   filter?: string;
   uptimeMap?: Record<string, number | null>;
-  // DSL $outputs callbacks — injected via registry-overrides when $id is declared
+  // DSL $outputs callbacks -- injected via registry-overrides when $id is declared
   onTrigger?: (id: string) => void;
   onToggle?: (id: string, enabled: boolean) => void;
   onJobClick?: (id: string) => void;
@@ -138,7 +141,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
           <button onClick={onImport} className="px-3 py-2 text-sm border border-border rounded-md text-muted hover:bg-muted-bg">Import</button>
         )}
         {/* violations-suppress: react/no-raw-button Add job navigation - Button does not support navigate() */}
-        <button onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} className="px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover">
+        <button onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} className={ADD_JOB_BTN_CLS}>
           Add job
         </button>
         {/* violations-suppress: react/no-raw-button icon-only toggle - Button requires label, icon-only unsupported */}

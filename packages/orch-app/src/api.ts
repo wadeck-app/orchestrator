@@ -63,7 +63,7 @@ export const api = {
     apiFetch<{ imported: number }>('/api/jobs/import', { method: 'POST', body: JSON.stringify(data) }),
   getHealth: () =>
     apiFetch<{ status: string; totalJobs: number; runningJobs: number; recentFailures: number; uptime: number; timestamp: string }>('/api/health'),
-  // One-shot exec API — run a command via the daemon without creating a permanent job
+  // One-shot exec API -- run a command via the daemon without creating a permanent job
   exec: (command: string, opts?: { cwd?: string; timeout?: number; env?: Record<string, string>; label?: string }) =>
     apiFetch<{ runId: string; pid: number | null; status: 'running' }>('/api/exec', { method: 'POST', body: JSON.stringify({ command, ...opts }) }),
   getExecRun: (runId: string) =>

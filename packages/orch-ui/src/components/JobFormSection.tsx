@@ -6,7 +6,7 @@ import { JobForm } from './JobForm.js';
 export interface JobFormSectionProps {
   jobId?: string;
   initial?: { job: Job };
-  /** DSL $outputs callbacks — injected via registry-overrides */
+  /** DSL $outputs callbacks -- injected via registry-overrides */
   onSubmit?: (data: Partial<Job>) => void | Promise<void>;
   onCancel?: () => void;
 }
@@ -21,8 +21,8 @@ export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCance
 
   const handleSubmit = async (data: Partial<Job>) => {
     if (!onSubmitProp) {
-      setError('[JobFormSection] onSubmit is not wired — add $brains.$http.post to the YAML page');
-      console.error('[JobFormSection] onSubmit prop is required — wire this component via YAML $brains');
+      setError('[JobFormSection] onSubmit is not wired -- add $brains.$http.post to the YAML page');
+      console.error('[JobFormSection] onSubmit prop is required -- wire this component via YAML $brains');
       return;
     }
     setError(null);

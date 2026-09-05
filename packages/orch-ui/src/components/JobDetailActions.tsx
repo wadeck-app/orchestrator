@@ -22,7 +22,7 @@ const TYPE_BADGE_COLORS: Record<string, string> = {
 export interface JobDetailActionsProps {
   job: Job;
   jobId: string;
-  /** DSL $outputs callbacks — injected by the registry when $id is declared on the node */
+  /** DSL $outputs callbacks -- injected by the registry when $id is declared on the node */
   onTrigger?: () => void;
   onDelete?: () => void;
   onDryRun?: () => void;

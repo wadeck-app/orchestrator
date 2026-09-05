@@ -195,7 +195,7 @@ export async function jobsRoutes(
     });
   });
 
-  // One-shot exec API — run a command without creating a permanent job
+  // One-shot exec API -- run a command without creating a permanent job
   fastify.post('/api/exec', async (req, reply) => {
     return guard(reply, async () => {
       const { command, cwd, timeout, env, label } = req.body as {

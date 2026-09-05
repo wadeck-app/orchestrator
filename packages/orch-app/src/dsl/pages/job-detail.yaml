@@ -21,6 +21,21 @@ $brains:
     id: $route.id
     _event: $outputs.jobActions.onDelete
 
+  navigateAfterDelete:
+    $brain: $brains.$ctx.navigate
+    to: /
+    _event: $outputs.jobActions.onDelete
+
+  navigateViewLogs:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}/logs
+    _event: $outputs.jobActions.onViewLogs
+
+  navigateEdit:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}/edit
+    _event: $outputs.jobActions.onEdit
+
 $type: PageContent
 sections:
   - $type: PageHeader
@@ -32,6 +47,8 @@ sections:
     $outputs:
       onTrigger: [_]
       onDelete: [_]
+      onViewLogs: [_]
+      onEdit: [_]
   - $type: JobConfigDisplay
     job: $sources.jobData.job
   - $type: Section

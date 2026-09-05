@@ -98,13 +98,13 @@ Job mutation:
   orch disable <id>            Disable a job
   orch edit <id> [--schedule <expr>] [--delay <s>] [--command <c>] [--label <t>] ...
 
-Schedule format (cron jobs): standard 5-field cron — min hour day month weekday
+Schedule format (cron jobs): standard 5-field cron -- min hour day month weekday
   Examples: "*/5 * * * *"   every 5 minutes
             "0 9 * * 1-5"   9 AM on weekdays
             "30 8 * * *"    8:30 AM daily
 
 Liveness strategies (skip firing if target is already alive):
-  none       Always fire — no liveness check (default)
+  none       Always fire -- no liveness check (default)
   portFile   Read <portFile>, check if its PID is alive → skip if alive
   pidFile    Find PID file by job id → skip if PID is alive
   command    Run <command> → skip if it exits 0

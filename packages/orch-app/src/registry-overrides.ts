@@ -52,7 +52,7 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
     jt.render = withOutputCallbacks(jt.render, ['onToggle']);
   }
 
-  // JobCardGrid: custom overrides — onToggle publishes {id, action} object,
+  // JobCardGrid: custom overrides -- onToggle publishes {id, action} object,
   // onTrigger/onJobClick publish the job ID string, onAddJob publishes nothing.
   const jcg = registry['JobCardGrid'];
   if (jcg) {

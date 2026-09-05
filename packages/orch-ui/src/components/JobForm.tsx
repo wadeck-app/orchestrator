@@ -1,3 +1,4 @@
+// violations-suppress: ts/no-inline-subcomponent CronBuilder is tightly coupled to JobForm state and not reused elsewhere
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import type { Job, MissedFiring, LivenessConfig, LivenessStrategy } from '../types.js';
@@ -6,8 +7,9 @@ import { FieldText } from './FieldText.js';
 import { FieldNumber } from './FieldNumber.js';
 
 // @formatter:off
-const CHIP_BTN_CLS  = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
-const MONO_INPUT    = 'w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono';
+const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
+const MONO_INPUT     = 'w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono';
+const WAND_BTN_CLS   = 'mb-1 p-2 rounded border border-border text-muted hover:text-content hover:bg-muted-bg transition-colors';
 const FULL_INPUT    = 'w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
 
 const CRON_TEMPLATES = [
@@ -139,6 +141,7 @@ function CronBuilder({ onChange, onClose }: { value: string; onChange: (v: strin
         <div className="flex gap-2">
           {/* violations-suppress: react/no-raw-button cron builder action buttons - compact inline wizard */}
           <button type="button" onClick={onClose} className="text-xs text-muted hover:text-content">Cancel</button>
+          {/* violations-suppress: react/no-raw-button cron builder apply - compact inline wizard */}
           <button type="button" onClick={() => onChange(preview)}
             className="text-xs px-3 py-1 rounded bg-primary text-on-primary hover:bg-primary-hover">Apply</button>
         </div>
@@ -307,7 +310,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
             </div>
             {/* violations-suppress: react/no-raw-button cron builder toggle - compact icon button, no Button variant fits */}
             <button type="button" onClick={() => setShowBuilder(v => !v)} title="Open cron builder"
-              className="mb-1 p-2 rounded border border-border text-muted hover:text-content hover:bg-muted-bg transition-colors">
+              className={WAND_BTN_CLS}>
               <Wand2 size={14} />
             </button>
           </div>

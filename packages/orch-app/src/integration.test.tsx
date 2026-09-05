@@ -82,14 +82,41 @@ const MOCK_JOB_DETAIL = {
 // -- YAML strings (inline - not loaded from disk) ------------------------------
 
 const JOB_LIST_YAML = `
+$vars:
+  search: ""
+  filter: "all"
+
 $sources:
   jobs:
     url: GET /api/jobs
 
+$brains:
+  updateSearch:
+    $brain: $brains.$ctx.setVar
+    varName: search
+    value: $outputs.jobSearchBar.onChange
+  updateFilter:
+    $brain: $brains.$ctx.setVar
+    varName: filter
+    value: $outputs.jobFilterChips.onChange
+
 $type: PageContent
 sections:
+  - $type: JobSearchBar
+    $id: jobSearchBar
+    value: $vars.search
+    $outputs:
+      onChange: [value]
+  - $type: JobFilterChips
+    $id: jobFilterChips
+    selected: $vars.filter
+    $outputs:
+      onChange: [selected]
   - $type: JobCardGrid
+    $id: jobGrid
     items: $sources.jobs
+    search: $vars.search
+    filter: $vars.filter
 `;
 
 const JOB_DETAIL_YAML = `
@@ -355,5 +382,30 @@ describe('Job list page - view toggle (Feature: list/grid switch)', () => {
       const rows = screen.getAllByRole('row');
       expect(rows.length).toBeGreaterThan(1);
     });
+  });
+});
+
+describe('Job detail page - action button navigation (TDD)', () => {
+  // When JobDetailActions has no $id/$outputs declared (no publishOutput injected),
+  // View logs and Edit must render as <Link> elements with correct hrefs.
+  // This guards against regressions where the buttons silently do nothing.
+
+  it('Test 18: "View logs" renders as a navigable link to /jobs/:id/logs', async () => {
+    server.use(http.get('http://localhost/api/jobs/backup-db', () => HttpResponse.json(MOCK_JOB_DETAIL)));
+    renderJobDetail('backup-db');
+    await waitFor(() => expect(screen.getByText('Database backup')).toBeInTheDocument());
+    // Without $id/$outputs in test YAML, JobDetailActions falls back to <Link>
+    const viewLogsLink = screen.getByRole('link', { name: /view logs/i });
+    expect(viewLogsLink).toBeInTheDocument();
+    expect(viewLogsLink).toHaveAttribute('href', '/jobs/backup-db/logs');
+  });
+
+  it('Test 19: "Edit" renders as a navigable link to /jobs/:id/edit', async () => {
+    server.use(http.get('http://localhost/api/jobs/backup-db', () => HttpResponse.json(MOCK_JOB_DETAIL)));
+    renderJobDetail('backup-db');
+    await waitFor(() => expect(screen.getByText('Database backup')).toBeInTheDocument());
+    const editLink = screen.getByRole('link', { name: /^edit$/i });
+    expect(editLink).toBeInTheDocument();
+    expect(editLink).toHaveAttribute('href', '/jobs/backup-db/edit');
   });
 });
