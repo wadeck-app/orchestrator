@@ -220,4 +220,25 @@ export async function jobsRoutes(
     });
   });
 
+  fastify.get('/api/health', async (_req, reply) => {
+    return guard(reply, async () => {
+      const [jobs, stateData] = await Promise.all([
+        proxy.send('list-jobs') as Promise<{ id: string }[]>,
+        proxy.send('list-state') as Promise<Record<string, { exitCode: number | null }[]>>,
+      ]);
+      const runningCount = Object.values(stateData)
+        .filter(entries => entries[0]?.exitCode === null).length;
+      const failureCount = Object.values(stateData)
+        .filter(entries => entries[0]?.exitCode !== null && entries[0]?.exitCode !== 0).length;
+      return reply.send({
+        status: failureCount > 0 ? 'degraded' : runningCount > 0 ? 'busy' : 'ok',
+        totalJobs: jobs.length,
+        runningJobs: runningCount,
+        recentFailures: failureCount,
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+      });
+    });
+  });
+
 }

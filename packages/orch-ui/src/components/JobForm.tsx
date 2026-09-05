@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Wand2 } from 'lucide-react';
 import type { Job, MissedFiring, LivenessConfig, LivenessStrategy } from '../types.js';
 import { Button } from './Button.js';
 import { FieldText } from './FieldText.js';
@@ -41,6 +41,112 @@ function parseCron(expr: string): string | null {
   return null;
 }
 
+// ─── Cron Builder ─────────────────────────────────────────────────────────────
+
+type CronFreq = 'minutely' | 'every-n-min' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+function buildCron(freq: CronFreq, n: number, h: number, m: number, day: number, weekdays: boolean[]): string {
+  const mm = String(m).padStart(2, '0');
+  switch (freq) {
+    case 'minutely':   return '* * * * *';
+    case 'every-n-min': return `*/${n} * * * *`;
+    case 'hourly':     return `${m} * * * *`;
+    case 'daily':      return `${m} ${h} * * *`;
+    case 'weekdays':   return `${m} ${h} * * 1-5`;
+    case 'weekly': {
+      const picked = weekdays.map((on, i) => on ? i + 1 : null).filter(Boolean).join(',') || '1';
+      return `${m} ${h} * * ${picked}`;
+    }
+    case 'monthly':    return `${m} ${h} ${day} * *`;
+    default:           return '';
+  }
+  void mm;
+}
+
+function CronBuilder({ onChange, onClose }: { value: string; onChange: (v: string) => void; onClose: () => void }): React.ReactElement {
+  const [freq, setFreq] = useState<CronFreq>('daily');
+  const [n, setN] = useState(10);
+  const [h, setH] = useState(10);
+  const [m, setM] = useState(0);
+  const [dom, setDom] = useState(1);
+  const [weekdays, setWeekdays] = useState([true, true, true, true, true, false, false]);
+  const preview = buildCron(freq, n, h, m, dom, weekdays);
+  // @formatter:off
+  const SEL = 'rounded border border-border px-2 py-1 text-sm bg-surface text-content focus:outline-none';
+  // @formatter:on
+  return (
+    <div className="mt-2 p-3 rounded border border-border bg-muted-bg space-y-2 text-sm">
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-muted shrink-0">Frequency:</label>
+        {/* violations-suppress: react/no-raw-input cron builder select - compact wizard control */}
+        <select className={SEL} value={freq} onChange={e => setFreq(e.target.value as CronFreq)}>
+          <option value="minutely">Every minute</option>
+          <option value="every-n-min">Every N minutes</option>
+          <option value="hourly">Every hour</option>
+          <option value="daily">Daily</option>
+          <option value="weekdays">Weekdays (Mon-Fri)</option>
+          <option value="weekly">Specific days</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        {freq === 'every-n-min' && (
+          // violations-suppress: react/no-raw-input cron builder number input - compact wizard control
+          <input type="number" min={1} max={59} value={n} onChange={e => setN(Number(e.target.value))} className={`${SEL} w-16`} />
+        )}
+        {['daily','weekdays','weekly','monthly'].includes(freq) && (
+          <>
+            <label className="text-muted">at</label>
+            {/* violations-suppress: react/no-raw-input cron builder time selects - compact wizard control */}
+            <select className={SEL} value={h} onChange={e => setH(Number(e.target.value))}>
+              {Array.from({length:24},(_,i)=><option key={i} value={i}>{String(i).padStart(2,'0')}</option>)}
+            </select>
+            <span className="text-muted">:</span>
+            <select className={SEL} value={m} onChange={e => setM(Number(e.target.value))}>
+              {[0,5,10,15,20,25,30,35,40,45,50,55].map(v=><option key={v} value={v}>{String(v).padStart(2,'0')}</option>)}
+            </select>
+          </>
+        )}
+        {freq === 'monthly' && (
+          <>
+            <label className="text-muted">on day</label>
+            <select className={SEL} value={dom} onChange={e => setDom(Number(e.target.value))}>
+              {Array.from({length:28},(_,i)=><option key={i+1} value={i+1}>{i+1}</option>)}
+            </select>
+          </>
+        )}
+        {freq === 'hourly' && (
+          <>
+            <label className="text-muted">at minute</label>
+            <select className={SEL} value={m} onChange={e => setM(Number(e.target.value))}>
+              {[0,5,10,15,20,25,30,35,40,45,50,55].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+          </>
+        )}
+      </div>
+      {freq === 'weekly' && (
+        <div className="flex gap-1 flex-wrap">
+          {DAYS.map((d, i) => (
+            // violations-suppress: react/no-raw-button day toggle chip - compact wizard day selection
+            <button key={d} type="button" onClick={() => setWeekdays(prev => prev.map((v, j) => j === i ? !v : v))}
+              className={`px-2 py-0.5 rounded text-xs border ${weekdays[i] ? 'bg-primary text-on-primary border-primary' : 'border-border text-muted bg-surface'}`}>
+              {d}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <code className="text-xs text-muted bg-surface border border-border rounded px-2 py-0.5">{preview}</code>
+        <div className="flex gap-2">
+          {/* violations-suppress: react/no-raw-button cron builder action buttons - compact inline wizard */}
+          <button type="button" onClick={onClose} className="text-xs text-muted hover:text-content">Cancel</button>
+          <button type="button" onClick={() => onChange(preview)}
+            className="text-xs px-3 py-1 rounded bg-primary text-on-primary hover:bg-primary-hover">Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * @registryCategory composite
  * @registryTags form job edit create
@@ -56,6 +162,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
   const [missedFiring, setMissedFiring] = useState<MissedFiring>(initial?.missedFiring ?? 'skip');
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(initial?.timeoutSeconds ?? 300);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>();
 
@@ -194,8 +301,20 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
 
       {type === 'cron' && (
         <div>
-          <FieldText label="Schedule (cron expression)" value={schedule} onChange={setSchedule} placeholder="*/5 * * * *" error={errors?.schedule} />
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <FieldText label="Schedule (cron expression)" value={schedule} onChange={setSchedule} placeholder="*/5 * * * *" error={errors?.schedule} />
+            </div>
+            {/* violations-suppress: react/no-raw-button cron builder toggle - compact icon button, no Button variant fits */}
+            <button type="button" onClick={() => setShowBuilder(v => !v)} title="Open cron builder"
+              className="mb-1 p-2 rounded border border-border text-muted hover:text-content hover:bg-muted-bg transition-colors">
+              <Wand2 size={14} />
+            </button>
+          </div>
           {cronHint && <p className="mt-1 text-xs text-primary">{cronHint}</p>}
+          {showBuilder && (
+            <CronBuilder value={schedule} onChange={v => { setSchedule(v); setShowBuilder(false); }} onClose={() => setShowBuilder(false)} />
+          )}
           <div className="flex flex-wrap gap-1 mt-2">
             {CRON_TEMPLATES.map(t => (
               // violations-suppress: react/no-raw-button cron template chip - Button component doesn't fit compact chip pattern

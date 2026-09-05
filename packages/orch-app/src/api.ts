@@ -77,4 +77,6 @@ export const api = {
     apiFetch<void>(`/api/webhooks/${id}`, { method: 'DELETE' }),
   toggleWebhook: (id: string) =>
     apiFetch<WebhookConfig | null>(`/api/webhooks/${id}/toggle`, { method: 'PATCH', body: '{}' }),
+  getHealth: () =>
+    apiFetch<{ status: string; totalJobs: number; runningJobs: number; recentFailures: number; uptime: number; timestamp: string }>('/api/health'),
 };

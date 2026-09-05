@@ -51,6 +51,13 @@ function syncDir(src, dst) {
 syncDir(resolve(ROOT, 'packages/orchestrator-cli/dist'), resolve(globalPkg, 'dist'));
 syncDir(resolve(ROOT, 'packages/orchestrator-cli/server/dist'), resolve(globalPkg, 'server/dist'));
 syncDir(resolve(ROOT, 'packages/orchestrator-cli/server/public'), resolve(globalPkg, 'server/public'));
+// Sync runtime deps that aren't in the published package (added locally)
+const runtimeDeps = ['pidusage'];
+for (const dep of runtimeDeps) {
+  const src = resolve(ROOT, 'node_modules', dep);
+  const dst = resolve(globalRoot, dep);
+  if (existsSync(src)) { syncDir(src, dst); }
+}
 console.log(`✓ synced to global install at ${globalPkg}`);
 
 console.log('\nDone. Run: orch server stop && orch server start');
