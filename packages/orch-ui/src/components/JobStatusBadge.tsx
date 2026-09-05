@@ -10,10 +10,10 @@ export interface JobStatusBadgeProps {
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname no status-semantic tokens (success/warning/error) in design system; raw palette required for traffic-light status colors
 // @formatter:off
 const BADGE_BASE = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium';
-export const BADGE_RUNNING = `${BADGE_BASE} bg-yellow-100 text-yellow-800`;
-export const BADGE_OK      = `${BADGE_BASE} bg-green-100 text-green-800`;
-export const BADGE_FAILED  = `${BADGE_BASE} bg-red-100 text-red-800`;
-export const BADGE_NEVER   = `${BADGE_BASE} bg-gray-100 text-gray-600`;
+export const BADGE_RUNNING = `${BADGE_BASE} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+export const BADGE_OK      = `${BADGE_BASE} bg-green-100  text-green-800  dark:bg-green-900  dark:text-green-200`;
+export const BADGE_FAILED  = `${BADGE_BASE} bg-red-100    text-red-800    dark:bg-red-900    dark:text-red-200`;
+export const BADGE_NEVER   = `${BADGE_BASE} bg-gray-100   text-gray-600   dark:bg-gray-800   dark:text-gray-300`;
 // @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
 

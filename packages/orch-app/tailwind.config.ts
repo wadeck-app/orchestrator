@@ -7,7 +7,7 @@ export default {
     '../orch-ui/src/**/*.{ts,tsx}',
     '../../node_modules/@wadeck-app/dsl-ui/src/**/*.{ts,tsx}',
   ],
-  darkMode: 'class',
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
@@ -42,11 +42,11 @@ export default {
     },
   },
   safelist: [
-    // JobStatusBadge fixed palette (no semantic token at this granularity)
-    'bg-yellow-100', 'text-yellow-800',
-    'bg-green-100',  'text-green-800',
-    'bg-red-100',    'text-red-800',
-    'bg-gray-100',   'text-gray-600',
+    // JobStatusBadge fixed palette — light + dark variants
+    'bg-yellow-100', 'text-yellow-800', 'dark:bg-yellow-900', 'dark:text-yellow-200',
+    'bg-green-100',  'text-green-800',  'dark:bg-green-900',  'dark:text-green-200',
+    'bg-red-100',    'text-red-800',    'dark:bg-red-900',    'dark:text-red-200',
+    'bg-gray-100',   'text-gray-600',   'dark:bg-gray-800',   'dark:text-gray-300',
     // JobCard type badge colors (semantic tokens, dark-mode aware)
     'bg-tag-cron-bg', 'text-tag-cron',
     'bg-tag-startup-bg', 'text-tag-startup',
