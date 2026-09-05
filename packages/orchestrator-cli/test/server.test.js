@@ -34,7 +34,7 @@ async function makeTestDaemon(dir, { withScheduler = false } = {}) {
     : { trigger: async (id) => { throw new Error(`Job not found: "${id}"`); }, start: async () => {}, stop: async () => {} };
   registry.load();
 
-  const handle = await createTestDaemon({ commands: makeCommands(registry, state, scheduler) });
+  const handle = await createTestDaemon({ commands: makeCommands(registry, state, scheduler, dir) });
   return { handle, registry, state, client: handle.client };
 }
 
