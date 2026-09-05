@@ -52,10 +52,28 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
     jt.render = withOutputCallbacks(jt.render, ['onToggle']);
   }
 
-  // JobCardGrid: navigation and mutation callbacks as DSL $outputs
+  // JobCardGrid: custom overrides — onToggle publishes {id, action} object,
+  // onTrigger/onJobClick publish the job ID string, onAddJob publishes nothing.
   const jcg = registry['JobCardGrid'];
   if (jcg) {
-    jcg.render = withOutputCallbacks(jcg.render, ['onTrigger', 'onToggle', 'onJobClick', 'onAddJob', 'onBulkEnable', 'onBulkDisable', 'onBulkTrigger', 'onBulkDelete']);
+    const originalJcg = jcg.render;
+    jcg.render = (props) => {
+      const { node, ctx } = props;
+      const id = node['$id'] as string | undefined;
+      const pub = ctx['$publishOutput'] as PublishFn | undefined;
+      if (!id || !pub) return originalJcg(props);
+      const extra = {
+        onTrigger: (jobId: string) => pub(id, 'onTrigger', jobId),
+        onToggle: (jobId: string, enabled: boolean) => pub(id, 'onToggle', { id: jobId, action: enabled ? 'enable' : 'disable' }),
+        onJobClick: (jobId: string) => pub(id, 'onJobClick', jobId),
+        onAddJob: () => pub(id, 'onAddJob', undefined),
+        onBulkEnable: (ids: string[]) => pub(id, 'onBulkEnable', ids),
+        onBulkDisable: (ids: string[]) => pub(id, 'onBulkDisable', ids),
+        onBulkTrigger: (ids: string[]) => pub(id, 'onBulkTrigger', ids),
+        onBulkDelete: (ids: string[]) => pub(id, 'onBulkDelete', ids),
+      };
+      return originalJcg({ ...props, node: { ...node, ...extra } });
+    };
   }
 
   // JobFormSection: form lifecycle as DSL $outputs

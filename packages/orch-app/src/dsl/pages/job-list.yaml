@@ -22,6 +22,32 @@ $brains:
     value: $outputs.jobFilterChips.onChange
     _event: $outputs.jobFilterChips.onChange
 
+  triggerJob:
+    $brain: $brains.$http.post
+    url: POST /api/jobs/{id}/trigger
+    id: $outputs.jobGrid.onTrigger
+    _event: $outputs.jobGrid.onTrigger
+    $reload: [jobs]
+
+  toggleJob:
+    $brain: $brains.$http.post
+    url: POST /api/jobs/{id}/{action}
+    id: $outputs.jobGrid.onToggle.id
+    action: $outputs.jobGrid.onToggle.action
+    _event: $outputs.jobGrid.onToggle
+    $reload: [jobs]
+
+  navigateToJob:
+    $brain: $brains.$ctx.navigate
+    route: /jobs/{id}
+    id: $outputs.jobGrid.onJobClick
+    _event: $outputs.jobGrid.onJobClick
+
+  navigateToNewJob:
+    $brain: $brains.$ctx.navigate
+    route: /jobs/new
+    _event: $outputs.jobGrid.onAddJob
+
 $type: PageContent
 sections:
   - $type: PageHeader
@@ -41,3 +67,8 @@ sections:
     items: $sources.jobs
     search: $vars.search
     filter: $vars.filter
+    $outputs:
+      onTrigger: [id]
+      onToggle: [id, action]
+      onJobClick: [id]
+      onAddJob: [_]
