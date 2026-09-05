@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 
 // @formatter:off
 const DATE_HDR_CLS = 'text-xs font-semibold text-muted uppercase tracking-wide pt-3 pb-1 border-b border-border';
 // @formatter:on
 
-interface ScheduleEntry {
+export interface ScheduleEntry {
   jobId: string;
   label: string;
   next: string[];
@@ -17,7 +17,7 @@ interface FlatFiring {
 }
 
 export interface ScheduleTimelineProps {
-  apiBase?: string;
+  firings?: ScheduleEntry[];
 }
 
 function relTime(iso: string): string {
@@ -48,31 +48,12 @@ const OS_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * @registryCategory composite
  * @registryTags schedule timeline cron firings
  */
-export function ScheduleTimeline({ apiBase = '' }: ScheduleTimelineProps): React.ReactElement {
-  const [firings, setFirings] = useState<FlatFiring[]>([]);
-  const [loading, setLoading] = useState(true);
+export function ScheduleTimeline({ firings = [] }: ScheduleTimelineProps): React.ReactElement {
+  const flat: FlatFiring[] = (firings as ScheduleEntry[]).flatMap(e =>
+    (e.next ?? []).map(ts => ({ ts, label: e.label, jobId: e.jobId }))
+  ).sort((a, b) => a.ts.localeCompare(b.ts));
 
-  useEffect(() => {
-    fetch(`${apiBase}/api/schedule`)
-      .then(r => r.json())
-      .then((data: ScheduleEntry[]) => {
-        const flat: FlatFiring[] = data.flatMap(e =>
-          e.next.map(ts => ({ ts, label: e.label, jobId: e.jobId }))
-        );
-        flat.sort((a, b) => a.ts.localeCompare(b.ts));
-        setFirings(flat);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [apiBase]);
-
-  if (loading) return (
-    <div className="flex justify-center py-12">
-      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-
-  if (firings.length === 0) return (
+  if (flat.length === 0) return (
     <>
       <p className="text-xs text-muted mb-4">Times shown in: {OS_TZ}</p>
       <p className="text-muted text-center py-12">No upcoming cron jobs in the next 24h.</p>
@@ -83,7 +64,7 @@ export function ScheduleTimeline({ apiBase = '' }: ScheduleTimelineProps): React
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted pb-2">Times shown in: {OS_TZ}</p>
-      {firings.map((f, i) => {
+      {flat.map((f, i) => {
         const date = fmtDate(f.ts);
         const showDate = date !== lastDate;
         lastDate = date;

@@ -1,7 +1,12 @@
 $route: /schedule
 
+$sources:
+  schedule:
+    url: GET /api/schedule
+
 $type: PageContent
 sections:
   - $type: PageHeader
     title: Upcoming schedule
   - $type: ScheduleTimeline
+    firings: $sources.schedule

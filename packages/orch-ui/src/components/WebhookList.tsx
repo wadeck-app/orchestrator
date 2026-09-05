@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Bell, Trash2, ToggleLeft, ToggleRight, Plus } from 'lucide-react';
 import { getErrorMessage } from '../types.js';
 
@@ -11,7 +11,7 @@ export interface WebhookConfig {
 }
 
 export interface WebhookListProps {
-  apiBase?: string;
+  webhooks?: WebhookConfig[];
 }
 
 const WEBHOOK_EVENTS = [
@@ -36,18 +36,13 @@ const BTN_P_CLS  = 'px-3 py-1.5 rounded bg-primary text-on-primary text-sm font-
  * @registryCategory composite
  * @registryTags webhook notification
  */
-export function WebhookList({ apiBase = '' }: WebhookListProps): React.ReactElement {
-  const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
+export function WebhookList({ webhooks: initialWebhooks = [] }: WebhookListProps): React.ReactElement {
+  // Local state initialised from prop; mutations update it optimistically
+  const [webhooks, setWebhooks] = useState<WebhookConfig[]>(initialWebhooks);
   const [url, setUrl] = useState('');
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set(['job.failed', 'job.recovered']));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const load = (): void => {
-    fetch(`${apiBase}/api/webhooks`).then(r => r.json()).then((data: WebhookConfig[]) => setWebhooks(data)).catch(() => setWebhooks([]));
-  };
-
-  useEffect(() => { load(); }, []);
 
   const handleAdd = async (): Promise<void> => {
     if (!url.trim() || selectedEvents.size === 0) return;
@@ -59,23 +54,23 @@ export function WebhookList({ apiBase = '' }: WebhookListProps): React.ReactElem
         events: [...selectedEvents],
         enabled: true,
       };
-      const res = await fetch(`${apiBase}/api/webhooks`, {
+      const res = await fetch('/api/webhooks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wh),
       });
       if (!res.ok) throw new Error(res.statusText);
+      setWebhooks(prev => [...prev, wh]);
       setUrl(''); setSelectedEvents(new Set(['job.failed', 'job.recovered']));
-      load();
     } catch (e) { setError(getErrorMessage(e)); } finally { setSaving(false); }
   };
 
   const handleRemove = async (id: string): Promise<void> => {
-    await fetch(`${apiBase}/api/webhooks/${id}`, { method: 'DELETE' });
-    load();
+    await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+    setWebhooks(prev => prev.filter(w => w.id !== id));
   };
 
   const handleToggle = async (id: string): Promise<void> => {
-    await fetch(`${apiBase}/api/webhooks/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    load();
+    await fetch(`/api/webhooks/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    setWebhooks(prev => prev.map(w => w.id === id ? { ...w, enabled: !w.enabled } : w));
   };
 
   const toggleEvent = (ev: string): void => {
@@ -88,10 +83,6 @@ export function WebhookList({ apiBase = '' }: WebhookListProps): React.ReactElem
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-content flex items-center gap-2">
-        <Bell size={18} className="text-primary" />Webhooks
-      </h2>
-
       {/* Existing webhooks */}
       {webhooks.length > 0 && (
         <table className={TABLE_CLS}>
@@ -131,6 +122,7 @@ export function WebhookList({ apiBase = '' }: WebhookListProps): React.ReactElem
       {/* Add webhook form */}
       <div className="rounded border border-border p-4 space-y-3">
         <p className="text-sm font-medium text-content flex items-center gap-1"><Plus size={14} />Add webhook</p>
+        {/* violations-suppress: react/no-raw-input URL input without FieldText wrapper - FieldText requires a label prop */}
         <input className={INPUT_CLS} type="url" placeholder="https://example.com/webhook" value={url} onChange={e => setUrl(e.target.value)} />
         <div className="flex flex-wrap gap-2">
           {WEBHOOK_EVENTS.map(ev => (

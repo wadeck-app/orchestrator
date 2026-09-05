@@ -1,5 +1,5 @@
 // violations-suppress: ts/no-inline-subcomponent EventIcon is a pure render helper (icon selector), not a reusable subcomponent; extracting it adds no DX value
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   CheckCircle, XCircle, Play, Clock, Plus, Trash2,
   Pencil, ToggleLeft, ToggleRight, Power, RefreshCw,
@@ -12,7 +12,7 @@ export interface AuditEntry {
 }
 
 export interface AuditLogProps {
-  apiBase?: string;
+  entries?: AuditEntry[];
 }
 
 // violations-suppress: ts/no-inline-subcomponent EventIcon is a pure icon selector, not a reusable component; extracting it to a separate file adds overhead without benefit
@@ -78,23 +78,7 @@ function relTime(iso: string): string {
  * @registryCategory composite
  * @registryTags audit log timeline events
  */
-export function AuditLog({ apiBase = '' }: AuditLogProps): React.ReactElement {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${apiBase}/api/audit?limit=100`)
-      .then(r => r.json())
-      .then((data: AuditEntry[]) => { setEntries(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [apiBase]);
-
-  if (loading) return (
-    <div className="flex justify-center py-12">
-      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
-
+export function AuditLog({ entries = [] }: AuditLogProps): React.ReactElement {
   if (entries.length === 0) return (
     <p className="text-muted text-center py-12">No audit events yet.</p>
   );
@@ -102,16 +86,14 @@ export function AuditLog({ apiBase = '' }: AuditLogProps): React.ReactElement {
   return (
     <div className="space-y-0.5">
       {entries.map((e, i) => (
-        <div key={i} className="flex items-center gap-3 py-2 rounded hover:bg-muted-bg text-sm">
-          <span className="shrink-0 flex items-center justify-center w-5">
+        <div key={i} className="flex items-center py-2 rounded hover:bg-muted-bg text-sm">
+          <div className="flex-1 min-w-0 flex items-center gap-2">
             <EventIcon event={e.event} entry={e} />
-          </span>
-          <div className="flex-1 min-w-0">
             <span className="font-medium text-content">{e.event}</span>
             {' '}
             <span className="text-muted truncate">{formatDetails(e)}</span>
           </div>
-          <span className="shrink-0 text-xs text-muted" title={e.ts}>{relTime(e.ts)}</span>
+          <span className="shrink-0 text-xs text-muted ml-4" title={e.ts}>{relTime(e.ts)}</span>
         </div>
       ))}
     </div>

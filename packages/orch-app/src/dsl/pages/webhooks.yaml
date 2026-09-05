@@ -1,8 +1,12 @@
 $route: /webhooks
 
+$sources:
+  webhooks:
+    url: GET /api/webhooks
+
 $type: PageContent
 sections:
-  - $type: BackLink
-    to: /
-    label: Back to jobs
+  - $type: PageHeader
+    title: Webhooks
   - $type: WebhookList
+    webhooks: $sources.webhooks
