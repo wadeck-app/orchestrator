@@ -11,7 +11,6 @@ import type { AuditLogger } from './audit.js';
 import type { EventPublisher } from './event-publisher.js';
 import type { ExecManager } from './exec-manager.js';
 import { getNextFirings } from './cronNext.js';
-import { WebhookManager, type WebhookConfig } from './webhook-manager.js';
 import { SecretsManager } from './secrets.js';
 
 
@@ -122,23 +121,6 @@ export function makeCommands(
     'delete-secret': (p) => {
       const { name } = p as { name: string };
       secrets.delete(name);
-    },
-
-    'list-webhooks': () => {
-      const wm = new WebhookManager(configDir);
-      return wm.load();
-    },
-    'add-webhook': (p) => {
-      const wm = new WebhookManager(configDir);
-      wm.add(p as WebhookConfig);
-    },
-    'remove-webhook': (p) => {
-      const wm = new WebhookManager(configDir);
-      wm.remove((p as { id: string }).id);
-    },
-    'toggle-webhook': (p) => {
-      const wm = new WebhookManager(configDir);
-      return wm.toggle((p as { id: string }).id);
     },
 
     'exec-run': (p) => {

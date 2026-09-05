@@ -170,31 +170,6 @@ export async function jobsRoutes(
     });
   });
 
-  fastify.get('/api/webhooks', async (_req, reply) => {
-    return guard(reply, async () => reply.send(await proxy.send('list-webhooks')));
-  });
-
-  fastify.post('/api/webhooks', async (req, reply) => {
-    return guard(reply, async () => {
-      await proxy.send('add-webhook', req.body);
-      return reply.code(201).send({ ok: true });
-    });
-  });
-
-  fastify.delete('/api/webhooks/:id', async (req, reply) => {
-    return guard(reply, async () => {
-      await proxy.send('remove-webhook', { id: (req.params as { id: string }).id });
-      return reply.code(204).send();
-    });
-  });
-
-  fastify.patch('/api/webhooks/:id/toggle', async (req, reply) => {
-    return guard(reply, async () => {
-      const result = await proxy.send('toggle-webhook', { id: (req.params as { id: string }).id });
-      return reply.send(result);
-    });
-  });
-
   fastify.post('/api/jobs/:id/dry-run', async (req, reply) => {
     return guard(reply, async () => {
       const result = await proxy.send('dry-run-job', { id: (req.params as { id: string }).id });

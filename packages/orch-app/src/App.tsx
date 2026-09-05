@@ -16,7 +16,6 @@ import jobFormEditYaml from './dsl/pages/job-form-edit.yaml?raw';
 import jobLogsYaml    from './dsl/pages/job-logs.yaml?raw';
 import auditYaml      from './dsl/pages/audit.yaml?raw';
 import scheduleYaml   from './dsl/pages/schedule.yaml?raw';
-import webhooksYaml   from './dsl/pages/webhooks.yaml?raw';
 
 function useFailures() {
   const [failures, setFailures] = useState<FailureEntry[]>([]);
@@ -77,9 +76,6 @@ export default function App(): React.ReactElement {
           } />
           <Route path="/schedule" element={
             <GenericPageRunner key="/schedule" yamlText={scheduleYaml} registry={appRegistry} fetcher={fetcher} />
-          } />
-          <Route path="/webhooks" element={
-            <GenericPageRunner key="/webhooks" yamlText={webhooksYaml} registry={appRegistry} fetcher={fetcher} />
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

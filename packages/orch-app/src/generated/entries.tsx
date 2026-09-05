@@ -696,8 +696,8 @@ export const AuditLogEntry: ComponentRegistryEntry = {
 	name: 'AuditLog', category: 'composite', tags: ["audit","log","timeline","events"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/AuditLog.js').AuditLogProps['apiBase']
-		return <AuditLog apiBase={apiBase} />
+		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../orch-ui/src/components/AuditLog.js').AuditLogProps['entries']
+		return <AuditLog entries={entries} />
 	},
 }
 
@@ -883,8 +883,8 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	name: 'ScheduleTimeline', category: 'composite', tags: ["schedule","timeline","cron","firings"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['apiBase']
-		return <ScheduleTimeline apiBase={apiBase} />
+		const firings = resolveExpressionValue(node['firings'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['firings']
+		return <ScheduleTimeline firings={firings} />
 	},
 }
 
@@ -912,8 +912,8 @@ export const WebhookListEntry: ComponentRegistryEntry = {
 	name: 'WebhookList', category: 'composite', tags: ["webhook","notification"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/WebhookList.js').WebhookListProps['apiBase']
-		return <WebhookList apiBase={apiBase} />
+		const webhooks = resolveExpressionValue(node['webhooks'], ctx) as import('../../../orch-ui/src/components/WebhookList.js').WebhookListProps['webhooks']
+		return <WebhookList webhooks={webhooks} />
 	},
 }
 // ─── All entries ──────────────────────────────────────────────────────────────

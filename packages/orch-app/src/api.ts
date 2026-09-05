@@ -1,13 +1,5 @@
 import type { Job, RuntimeEntry } from './types.js';
 
-export interface WebhookConfig {
-  id: string;
-  url: string;
-  events: string[];
-  enabled: boolean;
-  headers?: Record<string, string>;
-}
-
 export interface JobWithState {
   job: Job;
   runHistory: RuntimeEntry[];
@@ -69,14 +61,6 @@ export const api = {
   },
   importJobs: (data: { jobs: unknown[] }) =>
     apiFetch<{ imported: number }>('/api/jobs/import', { method: 'POST', body: JSON.stringify(data) }),
-  listWebhooks: () =>
-    apiFetch<WebhookConfig[]>('/api/webhooks'),
-  addWebhook: (wh: WebhookConfig) =>
-    apiFetch<{ ok: boolean }>('/api/webhooks', { method: 'POST', body: JSON.stringify(wh) }),
-  removeWebhook: (id: string) =>
-    apiFetch<void>(`/api/webhooks/${id}`, { method: 'DELETE' }),
-  toggleWebhook: (id: string) =>
-    apiFetch<WebhookConfig | null>(`/api/webhooks/${id}/toggle`, { method: 'PATCH', body: '{}' }),
   getHealth: () =>
     apiFetch<{ status: string; totalJobs: number; runningJobs: number; recentFailures: number; uptime: number; timestamp: string }>('/api/health'),
   // One-shot exec API — run a command via the daemon without creating a permanent job

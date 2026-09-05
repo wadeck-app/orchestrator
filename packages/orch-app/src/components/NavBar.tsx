@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { Layers, LayoutGrid, Calendar, ScrollText, Bell, Moon, Sun } from 'lucide-react';
+import { Layers, LayoutGrid, Calendar, ScrollText, Moon, Sun } from 'lucide-react';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
@@ -55,9 +55,6 @@ export function NavBar(): React.ReactElement {
         </NavLink>
         <NavLink to="/audit" className={({ isActive }) => isActive ? NAV_LINK_ACTIVE : NAV_LINK_BASE}>
           <ScrollText size={14} />Audit
-        </NavLink>
-        <NavLink to="/webhooks" className={({ isActive }) => isActive ? NAV_LINK_ACTIVE : NAV_LINK_BASE}>
-          <Bell size={14} />Webhooks
         </NavLink>
       </div>
       {/* Inline stats - always visible, compact */}
