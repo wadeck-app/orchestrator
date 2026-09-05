@@ -94,6 +94,10 @@ Last updated: 2026-09-05
 - [x] **DX-04** — `orch run <id>` CLI command
   - Trigger a job from the CLI directly
 
+- [x] **EXEC-01** — One-shot exec API + `orch exec "<cmd>"` CLI for agent delegation
+  - POST /api/exec, GET /api/exec/:runId, DELETE /api/exec/:runId
+  - In-memory run store with 1h TTL, logs captured, queue events emitted
+
 - [!] **DX-05** -- Config-as-code YAML watch -- REJECTED by user
   - Watch a YAML file for job definitions, auto-sync to registry
 

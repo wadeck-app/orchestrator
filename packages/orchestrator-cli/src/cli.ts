@@ -88,6 +88,7 @@ Job mutation:
 
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
+  orch exec "<cmd>" [--wait]   Run a one-shot command via the daemon (for agent delegation)
 
 Dashboard:
   orch server start            Start the web dashboard server (opens browser)
@@ -398,6 +399,31 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
       await send('edit-job', { id, updates });
       console.log(`Job "${id}" updated.`);
+      break;
+    }
+
+    case 'exec': {
+      // One-shot command execution via the daemon (for agent delegation)
+      const cmd = rest.join(' ');
+      if (!cmd.trim()) { console.error('Usage: orch exec "<command>"'); process.exit(1); }
+      const waitForExec = has(rest, '--wait');
+      const label = rest.find(a => a.startsWith('--label='))?.slice('--label='.length);
+      const cleanCmd = rest.filter(a => !a.startsWith('--')).join(' ');
+      const result = await send('exec-run', { command: cleanCmd || cmd, label }) as { runId: string; pid: number | null; status: string };
+      if (waitForExec) {
+        // Poll until done
+        let status = result.status;
+        while (status === 'running') {
+          await new Promise(r => setTimeout(r, 1000));
+          const s = await send('exec-status', { runId: result.runId }) as { status: string; exitCode: number | null };
+          status = s.status;
+          if (status !== 'running') {
+            console.log(`Exec ${result.runId} ${status} (exit ${s.exitCode ?? '?'})`);
+          }
+        }
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
       break;
     }
 

@@ -90,6 +90,10 @@ export type OrchestratorCommands = {
   'list-secrets':  (payload?: unknown) => string[];
   'set-secret':    (payload?: unknown) => void;
   'delete-secret': (payload?: unknown) => void;
+  'exec-run':    (payload?: unknown) => { runId: string; pid: number | null; status: 'running' };
+  'exec-status': (payload?: unknown) => import('./exec-manager.js').ExecRun | { error: string };
+  'exec-list':   (payload?: unknown) => import('./exec-manager.js').ExecRun[];
+  'exec-kill':   (payload?: unknown) => { ok: boolean };
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };

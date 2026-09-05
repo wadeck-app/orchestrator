@@ -9,6 +9,7 @@ import type { Scheduler } from './scheduler.js';
 import type { TrayManager } from './tray-manager.js';
 import type { AuditLogger } from './audit.js';
 import type { EventPublisher } from './event-publisher.js';
+import type { ExecManager } from './exec-manager.js';
 import { getNextFirings } from './cronNext.js';
 import { WebhookManager, type WebhookConfig } from './webhook-manager.js';
 import { SecretsManager } from './secrets.js';
@@ -26,6 +27,7 @@ export function makeCommands(
   trayManager?: TrayManager,
   audit?: AuditLogger,
   events?: EventPublisher,
+  execManager?: ExecManager,
 ): OrchestratorCommands {
   const secrets = new SecretsManager(configDir);
   return {
@@ -137,6 +139,23 @@ export function makeCommands(
     'toggle-webhook': (p) => {
       const wm = new WebhookManager(configDir);
       return wm.toggle((p as { id: string }).id);
+    },
+
+    'exec-run': (p) => {
+      if (!execManager) throw new Error('ExecManager not initialized');
+      const { command, cwd, timeout, env, label } = p as {
+        command: string; cwd?: string; timeout?: number; env?: Record<string, string>; label?: string;
+      };
+      if (!command?.trim()) throw new Error('command is required');
+      return execManager.fireExec(command, { cwd, timeout, env, label });
+    },
+    'exec-status': (p) => {
+      if (!execManager) throw new Error('ExecManager not initialized');
+      return execManager.get((p as { runId: string }).runId) ?? { error: 'not-found' };
+    },
+    'exec-list': () => execManager?.list() ?? [],
+    'exec-kill': (p) => {
+      return { ok: execManager?.kill((p as { runId: string }).runId) ?? false };
     },
 
     // quit is handled by the SDK's /quit route; stub so TypeScript accepts it.

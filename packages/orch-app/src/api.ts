@@ -79,4 +79,13 @@ export const api = {
     apiFetch<WebhookConfig | null>(`/api/webhooks/${id}/toggle`, { method: 'PATCH', body: '{}' }),
   getHealth: () =>
     apiFetch<{ status: string; totalJobs: number; runningJobs: number; recentFailures: number; uptime: number; timestamp: string }>('/api/health'),
+  // One-shot exec API — run a command via the daemon without creating a permanent job
+  exec: (command: string, opts?: { cwd?: string; timeout?: number; env?: Record<string, string>; label?: string }) =>
+    apiFetch<{ runId: string; pid: number | null; status: 'running' }>('/api/exec', { method: 'POST', body: JSON.stringify({ command, ...opts }) }),
+  getExecRun: (runId: string) =>
+    apiFetch<{ runId: string; command: string; status: string; exitCode: number | null; pid: number | null; logs: string[]; startedAt: string; finishedAt?: string }>(`/api/exec/${runId}`),
+  listExecRuns: () =>
+    apiFetch<Array<{ runId: string; command: string; status: string; exitCode: number | null; startedAt: string }>>('/api/exec'),
+  killExecRun: (runId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/exec/${runId}`, { method: 'DELETE' }),
 };

@@ -15,6 +15,7 @@ import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
+import { ExecManager } from './exec-manager.js';
 
 import type { OrchestratorCommands } from './types.js';
 
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
     }
 
     const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version, undefined, dashboardManager);
+    const execManager = new ExecManager(CONFIG_DIR, events);
 
     // Audit job events
     scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: { label: string } }) => {
@@ -89,7 +91,7 @@ async function main(): Promise<void> {
       configDir:   CONFIG_DIR,
       appVersion:  version,
       port:        47900,
-      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events),
+      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events, execManager),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
           void scheduler.stop();
           void trayManager.stop();
           void dashboardManager?.stop();
+          execManager.stop();
         },
       },
     });
