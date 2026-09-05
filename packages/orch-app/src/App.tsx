@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { GenericPageRunner } from '@wadeck-app/dsl-renderer';
-import { useHeartbeat } from './hooks/useHeartbeat.js';
 import { appRegistry } from './registry.js';
 import { fetcher } from './fetcher.js';
 import { api } from './api.js';
@@ -51,7 +50,6 @@ function useFailures() {
 }
 
 export default function App(): React.ReactElement {
-  useHeartbeat();
   const { failures, acknowledgeOne, acknowledgeAll } = useFailures();
   return (
     <BrowserRouter>

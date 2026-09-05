@@ -25,7 +25,9 @@ const CHIP_ACTIVE   = 'px-3 py-1 rounded-full text-sm font-medium bg-primary tex
 const CHIP_INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg text-muted border border-border hover:bg-border';
 const SEARCH_CLS    = 'flex-1 border border-border rounded-md px-3 py-2 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
 const ADD_BTN_CLS   = 'px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover';
-const BULK_BAR_CLS  = 'flex items-center gap-2 mb-3 p-2 bg-muted-bg rounded border border-border flex-wrap';
+// @formatter:off
+const BULK_BAR_CLS  = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 bg-surface rounded-lg border border-border shadow-lg flex-wrap max-w-2xl';
+// @formatter:on
 
 function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
   let count = 0;
