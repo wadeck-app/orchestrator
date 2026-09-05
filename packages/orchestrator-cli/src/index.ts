@@ -25,6 +25,14 @@ const { version } = require('../package.json') as { version: string };
 const CONFIG_DIR: string =
   process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator');
 
+// Suppress EPIPE errors on stdout/stderr globally.
+// When the launcher runs as a hidden window process, its stdout/stderr pipes can close
+// while the daemon is still running. Any console.log/console.error or process.stdout.write
+// then throws EPIPE — uncaught, it exits with code 1 with no log entry.
+// Suppressing EPIPE here makes the daemon survive pipe closure without crashing.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
+process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
+
 // Synchronous early-startup log written before any async operation.
 // Tells us whether the process reaches JS execution at all.
 // If a crash produces exit code 1 with no "daemon starting" in the log,
