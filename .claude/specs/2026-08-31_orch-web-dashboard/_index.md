@@ -63,3 +63,17 @@ Add a local web dashboard to the orchestrator daemon. A systray button opens a b
 | Version | Date | Summary |
 |---|---|---|
 | v0.1 | 2026-08-31 | Initial spec created |
+| v3.0 | 2026-09-05 | v3 scope approved: event queue, notifications, monitoring, tags, dark mode, WebSocket |
+
+## v3 Decisions (2026-09-05)
+
+| # | Decision | Status | Rationale |
+|---|---|---|---|
+| 18 | Event queue integration: all job lifecycle events pushed to queue daemon (localhost:47910) via fire-and-forget POST | Resolved | Decouples notifications, webhooks, SSE from scheduler; queue handles retries and DLQ |
+| 19 | Job tags/labels with deterministic color palette (6 colors, hash-based) | Resolved | Tag → filter in UI; color makes quick visual scanning easier |
+| 20 | Per-job environment variables stored in registry.json, merged with process.env at spawn | Resolved | Scrapers need custom env without modifying global environment |
+| 21 | Timezone shown at global level only, defaults to OS timezone (Intl.DateTimeFormat) | Resolved | Per-job timezone would be confusing; global OS default is the right expectation |
+| 22 | Job dependencies: A→B supported; complex DAGs are a "flow" use case, out of scope | Resolved | See guiding-principles.md P3 |
+| 23 | Anomaly detection: alert if duration > 3× rolling average (configurable) | Resolved | Catches stuck scrapers without requiring manual SLA config per job |
+| 24 | WebSocket real-time transport replaces SSE polling; plan exists at .claude/plans/2026-09-05_realtime-transport.md | Pending | Reduces latency and server load; complex implementation requires dedicated plan |
+| 25 | Dark mode: full CSS variable inversion; plan exists at .claude/plans/2026-09-05_dark-mode.md | Pending | Requires agent-browser validation for contrast |

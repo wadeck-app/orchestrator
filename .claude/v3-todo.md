@@ -1,6 +1,6 @@
 # Orchestrator v3 — Task Tracker
 
-Last updated: 2026-09-05 (EVENT-01 done)
+Last updated: 2026-09-05
 
 ## Legend
 - [ ] Not started
@@ -107,10 +107,23 @@ Last updated: 2026-09-05 (EVENT-01 done)
 
 ## Docs
 
-- [ ] **DOC-01** — Guiding principles doc + out-of-scope boundaries
-- [ ] **DOC-02** — Update spec _index.md with v3 decisions
+- [x] **DOC-01** — Guiding principles doc + out-of-scope boundaries
+- [x] **DOC-02** — Update spec _index.md with v3 decisions
 
 ---
+
+## Completed (v3 — 2026-09-05)
+- [x] **EVENT-01** — Job lifecycle events pushed to queue daemon (commit 6501da6)
+- [x] **MON-01** — Success streak counter on job cards (commit 4961a23)
+- [x] **UX-01** — Job templates with 5 common cron examples (commit 4961a23)
+- [x] **UX-02** — Tags/labels with 6-color semantic palette (commit 4961a23)
+- [x] **UX-04** — Global stats bar, toggleable (commit 4961a23)
+- [x] **UX-05** — Log search with highlight (commit 4961a23)
+- [x] **DX-01** — Per-job environment variables (commit 4961a23)
+- [x] **DX-04** — `orch run <id>` CLI command (commit 4961a23)
+- [x] **SCHED-01** — OS timezone shown in Schedule page (commit 4961a23)
+- [x] **DOC-01** — Guiding principles + out-of-scope docs
+- [x] **DOC-02** — Spec _index.md updated with v3 decisions
 
 ## Completed (v2)
 - [x] Job list with last run, duration, mini pass/fail dots
@@ -120,6 +133,5 @@ Last updated: 2026-09-05 (EVENT-01 done)
 - [x] Advanced form fields (liveness, onExitCode, timeout)
 - [x] Linear-inspired navbar
 - [x] Failure toast notifications with Acknowledge
-- [x] Dark mode (pending validation)
 - [x] entriesGenerator auto-discovery
 - [x] DSL page system (YAML pages)

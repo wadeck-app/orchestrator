@@ -19,3 +19,10 @@ All significant job lifecycle events (started, completed, failed, recovered, ano
 
 ## P6: Transparency over silence
 Config errors warn. Missing required fields error. No silent fallbacks. Jobs that time out log why. Failed events in the queue go to DLQ, not /dev/null.
+
+## P7: Keep docs in sync with code
+After every feature implementation:
+- Mark `[x]` in `.claude/v3-todo.md`
+- Update spec `_index.md` decisions table
+- Update `CHANGELOG.md`
+The TODO file is the source of truth for what is done and what is pending.
