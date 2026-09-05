@@ -1,13 +1,40 @@
 $route: /
 
+$vars:
+  search: ""
+  filter: "all"
+
 $sources:
   jobs:
     url: GET /api/jobs
     poll: 30s
 
+$brains:
+  updateSearch:
+    $brain: $brains.$ctx.setVar
+    varName: search
+    value: $outputs.jobSearchBar.onChange
+
+  updateFilter:
+    $brain: $brains.$ctx.setVar
+    varName: filter
+    value: $outputs.jobFilterChips.onChange
+
 $type: PageContent
 sections:
   - $type: PageHeader
     title: Orchestrator Dashboard
+  - $type: JobSearchBar
+    $id: jobSearchBar
+    value: $vars.search
+    $outputs:
+      onChange: [value]
+  - $type: JobFilterChips
+    $id: jobFilterChips
+    selected: $vars.filter
+    $outputs:
+      onChange: [selected]
   - $type: JobCardGrid
     items: $sources.jobs
+    search: $vars.search
+    filter: $vars.filter

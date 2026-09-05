@@ -58,9 +58,11 @@ import { JobCardGrid } from '../../../orch-ui/src/components/JobCardGrid.js'
 import { JobConfigDisplay } from '../../../orch-ui/src/components/JobConfigDisplay.js'
 import { JobDetailActions } from '../../../orch-ui/src/components/JobDetailActions.js'
 import { JobDetailSection } from '../../../orch-ui/src/components/JobDetailSection.js'
+import { JobFilterChips } from '../../../orch-ui/src/components/JobFilterChips.js'
 import { JobForm } from '../../../orch-ui/src/components/JobForm.js'
 import { JobFormSection } from '../../../orch-ui/src/components/JobFormSection.js'
 import { JobListSection } from '../../../orch-ui/src/components/JobListSection.js'
+import { JobSearchBar } from '../../../orch-ui/src/components/JobSearchBar.js'
 import { JobStatusBadge } from '../../../orch-ui/src/components/JobStatusBadge.js'
 import { JobToggle } from '../../../orch-ui/src/components/JobToggle.js'
 import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
@@ -70,7 +72,6 @@ import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
 import { ScheduleTimeline } from '../../../orch-ui/src/components/ScheduleTimeline.js'
 import { TriggerBadge } from '../../../orch-ui/src/components/TriggerBadge.js'
 import { TriggerButton } from '../../../orch-ui/src/components/TriggerButton.js'
-import { WebhookList } from '../../../orch-ui/src/components/WebhookList.js'
 
 export const ButtonActionEntry: ComponentRegistryEntry = {
 	name: 'ButtonAction', category: 'atomic', tags: ["button","action"],
@@ -757,10 +758,12 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const items = resolveExpressionValue(node['items'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['items']
+		const search = resolveExpressionValue(node['search'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['search']
+		const filter = resolveExpressionValue(node['filter'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['filter']
 		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
 		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} uptimeMap={uptimeMap} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} search={search} filter={filter} uptimeMap={uptimeMap} onExport={onExport} onImport={onImport} />
 	},
 }
 
@@ -779,7 +782,9 @@ export const JobDetailActionsEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['jobId']
-		return <JobDetailActions job={job} jobId={jobId} />
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDelete']
+		return <JobDetailActions job={job} jobId={jobId} onTrigger={onTrigger} onDelete={onDelete} />
 	},
 }
 
@@ -790,6 +795,16 @@ export const JobDetailSectionEntry: ComponentRegistryEntry = {
 		const data = resolveExpressionValue(node['data'], ctx) as import('../../../orch-ui/src/components/JobDetailSection.js').JobDetailSectionProps['data']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailSection.js').JobDetailSectionProps['jobId']
 		return <JobDetailSection data={data} jobId={jobId} />
+	},
+}
+
+export const JobFilterChipsEntry: ComponentRegistryEntry = {
+	name: 'JobFilterChips', category: 'atomic', tags: ["filter","chips","jobs","type"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const selected = resolveExpressionValue(node['selected'], ctx) as import('../../../orch-ui/src/components/JobFilterChips.js').JobFilterChipsProps['selected']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('../../../orch-ui/src/components/JobFilterChips.js').JobFilterChipsProps['onChange']
+		return <JobFilterChips selected={selected} onChange={onChange} />
 	},
 }
 
@@ -820,6 +835,17 @@ export const JobListSectionEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const jobs = resolveExpressionValue(node['jobs'], ctx) as import('../../../orch-ui/src/components/JobListSection.js').JobListSectionProps['jobs']
 		return <JobListSection jobs={jobs} />
+	},
+}
+
+export const JobSearchBarEntry: ComponentRegistryEntry = {
+	name: 'JobSearchBar', category: 'atomic', tags: ["search","jobs","filter","input"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const value = resolveExpressionValue(node['value'], ctx) as import('../../../orch-ui/src/components/JobSearchBar.js').JobSearchBarProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('../../../orch-ui/src/components/JobSearchBar.js').JobSearchBarProps['onChange']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('../../../orch-ui/src/components/JobSearchBar.js').JobSearchBarProps['placeholder']
+		return <JobSearchBar value={value} onChange={onChange} placeholder={placeholder} />
 	},
 }
 
@@ -907,15 +933,6 @@ export const TriggerButtonEntry: ComponentRegistryEntry = {
 		return <TriggerButton jobId={jobId} onTrigger={onTrigger} feedbackDurationMs={feedbackDurationMs} />
 	},
 }
-
-export const WebhookListEntry: ComponentRegistryEntry = {
-	name: 'WebhookList', category: 'composite', tags: ["webhook","notification"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const webhooks = resolveExpressionValue(node['webhooks'], ctx) as import('../../../orch-ui/src/components/WebhookList.js').WebhookListProps['webhooks']
-		return <WebhookList webhooks={webhooks} />
-	},
-}
 // ─── All entries ──────────────────────────────────────────────────────────────
 
 export const allEntries: ComponentRegistryEntry[] = [
@@ -973,9 +990,11 @@ export const allEntries: ComponentRegistryEntry[] = [
 	JobConfigDisplayEntry,
 	JobDetailActionsEntry,
 	JobDetailSectionEntry,
+	JobFilterChipsEntry,
 	JobFormEntry,
 	JobFormSectionEntry,
 	JobListSectionEntry,
+	JobSearchBarEntry,
 	JobStatusBadgeEntry,
 	JobToggleEntry,
 	LogViewerEntry,
@@ -985,7 +1004,6 @@ export const allEntries: ComponentRegistryEntry[] = [
 	ScheduleTimelineEntry,
 	TriggerBadgeEntry,
 	TriggerButtonEntry,
-	WebhookListEntry,
 ]
 
 // ─── Auto-detected metadata (allowedChildren, providesContext, requiresContext) ─

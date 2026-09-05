@@ -51,4 +51,16 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
   if (jt) {
     jt.render = withOutputCallbacks(jt.render, ['onToggle']);
   }
+
+  // JobSearchBar: expose onChange as DSL $output (wires $vars.search updates)
+  const jsb = registry['JobSearchBar'];
+  if (jsb) {
+    jsb.render = withOutputCallbacks(jsb.render, ['onChange']);
+  }
+
+  // JobFilterChips: expose onChange as DSL $output (wires $vars.filter updates)
+  const jfc = registry['JobFilterChips'];
+  if (jfc) {
+    jfc.render = withOutputCallbacks(jfc.render, ['onChange']);
+  }
 }
