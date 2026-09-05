@@ -143,6 +143,7 @@ export class Scheduler extends EventEmitter {
 
     this._state.record(job.id, { startedAt, exitCode: null, pid, triggeredBy: trigger });
     this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
+    this.emit('job-started', { id: job.id });
 
     // Per-job rotating log: tee stdout/stderr to file + terminal.
     // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log

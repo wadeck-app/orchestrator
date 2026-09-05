@@ -53,6 +53,7 @@ export class TrayManager extends EventEmitter {
   private _restartTimer:     ReturnType<typeof setTimeout> | null = null;
   private _successTimer:   ReturnType<typeof setTimeout> | null = null;
   private _showSuccess     = false;
+  private _runningJobIds   = new Set<string>();  // jobs currently executing
   private _startupEnabled: boolean;
   private readonly _failures: FailureEntry[] = [];
   private readonly _log:      DailyLogger;
@@ -115,7 +116,12 @@ export class TrayManager extends EventEmitter {
     this._clearTrayPid();
     this._intentionalStop = false;
 
+    this._scheduler.on('job-started', (ev: { id: string }) => {
+      this._runningJobIds.add(ev.id);
+      this._refresh();
+    });
     this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job }) => {
+      this._runningJobIds.delete(ev.id);
       this._onJobFinished(ev);
     });
     // Synchronous backup exit hook: ensures tray is killed even if triggerRestart()
@@ -202,17 +208,21 @@ export class TrayManager extends EventEmitter {
 
   private _buildMenu(): MenuSnapshot {
     const hasFailures = this._failures.length > 0;
+    const hasRunning  = this._runningJobIds.size > 0;
     const icons   = getIcons(this._trayColor);
     const successIcons = getIcons(SUCCESS_ICON_COLOR);
     const icon =
       hasFailures      ? icons.error :
       this._showSuccess ? successIcons.idle :
+      hasRunning        ? icons.running :
       icons.idle;
     const tooltip = hasFailures
       ? `Orchestrator - ${this._failures.length} job(s) failed`
       : this._showSuccess
         ? 'Orchestrator - last job succeeded'
-        : 'Orchestrator - all jobs OK';
+        : hasRunning
+          ? `Orchestrator - ${this._runningJobIds.size} job(s) running`
+          : 'Orchestrator - all jobs OK';
 
     const items: MenuItemSnapshot[] = [];
 
