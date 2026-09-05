@@ -145,6 +145,9 @@ async function main(): Promise<void> {
 
     await scheduler.start();
 
+    trayManager.on('check-update', () => {
+      scheduleUpdate();
+    });
     trayManager.on('quit',    () => process.exit(0));
     trayManager.on('restart', () => {
       // Write config.restart sentinel so Go launcher restarts the daemon after exit.

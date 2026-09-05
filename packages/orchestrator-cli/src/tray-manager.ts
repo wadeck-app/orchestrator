@@ -226,7 +226,7 @@ export class TrayManager extends EventEmitter {
 
     const items: MenuItemSnapshot[] = [];
 
-    items.push({ id: 'header', type: 'normal', title: `Orchestrator v${this._version}`, enabled: false });
+    items.push({ id: 'header', type: 'normal', title: `Orchestrator v${this._version} -- click to update`, enabled: true });
     items.push({ id: 'sep1',   type: 'separator', title: '', enabled: false });
 
     if (hasFailures) {
@@ -389,6 +389,9 @@ export class TrayManager extends EventEmitter {
         this._failures.length = 0;
         this._state.acknowledgeAll();
         this._refresh();
+        break;
+      case 'header':
+        this.emit('check-update');
         break;
       case 'restart':
         void this.triggerRestart();
