@@ -104,18 +104,19 @@ describe('TrayManager restart - tray process must be killed before restart event
 
     await mgr.start();  // registers the process.on('exit') hook
 
-    // Inject fake tp with a real .process.kill mock
-    let killSignal = null;
+    // Inject fake tp with pid — exit hook now uses _killByPid(pid) via taskkill/SIGKILL
+    let killedPid = null;
+    mgr._killByPid = (pid) => { killedPid = pid; };
     mgr._tp = {
       killed: false,
-      process: { kill: (sig) => { killSignal = sig || 'SIGTERM'; } },
+      process: { pid: 99999 },
       kill: async function() { this.killed = true; },
     };
 
     // Simulate process.exit via the 'exit' event
     process.emit('exit', 0);
 
-    assert.equal(killSignal, 'SIGKILL', 'process.on(exit) must SIGKILL the tray binary');
+    assert.equal(killedPid, 99999, 'process.on(exit) must kill the tray binary via _killByPid');
   });
 
   test('killing tray during restart does NOT trigger _scheduleRestart via onExit', async () => {

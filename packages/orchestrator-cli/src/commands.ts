@@ -8,6 +8,7 @@ import type { State }    from './state.js';
 import type { Scheduler } from './scheduler.js';
 import type { TrayManager } from './tray-manager.js';
 import type { AuditLogger } from './audit.js';
+import type { EventPublisher } from './event-publisher.js';
 import { getNextFirings } from './cronNext.js';
 
 /**
@@ -21,6 +22,7 @@ export function makeCommands(
   configDir: string,
   trayManager?: TrayManager,
   audit?: AuditLogger,
+  events?: EventPublisher,
 ): OrchestratorCommands {
   return {
     'list-jobs':   () => registry.list(),
@@ -63,6 +65,7 @@ export function makeCommands(
       const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
       const job = registry.get(id);
       audit?.log('job.triggered_manual', { jobId: id, label: job?.label, ip, userAgent });
+      events?.publish('job.triggered_manual', { jobId: id, label: job?.label ?? id, ip: ip ?? null, userAgent: userAgent ?? null });
       return scheduler.trigger(id, { kind: 'manual', ip, userAgent });
     },
 
@@ -98,6 +101,7 @@ export function makeCommands(
     // this one exits, causing multiple daemon/tray instances.
     'restart': () => {
       audit?.log('daemon.restart');
+      events?.publish('daemon.restarted', { pid: process.pid });
       if (trayManager) {
         void trayManager.triggerRestart();
         // triggerRestart() kills the tray then emits 'restart' → index.ts writes config.restart + process.exit(0)

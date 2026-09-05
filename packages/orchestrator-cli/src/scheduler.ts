@@ -6,18 +6,20 @@ import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { DailyLogger }   from './logger.js';
 import { ensureTmpDir }  from './fsUtil.js';
+import { EventPublisher } from './event-publisher.js';
 import type { Job, TriggerSource } from './types.js';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 
-type SpawnFn    = (cmd: string, cwd?: string) => ChildProcess;
+type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv) => ChildProcess;
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
 
 interface SchedulerOptions {
-  spawn?:     SpawnFn;
-  liveness?:  LivenessFn;
-  now?:       () => Date;
-  configDir?: string;
+  spawn?:          SpawnFn;
+  liveness?:       LivenessFn;
+  now?:            () => Date;
+  configDir?:      string;
+  eventPublisher?: EventPublisher;
 }
 
 export class Scheduler extends EventEmitter {
@@ -28,6 +30,7 @@ export class Scheduler extends EventEmitter {
   private readonly _now:       () => Date;
   private readonly _configDir: string;
   private readonly _tmpDir:    string;
+  private readonly _events:    EventPublisher;
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -36,28 +39,30 @@ export class Scheduler extends EventEmitter {
     this._registry  = registry;
     this._state     = state;
     // Default spawn is set below after _tmpDir is resolved.
-    this._spawn     = options.spawn     ?? ((cmd, cwd) => {
+    this._spawn     = options.spawn     ?? ((cmd, cwd, env) => {
       const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
       const [bin, ...args] = parts;
-      return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true });
+      return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
     });
     this._liveness  = options.liveness  ?? checkLiveness;
     this._now       = options.now       ?? (() => new Date());
     this._configDir = options.configDir ?? (
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
+    this._events    = options.eventPublisher ?? new EventPublisher();
     // Ensure tmp dir exists; used as default cwd for jobs that don't specify one.
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
     if (!options.spawn) {
       const tmpDir = this._tmpDir;
-      this._spawn = (cmd, cwd) => {
+      this._spawn = (cmd, cwd, env) => {
         const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
         const [bin, ...args] = parts;
         return nodeSpawn(bin!, args, {
           cwd: cwd ?? tmpDir,
           windowsHide: true,
           shell: true,
+          env: env ?? process.env,
         });
       };
     }
@@ -132,10 +137,12 @@ export class Scheduler extends EventEmitter {
 
   private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<{ pid: number | null } | { exitCode: number }> {
     const startedAt = this._now().toISOString();
-    const child = this._spawn(job.command, job.cwd ?? undefined);
+    const jobEnv = job.env ? { ...process.env, ...job.env } : undefined;
+    const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv);
     const pid   = child.pid ?? null;
 
     this._state.record(job.id, { startedAt, exitCode: null, pid, triggeredBy: trigger });
+    this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
 
     // Per-job rotating log: tee stdout/stderr to file + terminal.
     // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log
@@ -158,6 +165,7 @@ export class Scheduler extends EventEmitter {
     if (timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
+        this._events.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
         child.kill('SIGTERM');
         setTimeout(() => {
           if (!child.killed) child.kill('SIGKILL');
@@ -170,9 +178,25 @@ export class Scheduler extends EventEmitter {
         if (timeoutHandle !== null) clearTimeout(timeoutHandle);
         const exitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
+        const durationMs = Date.now() - new Date(startedAt).getTime();
+
+        // Recovery detection: was previous run a failure?
+        const prev = this._state.get(job.id);
+        const wasFailure = prev !== null && prev.exitCode !== null && prev.exitCode !== 0;
+
         this._state.record(job.id, { startedAt, finishedAt, exitCode, pid, triggeredBy: trigger });
         jobLogger.close();
         this.emit('job-finished', { id: job.id, exitCode, job });
+
+        if (exitCode === 0) {
+          this._events.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
+          if (wasFailure) {
+            this._events.publish('job.recovered', { jobId: job.id, label: job.label });
+          }
+        } else {
+          this._events.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
+        }
+
         resolve({ exitCode });
       });
     });

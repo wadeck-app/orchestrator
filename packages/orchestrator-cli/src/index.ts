@@ -12,6 +12,7 @@ import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
 import { AuditLogger } from './audit.js';
 import { TrayManager } from './tray-manager.js';
+import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import type { OrchestratorCommands } from './types.js';
@@ -45,9 +46,11 @@ async function main(): Promise<void> {
     const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'));
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
     const audit       = new AuditLogger(CONFIG_DIR);
-    const scheduler   = new Scheduler(registry, state, { configDir: CONFIG_DIR });
+    const events      = new EventPublisher();
+    const scheduler   = new Scheduler(registry, state, { configDir: CONFIG_DIR, eventPublisher: events });
 
     audit.log('daemon.start', { pid: process.pid, version });
+    events.publish('daemon.started', { pid: process.pid, version });
 
     let dashboardManager: DashboardManager | null = null;
     try {
@@ -71,7 +74,7 @@ async function main(): Promise<void> {
       configDir:   CONFIG_DIR,
       appVersion:  version,
       port:        47900,
-      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit),
+      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,
