@@ -41,7 +41,7 @@ function parseCron(expr: string): string | null {
   return null;
 }
 
-// ─── Cron Builder ─────────────────────────────────────────────────────────────
+// --- Cron Builder ---
 
 type CronFreq = 'minutely' | 'every-n-min' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];

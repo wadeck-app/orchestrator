@@ -14,11 +14,13 @@ $brains:
     $brain: $brains.$ctx.setVar
     varName: search
     value: $outputs.jobSearchBar.onChange
+    _event: $outputs.jobSearchBar.onChange
 
   updateFilter:
     $brain: $brains.$ctx.setVar
     varName: filter
     value: $outputs.jobFilterChips.onChange
+    _event: $outputs.jobFilterChips.onChange
 
 $type: PageContent
 sections:
@@ -35,6 +37,7 @@ sections:
     $outputs:
       onChange: [selected]
   - $type: JobCardGrid
+    $id: jobGrid
     items: $sources.jobs
     search: $vars.search
     filter: $vars.filter

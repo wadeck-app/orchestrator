@@ -25,13 +25,16 @@ export interface JobDetailActionsProps {
   /** DSL $outputs callbacks — injected by the registry when $id is declared on the node */
   onTrigger?: () => void;
   onDelete?: () => void;
+  onDryRun?: () => void;
+  onViewLogs?: () => void;
+  onEdit?: () => void;
 }
 
 /**
  * @registryCategory composite
  * @registryTags job actions detail
  */
-export function JobDetailActions({ job, jobId, onTrigger, onDelete }: JobDetailActionsProps): React.ReactElement | null {
+export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, onViewLogs, onEdit }: JobDetailActionsProps): React.ReactElement | null {
   if (!job) return null;
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -45,6 +48,7 @@ export function JobDetailActions({ job, jobId, onTrigger, onDelete }: JobDetailA
   };
 
   const handleDryRun = async () => {
+    if (onDryRun) { onDryRun(); return; }
     const res = await fetch(`/api/jobs/${jobId}/dry-run`, { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); setError((e as { error: string }).error ?? res.statusText); }
   };
@@ -71,8 +75,12 @@ export function JobDetailActions({ job, jobId, onTrigger, onDelete }: JobDetailA
         <TriggerButton jobId={jobId} onTrigger={handleTrigger} />
       </div>
       <div className="flex gap-3 flex-wrap">
-        <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>
-        <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>
+        {onViewLogs
+          ? <Button label="View logs" variant="secondary" onClick={onViewLogs} />
+          : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
+        {onEdit
+          ? <Button label="Edit" variant="secondary" onClick={onEdit} />
+          : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
         {job.dryRunSupported && (
           <Button label="Dry run" variant="secondary" onClick={handleDryRun} />
         )}

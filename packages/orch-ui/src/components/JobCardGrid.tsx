@@ -37,6 +37,15 @@ export interface JobCardGridProps {
   search?: string;
   filter?: string;
   uptimeMap?: Record<string, number | null>;
+  // DSL $outputs callbacks — injected via registry-overrides when $id is declared
+  onTrigger?: (id: string) => void;
+  onToggle?: (id: string, enabled: boolean) => void;
+  onJobClick?: (id: string) => void;
+  onAddJob?: () => void;
+  onBulkEnable?: (ids: string[]) => void;
+  onBulkDisable?: (ids: string[]) => void;
+  onBulkTrigger?: (ids: string[]) => void;
+  onBulkDelete?: (ids: string[]) => void;
   onExport?: () => void;
   onImport?: () => void;
 }
@@ -45,7 +54,7 @@ export interface JobCardGridProps {
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onExport, onImport }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onExport, onImport, onTrigger, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete }: JobCardGridProps): React.ReactElement {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -65,23 +74,39 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
   };
 
   const handleTrigger = useCallback(async (id: string) => {
+    if (onTrigger) { onTrigger(id); return; }
     const res = await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
-  }, []);
+  }, [onTrigger]);
 
   const handleToggle = useCallback(async (id: string, enabled: boolean) => {
+    if (onToggle) { onToggle(id, enabled); return; }
     const res = await fetch(`/api/jobs/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
-  }, []);
+  }, [onToggle]);
 
-  const handleBulkEnable  = useCallback(async () => { await Promise.allSettled([...selected].map(id => fetch(`/api/jobs/${id}/enable`, { method: 'POST' }))); setSelected(new Set()); }, [selected]);
-  const handleBulkDisable = useCallback(async () => { await Promise.allSettled([...selected].map(id => fetch(`/api/jobs/${id}/disable`, { method: 'POST' }))); setSelected(new Set()); }, [selected]);
-  const handleBulkTrigger = useCallback(async () => { await Promise.allSettled([...selected].map(id => fetch(`/api/jobs/${id}/trigger`, { method: 'POST' }))); setSelected(new Set()); }, [selected]);
+  const handleBulkEnable  = useCallback(async () => {
+    const ids = [...selected];
+    if (onBulkEnable) { onBulkEnable(ids); setSelected(new Set()); return; }
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/enable`, { method: 'POST' }))); setSelected(new Set());
+  }, [selected, onBulkEnable]);
+  const handleBulkDisable = useCallback(async () => {
+    const ids = [...selected];
+    if (onBulkDisable) { onBulkDisable(ids); setSelected(new Set()); return; }
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/disable`, { method: 'POST' }))); setSelected(new Set());
+  }, [selected, onBulkDisable]);
+  const handleBulkTrigger = useCallback(async () => {
+    const ids = [...selected];
+    if (onBulkTrigger) { onBulkTrigger(ids); setSelected(new Set()); return; }
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/trigger`, { method: 'POST' }))); setSelected(new Set());
+  }, [selected, onBulkTrigger]);
   const handleBulkDelete  = useCallback(async () => {
+    const ids = [...selected];
+    if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
     if (!window.confirm(`Delete ${selected.size} job(s)?`)) return;
-    await Promise.allSettled([...selected].map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })));
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })));
     setSelected(new Set());
-  }, [selected]);
+  }, [selected, onBulkDelete]);
 
   if (!items) {
     return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
@@ -113,7 +138,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
           <button onClick={onImport} className="px-3 py-2 text-sm border border-border rounded-md text-muted hover:bg-muted-bg">Import</button>
         )}
         {/* violations-suppress: react/no-raw-button Add job navigation - Button does not support navigate() */}
-        <button onClick={() => navigate('/jobs/new')} className="px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover">
+        <button onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} className="px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover">
           Add job
         </button>
         {/* violations-suppress: react/no-raw-button icon-only toggle - Button requires label, icon-only unsupported */}
@@ -143,7 +168,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
             <JobCard key={item.job.id} job={item.job} runHistory={item.runHistory}
               uptimePercent={uptimeMap?.[item.job.id] ?? item.uptimePercent}
               consecutiveFailures={getConsecutiveFailures(item.runHistory)}
-              onClick={() => navigate(`/jobs/${item.job.id}`)}
+              onClick={() => onJobClick ? onJobClick(item.job.id) : navigate(`/jobs/${item.job.id}`)}
               onTrigger={handleTrigger} onToggle={handleToggle}
               selected={selected.has(item.job.id)}
               onSelect={e => { e.stopPropagation(); toggleSelect(item.job.id); }} />
@@ -178,7 +203,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
             {visible.map(({ job, runHistory }) => {
               const last = runHistory[0] ?? null;
               return (
-                <tr key={job.id} className="border-b hover:bg-muted-bg cursor-pointer" onClick={() => navigate(`/jobs/${job.id}`)}>
+                <tr key={job.id} className="border-b hover:bg-muted-bg cursor-pointer" onClick={() => onJobClick ? onJobClick(job.id) : navigate(`/jobs/${job.id}`)}>
                   <td className="py-2 pr-3">
                     {/* violations-suppress: react/no-raw-input row selection checkbox - no FieldText variant for boolean without label */}
                     <input type="checkbox" checked={selected.has(job.id)} onChange={() => {}}

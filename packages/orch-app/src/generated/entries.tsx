@@ -496,14 +496,7 @@ export const PageTabsEntry: ComponentRegistryEntry = {
 export const RouterProviderEntry: ComponentRegistryEntry = {
 	name: 'RouterProvider', category: 'disposition', tags: ["router","navigation"],
 	nodeSchema: null as never,
-	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const items = node['items'] as unknown[] | undefined
-		return (
-			<RouterProvider>
-				{items ? renderChildren(items, registry, ctx) : null}
-			</RouterProvider>
-		)
-	},
+	render: () => <RouterProvider />,
 }
 
 export const StepperEntry: ComponentRegistryEntry = {
@@ -611,29 +604,29 @@ export const DataTableEntry: ComponentRegistryEntry = {
 	name: 'DataTable', category: 'composite', tags: ["table"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['rows']
-		const columns = resolveExpressionValue(node['columns'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['columns']
-		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['loading']
-		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['emptyMessage']
-		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onAction']
-		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['navigateTo']
+		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['rows']
+		const columns = resolveExpressionValue(node['columns'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['columns']
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['loading']
+		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['emptyMessage']
+		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onAction']
+		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['navigateTo']
 		const filtersTop = node['filtersTop'] as unknown[] | undefined
 		const filters = node['filters'] as unknown[] | undefined
-		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['id']
-		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['page']
-		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onPageChange']
-		const sortCol = resolveExpressionValue(node['sortCol'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortCol']
-		const onSortColChange = resolveExpressionValue(node['onSortColChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortColChange']
-		const sortDir = resolveExpressionValue(node['sortDir'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortDir']
-		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortDirChange']
-		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['defaultFilters']
-		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansion']
-		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['renderNode']
-		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['selectable']
-		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['batchActions']
-		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onBatchAction']
-		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansionCondition']
-		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['fontMono']
+		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['id']
+		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['page']
+		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onPageChange']
+		const sortCol = resolveExpressionValue(node['sortCol'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['sortCol']
+		const onSortColChange = resolveExpressionValue(node['onSortColChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onSortColChange']
+		const sortDir = resolveExpressionValue(node['sortDir'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['sortDir']
+		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onSortDirChange']
+		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['defaultFilters']
+		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['expansion']
+		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['renderNode']
+		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['selectable']
+		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['batchActions']
+		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onBatchAction']
+		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['expansionCondition']
+		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['fontMono']
 		return <DataTable rows={rows} columns={columns} loading={loading} emptyMessage={emptyMessage} onAction={onAction} navigateTo={navigateTo} filtersTop={filtersTop ? renderChildren(filtersTop, registry, ctx) : null} filters={filters ? renderChildren(filters, registry, ctx) : null} id={id} page={page} onPageChange={onPageChange} sortCol={sortCol} onSortColChange={onSortColChange} sortDir={sortDir} onSortDirChange={onSortDirChange} defaultFilters={defaultFilters} expansion={expansion} renderNode={renderNode} selectable={selectable} batchActions={batchActions} onBatchAction={onBatchAction} expansionCondition={expansionCondition} fontMono={fontMono} />
 	},
 }
@@ -768,9 +761,17 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const search = resolveExpressionValue(node['search'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['search']
 		const filter = resolveExpressionValue(node['filter'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['filter']
 		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onTrigger']
+		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onToggle']
+		const onJobClick = resolveExpressionValue(node['onJobClick'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onJobClick']
+		const onAddJob = resolveExpressionValue(node['onAddJob'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAddJob']
+		const onBulkEnable = resolveExpressionValue(node['onBulkEnable'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkEnable']
+		const onBulkDisable = resolveExpressionValue(node['onBulkDisable'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDisable']
+		const onBulkTrigger = resolveExpressionValue(node['onBulkTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkTrigger']
+		const onBulkDelete = resolveExpressionValue(node['onBulkDelete'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
 		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} search={search} filter={filter} uptimeMap={uptimeMap} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} search={search} filter={filter} uptimeMap={uptimeMap} onTrigger={onTrigger} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onExport={onExport} onImport={onImport} />
 	},
 }
 
@@ -791,7 +792,10 @@ export const JobDetailActionsEntry: ComponentRegistryEntry = {
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['jobId']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDelete']
-		return <JobDetailActions job={job} jobId={jobId} onTrigger={onTrigger} onDelete={onDelete} />
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onEdit']
+		return <JobDetailActions job={job} jobId={jobId} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} />
 	},
 }
 
@@ -832,7 +836,10 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['jobId']
 		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['initial']
-		return <JobFormSection jobId={jobId} initial={initial} />
+		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSubmit']
+		const onSuccess = resolveExpressionValue(node['onSuccess'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSuccess']
+		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onCancel']
+		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onSuccess={onSuccess} onCancel={onCancel} />
 	},
 }
 

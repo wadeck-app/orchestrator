@@ -7,13 +7,17 @@ import { JobForm } from './JobForm.js';
 export interface JobFormSectionProps {
   jobId?: string;
   initial?: { job: Job };
+  /** DSL $outputs callbacks — injected via registry-overrides */
+  onSubmit?: (data: Partial<Job>) => Promise<void>;
+  onSuccess?: (id: string) => void;
+  onCancel?: () => void;
 }
 
 /**
  * @registryCategory composite
  * @registryTags job form create edit
  */
-export function JobFormSection({ jobId, initial }: JobFormSectionProps): React.ReactElement {
+export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onSuccess, onCancel }: JobFormSectionProps): React.ReactElement {
   const navigate = useNavigate();
   const isEdit = Boolean(jobId);
   const [resolved, setResolved] = useState<Partial<Job> | undefined>(initial?.job);
@@ -30,6 +34,7 @@ export function JobFormSection({ jobId, initial }: JobFormSectionProps): React.R
   }, [isEdit, jobId, initial]);
 
   const handleSubmit = async (data: Partial<Job>) => {
+    if (onSubmitProp) { await onSubmitProp(data); return; }
     const res = isEdit && jobId
       ? await fetch(`/api/jobs/${jobId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
       : await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
@@ -39,7 +44,7 @@ export function JobFormSection({ jobId, initial }: JobFormSectionProps): React.R
       throw new Error((err as { error: string }).error ?? res.statusText);
     }
     const result: Job = await res.json();
-    navigate(`/jobs/${result.id}`);
+    if (onSuccess) { onSuccess(result.id); } else { navigate(`/jobs/${result.id}`); }
   };
 
   if (loading) {
@@ -59,7 +64,7 @@ export function JobFormSection({ jobId, initial }: JobFormSectionProps): React.R
       <JobForm
         initial={resolved}
         onSubmit={handleSubmit}
-        onCancel={() => navigate(-1)}
+        onCancel={() => onCancel ? onCancel() : navigate(-1)}
       />
     </div>
   );
