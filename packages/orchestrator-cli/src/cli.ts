@@ -41,7 +41,7 @@ function buildLiveness(argv: string[]): LivenessConfig | null {
 }
 
 // ---------------------------------------------------------------------------
-// Output: context-aware (TTY → human, no-TTY or --json → JSON)
+// Output: context-aware (TTY -> human, no-TTY or --json -> JSON)
 // ---------------------------------------------------------------------------
 
 function output(data: unknown, forceJson: boolean): void {
@@ -260,7 +260,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         } else {
           scheduleDisplay = j['schedule'] != null ? String(j['schedule']) : String(j['delaySeconds']) + 's';
         }
-        // violations-suppress: shared/no-emoji CLI terminal indicator - intentional visual marker for enabled/disabled state
+        // violations-suppress: shared/no-emoji local/no-unicode-symbol CLI terminal indicator - intentional visual marker for enabled/disabled state
         const line  = `${j['enabled'] ? '✓' : '✗'} ${String(j['id']).padEnd(24)} ${String(j['type']).padEnd(8)} ${scheduleDisplay}`;
         let extra = '';
         if (verbose) {

@@ -53,7 +53,7 @@ export default defineConfig({
     include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
     deps: {
       // Force Vite to process these packages so aliases and the resolve-js-to-ts
-      // plugin apply to their subpath imports (.js → .tsx resolution).
+      // plugin apply to their subpath imports (.js -> .tsx resolution).
       inline: ['@wadeck-app/dsl-ui', '@wadeck-app/dsl-renderer', '@wadeck-app/orch-ui'],
     },
   },

@@ -2,12 +2,12 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { EventEmitter } from 'node:events';
 
-// IPC protocol - Node → Go (stdin):
+// IPC protocol - Node -> Go (stdin):
 //   { type: 'init',     menu: MenuSnapshot }
 //   { type: 'set-menu', menu: MenuSnapshot }
 //   { type: 'exit' }
 //
-// IPC protocol - Go → Node (stdout):
+// IPC protocol - Go -> Node (stdout):
 //   { type: 'ready' }
 //   { type: 'clicked', id: string }
 

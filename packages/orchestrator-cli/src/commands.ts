@@ -12,7 +12,7 @@ import type { EventPublisher } from './event-publisher.js';
 import { getNextFirings } from './cronNext.js';
 import { WebhookManager, type WebhookConfig } from './webhook-manager.js';
 import { SecretsManager } from './secrets.js';
-import type { ConfigWatcher } from './config-watcher.js';
+
 
 /**
  * Builds the OrchestratorCommands map for use with createDaemon() and createTestDaemon().
@@ -26,7 +26,6 @@ export function makeCommands(
   trayManager?: TrayManager,
   audit?: AuditLogger,
   events?: EventPublisher,
-  configWatcher?: ConfigWatcher,
 ): OrchestratorCommands {
   const secrets = new SecretsManager(configDir);
   return {
@@ -118,8 +117,6 @@ export function makeCommands(
       secrets.delete(name);
     },
 
-    'reload-config': () => configWatcher?.reload() ?? { synced: 0 },
-
     'list-webhooks': () => {
       const wm = new WebhookManager(configDir);
       return wm.load();
@@ -151,7 +148,7 @@ export function makeCommands(
       events?.publish('daemon.restarted', { pid: process.pid });
       if (trayManager) {
         void trayManager.triggerRestart();
-        // triggerRestart() kills the tray then emits 'restart' → index.ts writes config.restart + process.exit(0)
+        // triggerRestart() kills the tray then emits 'restart' -> index.ts writes config.restart + process.exit(0)
       } else {
         try { writeFileSync(join(configDir, 'config.restart'), '1'); } catch { /* ignore */ }
         process.exit(0);

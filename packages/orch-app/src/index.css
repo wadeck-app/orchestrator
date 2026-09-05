@@ -25,6 +25,13 @@
   --color-tag-4: #f59e0b;
   --color-tag-5: #ec4899;
   --color-tag-6: #8b5cf6;
+  /* Job type badge tokens */
+  --color-tag-cron:        #6d28d9;
+  --color-tag-cron-bg:     #ede9fe;
+  --color-tag-startup:     #0369a1;
+  --color-tag-startup-bg:  #e0f2fe;
+  --color-tag-once:        #374151;
+  --color-tag-once-bg:     #f3f4f6;
 }
 
 [data-theme="dark"] {
@@ -50,4 +57,11 @@
   --color-tag-4: #fbbf24;
   --color-tag-5: #f472b6;
   --color-tag-6: #a78bfa;
+  /* Job type badge tokens - muted for dark mode */
+  --color-tag-cron:        #a78bfa;
+  --color-tag-cron-bg:     #2d1f5e;
+  --color-tag-startup:     #38bdf8;
+  --color-tag-startup-bg:  #0c2d3f;
+  --color-tag-once:        #9ca3af;
+  --color-tag-once-bg:     #1f2937;
 }

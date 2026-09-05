@@ -59,7 +59,7 @@ export class WindowsTask {
 
   install(): void {
     VbsLauncher.write(this.launcherVbs, this.nodePath, this.runnerJs);
-    // violations-suppress: shared/no-emoji Windows task installer output - intentional terminal indicator
+    // violations-suppress: shared/no-emoji local/no-unicode-symbol Windows task installer output - intentional terminal indicator
     console.log(`✓ Launcher written: ${this.launcherVbs}`);
 
     const xmlPath = path.join(os.tmpdir(), `${this.taskName}-setup.xml`);
@@ -112,12 +112,12 @@ export class WindowsTask {
     try { unlinkSync(xmlPath); } catch {}
 
     if (!importR.ok) {
-      // violations-suppress: shared/no-emoji Windows task installer output - intentional terminal indicator
+      // violations-suppress: shared/no-emoji local/no-unicode-symbol Windows task installer output - intentional terminal indicator
       console.error(`✗ Could not register task:\n${importR.out}\n${importR.err}`);
       process.exit(1);
     }
 
-    // violations-suppress: shared/no-emoji Windows task installer output - intentional terminal indicator
+    // violations-suppress: shared/no-emoji local/no-unicode-symbol Windows task installer output - intentional terminal indicator
     console.log(`✓ Task "${this.taskName}" installed - runs daily at ${this.schedule1} and ${this.schedule2}.`);
     console.log(`  Node:        ${this.nodePath}`);
     console.log(`  Launcher:    ${this.launcherVbs}`);

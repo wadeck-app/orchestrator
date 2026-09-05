@@ -16,7 +16,7 @@ export class State {
     if (this._cache !== null) return;
     if (fs.existsSync(this._file)) {
       const raw = readJsonFile<StateData>(this._file) ?? { jobs: {} };
-      // Migrate legacy single-entry format: { jobs: { id: RuntimeEntry } } → arrays
+      // Migrate legacy single-entry format: { jobs: { id: RuntimeEntry } } -> arrays
       const migrated: Record<string, RuntimeEntry[]> = {};
       for (const [id, value] of Object.entries(raw.jobs)) {
         if (Array.isArray(value)) {
@@ -64,7 +64,7 @@ export class State {
     };
     const existing = this._cache![id] ?? [];
     // If the most-recent entry has the same startedAt, update it in-place rather than
-    // prepending a duplicate. This covers the start→finish pair the scheduler records:
+    // prepending a duplicate. This covers the start->finish pair the scheduler records:
     // first call has exitCode=null (in-flight), second has the actual exit code.
     const head = existing[0];
     if (head && head.startedAt === normalized.startedAt) {

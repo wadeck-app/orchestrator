@@ -188,25 +188,32 @@ export function JobCardGrid({ items, uptimeMap, onExport, onImport }: JobCardGri
       {viewMode === 'grid' ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((item) => (
-            <div key={item.job.id} className="relative">
-              {/* violations-suppress: react/no-raw-input selection checkbox - no FieldText variant for boolean without label */}
-              <input type="checkbox" checked={selected.has(item.job.id)}
-                onChange={() => toggleSelect(item.job.id)}
-                onClick={e => e.stopPropagation()}
-                className="absolute top-3 left-3 z-10 w-3.5 h-3.5 cursor-pointer"
-              />
-              <JobCard job={item.job} runHistory={item.runHistory}
-                uptimePercent={uptimeMap?.[item.job.id] ?? item.uptimePercent}
-                consecutiveFailures={getConsecutiveFailures(item.runHistory)}
-                onClick={() => navigate(`/jobs/${item.job.id}`)}
-                onTrigger={handleTrigger} onToggle={handleToggle} />
-            </div>
+            <JobCard key={item.job.id} job={item.job} runHistory={item.runHistory}
+              uptimePercent={uptimeMap?.[item.job.id] ?? item.uptimePercent}
+              consecutiveFailures={getConsecutiveFailures(item.runHistory)}
+              onClick={() => navigate(`/jobs/${item.job.id}`)}
+              onTrigger={handleTrigger} onToggle={handleToggle}
+              selected={selected.has(item.job.id)}
+              onSelect={e => { e.stopPropagation(); toggleSelect(item.job.id); }} />
           ))}
         </div>
       ) : (
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="text-left text-muted border-b">
+              <th className="pb-2 pr-3 w-6">
+                {/* violations-suppress: react/no-raw-input select-all checkbox - no FieldText variant for boolean without label */}
+                <input type="checkbox"
+                  checked={visible.length > 0 && visible.every(i => selected.has(i.job.id))}
+                  onChange={() => {
+                    if (visible.every(i => selected.has(i.job.id))) {
+                      setSelected(prev => { const n = new Set(prev); visible.forEach(i => n.delete(i.job.id)); return n; });
+                    } else {
+                      setSelected(prev => { const n = new Set(prev); visible.forEach(i => n.add(i.job.id)); return n; });
+                    }
+                  }}
+                  className="w-4 h-4 cursor-pointer accent-primary" />
+              </th>
               <th className="pb-2 font-medium">Job</th>
               <th className="pb-2 font-medium">Type</th>
               <th className="pb-2 font-medium">Schedule</th>
@@ -220,6 +227,12 @@ export function JobCardGrid({ items, uptimeMap, onExport, onImport }: JobCardGri
               const last = runHistory[0] ?? null;
               return (
                 <tr key={job.id} className="border-b hover:bg-muted-bg cursor-pointer" onClick={() => navigate(`/jobs/${job.id}`)}>
+                  <td className="py-2 pr-3">
+                    {/* violations-suppress: react/no-raw-input row selection checkbox - no FieldText variant for boolean without label */}
+                    <input type="checkbox" checked={selected.has(job.id)} onChange={() => {}}
+                      onClick={e => { e.stopPropagation(); toggleSelect(job.id); }}
+                      className="w-4 h-4 cursor-pointer accent-primary" />
+                  </td>
                   <td className="py-2 pr-4 text-content font-medium">{job.label}</td>
                   <td className="py-2 pr-4 text-muted">{job.type}</td>
                   <td className="py-2 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>

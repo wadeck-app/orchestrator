@@ -63,7 +63,7 @@ function formatDetails(entry: AuditEntry): string {
     if (v === undefined || v === null) continue;
     parts.push(`${k}=${v}`);
   }
-  return parts.join(' · ');
+  return parts.join(' | ');
 }
 
 function relTime(iso: string): string {

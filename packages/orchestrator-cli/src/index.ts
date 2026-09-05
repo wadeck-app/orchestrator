@@ -15,7 +15,7 @@ import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
-import { ConfigWatcher } from './config-watcher.js';
+
 import type { OrchestratorCommands } from './types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -77,11 +77,6 @@ async function main(): Promise<void> {
 
     const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version, undefined, dashboardManager);
 
-    // Config-as-code YAML watch
-    const jobsYaml = path.join(CONFIG_DIR, 'jobs.yaml');
-    const configWatcher = new ConfigWatcher(jobsYaml, registry);
-    configWatcher.start();
-
     // Audit job events
     scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: { label: string } }) => {
       audit.log('job.completed', { jobId: ev.id, label: ev.job.label, exitCode: ev.exitCode });
@@ -94,7 +89,7 @@ async function main(): Promise<void> {
       configDir:   CONFIG_DIR,
       appVersion:  version,
       port:        47900,
-      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events, configWatcher),
+      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,
@@ -146,7 +141,7 @@ async function main(): Promise<void> {
 
     // Schedule background update check on startup and every 4h.
     // In dev/test mode (no orchestrator-updater.cjs bundle) this is a no-op.
-    // The updater: npm install -g @wadeck/orchestrator-cli@edge → orch cli self-check → rollback if failed.
+    // The updater: npm install -g @wadeck/orchestrator-cli@edge -> orch cli self-check -> rollback if failed.
     scheduleUpdate();
     // unref() ensures the interval never prevents the process from exiting on SIGTERM.
     setInterval(() => updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs'), 30 * 60 * 1000).unref();

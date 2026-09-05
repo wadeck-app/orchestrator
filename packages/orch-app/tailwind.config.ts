@@ -32,6 +32,12 @@ export default {
         'tag-4': 'var(--color-tag-4)',
         'tag-5': 'var(--color-tag-5)',
         'tag-6': 'var(--color-tag-6)',
+        'tag-cron':        'var(--color-tag-cron)',
+        'tag-cron-bg':     'var(--color-tag-cron-bg)',
+        'tag-startup':     'var(--color-tag-startup)',
+        'tag-startup-bg':  'var(--color-tag-startup-bg)',
+        'tag-once':        'var(--color-tag-once)',
+        'tag-once-bg':     'var(--color-tag-once-bg)',
       },
     },
   },
@@ -41,9 +47,10 @@ export default {
     'bg-green-100',  'text-green-800',
     'bg-red-100',    'text-red-800',
     'bg-gray-100',   'text-gray-600',
-    // JobCard type badge colors
-    'bg-purple-100', 'text-purple-700',
-    'bg-blue-100',   'text-blue-700',
+    // JobCard type badge colors (semantic tokens, dark-mode aware)
+    'bg-tag-cron-bg', 'text-tag-cron',
+    'bg-tag-startup-bg', 'text-tag-startup',
+    'bg-tag-once-bg', 'text-tag-once',
     // LogViewer terminal palette
     'bg-gray-800', 'text-gray-400', 'text-yellow-400',
     'bg-gray-900', 'text-green-400', 'text-gray-500',

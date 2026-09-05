@@ -87,7 +87,6 @@ export type OrchestratorCommands = {
   'list-secrets':  (payload?: unknown) => string[];
   'set-secret':    (payload?: unknown) => void;
   'delete-secret': (payload?: unknown) => void;
-  'reload-config': (payload?: unknown) => { synced: number };
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };

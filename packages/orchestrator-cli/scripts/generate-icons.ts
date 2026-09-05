@@ -86,7 +86,7 @@ async function main(): Promise<void> {
   lines.push(`}`);
 
   fs.writeFileSync(OUT, lines.join('\n'), 'utf8');
-  // violations-suppress: shared/no-emoji script output - intentional terminal indicator
+  // violations-suppress: shared/no-emoji local/no-unicode-symbol script output - intentional terminal indicator
   console.log(`✓ wrote ${OUT}`);
 }
 

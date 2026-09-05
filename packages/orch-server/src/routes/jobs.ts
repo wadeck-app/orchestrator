@@ -212,7 +212,4 @@ export async function jobsRoutes(
     });
   });
 
-  fastify.post('/api/config/reload', async (_req, reply) => {
-    return guard(reply, async () => reply.send(await proxy.send('reload-config')));
-  });
 }

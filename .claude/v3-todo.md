@@ -94,7 +94,7 @@ Last updated: 2026-09-05
 - [x] **DX-04** — `orch run <id>` CLI command
   - Trigger a job from the CLI directly
 
-- [x] **DX-05** — Config-as-code YAML watch
+- [!] **DX-05** -- Config-as-code YAML watch -- REJECTED by user
   - Watch a YAML file for job definitions, auto-sync to registry
 
 ## Real-time

@@ -14,16 +14,16 @@ export interface JobCardProps {
   onTrigger: (id: string) => Promise<void>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
   onClick?: () => void;
+  selected?: boolean;
+  onSelect?: (e: React.MouseEvent) => void;
 }
 
-// violations-suppress-start: tailwind/no-raw-color-class job-type colors (cron/startup/once) have no semantic-token equivalents in the design system; raw Tailwind palette is the only option
 // @formatter:off
 const TYPE_COLORS: Record<Job['type'], string> = {
-  cron:    'bg-purple-100 text-purple-700',
-  startup: 'bg-blue-100 text-blue-700',
-  once:    'bg-gray-100 text-gray-600',
+  cron:    'bg-tag-cron-bg text-tag-cron',
+  startup: 'bg-tag-startup-bg text-tag-startup',
+  once:    'bg-tag-once-bg text-tag-once',
 };
-// violations-suppress-end: tailwind/no-raw-color-class
 
 // Tag color palette (6 semantic tokens added to tailwind.config + index.css)
 const TAG_BG  = ['bg-tag-1','bg-tag-2','bg-tag-3','bg-tag-4','bg-tag-5','bg-tag-6'] as const;
@@ -76,13 +76,18 @@ function successStreak(runHistory: RuntimeEntry[]): number {
  * @registryCategory composite
  * @registryTags job card
  */
-export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, onTrigger, onToggle, onClick }: JobCardProps): React.ReactElement {
+export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, onTrigger, onToggle, onClick, selected, onSelect }: JobCardProps): React.ReactElement {
   const streak = successStreak(runHistory);
 
   return (
     <div className={CARD_CLS} onClick={onClick}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          {onSelect != null && (
+            // violations-suppress: react/no-raw-input selection checkbox - no FieldText variant for boolean without label
+            <input type="checkbox" checked={selected ?? false} onChange={() => {}} onClick={onSelect}
+              className="w-4 h-4 shrink-0 cursor-pointer accent-primary" />
+          )}
           <span className="font-semibold text-content truncate">{job.label}</span>
           <span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type]}`}>{job.type}</span>
           {(job.tags ?? []).map(tag => {

@@ -17,7 +17,7 @@ const targets = [
 ];
 
 for (const { GOOS, GOARCH, out } of targets) {
-  process.stdout.write(`Building ${GOOS}/${GOARCH} → ${path.basename(out)} ... `);
+  process.stdout.write(`Building ${GOOS}/${GOARCH} -> ${path.basename(out)} ... `);
   execSync(
     `go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "${out}" .`,
     { cwd: trayDir, env: { ...process.env, GOOS, GOARCH, CGO_ENABLED: '0' }, stdio: ['ignore', 'ignore', 'inherit'], windowsHide: true },
