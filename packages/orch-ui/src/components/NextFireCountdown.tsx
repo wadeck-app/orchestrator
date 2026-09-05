@@ -5,13 +5,17 @@ interface Props {
   job: Job;
 }
 
+/**
+ * @registryCategory atomic
+ * @registryTags countdown schedule
+ */
 export function NextFireCountdown({ job }: Props): React.ReactElement {
   if (job.type === 'startup') {
-    return <span className="text-sm text-gray-500">On startup</span>;
+    return <span className="text-sm text-muted">On startup</span>;
   }
   if (job.type === 'once') {
-    return <span className="text-sm text-gray-500">Once</span>;
+    return <span className="text-sm text-muted">Once</span>;
   }
-  // cron: display raw schedule -- next-fire calculation deferred to v2
-  return <span className="text-sm text-gray-500">Cron: {job.schedule ?? '—'}</span>;
+  // cron: display raw schedule - next-fire calculation deferred to v2
+  return <span className="text-sm text-muted">Cron: {job.schedule ?? '-'}</span>;
 }

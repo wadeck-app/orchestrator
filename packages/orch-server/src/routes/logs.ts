@@ -5,6 +5,29 @@ import type { FastifyInstance } from 'fastify';
 import { IdleTimer } from '../idle-timer.js';
 
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
+const POLL_INTERVAL_MS = 500;
+
+/**
+ * Returns the path to the most recent <jobId>-YYYY-MM-DD.log file in logDir,
+ * or null if none exists.
+ */
+export function findLatestLogFile(logDir: string, jobId: string): string | null {
+  if (!fs.existsSync(logDir)) return null;
+  const pattern = new RegExp(`^${escapeRegExp(jobId)}-\\d{4}-\\d{2}-\\d{2}\\.log$`);
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(logDir);
+  } catch {
+    return null;
+  }
+  const matches = entries.filter(f => pattern.test(f)).sort();
+  if (matches.length === 0) return null;
+  return path.join(logDir, matches[matches.length - 1]!);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export async function logsRoutes(
   fastify: FastifyInstance,
@@ -18,8 +41,9 @@ export async function logsRoutes(
       return reply.code(400).send({ error: 'invalid-job-id' });
     }
 
-    const logPath = path.join(configDir, 'logs', `${jobId}.log`);
+    const logDir = path.join(configDir, 'logs', jobId);
 
+    reply.hijack();
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -33,39 +57,49 @@ export async function logsRoutes(
       reply.raw.write(`data: ${line}\n\n`);
     };
 
-    // Send historical lines
-    if (fs.existsSync(logPath)) {
-      const rl = readline.createInterface({
-        input: fs.createReadStream(logPath),
-        crlfDelay: Infinity,
-      });
-      for await (const line of rl) send(line);
+    // Send historical lines from the latest existing log file
+    let currentLogPath = findLatestLogFile(logDir, jobId);
+    let fileSize = 0;
+
+    if (currentLogPath !== null) {
+      try {
+        const rl = readline.createInterface({
+          input: fs.createReadStream(currentLogPath),
+          crlfDelay: Infinity,
+        });
+        for await (const line of rl) send(line);
+        fileSize = fs.statSync(currentLogPath).size;
+      } catch {
+        // log file may not be readable yet
+      }
     }
 
-    // Watch for new lines
-    let watcher: fs.FSWatcher | null = null;
-    let fileSize = fs.existsSync(logPath) ? fs.statSync(logPath).size : 0;
+    // Poll for new lines every POLL_INTERVAL_MS (reliable on Windows, avoids fs.watch quirks)
+    const pollTimer = setInterval(() => {
+      try {
+        const latestPath = findLatestLogFile(logDir, jobId);
+        if (latestPath === null) return;
 
-    const watchDir = path.dirname(logPath);
-    // fs.watch requires the directory to exist
-    if (fs.existsSync(watchDir)) {
-      watcher = fs.watch(watchDir, { persistent: false }, (_event, filename) => {
-        if (filename !== `${jobId}.log`) return;
-        try {
-          const newSize = fs.statSync(logPath).size;
-          if (newSize <= fileSize) return;
-          const stream = fs.createReadStream(logPath, { start: fileSize });
-          fileSize = newSize;
-          const rl2 = readline.createInterface({ input: stream, crlfDelay: Infinity });
-          rl2.on('line', send);
-        } catch {
-          // file may have been rotated
+        // Date rolled over - new log file appeared
+        if (latestPath !== currentLogPath) {
+          currentLogPath = latestPath;
+          fileSize = 0;
         }
-      });
-    }
+
+        const newSize = fs.statSync(currentLogPath!).size;
+        if (newSize <= fileSize) return;
+
+        const stream = fs.createReadStream(currentLogPath!, { start: fileSize });
+        fileSize = newSize;
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+        rl.on('line', send);
+      } catch {
+        // transient error - file may be rotating
+      }
+    }, POLL_INTERVAL_MS);
 
     req.raw.on('close', () => {
-      watcher?.close();
+      clearInterval(pollTimer);
       idleTimer.removeSseConnection();
     });
   });

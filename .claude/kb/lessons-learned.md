@@ -20,6 +20,14 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 
 ---
 
+### Always build and test locally before pushing to CI
+
+**Problem:** Pushed code with TypeScript errors (missing DOM lib, wrong module setting, broken ESM spy) that only manifested in CI, causing many fix-push-poll cycles.
+**Fix:** Run `npm run build --workspaces --if-present` and `npm test --workspaces --if-present` locally before any push.
+**Context:** CI environment matches local exactly for TypeScript/Vitest errors. No excuse to skip this step.
+
+---
+
 ### User expects full autonomy -- act and parallelize without asking
 
 **Problem:** Repeatedly asked for confirmation before executing clear next steps, causing frustration.

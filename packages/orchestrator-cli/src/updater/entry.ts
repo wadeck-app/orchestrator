@@ -50,6 +50,7 @@ function queryDaemonHealth(port: number, token: string, timeoutMs: number): Prom
         });
         res.on('end', () => {
           try {
+            // violations-suppress: ts/no-unsafe-type-cast HTTP JSON parse result - runtime shape unknown, cast is intentional
             resolve(JSON.parse(body) as Record<string, unknown>);
           } catch {
             resolve(null);
@@ -85,7 +86,7 @@ runUpdater({
         (health !== null && typeof health['running'] === 'number' && health['running']) ||
         0;
       if (activeJobs > 0) {
-        // Critical jobs are running — defer the update to avoid disruption.
+        // Critical jobs are running - defer the update to avoid disruption.
         return { defer: true, retryIn: 60_000 };
       }
     } catch {

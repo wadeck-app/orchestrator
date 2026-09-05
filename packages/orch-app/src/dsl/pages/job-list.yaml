@@ -1,0 +1,13 @@
+$route: /
+
+$sources:
+  jobs:
+    url: GET /api/jobs
+    poll: 30s
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: Orchestrator Dashboard
+  - $type: JobCardGrid
+    items: $sources.jobs

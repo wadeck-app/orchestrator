@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
+import { Layers, LayoutGrid, Calendar, ScrollText } from 'lucide-react';
 import { GenericPageRunner } from '@wadeck-app/dsl-renderer';
 import type { GenericPageRunnerProps } from '@wadeck-app/dsl-renderer';
 import { useHeartbeat } from './hooks/useHeartbeat.js';
@@ -55,12 +56,32 @@ function useFailures() {
   return { failures, acknowledgeOne, acknowledgeAll };
 }
 
+// @formatter:off
+const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2.5 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
+const NAV_LINK_ACTIVE = 'flex items-center gap-1.5 px-2.5 py-1 rounded text-sm text-content bg-muted-bg font-medium';
+// @formatter:on
+
 function NavBar() {
   return (
-    <nav className="flex items-center gap-4 px-4 py-2 border-b border-border bg-surface text-sm">
-      <Link to="/" className="text-content hover:text-primary font-medium">Jobs</Link>
-      <Link to="/schedule" className="text-muted hover:text-primary">Schedule</Link>
-      <Link to="/audit" className="text-muted hover:text-primary">Audit log</Link>
+    <nav className="flex items-center h-11 px-4 border-b border-border bg-surface">
+      {/* Left: brand */}
+      <Link to="/" className="flex items-center gap-2 mr-6 shrink-0">
+        <Layers size={16} className="text-primary" />
+        <span className="text-sm font-semibold text-content">Orchestrator</span>
+      </Link>
+
+      {/* Center: nav items */}
+      <div className="flex items-center gap-1">
+        <NavLink to="/" end className={({ isActive }) => isActive ? NAV_LINK_ACTIVE : NAV_LINK_BASE}>
+          <LayoutGrid size={14} />Jobs
+        </NavLink>
+        <NavLink to="/schedule" className={({ isActive }) => isActive ? NAV_LINK_ACTIVE : NAV_LINK_BASE}>
+          <Calendar size={14} />Schedule
+        </NavLink>
+        <NavLink to="/audit" className={({ isActive }) => isActive ? NAV_LINK_ACTIVE : NAV_LINK_BASE}>
+          <ScrollText size={14} />Audit
+        </NavLink>
+      </div>
     </nav>
   );
 }

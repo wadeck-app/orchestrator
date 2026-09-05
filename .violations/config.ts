@@ -9,6 +9,8 @@ export default {
     'packages/orch-server/public/**',
     'packages/orchestrator-cli/server/**',
     'packages/orchestrator-cli/bin/**',
+    // tailwind.config.ts safelist entries ARE the raw color declarations - not component usage
+    'packages/orch-app/tailwind.config.ts',
   ],
   rules: {
     // Atomic components ARE the button/input wrappers — excluded at config level
@@ -34,5 +36,13 @@ export default {
         'packages/*/src/index.tsx',
       ],
     },
+    // Dev scripts intentionally show build output - windowsHide would suppress it
+    'cli/daemon-spawn-no-windows-hide': {
+      $exclude: ['scripts/**'],
+    },
+    // DSL pages must decompose from dsl-ui primitives, not wrap entire pages in one monolithic component
+    './.violations/rules/dsl-no-monolithic-page.ts': true,
+    // No unicode symbols (arrows, checkmarks, etc.) in JSX — use Lucide icons instead
+    './.violations/rules/no-unicode-symbol.ts': true,
   },
 } satisfies ViolationsConfig

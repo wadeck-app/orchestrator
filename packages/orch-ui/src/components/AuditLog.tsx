@@ -1,4 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import {
+  CheckCircle, XCircle, Play, Clock, Plus, Trash2,
+  Pencil, ToggleLeft, ToggleRight, Power, RefreshCw,
+} from 'lucide-react';
 
 export interface AuditEntry {
   ts: string;
@@ -10,25 +14,24 @@ export interface AuditLogProps {
   apiBase?: string;
 }
 
-// @formatter:off
-const EVENT_ICONS: Record<string, string> = {
-  'job.triggered_manual': '▶',
-  'job.completed':        '✓',
-  'job.added':            '+',
-  'job.deleted':          '×',
-  'job.enabled':          '●',
-  'job.disabled':         '○',
-  'job.edited':           '✎',
-  'daemon.start':         '↑',
-  'daemon.restart':       '↻',
-};
-// @formatter:on
-
-function eventColor(event: string): string {
-  if (event === 'job.completed') return 'text-green-600';
-  if (event.includes('delete') || event.includes('fail')) return 'text-danger';
-  if (event === 'daemon.restart' || event === 'daemon.start') return 'text-primary';
-  return 'text-muted';
+function EventIcon({ event, entry }: { event: string; entry: AuditEntry }): React.ReactElement {
+  const sz = 14;
+  if (event === 'daemon.start')     return <Power size={sz} className="text-primary" />;
+  if (event === 'daemon.restart')   return <RefreshCw size={sz} className="text-primary" />;
+  if (event === 'job.completed') {
+    const ec = entry.exitCode as number | undefined;
+    return ec === 0
+      ? <CheckCircle size={sz} className="text-green-600" />
+      : <XCircle size={sz} className="text-danger" />;
+  }
+  if (event === 'job.triggered_manual') return <Play size={sz} className="text-primary" />;
+  if (event === 'job.started')     return <Clock size={sz} className="text-muted" />;
+  if (event === 'job.added')       return <Plus size={sz} className="text-green-600" />;
+  if (event === 'job.deleted')     return <Trash2 size={sz} className="text-danger" />;
+  if (event === 'job.edited')      return <Pencil size={sz} className="text-muted" />;
+  if (event === 'job.enabled')     return <ToggleRight size={sz} className="text-green-600" />;
+  if (event === 'job.disabled')    return <ToggleLeft size={sz} className="text-muted" />;
+  return <Clock size={sz} className="text-muted" />;
 }
 
 function formatDetails(entry: AuditEntry): string {
@@ -36,8 +39,24 @@ function formatDetails(entry: AuditEntry): string {
   const parts: string[] = [];
   if (entry.label) parts.push(String(entry.label));
   else if (entry.jobId) parts.push(String(entry.jobId));
+
+  if (entry.event === 'job.completed' && entry.exitCode !== undefined) {
+    parts.push(`exit ${entry.exitCode}`);
+    if (entry.finishedAt && entry.startedAt) {
+      const ms = new Date(entry.finishedAt as string).getTime() - new Date(entry.startedAt as string).getTime();
+      if (ms >= 0) {
+        const s = ms / 1000;
+        parts.push(s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`);
+      }
+    }
+  }
+  if (entry.event === 'job.triggered_manual' && entry.ip) {
+    parts.push(`from ${entry.ip}`);
+  }
+
   for (const [k, v] of Object.entries(entry)) {
-    if (skip.has(k) || v === undefined || v === null) continue;
+    if (skip.has(k) || ['exitCode', 'finishedAt', 'startedAt', 'ip'].includes(k)) continue;
+    if (v === undefined || v === null) continue;
     parts.push(`${k}=${v}`);
   }
   return parts.join(' · ');
@@ -77,12 +96,11 @@ export function AuditLog({ apiBase = '' }: AuditLogProps): React.ReactElement {
   );
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {entries.map((e, i) => (
-        <div key={i} className="flex items-start gap-3 px-3 py-2 rounded hover:bg-muted-bg text-sm">
-          {/* violations-suppress: tailwind/no-raw-color-class event status colors need per-event semantics with no design-system equivalent */}
-          <span className={`shrink-0 w-5 text-center font-mono ${eventColor(e.event)}`}>
-            {EVENT_ICONS[e.event] ?? '·'}
+        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-muted-bg text-sm">
+          <span className="shrink-0 flex items-center justify-center w-5">
+            <EventIcon event={e.event} entry={e} />
           </span>
           <div className="flex-1 min-w-0">
             <span className="font-medium text-content">{e.event}</span>

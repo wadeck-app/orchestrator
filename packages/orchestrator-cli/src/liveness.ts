@@ -40,7 +40,7 @@ async function checkPidFile(jobId: string): Promise<boolean> {
 
 async function checkCommand(command: string): Promise<boolean> {
   return new Promise((resolve) => {
-    exec(command, (err) => resolve(err === null));
+    exec(command, { windowsHide: true }, (err) => resolve(err === null));
   });
 }
 

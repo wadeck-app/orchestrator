@@ -506,3 +506,101 @@ describe('orch server start -- daemon auto-start', () => {
     assert.ok(daemonStartCalled, 'startDaemon must be called automatically when config.port is absent');
   });
 });
+
+// ---------------------------------------------------------------------------
+// orch list --verbose (Bug C1: should show last run time and exit code)
+// ---------------------------------------------------------------------------
+
+describe('orch list --verbose', () => {
+  test('calls both list-jobs and list-state', async () => {
+    const jobs = [{ id: 'my-job', type: 'cron', label: 'My Job', enabled: true, schedule: '0 * * * *' }];
+    const stateMap = { 'my-job': [{ startedAt: '2026-09-01T10:00:00Z', exitCode: 0, pid: 123 }] };
+
+    let listStateCalled = false;
+    const calls = [];
+    const deps = {
+      send: async (command, payload) => {
+        calls.push({ command, payload });
+        if (command === 'list-jobs') return jobs;
+        if (command === 'list-state') { listStateCalled = true; return stateMap; }
+        return {};
+      },
+      startDaemon: async () => {},
+      configDir: '/tmp/orch-test',
+    };
+
+    const output = [];
+    const origLog = console.log;
+    // Make TTY detection return true so verbose path is taken
+    const origIsTTY = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    console.log = (...a) => output.push(a.join(' '));
+    try {
+      await require('../src/cli').runCli(['list', '--verbose'], deps);
+    } finally {
+      console.log = origLog;
+      process.stdout.isTTY = origIsTTY;
+    }
+
+    assert.ok(listStateCalled, 'list-state must be called for --verbose');
+    const line = output[0] ?? '';
+    assert.ok(line.includes('2026-09-01T10:00:00Z'), `verbose line must include startedAt, got: ${line}`);
+    assert.ok(line.includes('exit=0'), `verbose line must include exitCode, got: ${line}`);
+  });
+
+  test('without --verbose, list-state is NOT called', async () => {
+    const jobs = [{ id: 'my-job', type: 'cron', label: 'My Job', enabled: true, schedule: '0 * * * *' }];
+    let listStateCalled = false;
+    const deps = {
+      send: async (command) => {
+        if (command === 'list-jobs') return jobs;
+        if (command === 'list-state') { listStateCalled = true; return {}; }
+        return {};
+      },
+      startDaemon: async () => {},
+      configDir: '/tmp/orch-test',
+    };
+
+    const origLog = console.log;
+    const origIsTTY = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    console.log = () => {};
+    try {
+      await require('../src/cli').runCli(['list'], deps);
+    } finally {
+      console.log = origLog;
+      process.stdout.isTTY = origIsTTY;
+    }
+
+    assert.equal(listStateCalled, false, 'list-state must NOT be called without --verbose');
+  });
+
+  test('shows dash when no state available', async () => {
+    const jobs = [{ id: 'my-job', type: 'cron', label: 'My Job', enabled: true, schedule: '0 * * * *' }];
+    const deps = {
+      send: async (command) => {
+        if (command === 'list-jobs') return jobs;
+        if (command === 'list-state') return {};
+        return {};
+      },
+      startDaemon: async () => {},
+      configDir: '/tmp/orch-test',
+    };
+
+    const output = [];
+    const origLog = console.log;
+    const origIsTTY = process.stdout.isTTY;
+    process.stdout.isTTY = true;
+    console.log = (...a) => output.push(a.join(' '));
+    try {
+      await require('../src/cli').runCli(['list', '--verbose'], deps);
+    } finally {
+      console.log = origLog;
+      process.stdout.isTTY = origIsTTY;
+    }
+
+    const line = output[0] ?? '';
+    assert.ok(line.includes('last=-'), `must show last=- when no state, got: ${line}`);
+    assert.ok(line.includes('exit=-'), `must show exit=- when no state, got: ${line}`);
+  });
+});

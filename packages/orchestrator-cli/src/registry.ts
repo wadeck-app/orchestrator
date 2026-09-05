@@ -60,7 +60,7 @@ function applyDefaults(job: Partial<Job>): Job {
     liveness:    job.liveness    ?? null,
     cwd:         job.cwd         ?? null,
     ...(job.onExitCode ? { onExitCode: job.onExitCode } : {}),
-    ...(job.type === 'cron'    ? { schedule: job.schedule, missedFiring: job.missedFiring ?? 'catch-up' } : {}),
+    ...(job.type === 'cron'    ? { schedule: job.schedule, missedFiring: job.missedFiring ?? 'skip' } : {}),
     ...(job.type === 'startup' ? { delaySeconds: job.delaySeconds ?? 0 }                                  : {}),
     ...(job.type === 'once'    ? { delayMs: job.delayMs!, scheduledAt: job.scheduledAt! }                 : {}),
   } as Job;

@@ -39,6 +39,7 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
   const [schedule, setSchedule] = useState(initial?.schedule ?? '');
   const [delaySeconds, setDelaySeconds] = useState(initial?.delaySeconds ?? 0);
   const [missedFiring, setMissedFiring] = useState<MissedFiring>(initial?.missedFiring ?? 'skip');
+  const [timeoutSeconds, setTimeoutSeconds] = useState<number>(initial?.timeoutSeconds ?? 300);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>();
@@ -87,6 +88,9 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
       } else {
         data.liveness = null;
       }
+
+      // timeout
+      if (timeoutSeconds > 0) data.timeoutSeconds = timeoutSeconds;
 
       // onExitCode
       const validPairs = exitCodePairs.filter(p => p.code.trim() && p.msg.trim());
@@ -162,6 +166,13 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
 
       {showAdvanced && (
         <div className="rounded border border-border p-3 space-y-4">
+          {/* Timeout */}
+          <FieldNumber
+            label="Timeout (seconds)"
+            value={timeoutSeconds}
+            onChange={setTimeoutSeconds}
+            min={0}
+          />
           {/* Missed firing */}
           <div>
             <label className={labelClass}>Missed firing</label>

@@ -74,11 +74,41 @@ export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: Props
         {jobListBadge(runHistory)}
         <NextFireCountdown job={job} />
       </div>
-      <p className="text-xs text-muted mb-3">
-        {runHistory[0]
-          ? `Last run: ${relativeTime(runHistory[0].startedAt)}`
-          : 'Last run: Never'}
-      </p>
+      <div className="flex items-center gap-2 mb-3">
+        <p className="text-xs text-muted">
+          {runHistory[0]
+            ? (() => {
+                const last = runHistory[0]!;
+                const t = `Last run: ${relativeTime(last.startedAt)}`;
+                if (last.finishedAt) {
+                  const ms = new Date(last.finishedAt).getTime() - new Date(last.startedAt).getTime();
+                  if (ms >= 0) {
+                    const s = ms / 1000;
+                    const dur = s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+                    return `${t} (${dur})`;
+                  }
+                }
+                return t;
+              })()
+            : 'Last run: Never'}
+        </p>
+        {/* Mini run history: last 5 runs as colored dots */}
+        {runHistory.length > 0 && (
+          <div className="flex items-center gap-0.5 ml-auto">
+            {Array.from({ length: 5 }, (_, i) => {
+              const entry = runHistory[i];
+              let cls = 'bg-border';
+              if (entry) {
+                if (entry.exitCode === null) cls = 'bg-gray-400';
+                // violations-suppress: tailwind/no-raw-color-class pass/fail dot colors have no semantic-token equivalents
+                else if (entry.exitCode === 0) cls = 'bg-green-500';
+                else cls = 'bg-red-500';
+              }
+              return <span key={i} className={`w-1.5 h-1.5 rounded-full ${cls}`} />;
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="flex justify-end">
         <TriggerButton jobId={job.id} onTrigger={onTrigger} />

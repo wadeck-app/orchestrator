@@ -10,7 +10,14 @@ const LOG_BODY_CLS   = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mon
 // @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
 
-const URL_RE = /(file:\/\/\/[^\s]+|https?:\/\/[^\s]+)/g;
+// Matches file:/// URLs, http(s) URLs, and Windows absolute paths with known extensions.
+const URL_RE = /(file:\/\/\/[^\s\r\n]+|https?:\/\/[^\s\r\n]+|[A-Za-z]:[\\\/][^\s\r\n]+\.(?:html?|json|csv|txt|log))/gi;
+
+function toFileUrl(raw: string): string {
+  if (raw.startsWith('file:///') || raw.startsWith('http')) return raw;
+  // Convert Windows path: C:\foo\bar.html -> file:///C:/foo/bar.html
+  return 'file:///' + raw.replace(/\\/g, '/');
+}
 
 function linkify(line: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
@@ -19,9 +26,10 @@ function linkify(line: string): React.ReactNode {
   URL_RE.lastIndex = 0;
   while ((m = URL_RE.exec(line)) !== null) {
     if (m.index > last) parts.push(line.slice(last, m.index));
+    const href = toFileUrl(m[0]);
     parts.push(
-      // violations-suppress: tailwind/no-raw-color-class link inside dark terminal — no semantic token for terminal-link color
-      <a key={m.index} href={m[0]} target="_blank" rel="noopener noreferrer"
+      // violations-suppress: tailwind/no-raw-color-class link inside dark terminal - no semantic token for terminal-link color
+      <a key={m.index} href={href} target="_blank" rel="noopener noreferrer"
         className="underline opacity-80 hover:opacity-100">{m[0]}</a>
     );
     last = m.index + m[0].length;

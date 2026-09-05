@@ -1,0 +1,1 @@
+{"type":"cron","id":"test-dash","label":"Test","command":"echo hi","schedule":"* * * * *","triggerMode":"fire-and-forget"}

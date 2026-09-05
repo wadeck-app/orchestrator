@@ -24,6 +24,7 @@ export interface Job {
   missedFiring?: MissedFiring;
   liveness: LivenessConfig | null;
   onExitCode?: Record<string, string>;
+  timeoutSeconds?: number;
 }
 
 export interface StartupResult {

@@ -152,8 +152,22 @@ export class Scheduler extends EventEmitter {
       process.stderr.write(d);
     });
 
+    // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s)
+    const timeoutMs = (job.timeoutSeconds ?? 300) * 1000;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    if (timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          if (!child.killed) child.kill('SIGKILL');
+        }, 2000);
+      }, timeoutMs);
+    }
+
     const done = new Promise<{ exitCode: number }>((resolve) => {
       child.on('close', (code) => {
+        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
         const exitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
         this._state.record(job.id, { startedAt, finishedAt, exitCode, pid, triggeredBy: trigger });

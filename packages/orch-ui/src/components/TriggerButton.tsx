@@ -1,36 +1,74 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { CheckCircle, Loader2, Play, XCircle } from 'lucide-react';
+import { getErrorMessage } from '../types.js';
 
 interface Props {
   jobId: string;
   onTrigger: (id: string) => Promise<void>;
+  feedbackDurationMs?: number;
 }
 
-export function TriggerButton({ jobId, onTrigger }: Props): React.ReactElement {
-  const [loading, setLoading] = useState(false);
+type Status = 'idle' | 'loading' | 'success' | 'error';
 
-  const handleClick = async (e: React.MouseEvent) => {
+const FEEDBACK_DURATION_MS = 3_000;
+
+// @formatter:off
+const BTN_BASE    = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-all duration-150 disabled:cursor-not-allowed';
+const BTN_IDLE    = `${BTN_BASE} bg-primary text-on-primary hover:bg-primary-hover`;
+const BTN_LOADING = `${BTN_BASE} bg-primary text-on-primary opacity-70`;
+const BTN_SUCCESS = `${BTN_BASE} bg-success text-on-primary`;
+const BTN_ERROR   = `${BTN_BASE} bg-danger text-on-primary`;
+// @formatter:on
+
+/**
+ * @registryCategory controls
+ * @registryTags button trigger run
+ */
+export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_DURATION_MS }: Props): React.ReactElement {
+  const [status, setStatus] = useState<Status>('idle');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setLoading(true);
+    if (status === 'loading') return;
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    setStatus('loading');
+    setErrorMsg(null);
     try {
       await onTrigger(jobId);
+      setStatus('success');
+      window.dispatchEvent(new CustomEvent('orch:job-triggered', { detail: { jobId, success: true } }));
+    } catch (err) {
+      setErrorMsg(getErrorMessage(err));
+      setStatus('error');
+      window.dispatchEvent(new CustomEvent('orch:job-triggered', { detail: { jobId, success: false } }));
     } finally {
-      setLoading(false);
+      resetTimer.current = setTimeout(() => {
+        setStatus('idle');
+        setErrorMsg(null);
+        resetTimer.current = null;
+      }, feedbackDurationMs);
     }
-  };
+  }, [jobId, onTrigger, status]);
+
+  const cls =
+    status === 'loading' ? BTN_LOADING :
+    status === 'success' ? BTN_SUCCESS :
+    status === 'error'   ? BTN_ERROR :
+    BTN_IDLE;
 
   return (
     <button
       onClick={handleClick}
-      disabled={loading}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      disabled={status === 'loading'}
+      className={cls}
+      title={status === 'error' && errorMsg ? errorMsg : undefined}
     >
-      {loading && (
-        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-        </svg>
-      )}
-      Run now
+      {status === 'idle'    && <><Play    size={12} />Run now</>}
+      {status === 'loading' && <><Loader2 size={12} className="animate-spin" />Running...</>}
+      {status === 'success' && <><CheckCircle size={12} />Triggered</>}
+      {status === 'error'   && <><XCircle size={12} />{errorMsg ?? 'Error'}</>}
     </button>
   );
 }

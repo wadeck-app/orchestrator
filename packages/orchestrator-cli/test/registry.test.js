@@ -278,12 +278,12 @@ describe('defaults', () => {
     assert.equal(reg.load().jobs[0].triggerMode, 'fire-and-forget');
   });
 
-  test('missedFiring defaults to catch-up for cron jobs', () => {
+  test('missedFiring defaults to skip for cron jobs', () => {
     const dir = tmpDir();
     const reg = makeRegistry(dir);
     const { missedFiring: _, ...noMissed } = JOB_CRON;
     reg.add(noMissed);
-    assert.equal(reg.load().jobs[0].missedFiring, 'catch-up');
+    assert.equal(reg.load().jobs[0].missedFiring, 'skip');
   });
 
   test('delaySeconds defaults to 0 for startup jobs', () => {

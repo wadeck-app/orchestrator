@@ -1,4 +1,4 @@
-// AUTO-GENERATION script — run: npm run gen-icons -w packages/orchestrator
+// AUTO-GENERATION script - run: npm run gen-icons -w packages/orchestrator
 // Generates src/tray-icons.ts from the Lucide list-clock SVG at 64x64.
 // Supports a configurable tray color (default white) matching wdrive's approach.
 
@@ -8,11 +8,11 @@ import path from 'node:path';
 
 const OUT = path.join(__dirname, '..', 'src', 'tray-icons.ts');
 
-// Supported colors — same as wdrive
+// Supported colors - same as wdrive
 const COLORS = ['#FFFFFF', '#93C5FD', '#6EE7B7', '#FCA5A5', '#FCD34D', '#A5B4FC', '#F9A8D4', '#CBD5E1', '#FED7AA'];
 const DEFAULT_COLOR = '#FFFFFF';
 
-// Lucide list-clock (24×24 viewport, stroke-width 2, round caps/joins)
+// Lucide list-clock (24x24 viewport, stroke-width 2, round caps/joins)
 function listClockSvg(color: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 12H3"/>
@@ -23,15 +23,16 @@ function listClockSvg(color: string): string {
 </svg>`;
 }
 
-// Error state: same icon with a red circle overlay (bottom-right)
+// Error state: clock icon with a solid red badge (bottom-right, r=6 filled)
+// Larger badge so it is clearly visible at small systray sizes.
 function listClockErrorSvg(color: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 12H3"/>
   <path d="M16 6H3"/>
-  <path d="M12 18H3"/>
-  <circle cx="18" cy="18" r="4" stroke="#EF4444" fill="none"/>
-  <path d="M18 16v2" stroke="#EF4444"/>
-  <path d="M18 20v.5" stroke="#EF4444"/>
+  <path d="M10 18H3"/>
+  <circle cx="18" cy="18" r="6" fill="#EF4444" stroke="#EF4444"/>
+  <path d="M18 15v3.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="18" cy="20.5" r="0.75" fill="white" stroke="none"/>
 </svg>`;
 }
 
@@ -41,9 +42,9 @@ async function svgToPng(svg: string): Promise<Buffer> {
 
 async function main(): Promise<void> {
   const lines: string[] = [
-    `// AUTO-GENERATED — do not edit manually.`,
+    `// AUTO-GENERATED - do not edit manually.`,
     `// Re-run: npm run gen-icons -w packages/orchestrator`,
-    `// Lucide list-clock, 64x64 PNG base64 — ${COLORS.length} colors × 2 states`,
+    `// Lucide list-clock, 64x64 PNG base64 - ${COLORS.length} colors x 2 states`,
     ``,
     `export type IconState = 'idle' | 'error';`,
     `export type IconSet = Record<IconState, string>;`,
@@ -72,6 +73,7 @@ async function main(): Promise<void> {
   lines.push(`}`);
 
   fs.writeFileSync(OUT, lines.join('\n'), 'utf8');
+  // violations-suppress: shared/no-emoji script output - intentional terminal indicator
   console.log(`✓ wrote ${OUT}`);
 }
 

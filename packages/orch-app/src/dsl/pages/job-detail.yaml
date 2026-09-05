@@ -1,0 +1,23 @@
+$route: /jobs/:id
+
+$sources:
+  jobData:
+    url: GET /api/jobs/{id}
+    params:
+      id: $route.id
+    poll: 30s
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: $sources.jobData.job.label
+  - $type: JobDetailActions
+    jobId: $route.id
+    job: $sources.jobData.job
+  - $type: JobConfigDisplay
+    job: $sources.jobData.job
+  - $type: Section
+    title: Run history
+    children:
+      - $type: RunHistory
+        entries: $sources.jobData.runHistory

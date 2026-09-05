@@ -7,7 +7,17 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@wadeck-app/dsl-renderer": ["../../node_modules/@wadeck-app/dsl-renderer/src/index.ts"],
+      "@wadeck-app/dsl-ui": ["../../node_modules/@wadeck-app/dsl-ui/src/index.ts"]
+    }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.test.tsx",
+    "src/**/*.test.ts",
+    "src/test-setup.ts",
+    "src/generated/**"
+  ]
 }
