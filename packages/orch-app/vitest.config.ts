@@ -18,18 +18,39 @@ export default defineConfig({
       enforce: 'pre',
       resolveId(id, importer) {
         if (!importer || !id.endsWith('.js')) return;
-        const abs = path.resolve(path.dirname(importer), id);
-        const tsx = abs.replace(/\.js$/, '.tsx');
-        const ts = abs.replace(/\.js$/, '.ts');
-        if (fs.existsSync(tsx)) return tsx;
-        if (fs.existsSync(ts)) return ts;
+        // Handle relative imports
+        if (id.startsWith('.')) {
+          const abs = path.resolve(path.dirname(importer), id);
+          const tsx = abs.replace(/\.js$/, '.tsx');
+          const ts  = abs.replace(/\.js$/, '.ts');
+          if (fs.existsSync(tsx)) return tsx;
+          if (fs.existsSync(ts))  return ts;
+        }
+        // Handle @wadeck-app/* subpath imports (e.g. @wadeck-app/dsl-ui/src/components/Foo.js)
+        if (id.startsWith('@wadeck-app/')) {
+          const abs = path.join(nodeModules, id);
+          const tsx = abs.replace(/\.js$/, '.tsx');
+          const ts  = abs.replace(/\.js$/, '.ts');
+          if (fs.existsSync(tsx)) return tsx;
+          if (fs.existsSync(ts))  return ts;
+        }
       },
     },
   ],
   resolve: {
     alias: [
-      { find: '@wadeck-app/dsl-renderer', replacement: path.join(nodeModules, '@wadeck-app/dsl-renderer/src/index.ts') },
-      { find: '@wadeck-app/dsl-ui',       replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/src/index.ts') },
+      { find: '@wadeck-app/dsl-renderer', replacement: path.join(nodeModules, '@wadeck-app/dsl-renderer/dist/index.js') },
+      { find: '@wadeck-app/dsl-ui',       replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/dist/index.js') },
+      // Resolve subpath .js imports from dsl-ui/src/ (generated entries.tsx uses these)
+      {
+        find: /^@wadeck-app\/dsl-ui\/src\/(.+)\.js$/,
+        replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/src/$1.tsx'),
+      },
+      // Resolve subpath .js imports from orch-ui/src/ (generated entries.tsx uses these)
+      {
+        find: /^\.\.\/\.\.\/\.\.\/orch-ui\/src\/(.+)\.js$/,
+        replacement: path.join(__dirname, '../orch-ui/src/$1.tsx'),
+      },
       { find: '@wadeck-app/orch-ui',       replacement: path.join(orchUiSrc, 'index.ts') },
     ],
   },
@@ -38,5 +59,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
+    deps: {
+      // Force Vite to process these packages so aliases and the resolve-js-to-ts
+      // plugin apply to their subpath imports (.js → .tsx resolution).
+      inline: ['@wadeck-app/dsl-ui', '@wadeck-app/dsl-renderer', '@wadeck-app/orch-ui'],
+    },
   },
 });
