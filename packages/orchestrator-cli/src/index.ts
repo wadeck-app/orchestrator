@@ -28,7 +28,7 @@ const CONFIG_DIR: string =
 // Suppress EPIPE errors on stdout/stderr globally.
 // When the launcher runs as a hidden window process, its stdout/stderr pipes can close
 // while the daemon is still running. Any console.log/console.error or process.stdout.write
-// then throws EPIPE — uncaught, it exits with code 1 with no log entry.
+// then throws EPIPE - uncaught, it exits with code 1 with no log entry.
 // Suppressing EPIPE here makes the daemon survive pipe closure without crashing.
 process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
 process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
 
 main().catch((e: unknown) => {
   const msg = getErrorMessage(e);
-  // Always write to stderr first — visible when running interactively or captured by a parent.
+  // Always write to stderr first - visible when running interactively or captured by a parent.
   process.stderr.write(`[orchestrator] fatal: ${msg}\n`);
   // Also append to the daemon log; if the log write fails, report that to stderr too.
   try {
