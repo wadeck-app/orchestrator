@@ -31,6 +31,7 @@ export { JobFilterChips } from './components/JobFilterChips.js';
 export type { JobFilterChipsProps, JobFilterType } from './components/JobFilterChips.js';
 export { useFailures } from './hooks/useFailures.js';
 export type { FailureEntry } from './hooks/useFailures.js';
+export { useHeartbeat } from './hooks/useHeartbeat.js';
 export type { JobWithHistory } from './components/JobListSection.js';
 export type { Job, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';
 export { getErrorMessage } from './types.js';
