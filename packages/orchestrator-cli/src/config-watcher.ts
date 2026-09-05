@@ -1,11 +1,16 @@
 import fs from 'node:fs';
-import path from 'node:path';
-import { load as parseYaml } from 'js-yaml';
 import type { Registry } from './registry.js';
 import type { Job } from './types.js';
 
-interface JobsYaml {
+interface JobsConfig {
   jobs?: Partial<Job>[];
+}
+
+// Parse JSON config file (YAML superset - simple JSON format supported)
+function parseConfig(content: string): JobsConfig {
+  const trimmed = content.trim();
+  // Try JSON first (also handles YAML that is valid JSON)
+  return JSON.parse(trimmed) as JobsConfig;
 }
 
 export class ConfigWatcher {
@@ -37,7 +42,7 @@ export class ConfigWatcher {
   reload(): { synced: number } {
     if (!fs.existsSync(this._file)) return { synced: 0 };
     try {
-      const raw = parseYaml(fs.readFileSync(this._file, 'utf8')) as JobsYaml;
+      const raw = parseConfig(fs.readFileSync(this._file, 'utf8'));
       const jobs = raw?.jobs ?? [];
       let synced = 0;
       for (const partial of jobs) {
