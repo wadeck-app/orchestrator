@@ -1,5 +1,20 @@
 $route: /jobs/new
 
+$brains:
+  submitJob:
+    $brain: $brains.$http.post
+    url: POST /api/jobs
+    body: $outputs.jobForm.onSubmit
+    $outputs: [id]
+  navigateAfterCreate:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}
+    id: $brains.submitJob.id
+  navigateCancel:
+    $brain: $brains.$ctx.navigate
+    to: /
+    _event: $outputs.jobForm.onCancel
+
 $type: PageContent
 sections:
   - $type: BackLink
@@ -9,4 +24,4 @@ sections:
     $id: jobForm
     $outputs:
       onSubmit: [formData]
-      onSuccess: [id]
+      onCancel: []

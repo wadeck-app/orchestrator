@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { Job } from '../types.js';
 import { getErrorMessage } from '../types.js';
 import { JobForm } from './JobForm.js';
@@ -8,8 +7,7 @@ export interface JobFormSectionProps {
   jobId?: string;
   initial?: { job: Job };
   /** DSL $outputs callbacks — injected via registry-overrides */
-  onSubmit?: (data: Partial<Job>) => Promise<void>;
-  onSuccess?: (id: string) => void;
+  onSubmit?: (data: Partial<Job>) => void | Promise<void>;
   onCancel?: () => void;
 }
 
@@ -17,30 +15,19 @@ export interface JobFormSectionProps {
  * @registryCategory composite
  * @registryTags job form create edit
  */
-export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onSuccess, onCancel }: JobFormSectionProps): React.ReactElement {
-  const navigate = useNavigate();
+export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCancel }: JobFormSectionProps): React.ReactElement {
   const isEdit = Boolean(jobId);
-  // Data for edit mode comes from initial prop (injected via $sources.jobData in YAML).
-  // No internal fetch — that is the DSL data layer's responsibility.
   const [error, setError] = React.useState<string | null>(null);
 
   const handleSubmit = async (data: Partial<Job>) => {
+    if (!onSubmitProp) {
+      setError('[JobFormSection] onSubmit is not wired — add $brains.$http.post to the YAML page');
+      console.error('[JobFormSection] onSubmit prop is required — wire this component via YAML $brains');
+      return;
+    }
     setError(null);
     try {
-      if (onSubmitProp) {
-        await onSubmitProp(data);
-        return;
-      }
-      const res = isEdit && jobId
-        ? await fetch(`/api/jobs/${jobId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-        : await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error((err as { error: string }).error ?? res.statusText);
-      }
-      const result: Job = await res.json();
-      if (onSuccess) { onSuccess(result.id); } else { navigate(`/jobs/${result.id}`); }
+      await onSubmitProp(data);
     } catch (e) {
       setError(getErrorMessage(e));
     }
@@ -55,7 +42,7 @@ export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onSucce
       <JobForm
         initial={initial?.job}
         onSubmit={handleSubmit}
-        onCancel={() => onCancel ? onCancel() : navigate(-1)}
+        onCancel={onCancel ?? (() => window.history.back())}
       />
     </div>
   );

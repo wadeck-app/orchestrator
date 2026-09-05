@@ -50,7 +50,6 @@ import { SearchBar } from '@wadeck-app/dsl-ui/src/components/table/SearchBar.js'
 import { ShownFetchedCounter } from '@wadeck-app/dsl-ui/src/components/table/ShownFetchedCounter.js'
 import { StatusFilter } from '@wadeck-app/dsl-ui/src/components/table/StatusFilter.js'
 import { AuditEntryIcon } from '../../../orch-ui/src/components/AuditEntryIcon.js'
-import { AuditEntryList } from '../../../orch-ui/src/components/AuditEntryList.js'
 import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
 import { BackLink } from '../../../orch-ui/src/components/BackLink.js'
 import { Button } from '../../../orch-ui/src/components/Button.js'
@@ -712,15 +711,6 @@ export const AuditEntryIconEntry: ComponentRegistryEntry = {
 	},
 }
 
-export const AuditEntryListEntry: ComponentRegistryEntry = {
-	name: 'AuditEntryList', category: 'composite', tags: ["audit","list","entries","timeline"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../orch-ui/src/components/AuditEntryList.js').AuditEntryListProps['entries']
-		return <AuditEntryList entries={entries} />
-	},
-}
-
 export const AuditEntryRowEntry: ComponentRegistryEntry = {
 	name: 'AuditEntryRow', category: 'atomic', tags: ["audit","row","entry"],
 	nodeSchema: null as never,
@@ -865,9 +855,8 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['jobId']
 		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['initial']
 		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSubmit']
-		const onSuccess = resolveExpressionValue(node['onSuccess'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSuccess']
 		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onCancel']
-		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onSuccess={onSuccess} onCancel={onCancel} />
+		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onCancel={onCancel} />
 	},
 }
 
@@ -1024,7 +1013,6 @@ export const allEntries: ComponentRegistryEntry[] = [
 	ShownFetchedCounterEntry,
 	StatusFilterEntry,
 	AuditEntryIconEntry,
-	AuditEntryListEntry,
 	AuditEntryRowEntry,
 	BackLinkEntry,
 	ButtonEntry,

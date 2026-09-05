@@ -6,10 +6,29 @@ $sources:
     params:
       id: $route.id
 
+$brains:
+  updateJob:
+    $brain: $brains.$http.put
+    url: PUT /api/jobs/{id}
+    body: $outputs.jobForm.onSubmit
+    $outputs: [id]
+  navigateAfterUpdate:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}
+    id: $brains.updateJob.id
+  navigateCancel:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}
+    _event: $outputs.jobForm.onCancel
+
 $type: PageContent
 sections:
   - $type: BackLink
     label: Back to job
   - $type: JobFormSection
+    $id: jobForm
     jobId: $route.id
     initial: $sources.jobData
+    $outputs:
+      onSubmit: [formData]
+      onCancel: []

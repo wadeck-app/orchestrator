@@ -25,8 +25,6 @@ export { AuditEntryIcon } from './components/AuditEntryIcon.js';
 export type { AuditEntryIconProps } from './components/AuditEntryIcon.js';
 export { AuditEntryRow } from './components/AuditEntryRow.js';
 export type { AuditEntry, AuditEntryRowProps } from './components/AuditEntryRow.js';
-export { AuditEntryList } from './components/AuditEntryList.js';
-export type { AuditEntryListProps } from './components/AuditEntryList.js';
 export { ScheduleTimeline } from './components/ScheduleTimeline.js';
 export { NavBar } from './components/NavBar.js';
 export { JobSearchBar } from './components/JobSearchBar.js';

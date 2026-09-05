@@ -9,8 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wadeck-app/dsl-renderer": "latest",
-    "@wadeck-app/dsl-ui": "latest",
+    "@wadeck-app/dsl-renderer": "^2026.9.5-019-eb2623e4",
+    "@wadeck-app/dsl-ui": "^2026.9.5-019-eb2623e4",
     "@wadeck-app/orch-ui": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
