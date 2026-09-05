@@ -25,7 +25,23 @@ const { version } = require('../package.json') as { version: string };
 const CONFIG_DIR: string =
   process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator');
 
+// Synchronous early-startup log written before any async operation.
+// Tells us whether the process reaches JS execution at all.
+// If a crash produces exit code 1 with no "daemon starting" in the log,
+// checking for this "pre-start" entry reveals whether the crash is before
+// or after this point (i.e. module-load-level vs. early async).
+function writePreStartLog(): void {
+  try {
+    const logDir = path.join(CONFIG_DIR, 'logs', 'daemon');
+    fs.mkdirSync(logDir, { recursive: true });
+    const today = new Date().toISOString().slice(0, 10);
+    const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    fs.appendFileSync(path.join(logDir, `daemon-${today}.log`), `[${ts}] daemon pre-start (pid=${process.pid})\n`);
+  } catch { /* truly unrecoverable */ }
+}
+
 async function main(): Promise<void> {
+  writePreStartLog();
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   cleanTmpDir(path.join(CONFIG_DIR, 'tmp'), { maxAgeDays: 7, maxSizeMb: 100 });
 
@@ -155,14 +171,18 @@ async function main(): Promise<void> {
 }
 
 main().catch((e: unknown) => {
-  // Write to a fallback log file since daemonLog may not be initialised yet.
+  const msg = getErrorMessage(e);
+  // Always write to stderr first — visible when running interactively or captured by a parent.
+  process.stderr.write(`[orchestrator] fatal: ${msg}\n`);
+  // Also append to the daemon log; if the log write fails, report that to stderr too.
   try {
     const logDir = path.join(CONFIG_DIR, 'logs', 'daemon');
     fs.mkdirSync(logDir, { recursive: true });
     const today = new Date().toISOString().slice(0, 10);
     const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    fs.appendFileSync(path.join(logDir, `daemon-${today}.log`), `[${ts}] daemon fatal: ${getErrorMessage(e)}\n`);
-  } catch { /* last resort */ }
-  console.error('[orchestrator] fatal:', getErrorMessage(e));
+    fs.appendFileSync(path.join(logDir, `daemon-${today}.log`), `[${ts}] daemon fatal: ${msg}\n`);
+  } catch (logErr: unknown) {
+    process.stderr.write(`[orchestrator] log write failed: ${getErrorMessage(logErr)}\n`);
+  }
   process.exit(1);
 });
