@@ -1,13 +1,13 @@
 import React from 'react';
 import type { TriggerSource } from '../types.js';
 
-interface Props { source?: TriggerSource; }
+export interface TriggerBadgeProps { source?: TriggerSource; }
 
 /**
  * @registryCategory atomic
  * @registryTags badge trigger source manual cron
  */
-export function TriggerBadge({ source }: Props): React.ReactElement {
+export function TriggerBadge({ source }: TriggerBadgeProps): React.ReactElement {
   const s = source ?? { kind: 'cron' as const };
   if (s.kind === 'cron') {
     return <span className="text-xs px-1.5 py-0.5 rounded bg-muted/20 text-muted">cron</span>;

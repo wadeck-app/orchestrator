@@ -17,7 +17,7 @@ export interface JobWithHistory {
 
 type FilterType = 'all' | 'cron' | 'startup' | 'once' | 'failed';
 
-interface Props {
+export interface JobListSectionProps {
   jobs?: JobWithHistory[];
 }
 
@@ -25,7 +25,7 @@ interface Props {
  * @registryCategory composite
  * @registryTags jobs list grid
  */
-export function JobListSection({ jobs }: Props): React.ReactElement {
+export function JobListSection({ jobs }: JobListSectionProps): React.ReactElement {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');

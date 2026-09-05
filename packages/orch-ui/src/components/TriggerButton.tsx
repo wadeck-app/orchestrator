@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { CheckCircle, Loader2, Play, XCircle } from 'lucide-react';
 import { getErrorMessage } from '../types.js';
 
-interface Props {
+export interface TriggerButtonProps {
   jobId: string;
   onTrigger: (id: string) => Promise<void>;
   feedbackDurationMs?: number;
@@ -21,10 +21,10 @@ const BTN_ERROR   = `${BTN_BASE} bg-danger text-on-primary`;
 // @formatter:on
 
 /**
- * @registryCategory controls
+ * @registryCategory atomic
  * @registryTags button trigger run
  */
-export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_DURATION_MS }: Props): React.ReactElement {
+export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_DURATION_MS }: TriggerButtonProps): React.ReactElement {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

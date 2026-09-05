@@ -22,7 +22,7 @@ const CRON_TEMPLATES = [
 type JobType = Job['type'];
 type TriggerMode = Job['triggerMode'];
 
-interface Props {
+export interface JobFormProps {
   initial?: Partial<Job>;
   onSubmit: (data: Partial<Job>) => Promise<void>;
   onCancel: () => void;
@@ -42,10 +42,10 @@ function parseCron(expr: string): string | null {
 }
 
 /**
- * @registryCategory form
+ * @registryCategory composite
  * @registryTags form job edit create
  */
-export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElement {
+export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.ReactElement {
   const [label, setLabel] = useState(initial?.label ?? '');
   const [type, setType] = useState<JobType>(initial?.type ?? 'cron');
   const [command, setCommand] = useState(initial?.command ?? '');

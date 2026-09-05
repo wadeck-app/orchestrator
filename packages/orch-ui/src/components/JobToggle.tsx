@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import type { Job } from '../types.js';
 
-interface Props { job: Job; }
+export interface JobToggleProps { job: Job; }
 
 /**
- * @registryCategory controls
+ * @registryCategory composite
  * @registryTags toggle enable disable job
  */
-export function JobToggle({ job }: Props): React.ReactElement {
+export function JobToggle({ job }: JobToggleProps): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [optimistic, setOptimistic] = useState(job.enabled);
 

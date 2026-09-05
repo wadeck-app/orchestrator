@@ -113,7 +113,7 @@ export function JobListPage() {
           <JobCard
             key={job.id}
             job={job}
-            lastRun={runHistory[0] ?? null}
+            runHistory={runHistory}
             onClick={() => navigate(`/jobs/${job.id}`)}
             onTrigger={async (id) => { await api.triggerJob(id); }}
             onToggle={async (id, enabled) => {

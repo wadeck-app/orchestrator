@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { LogViewer } from './LogViewer.js';
 
-interface Props {
+export interface LogViewerSectionProps {
   jobId: string;
 }
 
@@ -11,7 +11,7 @@ interface Props {
  * @registryCategory composite
  * @registryTags log viewer streaming
  */
-export function LogViewerSection({ jobId }: Props): React.ReactElement {
+export function LogViewerSection({ jobId }: LogViewerSectionProps): React.ReactElement {
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 200px)' }}>
       <div className="flex items-center gap-4 mb-3">

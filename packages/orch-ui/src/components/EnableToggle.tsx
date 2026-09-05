@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import type { Job } from '../types.js';
 
-interface Props {
+export interface EnableToggleProps {
   job: Job;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
 }
 
 /**
- * @registryCategory controls
+ * @registryCategory composite
  * @registryTags toggle enable disable
  */
-export function EnableToggle({ job, onToggle }: Props): React.ReactElement {
+export function EnableToggle({ job, onToggle }: EnableToggleProps): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [optimisticEnabled, setOptimisticEnabled] = useState(job.enabled);
 

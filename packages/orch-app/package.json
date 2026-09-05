@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "vite build && node scripts/patch-entries.mjs && tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run"
   },

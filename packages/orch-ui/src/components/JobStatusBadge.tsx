@@ -1,6 +1,6 @@
 import React from 'react';
 
-interface Props {
+export interface JobStatusBadgeProps {
   exitCode: number | null;
   running?: boolean;
 }
@@ -21,7 +21,7 @@ export const BADGE_NEVER   = `${BADGE_BASE} bg-gray-100 text-gray-600`;
  * @registryCategory atomic
  * @registryTags badge status job
  */
-export function JobStatusBadge({ exitCode, running }: Props): React.ReactElement {
+export function JobStatusBadge({ exitCode, running }: JobStatusBadgeProps): React.ReactElement {
   if (running) return <span className={BADGE_RUNNING}>Running</span>;
   if (exitCode === 0) return <span className={BADGE_OK}>OK</span>;
   if (exitCode !== null) return <span className={BADGE_FAILED}>Failed &mdash; exit {exitCode}</span>;

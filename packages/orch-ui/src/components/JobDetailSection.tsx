@@ -8,7 +8,7 @@ import type { JobWithHistory } from './JobListSection.js';
 import { getErrorMessage } from '../types.js';
 import { ArrowLeft } from 'lucide-react';
 
-interface Props {
+export interface JobDetailSectionProps {
   data?: JobWithHistory | null;
   jobId: string;
 }
@@ -22,7 +22,7 @@ const LINK_BTN_CLS  = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md
  * @registryCategory composite
  * @registryTags job detail view
  */
-export function JobDetailSection({ data, jobId }: Props): React.ReactElement {
+export function JobDetailSection({ data, jobId }: JobDetailSectionProps): React.ReactElement {
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);

@@ -495,7 +495,14 @@ export const PageTabsEntry: ComponentRegistryEntry = {
 export const RouterProviderEntry: ComponentRegistryEntry = {
 	name: 'RouterProvider', category: 'disposition', tags: ["router","navigation"],
 	nodeSchema: null as never,
-	render: () => <RouterProvider />,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		return (
+			<RouterProvider>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</RouterProvider>
+		)
+	},
 }
 
 export const StepperEntry: ComponentRegistryEntry = {
@@ -603,29 +610,29 @@ export const DataTableEntry: ComponentRegistryEntry = {
 	name: 'DataTable', category: 'composite', tags: ["table"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['rows']
-		const columns = resolveExpressionValue(node['columns'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['columns']
-		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['loading']
-		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['emptyMessage']
-		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onAction']
-		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['navigateTo']
+		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['rows']
+		const columns = resolveExpressionValue(node['columns'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['columns']
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['loading']
+		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['emptyMessage']
+		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onAction']
+		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['navigateTo']
 		const filtersTop = node['filtersTop'] as unknown[] | undefined
 		const filters = node['filters'] as unknown[] | undefined
-		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['id']
-		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['page']
-		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onPageChange']
-		const sortCol = resolveExpressionValue(node['sortCol'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['sortCol']
-		const onSortColChange = resolveExpressionValue(node['onSortColChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onSortColChange']
-		const sortDir = resolveExpressionValue(node['sortDir'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['sortDir']
-		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onSortDirChange']
-		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['defaultFilters']
-		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['expansion']
-		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['renderNode']
-		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['selectable']
-		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['batchActions']
-		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['onBatchAction']
-		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['expansionCondition']
-		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps['fontMono']
+		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['id']
+		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['page']
+		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onPageChange']
+		const sortCol = resolveExpressionValue(node['sortCol'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortCol']
+		const onSortColChange = resolveExpressionValue(node['onSortColChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortColChange']
+		const sortDir = resolveExpressionValue(node['sortDir'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortDir']
+		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortDirChange']
+		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['defaultFilters']
+		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansion']
+		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['renderNode']
+		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['selectable']
+		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['batchActions']
+		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onBatchAction']
+		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansionCondition']
+		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['fontMono']
 		return <DataTable rows={rows} columns={columns} loading={loading} emptyMessage={emptyMessage} onAction={onAction} navigateTo={navigateTo} filtersTop={filtersTop ? renderChildren(filtersTop, registry, ctx) : null} filters={filters ? renderChildren(filters, registry, ctx) : null} id={id} page={page} onPageChange={onPageChange} sortCol={sortCol} onSortColChange={onSortColChange} sortDir={sortDir} onSortDirChange={onSortDirChange} defaultFilters={defaultFilters} expansion={expansion} renderNode={renderNode} selectable={selectable} batchActions={batchActions} onBatchAction={onBatchAction} expansionCondition={expansionCondition} fontMono={fontMono} />
 	},
 }
@@ -726,9 +733,13 @@ export const ButtonEntry: ComponentRegistryEntry = {
 }
 
 export const EnableToggleEntry: ComponentRegistryEntry = {
-	name: 'EnableToggle', category: 'controls', tags: ["toggle","enable","disable"],
+	name: 'EnableToggle', category: 'composite', tags: ["toggle","enable","disable"],
 	nodeSchema: null as never,
-	render: () => <EnableToggle />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/EnableToggle.js').EnableToggleProps['job']
+		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/EnableToggle.js').EnableToggleProps['onToggle']
+		return <EnableToggle job={job} onToggle={onToggle} />
+	},
 }
 
 export const JobCardEntry: ComponentRegistryEntry = {
@@ -780,13 +791,22 @@ export const JobDetailActionsEntry: ComponentRegistryEntry = {
 export const JobDetailSectionEntry: ComponentRegistryEntry = {
 	name: 'JobDetailSection', category: 'composite', tags: ["job","detail","view"],
 	nodeSchema: null as never,
-	render: () => <JobDetailSection />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const data = resolveExpressionValue(node['data'], ctx) as import('../../../orch-ui/src/components/JobDetailSection.js').JobDetailSectionProps['data']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailSection.js').JobDetailSectionProps['jobId']
+		return <JobDetailSection data={data} jobId={jobId} />
+	},
 }
 
 export const JobFormEntry: ComponentRegistryEntry = {
-	name: 'JobForm', category: 'form', tags: ["form","job","edit","create"],
+	name: 'JobForm', category: 'composite', tags: ["form","job","edit","create"],
 	nodeSchema: null as never,
-	render: () => <JobForm />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['initial']
+		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['onSubmit']
+		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['onCancel']
+		return <JobForm initial={initial} onSubmit={onSubmit} onCancel={onCancel} />
+	},
 }
 
 export const JobFormSectionEntry: ComponentRegistryEntry = {
@@ -802,19 +822,29 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 export const JobListSectionEntry: ComponentRegistryEntry = {
 	name: 'JobListSection', category: 'composite', tags: ["jobs","list","grid"],
 	nodeSchema: null as never,
-	render: () => <JobListSection />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobs = resolveExpressionValue(node['jobs'], ctx) as import('../../../orch-ui/src/components/JobListSection.js').JobListSectionProps['jobs']
+		return <JobListSection jobs={jobs} />
+	},
 }
 
 export const JobStatusBadgeEntry: ComponentRegistryEntry = {
 	name: 'JobStatusBadge', category: 'atomic', tags: ["badge","status","job"],
 	nodeSchema: null as never,
-	render: () => <JobStatusBadge />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const exitCode = resolveExpressionValue(node['exitCode'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['exitCode']
+		const running = resolveExpressionValue(node['running'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['running']
+		return <JobStatusBadge exitCode={exitCode} running={running} />
+	},
 }
 
 export const JobToggleEntry: ComponentRegistryEntry = {
-	name: 'JobToggle', category: 'controls', tags: ["toggle","enable","disable","job"],
+	name: 'JobToggle', category: 'composite', tags: ["toggle","enable","disable","job"],
 	nodeSchema: null as never,
-	render: () => <JobToggle />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobToggle.js').JobToggleProps['job']
+		return <JobToggle job={job} />
+	},
 }
 
 export const LogViewerEntry: ComponentRegistryEntry = {
@@ -830,13 +860,19 @@ export const LogViewerEntry: ComponentRegistryEntry = {
 export const LogViewerSectionEntry: ComponentRegistryEntry = {
 	name: 'LogViewerSection', category: 'composite', tags: ["log","viewer","streaming"],
 	nodeSchema: null as never,
-	render: () => <LogViewerSection />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/LogViewerSection.js').LogViewerSectionProps['jobId']
+		return <LogViewerSection jobId={jobId} />
+	},
 }
 
 export const NextFireCountdownEntry: ComponentRegistryEntry = {
 	name: 'NextFireCountdown', category: 'atomic', tags: ["countdown","schedule"],
 	nodeSchema: null as never,
-	render: () => <NextFireCountdown />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/NextFireCountdown.js').NextFireCountdownProps['job']
+		return <NextFireCountdown job={job} />
+	},
 }
 
 export const RunHistoryEntry: ComponentRegistryEntry = {
@@ -860,13 +896,21 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 export const TriggerBadgeEntry: ComponentRegistryEntry = {
 	name: 'TriggerBadge', category: 'atomic', tags: ["badge","trigger","source","manual","cron"],
 	nodeSchema: null as never,
-	render: () => <TriggerBadge />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const source = resolveExpressionValue(node['source'], ctx) as import('../../../orch-ui/src/components/TriggerBadge.js').TriggerBadgeProps['source']
+		return <TriggerBadge source={source} />
+	},
 }
 
 export const TriggerButtonEntry: ComponentRegistryEntry = {
-	name: 'TriggerButton', category: 'controls', tags: ["button","trigger","run"],
+	name: 'TriggerButton', category: 'atomic', tags: ["button","trigger","run"],
 	nodeSchema: null as never,
-	render: () => <TriggerButton />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['jobId']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['onTrigger']
+		const feedbackDurationMs = resolveExpressionValue(node['feedbackDurationMs'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['feedbackDurationMs']
+		return <TriggerButton jobId={jobId} onTrigger={onTrigger} feedbackDurationMs={feedbackDurationMs} />
+	},
 }
 
 export const WebhookListEntry: ComponentRegistryEntry = {

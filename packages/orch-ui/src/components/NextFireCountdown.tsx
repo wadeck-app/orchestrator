@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Job } from '../types.js';
 
-interface Props {
+export interface NextFireCountdownProps {
   job: Job;
 }
 
@@ -9,7 +9,7 @@ interface Props {
  * @registryCategory atomic
  * @registryTags countdown schedule
  */
-export function NextFireCountdown({ job }: Props): React.ReactElement {
+export function NextFireCountdown({ job }: NextFireCountdownProps): React.ReactElement {
   if (job.type === 'startup') {
     return <span className="text-sm text-muted">On startup</span>;
   }
