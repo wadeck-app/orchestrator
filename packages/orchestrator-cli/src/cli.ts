@@ -401,7 +401,8 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       break;
     }
 
-    case 'trigger': {
+    case 'trigger':
+    case 'run': {
       const [id, ...trigRest] = rest;
       const wait = has(trigRest, '--wait');
       const data = await send('trigger-job', { id, wait }) as { exitCode?: number; pid?: number };

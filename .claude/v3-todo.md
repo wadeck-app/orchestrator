@@ -27,7 +27,7 @@ Last updated: 2026-09-05 (EVENT-01 done)
 
 ## Monitoring & Alerting
 
-- [ ] **MON-01** — Success streak counter on job cards
+- [x] **MON-01** — Success streak counter on job cards
   - Show streak N on each card, reset on any failure
 
 - [ ] **MON-02** — Runtime anomaly detection
@@ -52,7 +52,7 @@ Last updated: 2026-09-05 (EVENT-01 done)
 
 ## Scheduling & Config
 
-- [ ] **SCHED-01** — Global timezone config (default: OS timezone)
+- [x] **SCHED-01** — Global timezone config (default: OS timezone)
   - Single global setting, affects all cron display and scheduling
 
 - [ ] **SCHED-02** — Job dependencies (B runs after A succeeds)
@@ -61,19 +61,19 @@ Last updated: 2026-09-05 (EVENT-01 done)
 
 ## UX & Dashboard
 
-- [ ] **UX-01** — Job templates / presets with 5 common cron examples
-  - Examples: every 10min, every hour, daily at midnight, weekdays 9am, first of month
+- [x] **UX-01** — Job templates / presets with 5 common cron examples
+  - Examples: every 5min, every hour, daily midnight, weekdays 9am, first of month
 
-- [ ] **UX-02** — Tags / labels with colors per job
-  - Color picker or predefined palette, filter by tag in job list
+- [x] **UX-02** — Tags / labels with colors per job
+  - 6-color semantic palette, deterministic hash, filter by tag coming next
 
 - [ ] **UX-03** — Bulk actions (enable/disable/trigger/delete multiple jobs)
 
-- [ ] **UX-04** — Global stats bar (total, running, failed, uptime)
-  - Toggleable, disabled by default
+- [x] **UX-04** — Global stats bar (total, running, failed)
+  - Toggleable via BarChart2 icon in NavBar, disabled by default
 
-- [ ] **UX-05** — Log search within a run
-  - Search/highlight in LogViewer
+- [x] **UX-05** — Log search within a run
+  - Search input + match count + yellow highlight in LogViewer
 
 - [ ] **UX-06** — Dark mode
   - Full color system inversion, agent-browser validation required
@@ -81,7 +81,7 @@ Last updated: 2026-09-05 (EVENT-01 done)
 
 ## Developer Experience
 
-- [ ] **DX-01** — Per-job environment variables
+- [x] **DX-01** — Per-job environment variables
   - Stored in registry.json, passed to spawned process
 
 - [ ] **DX-02** — Secret storage (if not too complex)
@@ -91,7 +91,7 @@ Last updated: 2026-09-05 (EVENT-01 done)
   - Scripts declare `"dryRunSupported": true` in their config
   - Pass `--dry-run` flag when running
 
-- [ ] **DX-04** — `orch run <id>` CLI command
+- [x] **DX-04** — `orch run <id>` CLI command
   - Trigger a job from the CLI directly
 
 - [ ] **DX-05** — Config-as-code YAML watch

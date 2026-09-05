@@ -18,4 +18,11 @@
   --color-danger-bg:      #fee2e2;
   --color-warning:        #d97706;
   --color-warning-bg:     #fef3c7;
+  /* Tag palette - deterministic color by hash */
+  --color-tag-1: #6366f1;
+  --color-tag-2: #0ea5e9;
+  --color-tag-3: #10b981;
+  --color-tag-4: #f59e0b;
+  --color-tag-5: #ec4899;
+  --color-tag-6: #8b5cf6;
 }

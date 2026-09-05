@@ -42,6 +42,8 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+const OS_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /**
  * @registryCategory composite
  * @registryTags schedule timeline cron firings
@@ -71,12 +73,16 @@ export function ScheduleTimeline({ apiBase = '' }: ScheduleTimelineProps): React
   );
 
   if (firings.length === 0) return (
-    <p className="text-muted text-center py-12">No upcoming cron jobs in the next 24h.</p>
+    <>
+      <p className="text-xs text-muted mb-4">Times shown in: {OS_TZ}</p>
+      <p className="text-muted text-center py-12">No upcoming cron jobs in the next 24h.</p>
+    </>
   );
 
   let lastDate = '';
   return (
     <div className="space-y-1">
+      <p className="text-xs text-muted pb-2">Times shown in: {OS_TZ}</p>
       {firings.map((f, i) => {
         const date = fmtDate(f.ts);
         const showDate = date !== lastDate;

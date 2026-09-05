@@ -1,9 +1,19 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import type { Job, MissedFiring, LivenessConfig, LivenessStrategy } from '../types.js';
 import { Button } from './Button.js';
 import { FieldText } from './FieldText.js';
 import { FieldNumber } from './FieldNumber.js';
+
+// @formatter:off
+const CRON_TEMPLATES = [
+  { label: 'Every 5 min',   value: '*/5 * * * *'  },
+  { label: 'Every hour',    value: '0 * * * *'    },
+  { label: 'Daily midnight',value: '0 0 * * *'    },
+  { label: 'Weekdays 9am',  value: '0 9 * * 1-5'  },
+  { label: '1st of month',  value: '0 9 1 * *'    },
+] as const;
+// @formatter:on
 
 type JobType = Job['type'];
 type TriggerMode = Job['triggerMode'];
@@ -57,6 +67,15 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
     initExitCodes.length > 0 ? initExitCodes : []
   );
 
+  // env vars: key=value pairs
+  const initEnv = Object.entries(initial?.env ?? {}).map(([k, v]) => ({ key: k, val: v }));
+  const [envPairs, setEnvPairs] = useState<{ key: string; val: string }[]>(
+    initEnv.length > 0 ? initEnv : []
+  );
+
+  // tags
+  const [tagInput, setTagInput] = useState((initial?.tags ?? []).join(', '));
+
   const validate = (): boolean => {
     const e: FormErrors = {};
     if (!label.trim()) e.label = 'Label is required';
@@ -99,6 +118,16 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
         data.onExitCode = Object.fromEntries(validPairs.map(p => [p.code.trim(), p.msg.trim()]));
       }
 
+      // env vars
+      const validEnv = envPairs.filter(p => p.key.trim());
+      if (validEnv.length > 0) {
+        data.env = Object.fromEntries(validEnv.map(p => [p.key.trim(), p.val]));
+      }
+
+      // tags
+      const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean);
+      if (tags.length > 0) data.tags = tags;
+
       await onSubmit(data);
     } finally {
       setLoading(false);
@@ -127,6 +156,8 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
     <form onSubmit={handleSubmit} className="space-y-4">
       <FieldText label="Label" value={label} onChange={setLabel} placeholder="My job" error={errors?.label} required />
 
+      <FieldText label="Tags (comma-separated)" value={tagInput} onChange={setTagInput} placeholder="scraper, daily, production" />
+
       <div>
         <label className={labelClass}>Type</label>
         <select className={selectClass} value={type} onChange={(e) => setType(e.target.value as JobType)}>
@@ -151,6 +182,16 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
         <div>
           <FieldText label="Schedule (cron expression)" value={schedule} onChange={setSchedule} placeholder="*/5 * * * *" error={errors?.schedule} />
           {cronHint && <p className="mt-1 text-xs text-primary">{cronHint}</p>}
+          <div className="flex flex-wrap gap-1 mt-2">
+            {CRON_TEMPLATES.map(t => (
+              // violations-suppress: react/no-raw-button cron template chip - Button component doesn't fit compact chip pattern
+              <button key={t.value} type="button"
+                onClick={() => setSchedule(t.value)}
+                className="text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -226,6 +267,30 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
             {/* violations-suppress: react/no-raw-button add-row button - Button component doesn't fit compact list-append pattern */}
             <button type="button" onClick={() => setExitCodePairs(prev => [...prev, { code: '', msg: '' }])}
               className="text-xs text-primary hover:underline">+ Add exit code</button>
+          </div>
+
+          {/* Environment variables */}
+          <div>
+            <label className={labelClass}>Environment variables</label>
+            <p className="text-xs text-muted mb-2">Extra env vars injected into the job process.</p>
+            {envPairs.map((pair, i) => (
+              <div key={i} className="flex gap-2 mb-2 items-center">
+                {/* violations-suppress: react/no-raw-input compact key field - form context makes purpose clear */}
+                <input type="text" placeholder="KEY" value={pair.key}
+                  onChange={e => setEnvPairs(prev => prev.map((p, j) => j === i ? { ...p, key: e.target.value } : p))}
+                  className="w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono" />
+                {/* violations-suppress: react/no-raw-input compact value field - form context makes purpose clear */}
+                <input type="text" placeholder="value" value={pair.val}
+                  onChange={e => setEnvPairs(prev => prev.map((p, j) => j === i ? { ...p, val: e.target.value } : p))}
+                  className="flex-1 rounded border border-border px-2 py-1 text-sm bg-surface text-content" />
+                {/* violations-suppress: react/no-raw-button icon-only remove - no Button variant for compact remove */}
+                <button type="button" onClick={() => setEnvPairs(prev => prev.filter((_, j) => j !== i))}
+                  className="text-danger hover:opacity-70 px-1"><X size={12} /></button>
+              </div>
+            ))}
+            {/* violations-suppress: react/no-raw-button add-row - Button doesn't fit compact list-append */}
+            <button type="button" onClick={() => setEnvPairs(prev => [...prev, { key: '', val: '' }])}
+              className="text-xs text-primary hover:underline flex items-center gap-1"><Plus size={10} />Add variable</button>
           </div>
         </div>
       )}

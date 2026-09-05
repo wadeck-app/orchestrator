@@ -733,7 +733,14 @@ export const EnableToggleEntry: ComponentRegistryEntry = {
 export const JobCardEntry: ComponentRegistryEntry = {
 	name: 'JobCard', category: 'composite', tags: ["job","card"],
 	nodeSchema: null as never,
-	render: () => <JobCard />,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['job']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['runHistory']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onTrigger']
+		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onToggle']
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onClick']
+		return <JobCard job={job} runHistory={runHistory} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} />
+	},
 }
 
 export const JobCardGridEntry: ComponentRegistryEntry = {

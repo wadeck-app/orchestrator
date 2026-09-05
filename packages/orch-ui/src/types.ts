@@ -22,6 +22,8 @@ export interface Job {
   liveness?: LivenessConfig | null;
   onExitCode?: Record<string, string>;
   timeoutSeconds?: number;
+  env?: Record<string, string>;
+  tags?: string[];
 }
 
 export function getErrorMessage(e: unknown): string {

@@ -26,6 +26,12 @@ export default {
         'danger-subtle':'var(--color-danger-bg)',
         warning:        'var(--color-warning)',
         'warning-subtle':'var(--color-warning-bg)',
+        'tag-1': 'var(--color-tag-1)',
+        'tag-2': 'var(--color-tag-2)',
+        'tag-3': 'var(--color-tag-3)',
+        'tag-4': 'var(--color-tag-4)',
+        'tag-5': 'var(--color-tag-5)',
+        'tag-6': 'var(--color-tag-6)',
       },
     },
   },
@@ -43,6 +49,9 @@ export default {
     'bg-gray-900', 'text-green-400', 'text-gray-500',
     // EnableToggle peer-checked colors
     'bg-gray-300', 'peer-checked:bg-blue-600', 'after:bg-white',
+    // Tag palette (dynamically chosen by hash)
+    'bg-tag-1','bg-tag-2','bg-tag-3','bg-tag-4','bg-tag-5','bg-tag-6',
+    'text-tag-1','text-tag-2','text-tag-3','text-tag-4','text-tag-5','text-tag-6',
   ],
   plugins: [],
 } satisfies Config;

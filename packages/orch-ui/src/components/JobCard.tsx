@@ -1,11 +1,12 @@
 import React from 'react';
+import { Flame } from 'lucide-react';
 import type { Job, RuntimeEntry } from '../types.js';
 import { BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
 import { EnableToggle } from './EnableToggle.js';
 
-interface Props {
+export interface JobCardProps {
   job: Job;
   runHistory: RuntimeEntry[];
   onTrigger: (id: string) => Promise<void>;
@@ -20,11 +21,22 @@ const TYPE_COLORS: Record<Job['type'], string> = {
   startup: 'bg-blue-100 text-blue-700',
   once:    'bg-gray-100 text-gray-600',
 };
-// @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class
 
+// Tag color palette (6 semantic tokens added to tailwind.config + index.css)
+const TAG_BG  = ['bg-tag-1','bg-tag-2','bg-tag-3','bg-tag-4','bg-tag-5','bg-tag-6'] as const;
+const TAG_TEXT = ['text-tag-1','text-tag-2','text-tag-3','text-tag-4','text-tag-5','text-tag-6'] as const;
+// @formatter:on
+
+function tagColor(name: string): { bg: string; text: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const idx = h % 6;
+  return { bg: TAG_BG[idx]!, text: TAG_TEXT[idx]! };
+}
+
 // @formatter:off
-const CARD_CLS       = 'rounded-lg border border-border p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer bg-surface';
+const CARD_CLS        = 'rounded-lg border border-border p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer bg-surface';
 const TYPE_BADGE_BASE = 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0';
 // @formatter:on
 
@@ -45,27 +57,38 @@ function jobListBadge(runHistory: RuntimeEntry[]): React.ReactElement {
   const last = runHistory[0]!;
   if (last.exitCode === null) return <span className={BADGE_RUNNING}>Running</span>;
   if (last.exitCode === 0) return <span className={BADGE_OK}>OK</span>;
-  // Count consecutive failures from the most recent run
   const failCount = runHistory.filter(e => e.exitCode !== null && e.exitCode !== 0).length;
   return <span className={BADGE_FAILED}>{failCount}x failed</span>;
+}
+
+function successStreak(runHistory: RuntimeEntry[]): number {
+  let streak = 0;
+  for (const e of runHistory) {
+    if (e.exitCode === 0) streak++;
+    else break;
+  }
+  return streak;
 }
 
 /**
  * @registryCategory composite
  * @registryTags job card
  */
-export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: Props): React.ReactElement {
+export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: JobCardProps): React.ReactElement {
+  const streak = successStreak(runHistory);
+
   return (
-    <div
-      className={CARD_CLS}
-      onClick={onClick}
-    >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2 min-w-0">
+    <div className={CARD_CLS} onClick={onClick}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="font-semibold text-content truncate">{job.label}</span>
-          <span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type]}`}>
-            {job.type}
-          </span>
+          <span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type]}`}>{job.type}</span>
+          {(job.tags ?? []).map(tag => {
+            const { bg, text } = tagColor(tag);
+            return (
+              <span key={tag} className={`${TYPE_BADGE_BASE} ${bg} ${text}`}>{tag}</span>
+            );
+          })}
         </div>
         <EnableToggle job={job} onToggle={onToggle} />
       </div>
@@ -110,6 +133,14 @@ export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: Props
           </div>
         )}
       </div>
+
+      {streak >= 2 && (
+        <div className="flex items-center gap-0.5 mb-2">
+          {/* violations-suppress: tailwind/no-raw-color-class streak flame icon uses orange which has no semantic token */}
+          <Flame size={10} className="text-orange-400" />
+          <span className="text-xs text-muted">{streak} streak</span>
+        </div>
+      )}
 
       <div className="flex justify-end">
         <TriggerButton jobId={job.id} onTrigger={onTrigger} />
