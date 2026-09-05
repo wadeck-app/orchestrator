@@ -7,17 +7,35 @@ $sources:
       id: $route.id
     poll: 30s
 
+$brains:
+  triggerJob:
+    $brain: $brains.$http.post
+    url: POST /api/jobs/{id}/trigger
+    id: $route.id
+    _event: $outputs.jobActions.onTrigger
+    $reload: [jobData]
+
+  deleteJob:
+    $brain: $brains.$http.delete
+    url: DELETE /api/jobs/{id}
+    id: $route.id
+    _event: $outputs.jobActions.onDelete
+
 $type: PageContent
 sections:
   - $type: PageHeader
     title: $sources.jobData.job.label
   - $type: JobDetailActions
+    $id: jobActions
     jobId: $route.id
     job: $sources.jobData.job
+    $outputs:
+      onTrigger: [_]
+      onDelete: [_]
   - $type: JobConfigDisplay
     job: $sources.jobData.job
   - $type: Section
     title: Run history
-    items:
+    children:
       - $type: RunHistory
         entries: $sources.jobData.runHistory

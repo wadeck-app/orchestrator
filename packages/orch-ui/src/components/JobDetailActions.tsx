@@ -19,13 +19,19 @@ const TYPE_BADGE_COLORS: Record<string, string> = {
 // violations-suppress-end: tailwind/no-raw-color-class
 // @formatter:on
 
-export interface JobDetailActionsProps { job: Job; jobId: string; }
+export interface JobDetailActionsProps {
+  job: Job;
+  jobId: string;
+  /** DSL $outputs callbacks — injected by the registry when $id is declared on the node */
+  onTrigger?: () => void;
+  onDelete?: () => void;
+}
 
 /**
  * @registryCategory composite
  * @registryTags job actions detail
  */
-export function JobDetailActions({ job, jobId }: JobDetailActionsProps): React.ReactElement | null {
+export function JobDetailActions({ job, jobId, onTrigger, onDelete }: JobDetailActionsProps): React.ReactElement | null {
   if (!job) return null;
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -33,6 +39,7 @@ export function JobDetailActions({ job, jobId }: JobDetailActionsProps): React.R
   const [error, setError] = useState<string | null>(null);
 
   const handleTrigger = async (id: string) => {
+    if (onTrigger) { onTrigger(); return; }
     const res = await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
   };
@@ -43,6 +50,7 @@ export function JobDetailActions({ job, jobId }: JobDetailActionsProps): React.R
   };
 
   const handleDelete = async () => {
+    if (onDelete) { onDelete(); return; }
     setDeleting(true); setError(null);
     try {
       const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
