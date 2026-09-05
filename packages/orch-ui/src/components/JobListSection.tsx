@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import type { Job, RuntimeEntry } from '../types.js';
 import { JobCard } from './JobCard.js';
 import { Button } from './Button.js';
+import { JobSearchBar } from './JobSearchBar.js';
 
 // @formatter:off
 const CHIP_ACTIVE   = 'px-3 py-1 rounded-full text-sm font-medium bg-primary text-on-primary';
 const CHIP_INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg text-muted border border-border hover:bg-border';
-const SEARCH_CLS    = 'flex-1 border border-border rounded-md px-3 py-2 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
 // @formatter:on
 
 export interface JobWithHistory {
@@ -91,14 +91,7 @@ export function JobListSection({ jobs }: JobListSectionProps): React.ReactElemen
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        {/* violations-suppress: react/no-raw-input FieldText requires a label prop; this is a labelless inline search box with no FieldText equivalent */}
-        <input
-          type="text"
-          placeholder="Search jobs..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={SEARCH_CLS}
-        />
+        <JobSearchBar value={search} onChange={setSearch} />
         <div className="flex gap-2 flex-wrap">
           {filterLabels.map(({ key, label }) => (
             // violations-suppress: react/no-raw-button filter chip toggle - active/inactive state not supported by Button

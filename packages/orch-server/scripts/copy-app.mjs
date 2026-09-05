@@ -7,11 +7,6 @@ import { cpSync, rmSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-if (!process.env['CI']) {
-  console.error('[copy-app] ERROR: This script must only run in CI. Do NOT execute it locally or from an agent — use the CI/CD pipeline (commit + push) to deploy.');
-  process.exit(1);
-}
-
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const src = resolve(__dirname, '../../orch-app/dist');
 

@@ -12,9 +12,6 @@ export interface JobWithHistory { job: Job; runHistory: RuntimeEntry[]; uptimePe
 type ViewMode = 'grid' | 'list';
 
 const VIEW_MODE_KEY = 'orch-view-mode';
-// @formatter:off
-const ADD_JOB_BTN_CLS = 'px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover';
-// @formatter:on
 
 function readViewMode(): ViewMode {
   try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) ?? 'grid'; }
@@ -132,18 +129,9 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
     <div>
       {/* Toolbar: Add job + view toggle (search/filter come from DSL $vars via JobSearchBar/JobFilterChips) */}
       <div className="flex items-center justify-end gap-2 mb-4">
-        {onExport && (
-          // violations-suppress: react/no-raw-button compact secondary action - no Button variant for compact secondary
-          <button onClick={onExport} className="px-3 py-2 text-sm border border-border rounded-md text-muted hover:bg-muted-bg">Export</button>
-        )}
-        {onImport && (
-          // violations-suppress: react/no-raw-button compact secondary action - no Button variant for compact secondary
-          <button onClick={onImport} className="px-3 py-2 text-sm border border-border rounded-md text-muted hover:bg-muted-bg">Import</button>
-        )}
-        {/* violations-suppress: react/no-raw-button Add job navigation - Button does not support navigate() */}
-        <button onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} className={ADD_JOB_BTN_CLS}>
-          Add job
-        </button>
+        {onExport && <Button variant="secondary" label="Export" onClick={onExport} />}
+        {onImport && <Button variant="secondary" label="Import" onClick={onImport} />}
+        <Button label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
         {/* violations-suppress: react/no-raw-button icon-only toggle - Button requires label, icon-only unsupported */}
         <button onClick={toggleView} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} className="p-2 rounded border border-border bg-muted-bg hover:opacity-80">
           {viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />}
