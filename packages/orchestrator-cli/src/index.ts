@@ -40,8 +40,22 @@ async function main(): Promise<void> {
     updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
   };
 
+  // Create the logger before try/finally so crash paths can always write to it.
+  const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'daemon'), 'daemon');
+
+  // Capture uncaught exceptions and unhandled rejections that bypass main()'s catch.
+  process.on('uncaughtException', (err: Error) => {
+    daemonLog.write(`daemon crash (uncaughtException): ${getErrorMessage(err)}`);
+    daemonLog.close();
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (reason: unknown) => {
+    daemonLog.write(`daemon crash (unhandledRejection): ${getErrorMessage(reason)}`);
+    daemonLog.close();
+    process.exit(1);
+  });
+
   try {
-    const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'daemon'), 'daemon');
     daemonLog.write(`daemon starting (pid=${process.pid})`);
 
     const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'));
@@ -142,4 +156,15 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e: unknown) => { console.error('[orchestrator] fatal:', getErrorMessage(e)); process.exit(1); });
+main().catch((e: unknown) => {
+  // Write to a fallback log file since daemonLog may not be initialised yet.
+  try {
+    const logDir = path.join(CONFIG_DIR, 'logs', 'daemon');
+    fs.mkdirSync(logDir, { recursive: true });
+    const today = new Date().toISOString().slice(0, 10);
+    const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    fs.appendFileSync(path.join(logDir, `daemon-${today}.log`), `[${ts}] daemon fatal: ${getErrorMessage(e)}\n`);
+  } catch { /* last resort */ }
+  console.error('[orchestrator] fatal:', getErrorMessage(e));
+  process.exit(1);
+});
