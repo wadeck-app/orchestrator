@@ -56,26 +56,38 @@ function output(data: unknown, forceJson: boolean): void {
 const HELP_TEXT = `
 orch -- cross-platform job orchestrator
 
+Concepts:
+  job           A scheduled or startup task with an id, command, and schedule
+  cron          Runs on a cron schedule (5-field: min hour day month weekday)
+  startup       Runs once when the daemon starts, with optional delay
+  once          Runs once after a delay, then self-deletes
+  liveness      Optional check: if target is already alive, skip firing the job
+
 Usage: orch <command> [options]
 
 Daemon lifecycle:
   orch start                   Start the daemon (idempotent)
   orch stop                    Stop the daemon
   orch restart                 Restart the daemon
-  orch status                  Show daemon pid, port, uptime
+  orch status [--json]         Show daemon pid, port, uptime
+                               JSON fields: pid, port, uptime (seconds)
   orch install                 Register orchestrator in OS startup
   orch uninstall               Remove from OS startup
 
 Job inspection:
-  orch list [--verbose]        List all jobs
-  orch show <id>               Show full job detail
+  orch list [--verbose] [--json]
+                               List all jobs; --verbose adds last run + exit code
+  orch show <id> [--json]      Show full job detail
+                               JSON fields: id, type, label, command, schedule,
+                               delaySeconds, cwd, enabled, triggerMode, missedFiring,
+                               liveness, tags, timeoutSeconds
   orch --pid                   Show daemon pid/port (no daemon required)
 
 Job mutation:
   orch add cron <id> --schedule <expr> --command <cmd> [--cwd <p>] [--label <t>]
-                               [--trigger-mode fire-and-forget|wait]
-                               [--missed-firing catch-up|skip]
-                               [--liveness-strategy none|portFile|pidFile|command]
+                               [--trigger-mode fire-and-forget|wait]   (default: fire-and-forget)
+                               [--missed-firing catch-up|skip]         (default: skip)
+                               [--liveness-strategy none|portFile|pidFile|command] (default: none)
                                [--liveness-port-file <p>] [--liveness-command <c>]
                                [--disabled]
   orch add startup <id> --command <cmd> [--delay <seconds>] [--cwd <p>] [--label <t>]
@@ -85,6 +97,17 @@ Job mutation:
   orch enable <id>             Enable a job
   orch disable <id>            Disable a job
   orch edit <id> [--schedule <expr>] [--delay <s>] [--command <c>] [--label <t>] ...
+
+Schedule format (cron jobs): standard 5-field cron — min hour day month weekday
+  Examples: "*/5 * * * *"   every 5 minutes
+            "0 9 * * 1-5"   9 AM on weekdays
+            "30 8 * * *"    8:30 AM daily
+
+Liveness strategies (skip firing if target is already alive):
+  none       Always fire — no liveness check (default)
+  portFile   Read <portFile>, check if its PID is alive → skip if alive
+  pidFile    Find PID file by job id → skip if PID is alive
+  command    Run <command> → skip if it exits 0
 
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
