@@ -22,13 +22,15 @@ export async function jobsRoutes(
 
   fastify.get('/api/jobs', async (_req, reply) => {
     return guard(reply, async () => {
-      const [jobs, state] = await Promise.all([
+      const [jobs, state, uptime] = await Promise.all([
         proxy.send('list-jobs') as Promise<{ id: string }[]>,
         proxy.send('list-state') as Promise<Record<string, unknown>>,
+        proxy.send('get-uptime').catch(() => ({})) as Promise<Record<string, number | null>>,
       ]);
       const result = jobs.map((job) => ({
         job,
         runHistory: (state[job.id] as unknown[] | undefined) ?? [],
+        uptimePercent: (uptime as Record<string, number | null>)[job.id] ?? null,
       }));
       return reply.send(result);
     });
@@ -150,6 +152,13 @@ export async function jobsRoutes(
       const limit = Math.min(Number((req.query as { limit?: string }).limit ?? 100), 500);
       const entries = await proxy.send('list-audit', { limit });
       return reply.send(entries);
+    });
+  });
+
+  fastify.get('/api/uptime', async (_req, reply) => {
+    return guard(reply, async () => {
+      const uptime = await proxy.send('get-uptime');
+      return reply.send(uptime);
     });
   });
 }

@@ -9,6 +9,7 @@ import { EnableToggle } from './EnableToggle.js';
 export interface JobCardProps {
   job: Job;
   runHistory: RuntimeEntry[];
+  uptimePercent?: number | null;
   onTrigger: (id: string) => Promise<void>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
   onClick?: () => void;
@@ -74,7 +75,7 @@ function successStreak(runHistory: RuntimeEntry[]): number {
  * @registryCategory composite
  * @registryTags job card
  */
-export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: JobCardProps): React.ReactElement {
+export function JobCard({ job, runHistory, uptimePercent, onTrigger, onToggle, onClick }: JobCardProps): React.ReactElement {
   const streak = successStreak(runHistory);
 
   return (
@@ -134,13 +135,18 @@ export function JobCard({ job, runHistory, onTrigger, onToggle, onClick }: JobCa
         )}
       </div>
 
-      {streak >= 2 && (
-        <div className="flex items-center gap-0.5 mb-2">
-          {/* violations-suppress: tailwind/no-raw-color-class streak flame icon uses orange which has no semantic token */}
-          <Flame size={10} className="text-orange-400" />
-          <span className="text-xs text-muted">{streak} streak</span>
-        </div>
-      )}
+      <div className="flex items-center gap-3 mb-2">
+        {streak >= 2 && (
+          <div className="flex items-center gap-0.5">
+            {/* violations-suppress: tailwind/no-raw-color-class streak flame icon uses orange which has no semantic token */}
+            <Flame size={10} className="text-orange-400" />
+            <span className="text-xs text-muted">{streak} streak</span>
+          </div>
+        )}
+        {uptimePercent !== null && uptimePercent !== undefined && (
+          <span className="text-xs text-muted">{uptimePercent.toFixed(1)}% uptime</span>
+        )}
+      </div>
 
       <div className="flex justify-end">
         <TriggerButton jobId={job.id} onTrigger={onTrigger} />

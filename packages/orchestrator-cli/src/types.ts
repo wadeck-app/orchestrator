@@ -72,6 +72,7 @@ export type OrchestratorCommands = {
   'ack-failures':  (payload?: unknown) => Record<string, never>;
   'list-audit':    (payload?: unknown) => Array<{ ts: string; event: string; [key: string]: unknown }>;
   'get-schedule':  (payload?: unknown) => Array<{ jobId: string; label: string; next: string[] }>;
+  'get-uptime':    (payload?: unknown) => Record<string, number | null>;
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };

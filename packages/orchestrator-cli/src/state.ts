@@ -120,6 +120,28 @@ export class State {
     if (changed) this._flush();
   }
 
+  getRollingAvgDurationMs(id: string, n = 10): number | null {
+    this._ensure();
+    const entries = this._cache![id] ?? [];
+    const completed = entries
+      .filter(e => e.exitCode !== null && e.finishedAt)
+      .slice(0, n);
+    if (completed.length < 3) return null;
+    const total = completed.reduce((sum, e) => {
+      return sum + (new Date(e.finishedAt!).getTime() - new Date(e.startedAt).getTime());
+    }, 0);
+    return total / completed.length;
+  }
+
+  getUptimePercent(id: string, windowDays = 30): number | null {
+    this._ensure();
+    const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+    const entries = (this._cache![id] ?? []).filter(e => e.startedAt >= cutoff && e.exitCode !== null);
+    if (entries.length < 3) return null;
+    const successes = entries.filter(e => e.exitCode === 0).length;
+    return (successes / entries.length) * 100;
+  }
+
   clear(id: string): void {
     this._ensure();
     if (this._cache![id] !== undefined) {

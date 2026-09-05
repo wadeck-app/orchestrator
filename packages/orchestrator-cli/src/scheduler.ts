@@ -193,6 +193,12 @@ export class Scheduler extends EventEmitter {
           if (wasFailure) {
             this._events.publish('job.recovered', { jobId: job.id, label: job.label });
           }
+          // Anomaly detection: emit if duration is 3× longer than rolling average
+          const avgMs = this._state.getRollingAvgDurationMs(job.id);
+          if (avgMs !== null && durationMs > 3 * avgMs) {
+            jobLogger.write(`[warn] Job ${job.id} took ${durationMs}ms (3x avg ${Math.round(avgMs)}ms) - anomaly detected`);
+            this._events.publish('job.anomaly', { jobId: job.id, label: job.label, durationMs, avgMs: Math.round(avgMs), multiplier: 3 });
+          }
         } else {
           this._events.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
         }

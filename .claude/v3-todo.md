@@ -30,11 +30,11 @@ Last updated: 2026-09-05
 - [x] **MON-01** — Success streak counter on job cards
   - Show streak N on each card, reset on any failure
 
-- [ ] **MON-02** — Runtime anomaly detection
+- [x] **MON-02** — Runtime anomaly detection
   - Alert if job takes 3× longer than rolling average (configurable multiplier)
   - Emit: job.anomaly event to queue
 
-- [ ] **MON-03** — Uptime % per job (rolling 30-day)
+- [x] **MON-03** — Uptime % per job (rolling 30-day)
   - Computed from non-failing runs / total scheduled runs
 
 - [ ] **MON-04** — SLA window monitoring
@@ -46,7 +46,7 @@ Last updated: 2026-09-05
 
 ## Systray
 
-- [ ] **TRAY-01** — Green checkmark flash on job success
+- [x] **TRAY-01** — Green checkmark flash on job success
   - Similar to existing red error mark, flash green for 5s on success
   - No toast — just the systray icon
 
@@ -67,7 +67,7 @@ Last updated: 2026-09-05
 - [x] **UX-02** — Tags / labels with colors per job
   - 6-color semantic palette, deterministic hash, filter by tag coming next
 
-- [ ] **UX-03** — Bulk actions (enable/disable/trigger/delete multiple jobs)
+- [x] **UX-03** — Bulk actions (enable/disable/trigger/delete multiple jobs)
 
 - [x] **UX-04** — Global stats bar (total, running, failed)
   - Toggleable via BarChart2 icon in NavBar, disabled by default

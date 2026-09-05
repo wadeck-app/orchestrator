@@ -80,6 +80,14 @@ export function makeCommands(
       return audit?.readLast(limit) ?? [];
     },
 
+    'get-uptime': () => {
+      const result: Record<string, number | null> = {};
+      for (const job of registry.list()) {
+        result[job.id] = state.getUptimePercent(job.id);
+      }
+      return result;
+    },
+
     'get-schedule': () => {
       return registry.list()
         .filter(j => j.type === 'cron' && j.enabled && j.schedule)

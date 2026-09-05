@@ -736,10 +736,11 @@ export const JobCardEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['job']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['runHistory']
+		const uptimePercent = resolveExpressionValue(node['uptimePercent'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['uptimePercent']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onTrigger']
 		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onToggle']
 		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onClick']
-		return <JobCard job={job} runHistory={runHistory} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} />
+		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} />
 	},
 }
 
@@ -748,9 +749,10 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const items = resolveExpressionValue(node['items'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['items']
+		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
 		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} uptimeMap={uptimeMap} onExport={onExport} onImport={onImport} />
 	},
 }
 

@@ -46,6 +46,8 @@ export const api = {
     apiFetch<Array<{ ts: string; event: string; [key: string]: unknown }>>(`/api/audit?limit=${limit}`),
   getSchedule: () =>
     apiFetch<Array<{ jobId: string; label: string; next: string[] }>>('/api/schedule'),
+  getUptime: () =>
+    apiFetch<Record<string, number | null>>('/api/uptime'),
   exportJobs: async () => {
     const res = await fetch('/api/jobs/export');
     if (!res.ok) throw new Error(res.statusText);
