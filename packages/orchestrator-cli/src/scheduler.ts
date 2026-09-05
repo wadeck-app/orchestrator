@@ -197,7 +197,7 @@ export class Scheduler extends EventEmitter {
           if (hardThreshold && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb)) {
             // Hard budget exceeded: kill
             const msg = `[warn] Hard resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% threshold: ${hardThreshold.cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB threshold: ${hardThreshold.ramMb.toFixed(0)}MB) - killing`;
-            process.stderr.write(msg + '\n');
+            try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
             this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold });
             clearInterval(resourceTimer!);
             child.kill('SIGTERM');
@@ -205,7 +205,7 @@ export class Scheduler extends EventEmitter {
           } else if (!softAlertSent && softThreshold && (cpuPct > softThreshold.cpuPct || ramMb > softThreshold.ramMb)) {
             softAlertSent = true;
             const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
-            process.stderr.write(msg + '\n');
+            try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
             this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
           }
         }).catch(() => { clearInterval(resourceTimer!); });
@@ -220,11 +220,11 @@ export class Scheduler extends EventEmitter {
     );
     child.stdout?.on('data', (d: Buffer) => {
       jobLogger.write(d.toString().trimEnd());
-      process.stdout.write(d);
+      try { process.stdout.write(d); } catch { /* EPIPE: launcher pipe closed */ }
     });
     child.stderr?.on('data', (d: Buffer) => {
       jobLogger.write(`[stderr] ${d.toString().trimEnd()}`);
-      process.stderr.write(d);
+      try { process.stderr.write(d); } catch { /* EPIPE: launcher pipe closed */ }
     });
 
     // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s)
