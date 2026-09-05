@@ -3,9 +3,9 @@ import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, Bell, Moon, Sun } from 'lucide-react';
 
 // @formatter:off
-const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2.5 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
-const NAV_LINK_ACTIVE = 'flex items-center gap-1.5 px-2.5 py-1 rounded text-sm text-content bg-muted-bg font-medium';
-const ICON_BTN_CLS    = 'p-1.5 rounded text-muted hover:text-content hover:bg-muted-bg transition-colors';
+const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
+const NAV_LINK_ACTIVE = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-content bg-muted-bg font-medium';
+const ICON_BTN_CLS    = 'p-1 rounded text-muted hover:text-content hover:bg-muted-bg transition-colors';
 const THEME_KEY       = 'orch-theme';
 // @formatter:on
 
@@ -42,10 +42,9 @@ export function NavBar(): React.ReactElement {
   }, []);
 
   return (
-    <nav className="flex items-center h-11 px-4 border-b border-border bg-surface">
-      <Link to="/" className="flex items-center gap-2 mr-6 shrink-0">
+    <nav className="flex items-center h-10 px-3 border-b border-border bg-surface">
+      <Link to="/" className="flex items-center mr-5 shrink-0" title="Orchestrator">
         <Layers size={16} className="text-primary" />
-        <span className="text-sm font-semibold text-content">Orchestrator</span>
       </Link>
       <div className="flex items-center gap-1 flex-1">
         <NavLink to="/" end className={({ isActive }) => isActive ? NAV_LINK_ACTIVE : NAV_LINK_BASE}>
