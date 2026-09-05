@@ -6,6 +6,10 @@ import { FieldText } from './FieldText.js';
 import { FieldNumber } from './FieldNumber.js';
 
 // @formatter:off
+const CHIP_BTN_CLS  = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
+const MONO_INPUT    = 'w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono';
+const FULL_INPUT    = 'w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
+
 const CRON_TEMPLATES = [
   { label: 'Every 5 min',   value: '*/5 * * * *'  },
   { label: 'Every hour',    value: '0 * * * *'    },
@@ -197,7 +201,7 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
               // violations-suppress: react/no-raw-button cron template chip - Button component doesn't fit compact chip pattern
               <button key={t.value} type="button"
                 onClick={() => setSchedule(t.value)}
-                className="text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">
+                className={CHIP_BTN_CLS}>
                 {t.label}
               </button>
             ))}
@@ -288,7 +292,7 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
                 {/* violations-suppress: react/no-raw-input compact key field - form context makes purpose clear */}
                 <input type="text" placeholder="KEY" value={pair.key}
                   onChange={e => setEnvPairs(prev => prev.map((p, j) => j === i ? { ...p, key: e.target.value } : p))}
-                  className="w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono" />
+                  className={MONO_INPUT} />
                 {/* violations-suppress: react/no-raw-input compact value field - form context makes purpose clear */}
                 <input type="text" placeholder="value" value={pair.val}
                   onChange={e => setEnvPairs(prev => prev.map((p, j) => j === i ? { ...p, val: e.target.value } : p))}
@@ -308,7 +312,7 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
             {/* violations-suppress: react/no-raw-input compact ID input - no shared select for job IDs */}
             <input type="text" value={dependsOn} onChange={e => setDependsOn(e.target.value)}
               placeholder="Leave empty for no dependency"
-              className="w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary" />
+              className={FULL_INPUT} />
           </div>
 
           {/* SLA window */}

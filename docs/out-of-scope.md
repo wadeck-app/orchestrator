@@ -1,4 +1,4 @@
-# Orchestrator — Out of Scope
+# Orchestrator - Out of Scope
 
 ## Flows and complex dependencies
 Job A → Job B is supported. DAGs, fan-out, branching, conditional execution → use a flow engine.

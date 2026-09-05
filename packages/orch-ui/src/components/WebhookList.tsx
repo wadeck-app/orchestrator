@@ -142,6 +142,7 @@ export function WebhookList({ apiBase = '' }: WebhookListProps): React.ReactElem
           ))}
         </div>
         {error && <p className="text-xs text-danger">{error}</p>}
+        {/* violations-suppress: react/no-raw-button form submit button with disabled state - Button component doesn't support async disabled pattern here */}
         <button onClick={() => void handleAdd()} disabled={saving || !url.trim()} className={BTN_P_CLS}>
           {saving ? 'Saving...' : 'Add webhook'}
         </button>

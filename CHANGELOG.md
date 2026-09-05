@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.0.0 (2026-09-05) — In progress
+## v3.0.0 (2026-09-05) - In progress
 
 ### Added
 - Event queue integration: job lifecycle events pushed to queue daemon
@@ -15,6 +15,15 @@
 - `orch run <id>` CLI command
 - Job templates with 5 common cron examples
 - OS timezone display in Schedule page
+- Webhooks config UI with event type checkboxes (NOTIF-01)
+- Consecutive-failure alert badge on job cards (NOTIF-02)
+- Dark mode with Moon/Sun toggle and localStorage persistence (UX-06)
+- Job dependencies: run job B after job A succeeds (SCHED-02)
+- SLA window monitoring: alert if job misses completion window (MON-04)
+- Secrets storage AES-256-GCM, injected as env vars at spawn (DX-02)
+- Dry run mode for scripts declaring dryRunSupported (DX-03)
+- Config-as-code YAML watch: sync jobs.yaml to registry (DX-05)
+- Blue hourglass systray icon when any job is running (TRAY-02)
 
 ## v2.0.0 (2026-09-03)
 

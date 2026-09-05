@@ -104,7 +104,7 @@ describe('TrayManager restart - tray process must be killed before restart event
 
     await mgr.start();  // registers the process.on('exit') hook
 
-    // Inject fake tp with pid — exit hook now uses _killByPid(pid) via taskkill/SIGKILL
+    // Inject fake tp with pid - exit hook now uses _killByPid(pid) via taskkill/SIGKILL
     let killedPid = null;
     mgr._killByPid = (pid) => { killedPid = pid; };
     mgr._tp = {

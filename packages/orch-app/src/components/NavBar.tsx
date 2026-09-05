@@ -1,27 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, BarChart2, Bell, Moon, Sun } from 'lucide-react';
+import { StatsBar } from './StatsBar.js';
+import type { StatsBarData } from './StatsBar.js';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2.5 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
 const NAV_LINK_ACTIVE = 'flex items-center gap-1.5 px-2.5 py-1 rounded text-sm text-content bg-muted-bg font-medium';
+const ICON_BTN_CLS    = 'p-1.5 rounded text-muted hover:text-content hover:bg-muted-bg transition-colors mr-1';
 const STATS_BAR_KEY   = 'orch-stats-bar';
 const THEME_KEY       = 'orch-theme';
 // @formatter:on
 
-interface StatsBarData { total: number; running: number; failed: number; }
-
-function StatsBar({ data }: { data: StatsBarData }): React.ReactElement {
-  return (
-    // violations-suppress: tailwind/no-raw-color-class stats bar uses specific count colors with no semantic token
-    <div className="flex items-center gap-4 px-4 py-1 border-b border-border bg-surface text-xs text-muted">
-      <span>{data.total} jobs</span>
-      {data.running > 0 && <span className="text-primary">{data.running} running</span>}
-      {data.failed > 0  && <span className="text-danger">{data.failed} failed</span>}
-      {data.running === 0 && data.failed === 0 && <span className="text-success">All OK</span>}
-    </div>
-  );
-}
 
 export function NavBar(): React.ReactElement {
   const [dark, setDark] = useState<boolean>(() => {
@@ -88,7 +78,7 @@ export function NavBar(): React.ReactElement {
         </div>
         {/* violations-suppress: react/no-raw-button icon-only toggle - no Button variant for compact icon-only nav action */}
         <button onClick={toggleDark} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-          className="p-1.5 rounded text-muted hover:text-content hover:bg-muted-bg transition-colors mr-1">
+          className={ICON_BTN_CLS}>
           {dark ? <Sun size={14} /> : <Moon size={14} />}
         </button>
         {/* violations-suppress: react/no-raw-button icon-only toggle - no Button variant for compact icon-only nav action */}

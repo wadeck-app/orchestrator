@@ -32,5 +32,5 @@ Config dir: `~/.config/orchestrator-cli/`. Port file: `<configDir>/config.port`.
 
 ## Knowledge base
 
-- `.claude/lessons-learned.md` — session-sourced lessons; read before debugging.
-- `.claude/lessons-recommendations.md` — recommendations extracted from past sessions.
+- `.claude/lessons-learned.md` - session-sourced lessons; read before debugging.
+- `.claude/lessons-recommendations.md` - recommendations extracted from past sessions.

@@ -17,11 +17,11 @@ Last updated: 2026-09-05
   - Integrate with existing queue at C:/Workspace_Tooling/queue
   - _Plan: .claude/plans/2026-09-05_event-queue-integration.md_
 
-- [ ] **NOTIF-01** — Webhook/email notifications via queue subscribers
+- [x] **NOTIF-01** — Webhook/email notifications via queue subscribers
   - Config: per-job or global webhook URL, SMTP settings
   - Depends on: EVENT-01
 
-- [ ] **NOTIF-02** — Consecutive-failure alert threshold
+- [x] **NOTIF-02** — Consecutive-failure alert threshold
   - Default: 3 failures → emit alert.consecutive_failures event
   - Visual: badge on job card when threshold exceeded
 
@@ -75,7 +75,7 @@ Last updated: 2026-09-05
 - [x] **UX-05** — Log search within a run
   - Search input + match count + yellow highlight in LogViewer
 
-- [ ] **UX-06** — Dark mode
+- [x] **UX-06** — Dark mode
   - Full color system inversion, agent-browser validation required
   - _Plan: .claude/plans/2026-09-05_dark-mode.md_
 
