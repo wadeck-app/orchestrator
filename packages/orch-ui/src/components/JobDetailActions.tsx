@@ -37,6 +37,11 @@ export function JobDetailActions({ job, jobId }: JobDetailActionsProps): React.R
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
   };
 
+  const handleDryRun = async () => {
+    const res = await fetch(`/api/jobs/${jobId}/dry-run`, { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); setError((e as { error: string }).error ?? res.statusText); }
+  };
+
   const handleDelete = async () => {
     setDeleting(true); setError(null);
     try {
@@ -60,6 +65,9 @@ export function JobDetailActions({ job, jobId }: JobDetailActionsProps): React.R
       <div className="flex gap-3 flex-wrap">
         <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>
         <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>
+        {job.dryRunSupported && (
+          <Button label="Dry run" variant="secondary" onClick={handleDryRun} />
+        )}
         {!confirmDelete
           ? <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">

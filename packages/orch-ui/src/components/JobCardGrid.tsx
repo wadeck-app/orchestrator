@@ -26,6 +26,15 @@ const CHIP_INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg te
 const SEARCH_CLS    = 'flex-1 border border-border rounded-md px-3 py-2 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
 const ADD_BTN_CLS   = 'px-4 py-2 bg-primary text-on-primary rounded-md text-sm font-medium hover:bg-primary-hover';
 const BULK_BAR_CLS  = 'flex items-center gap-2 mb-3 p-2 bg-muted-bg rounded border border-border flex-wrap';
+
+function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
+  let count = 0;
+  for (const e of runHistory) {
+    if (e.exitCode !== null && e.exitCode !== 0) count++;
+    else break;
+  }
+  return count;
+}
 // @formatter:on
 
 export interface JobCardGridProps {
@@ -188,6 +197,7 @@ export function JobCardGrid({ items, uptimeMap, onExport, onImport }: JobCardGri
               />
               <JobCard job={item.job} runHistory={item.runHistory}
                 uptimePercent={uptimeMap?.[item.job.id] ?? item.uptimePercent}
+                consecutiveFailures={getConsecutiveFailures(item.runHistory)}
                 onClick={() => navigate(`/jobs/${item.job.id}`)}
                 onTrigger={handleTrigger} onToggle={handleToggle} />
             </div>

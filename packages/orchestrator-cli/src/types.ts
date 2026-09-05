@@ -27,6 +27,11 @@ export interface Job {
   timeoutSeconds?: number;
   env?: Record<string, string>;
   tags?: string[];
+  alertAfterFailures?: number;
+  dependsOn?: string;
+  slaWindowMinutes?: number;
+  secrets?: string[];
+  dryRunSupported?: boolean;
 }
 
 export interface StartupResult {
@@ -37,7 +42,8 @@ export interface StartupResult {
 
 export type TriggerSource =
   | { kind: 'cron' }
-  | { kind: 'manual'; ip?: string; userAgent?: string };
+  | { kind: 'manual'; ip?: string; userAgent?: string }
+  | { kind: 'dependency'; dependsOnJobId: string };
 
 export interface RuntimeEntry {
   startedAt: string;
@@ -73,6 +79,15 @@ export type OrchestratorCommands = {
   'list-audit':    (payload?: unknown) => Array<{ ts: string; event: string; [key: string]: unknown }>;
   'get-schedule':  (payload?: unknown) => Array<{ jobId: string; label: string; next: string[] }>;
   'get-uptime':    (payload?: unknown) => Record<string, number | null>;
+  'list-webhooks': (payload?: unknown) => import('./webhook-manager.js').WebhookConfig[];
+  'add-webhook':   (payload?: unknown) => void;
+  'remove-webhook':(payload?: unknown) => void;
+  'toggle-webhook':(payload?: unknown) => import('./webhook-manager.js').WebhookConfig | null;
+  'dry-run-job':   (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number } | { error: string }>;
+  'list-secrets':  (payload?: unknown) => string[];
+  'set-secret':    (payload?: unknown) => void;
+  'delete-secret': (payload?: unknown) => void;
+  'reload-config': (payload?: unknown) => { synced: number };
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
 };

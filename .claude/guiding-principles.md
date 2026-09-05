@@ -29,3 +29,21 @@ All runtime communication is via HTTP (daemon RPC). The dependency graph is one-
 ## P-7: jobId path parameter must be validated before constructing any file path
 
 `/^[a-z0-9-]+$/i` — reject anything else with 400. This is the log path traversal guard. Do not relax this regex without a full security review.
+
+## From lessons learned
+
+- Read the spec (`specs/`) FIRST before proposing any alternative approach — the DSL + capability-framework pattern was in the spec and prior work but ignored repeatedly until the user reminded explicitly (session 508a6a16).
+- TDD-first for all bug fixes: write a failing test that reproduces the bug, confirm it fails, fix code, confirm green — never push without a proven red→green cycle.
+- Test with the installed `orch` binary, not the dev monorepo — node_modules paths and resolution differ; dev env can pass while installed env fails.
+- Test actual endpoints with browser or curl before claiming they work — internal API tests passing does not prove the boundary users see is correct.
+- `mcp__github-wadeck-app` and `mcp__github-wadeck` are READ-ONLY by design; writing via those MCP servers is intentionally impossible, not a config issue.
+- Check `C:\Workspace_Tooling\ci-templates` for reusable workflows (e.g., `publish-npm.yml`) before writing any custom CI workflow.
+- In spec mode: never change status from "In Review" to "Approved" without explicit user confirmation — "all questions resolved" means ready for review, not approved.
+- In spec sessions: establish business requirements (what problem, who is impacted, what outcome) before any technical questions about ports, APIs, or processes.
+- After every `git push`, use the `poll-ci` skill immediately — never fall back to manual `sleep + actions_list` loops; if poll-ci fails to load, report it as a blocker.
+- Launch parallel agents for independent workstreams in a single message without asking for permission — the user's standing instruction is "autonomie" and "en parallèle quand possible" (session 0a4d8699).
+- When debugging, change one thing at a time and observe the result — multiple speculative edits in parallel waste time and obscure root cause (15+ edits to index.ts before identifying the actual constraint, session 379d8f62).
+- For directory clobber: use `cp -rT src dest` or `cp -r src/. dest` — `cp -r src dest/` when dest exists creates `dest/src/` nesting.
+- Sync dist changes to BOTH the local workspace AND the global npm install location (`~/.nvm/v24.11.1/node_modules/`) — changes that only update one path appear to "not take effect".
+- Deferred MCP tools must be loaded with `ToolSearch select:<name>` before any call — treat "NOT YET KNOWN" as a hard stop, not a soft retry; if ToolSearch itself fails, report the blockage rather than sleeping and retrying.
+- The daemon SDK wraps all responses in `{ok: true, result: <data>}` — unwrap before consuming; this is not obvious from endpoint docs.

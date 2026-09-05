@@ -24,6 +24,11 @@ export interface Job {
   timeoutSeconds?: number;
   env?: Record<string, string>;
   tags?: string[];
+  dependsOn?: string;
+  alertAfterFailures?: number;
+  slaWindowMinutes?: number;
+  secrets?: string[];
+  dryRunSupported?: boolean;
 }
 
 export function getErrorMessage(e: unknown): string {
@@ -34,7 +39,8 @@ export function getErrorMessage(e: unknown): string {
 
 export type TriggerSource =
   | { kind: 'cron' }
-  | { kind: 'manual'; ip?: string; userAgent?: string };
+  | { kind: 'manual'; ip?: string; userAgent?: string }
+  | { kind: 'dependency'; dependsOnJobId: string };
 
 export interface RuntimeEntry {
   startedAt: string;

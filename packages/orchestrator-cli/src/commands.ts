@@ -10,6 +10,9 @@ import type { TrayManager } from './tray-manager.js';
 import type { AuditLogger } from './audit.js';
 import type { EventPublisher } from './event-publisher.js';
 import { getNextFirings } from './cronNext.js';
+import { WebhookManager, type WebhookConfig } from './webhook-manager.js';
+import { SecretsManager } from './secrets.js';
+import type { ConfigWatcher } from './config-watcher.js';
 
 /**
  * Builds the OrchestratorCommands map for use with createDaemon() and createTestDaemon().
@@ -23,7 +26,9 @@ export function makeCommands(
   trayManager?: TrayManager,
   audit?: AuditLogger,
   events?: EventPublisher,
+  configWatcher?: ConfigWatcher,
 ): OrchestratorCommands {
+  const secrets = new SecretsManager(configDir);
   return {
     'list-jobs':   () => registry.list(),
 
@@ -96,6 +101,40 @@ export function makeCommands(
           label: j.label,
           next: getNextFirings(j.schedule!, 5).map(d => d.toISOString()),
         }));
+    },
+
+    'dry-run-job': (p) => {
+      const { id } = p as { id: string };
+      return scheduler.dryRun(id);
+    },
+
+    'list-secrets': () => secrets.list(),
+    'set-secret':   (p) => {
+      const { name, value } = p as { name: string; value: string };
+      secrets.set(name, value);
+    },
+    'delete-secret': (p) => {
+      const { name } = p as { name: string };
+      secrets.delete(name);
+    },
+
+    'reload-config': () => configWatcher?.reload() ?? { synced: 0 },
+
+    'list-webhooks': () => {
+      const wm = new WebhookManager(configDir);
+      return wm.load();
+    },
+    'add-webhook': (p) => {
+      const wm = new WebhookManager(configDir);
+      wm.add(p as WebhookConfig);
+    },
+    'remove-webhook': (p) => {
+      const wm = new WebhookManager(configDir);
+      wm.remove((p as { id: string }).id);
+    },
+    'toggle-webhook': (p) => {
+      const wm = new WebhookManager(configDir);
+      return wm.toggle((p as { id: string }).id);
     },
 
     // quit is handled by the SDK's /quit route; stub so TypeScript accepts it.

@@ -15,6 +15,7 @@ import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
+import { ConfigWatcher } from './config-watcher.js';
 import type { OrchestratorCommands } from './types.js';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -62,6 +63,11 @@ async function main(): Promise<void> {
 
     const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version, undefined, dashboardManager);
 
+    // Config-as-code YAML watch
+    const jobsYaml = path.join(CONFIG_DIR, 'jobs.yaml');
+    const configWatcher = new ConfigWatcher(jobsYaml, registry);
+    configWatcher.start();
+
     // Audit job events
     scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: { label: string } }) => {
       audit.log('job.completed', { jobId: ev.id, label: ev.job.label, exitCode: ev.exitCode });
@@ -74,7 +80,7 @@ async function main(): Promise<void> {
       configDir:   CONFIG_DIR,
       appVersion:  version,
       port:        47900,
-      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events),
+      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events, configWatcher),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,

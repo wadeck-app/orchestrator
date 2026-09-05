@@ -7,6 +7,7 @@ import { checkLiveness } from './liveness.js';
 import { DailyLogger }   from './logger.js';
 import { ensureTmpDir }  from './fsUtil.js';
 import { EventPublisher } from './event-publisher.js';
+import { SecretsManager } from './secrets.js';
 import type { Job, TriggerSource } from './types.js';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -31,6 +32,7 @@ export class Scheduler extends EventEmitter {
   private readonly _configDir: string;
   private readonly _tmpDir:    string;
   private readonly _events:    EventPublisher;
+  private readonly _secrets:   SecretsManager;
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -50,6 +52,7 @@ export class Scheduler extends EventEmitter {
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
     this._events    = options.eventPublisher ?? new EventPublisher();
+    this._secrets   = new SecretsManager(this._configDir);
     // Ensure tmp dir exists; used as default cwd for jobs that don't specify one.
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
@@ -118,6 +121,14 @@ export class Scheduler extends EventEmitter {
     this._timeouts.clear();
   }
 
+  async dryRun(id: string): Promise<{ pid: number | null } | { exitCode: number } | { error: string }> {
+    const job = this._registry.get(id);
+    if (!job) throw new Error(`Job not found: "${id}"`);
+    if (!job.dryRunSupported) return { error: `Job "${id}" does not declare dryRunSupported: true` };
+    const dryJob = { ...job, command: job.command + ' --dry-run' };
+    return this._fire(dryJob, { kind: 'manual' });
+  }
+
   async trigger(id: string, source: TriggerSource = { kind: 'manual' }): Promise<{ pid: number | null } | { exitCode: number }> {
     const job = this._registry.get(id);
     if (!job) throw new Error(`Job not found: "${id}"`);
@@ -126,7 +137,24 @@ export class Scheduler extends EventEmitter {
 
   private _scheduleCron(job: Job): void {
     if (!cron.validate(job.schedule ?? '')) return;
-    const task = cron.schedule(job.schedule!, () => { void this._fire(job); });
+    const task = cron.schedule(job.schedule!, () => {
+      const scheduledAt = this._now().toISOString();
+      void this._fire(job);
+      // SLA window check: alert if job hasn't succeeded within slaWindowMinutes
+      if (job.slaWindowMinutes && job.slaWindowMinutes > 0) {
+        setTimeout(() => {
+          const latest = this._state.get(job.id);
+          const succeeded = latest && latest.exitCode === 0 &&
+            new Date(latest.startedAt).getTime() >= new Date(scheduledAt).getTime();
+          if (!succeeded) {
+            this._events.publish('alert.sla_breach', {
+              jobId: job.id, label: job.label,
+              scheduledAt, windowMinutes: job.slaWindowMinutes,
+            });
+          }
+        }, job.slaWindowMinutes * 60 * 1000);
+      }
+    });
     this._cronTasks.set(job.id, task);
   }
 
@@ -137,7 +165,10 @@ export class Scheduler extends EventEmitter {
 
   private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<{ pid: number | null } | { exitCode: number }> {
     const startedAt = this._now().toISOString();
-    const jobEnv = job.env ? { ...process.env, ...job.env } : undefined;
+    const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
+    const jobEnv = (job.env || job.secrets?.length)
+      ? { ...process.env, ...job.env, ...secretEnv }
+      : undefined;
     const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv);
     const pid   = child.pid ?? null;
 
@@ -191,6 +222,10 @@ export class Scheduler extends EventEmitter {
 
         if (exitCode === 0) {
           this._events.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
+          // Trigger dependent jobs
+          for (const dep of this._registry.list().filter(j => j.dependsOn === job.id && j.enabled)) {
+            void this._fire(dep, { kind: 'dependency', dependsOnJobId: job.id });
+          }
           if (wasFailure) {
             this._events.publish('job.recovered', { jobId: job.id, label: job.label });
           }
@@ -202,6 +237,12 @@ export class Scheduler extends EventEmitter {
           }
         } else {
           this._events.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
+          // Consecutive-failure alert
+          const threshold = job.alertAfterFailures ?? 3;
+          const consecutive = this._state.getConsecutiveFailures(job.id);
+          if (consecutive >= threshold) {
+            this._events.publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
+          }
         }
 
         resolve({ exitCode });

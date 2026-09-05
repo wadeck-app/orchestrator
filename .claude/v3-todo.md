@@ -37,7 +37,7 @@ Last updated: 2026-09-05
 - [x] **MON-03** — Uptime % per job (rolling 30-day)
   - Computed from non-failing runs / total scheduled runs
 
-- [ ] **MON-04** — SLA window monitoring
+- [x] **MON-04** — SLA window monitoring
   - Flag job if not completed within configurable window after scheduled time
 
 - [ ] **MON-05** — CPU/RAM monitoring per job
@@ -55,7 +55,7 @@ Last updated: 2026-09-05
 - [x] **SCHED-01** — Global timezone config (default: OS timezone)
   - Single global setting, affects all cron display and scheduling
 
-- [ ] **SCHED-02** — Job dependencies (B runs after A succeeds)
+- [x] **SCHED-02** — Job dependencies (B runs after A succeeds)
   - Note: if dependency graphs get complex → "flow" use case (out of scope)
   - See docs/guiding-principles.md
 
@@ -84,17 +84,17 @@ Last updated: 2026-09-05
 - [x] **DX-01** — Per-job environment variables
   - Stored in registry.json, passed to spawned process
 
-- [ ] **DX-02** — Secret storage (if not too complex)
+- [x] **DX-02** — Secret storage (if not too complex)
   - Encrypted at rest, injected as env vars at runtime
 
-- [ ] **DX-03** — Dry run mode (only for scripts that declare support)
+- [x] **DX-03** — Dry run mode (only for scripts that declare support)
   - Scripts declare `"dryRunSupported": true` in their config
   - Pass `--dry-run` flag when running
 
 - [x] **DX-04** — `orch run <id>` CLI command
   - Trigger a job from the CLI directly
 
-- [ ] **DX-05** — Config-as-code YAML watch
+- [x] **DX-05** — Config-as-code YAML watch
   - Watch a YAML file for job definitions, auto-sync to registry
 
 ## Real-time

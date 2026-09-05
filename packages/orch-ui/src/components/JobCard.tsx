@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame } from 'lucide-react';
+import { Flame, AlertTriangle } from 'lucide-react';
 import type { Job, RuntimeEntry } from '../types.js';
 import { BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
@@ -10,6 +10,7 @@ export interface JobCardProps {
   job: Job;
   runHistory: RuntimeEntry[];
   uptimePercent?: number | null;
+  consecutiveFailures?: number;
   onTrigger: (id: string) => Promise<void>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
   onClick?: () => void;
@@ -75,7 +76,7 @@ function successStreak(runHistory: RuntimeEntry[]): number {
  * @registryCategory composite
  * @registryTags job card
  */
-export function JobCard({ job, runHistory, uptimePercent, onTrigger, onToggle, onClick }: JobCardProps): React.ReactElement {
+export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, onTrigger, onToggle, onClick }: JobCardProps): React.ReactElement {
   const streak = successStreak(runHistory);
 
   return (
@@ -145,6 +146,12 @@ export function JobCard({ job, runHistory, uptimePercent, onTrigger, onToggle, o
         )}
         {uptimePercent !== null && uptimePercent !== undefined && (
           <span className="text-xs text-muted">{uptimePercent.toFixed(1)}% uptime</span>
+        )}
+        {consecutiveFailures !== undefined && consecutiveFailures >= (job.alertAfterFailures ?? 3) && (
+          <div className="flex items-center gap-0.5 text-warning">
+            <AlertTriangle size={10} />
+            <span className="text-xs">{consecutiveFailures} fails</span>
+          </div>
         )}
       </div>
 

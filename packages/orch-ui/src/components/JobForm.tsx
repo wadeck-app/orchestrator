@@ -76,6 +76,11 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
   // tags
   const [tagInput, setTagInput] = useState((initial?.tags ?? []).join(', '));
 
+  // new v3 fields
+  const [dependsOn, setDependsOn] = useState(initial?.dependsOn ?? '');
+  const [slaWindowMinutes, setSlaWindowMinutes] = useState<number>(initial?.slaWindowMinutes ?? 0);
+  const [dryRunSupported, setDryRunSupported] = useState(initial?.dryRunSupported ?? false);
+
   const validate = (): boolean => {
     const e: FormErrors = {};
     if (!label.trim()) e.label = 'Label is required';
@@ -127,6 +132,11 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
       // tags
       const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean);
       if (tags.length > 0) data.tags = tags;
+
+      // v3 fields
+      if (dependsOn.trim()) data.dependsOn = dependsOn.trim();
+      if (slaWindowMinutes > 0) data.slaWindowMinutes = slaWindowMinutes;
+      if (dryRunSupported) data.dryRunSupported = true;
 
       await onSubmit(data);
     } finally {
@@ -291,6 +301,25 @@ export function JobForm({ initial, onSubmit, onCancel }: Props): React.ReactElem
             {/* violations-suppress: react/no-raw-button add-row - Button doesn't fit compact list-append */}
             <button type="button" onClick={() => setEnvPairs(prev => [...prev, { key: '', val: '' }])}
               className="text-xs text-primary hover:underline flex items-center gap-1"><Plus size={10} />Add variable</button>
+          </div>
+          {/* Dependency */}
+          <div>
+            <label className={labelClass}>Run after job (ID)</label>
+            {/* violations-suppress: react/no-raw-input compact ID input - no shared select for job IDs */}
+            <input type="text" value={dependsOn} onChange={e => setDependsOn(e.target.value)}
+              placeholder="Leave empty for no dependency"
+              className="w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary" />
+          </div>
+
+          {/* SLA window */}
+          <FieldNumber label="SLA window (minutes, 0 = disabled)" value={slaWindowMinutes} onChange={setSlaWindowMinutes} min={0} />
+
+          {/* Dry run */}
+          <div className="flex items-center gap-2">
+            {/* violations-suppress: react/no-raw-input boolean checkbox - no FieldText variant for checkbox */}
+            <input type="checkbox" id="dryRunSupported" checked={dryRunSupported} onChange={e => setDryRunSupported(e.target.checked)}
+              className="rounded border-border" />
+            <label htmlFor="dryRunSupported" className="text-sm text-content">Supports dry run (appends --dry-run to command)</label>
           </div>
         </div>
       )}

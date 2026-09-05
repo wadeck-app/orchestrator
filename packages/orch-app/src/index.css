@@ -26,3 +26,28 @@
   --color-tag-5: #ec4899;
   --color-tag-6: #8b5cf6;
 }
+
+[data-theme="dark"] {
+  --color-primary:        #818cf8;
+  --color-primary-hover:  #6366f1;
+  --color-on-primary:     #ffffff;
+  --color-bg:             #0f1117;
+  --color-surface:        #1a1d2e;
+  --color-border:         #2d3148;
+  --color-text:           #e2e8f0;
+  --color-text-muted:     #8892b0;
+  --color-muted-bg:       #252840;
+  --color-success:        #34d399;
+  --color-success-bg:     #0f2a1e;
+  --color-danger:         #f87171;
+  --color-danger-bg:      #2d1515;
+  --color-warning:        #fbbf24;
+  --color-warning-bg:     #2d2000;
+  /* Tag palette - slightly lighter in dark mode */
+  --color-tag-1: #818cf8;
+  --color-tag-2: #38bdf8;
+  --color-tag-3: #34d399;
+  --color-tag-4: #fbbf24;
+  --color-tag-5: #f472b6;
+  --color-tag-6: #a78bfa;
+}

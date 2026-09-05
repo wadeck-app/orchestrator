@@ -23,6 +23,8 @@ export { JobToggle } from './components/JobToggle.js';
 export { JobDetailActions } from './components/JobDetailActions.js';
 export { AuditLog } from './components/AuditLog.js';
 export type { AuditEntry } from './components/AuditLog.js';
+export { WebhookList } from './components/WebhookList.js';
+export type { WebhookConfig, WebhookListProps } from './components/WebhookList.js';
 export { ScheduleTimeline } from './components/ScheduleTimeline.js';
 export type { JobWithHistory } from './components/JobListSection.js';
 export type { Job, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';

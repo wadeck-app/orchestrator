@@ -142,6 +142,17 @@ export class State {
     return (successes / entries.length) * 100;
   }
 
+  getConsecutiveFailures(id: string): number {
+    this._ensure();
+    const entries = this._cache![id] ?? [];
+    let count = 0;
+    for (const e of entries) {
+      if (e.exitCode !== null && e.exitCode !== 0) count++;
+      else break;
+    }
+    return count;
+  }
+
   clear(id: string): void {
     this._ensure();
     if (this._cache![id] !== undefined) {

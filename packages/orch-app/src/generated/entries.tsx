@@ -70,6 +70,7 @@ import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
 import { ScheduleTimeline } from '../../../orch-ui/src/components/ScheduleTimeline.js'
 import { TriggerBadge } from '../../../orch-ui/src/components/TriggerBadge.js'
 import { TriggerButton } from '../../../orch-ui/src/components/TriggerButton.js'
+import { WebhookList } from '../../../orch-ui/src/components/WebhookList.js'
 
 export const ButtonActionEntry: ComponentRegistryEntry = {
 	name: 'ButtonAction', category: 'atomic', tags: ["button","action"],
@@ -737,10 +738,11 @@ export const JobCardEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['job']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['runHistory']
 		const uptimePercent = resolveExpressionValue(node['uptimePercent'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['uptimePercent']
+		const consecutiveFailures = resolveExpressionValue(node['consecutiveFailures'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['consecutiveFailures']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onTrigger']
 		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onToggle']
 		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onClick']
-		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} />
+		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} consecutiveFailures={consecutiveFailures} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} />
 	},
 }
 
@@ -866,6 +868,15 @@ export const TriggerButtonEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: () => <TriggerButton />,
 }
+
+export const WebhookListEntry: ComponentRegistryEntry = {
+	name: 'WebhookList', category: 'composite', tags: ["webhook","notification"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/WebhookList.js').WebhookListProps['apiBase']
+		return <WebhookList apiBase={apiBase} />
+	},
+}
 // ─── All entries ──────────────────────────────────────────────────────────────
 
 export const allEntries: ComponentRegistryEntry[] = [
@@ -935,6 +946,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	ScheduleTimelineEntry,
 	TriggerBadgeEntry,
 	TriggerButtonEntry,
+	WebhookListEntry,
 ]
 
 // ─── Auto-detected metadata (allowedChildren, providesContext, requiresContext) ─

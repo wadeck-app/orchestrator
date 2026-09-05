@@ -37,3 +37,9 @@ Sourced from `.claude/specs/2026-08-31_orch-web-dashboard/threat-model.md` (v1.1
 - `orch-server` must bind to `127.0.0.1` only — never `0.0.0.0`
 - `jobId` regex validation (`/^[a-z0-9-]+$/i`) on the log endpoint is a security control, not cosmetic
 - `orch-server` must not expose daemon quit/restart RPC commands
+
+## From lessons learned
+
+- `config.port` persists on disk after the daemon stops — a stale file causes new server attempts to bind the wrong port; the dashboard must auto-start the daemon on demand rather than reading a stale config.
+- Tray manager spawns duplicate instances on restart (`_scheduleRestart` logic) — multiple PIDs accumulate if restart cleanup is incomplete; killing by PID list is a symptom, not a fix.
+- Multi-tier deployment: dist files must be synced to BOTH the local workspace path AND the global npm install path (`~/.nvm/.../node_modules/`) — partial sync silently serves stale code.
