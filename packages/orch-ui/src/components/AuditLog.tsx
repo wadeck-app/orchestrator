@@ -1,9 +1,10 @@
 // violations-suppress: ts/no-inline-subcomponent EventIcon is a pure render helper (icon selector), not a reusable subcomponent; extracting it adds no DX value
-import React from 'react';
+import React, { useState } from 'react';
 import {
   CheckCircle, XCircle, Play, Clock, Plus, Trash2,
   Pencil, ToggleLeft, ToggleRight, Power, RefreshCw,
 } from 'lucide-react';
+import { Button } from './Button.js';
 
 export interface AuditEntry {
   ts: string;
@@ -14,6 +15,27 @@ export interface AuditEntry {
 export interface AuditLogProps {
   entries?: AuditEntry[];
 }
+
+const PAGE_SIZE = 20;
+
+const EVENT_FILTERS = [
+  'All',
+  'job.completed',
+  'job.started',
+  'job.triggered_manual',
+  'job.added',
+  'job.deleted',
+  'job.edited',
+  'job.enabled',
+  'job.disabled',
+  'daemon.start',
+  'daemon.restart',
+] as const;
+
+// @formatter:off
+const CHIP_ACTIVE   = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary text-on-primary';
+const CHIP_INACTIVE = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted-bg text-muted border border-border hover:bg-border';
+// @formatter:on
 
 // violations-suppress: ts/no-inline-subcomponent EventIcon is a pure icon selector, not a reusable component; extracting it to a separate file adds overhead without benefit
 function EventIcon({ event, entry }: { event: string; entry: AuditEntry }): React.ReactElement {
@@ -74,28 +96,88 @@ function relTime(iso: string): string {
   return `${Math.floor(d / 86400)}d ago`;
 }
 
+function entryMatchesSearch(entry: AuditEntry, q: string): boolean {
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  if (entry.event.toLowerCase().includes(lower)) return true;
+  for (const v of Object.values(entry)) {
+    if (typeof v === 'string' && v.toLowerCase().includes(lower)) return true;
+  }
+  return false;
+}
+
 /**
  * @registryCategory composite
  * @registryTags audit log timeline events
  */
 export function AuditLog({ entries = [] }: AuditLogProps): React.ReactElement {
-  if (entries.length === 0) return (
-    <p className="text-muted text-center py-12">No audit events yet.</p>
+  const [search, setSearch]       = useState('');
+  const [eventFilter, setFilter]  = useState<string>('All');
+  const [page, setPage]           = useState(1);
+
+  const filtered = entries.filter(e =>
+    (eventFilter === 'All' || e.event === eventFilter) &&
+    entryMatchesSearch(e, search)
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage   = Math.min(page, totalPages);
+  const paged      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const resetPage = () => setPage(1);
+
   return (
-    <div className="space-y-0.5">
-      {entries.map((e, i) => (
-        <div key={i} className="flex items-center py-2 rounded hover:bg-muted-bg text-sm">
-          <div className="flex-1 min-w-0 flex items-center gap-2">
-            <EventIcon event={e.event} entry={e} />
-            <span className="font-medium text-content">{e.event}</span>
-            {' '}
-            <span className="text-muted truncate">{formatDetails(e)}</span>
-          </div>
-          <span className="shrink-0 text-xs text-muted ml-4" title={e.ts}>{relTime(e.ts)}</span>
+    <div>
+      {/* Search + event filter */}
+      <div className="mb-3 flex flex-col gap-2">
+        {/* violations-suppress: react/no-raw-input search bar - FieldText requires a label prop; this is a labelless search input */}
+        <input
+          type="text"
+          placeholder="Search events..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); resetPage(); }}
+          className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <div className="flex flex-wrap gap-1">
+          {EVENT_FILTERS.map(f => (
+            // violations-suppress: react/no-raw-button filter chip - active/inactive state not supported by Button
+            <button
+              key={f}
+              onClick={() => { setFilter(f); resetPage(); }}
+              className={eventFilter === f ? CHIP_ACTIVE : CHIP_INACTIVE}
+            >
+              {f}
+            </button>
+          ))}
         </div>
-      ))}
+      </div>
+
+      {paged.length === 0 ? (
+        <p className="text-muted text-center py-12">No audit events match.</p>
+      ) : (
+        <div className="space-y-0.5">
+          {paged.map((e, i) => (
+            <div key={i} className="flex items-center py-2 rounded hover:bg-muted-bg text-sm">
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <EventIcon event={e.event} entry={e} />
+                <span className="font-medium text-content">{e.event}</span>
+                {' '}
+                <span className="text-muted truncate">{formatDetails(e)}</span>
+              </div>
+              <span className="shrink-0 text-xs text-muted ml-4" title={e.ts}>{relTime(e.ts)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <Button label="Previous" variant="secondary" disabled={safePage <= 1} onClick={() => setPage(p => p - 1)} />
+          <span className="text-sm text-muted">Page {safePage} of {totalPages}</span>
+          <Button label="Next" variant="secondary" disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)} />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-export interface FailureEntry {
-  jobId: string;
-  entry: {
-    startedAt: string;
-    exitCode: number | null;
-    pid?: number | null;
-    triggeredBy?: unknown;
-  };
-  jobLabel?: string;
-}
+import type { FailureEntry } from '../components/FailureBanner.js';
+export type { FailureEntry } from '../components/FailureBanner.js';
 
 export function useFailures(apiBase = ''): {
   failures: FailureEntry[];
