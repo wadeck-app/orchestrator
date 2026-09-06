@@ -1,26 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import type { Job } from '../types.js';
+import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
 import { getErrorMessage } from '../types.js';
+import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
 const LINK_BTN_CLS  = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
 const BACK_LINK_CLS = 'inline-flex items-center gap-1 text-sm text-muted hover:text-content mb-4';
-// violations-suppress-start: tailwind/no-raw-color-class job-type colors have no semantic-token equivalents in the design system
-const TYPE_BADGE_COLORS: Record<string, string> = {
-  cron:    'bg-purple-100 text-purple-700',
-  startup: 'bg-blue-100 text-blue-700',
-  once:    'bg-gray-100 text-gray-600',
-};
-// violations-suppress-end: tailwind/no-raw-color-class
 // @formatter:on
 
+function formatDuration(startedAt: string): string {
+  const ms = Date.now() - new Date(startedAt).getTime();
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
 export interface JobDetailActionsProps {
-  job: Job;
+  job: Job & { runHistory?: RuntimeEntry[] };
   jobId: string;
   /** DSL $outputs callbacks -- injected by the registry when $id is declared on the node */
   onTrigger?: () => void;
@@ -28,23 +31,41 @@ export interface JobDetailActionsProps {
   onDryRun?: () => void;
   onViewLogs?: () => void;
   onEdit?: () => void;
+  onKill?: () => void;
 }
 
 /**
  * @registryCategory composite
  * @registryTags job actions detail
  */
-export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, onViewLogs, onEdit }: JobDetailActionsProps): React.ReactElement | null {
+export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, onViewLogs, onEdit, onKill }: JobDetailActionsProps): React.ReactElement | null {
   if (!job) return null;
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  const latestRun = (job as { runHistory?: RuntimeEntry[] }).runHistory?.[0] ?? null;
+  const isRunning = latestRun !== null && latestRun.exitCode === null;
+
+  // Re-render every second to update elapsed duration while running
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [isRunning]);
 
   const handleTrigger = async (id: string) => {
     if (onTrigger) { onTrigger(); return; }
     const res = await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
+  };
+
+  const handleKill = async () => {
+    if (onKill) { onKill(); return; }
+    const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+    if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); setError((e as { error: string }).error ?? res.statusText); }
   };
 
   const handleDryRun = async () => {
@@ -63,18 +84,25 @@ export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, on
     } catch (e) { setError(getErrorMessage(e)); setDeleting(false); setConfirmDelete(false); }
   };
 
-  // violations-suppress: tailwind/no-raw-color-class job-type colors have no semantic-token equivalents
-  const typeBadgeCls = `inline-block px-2 py-0.5 text-xs font-medium rounded-full ${TYPE_BADGE_COLORS[job.type] ?? 'bg-gray-100 text-gray-600'}`;
+  const typeBadgeCls = `${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`;
 
   return (
     <div>
       <Link to="/" className={BACK_LINK_CLS}><ArrowLeft size={14} />Back</Link>
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
         <span className={typeBadgeCls}>{job.type}</span>
         <JobToggle job={job} />
-        <TriggerButton jobId={jobId} onTrigger={handleTrigger} />
+        {isRunning
+          ? <Button label="Kill" variant="danger" onClick={handleKill} />
+          : <TriggerButton jobId={jobId} onTrigger={handleTrigger} />}
+        {isRunning && latestRun && (
+          <span className="text-sm text-muted">
+            {latestRun.pid != null && <span className="mr-3">PID {latestRun.pid}</span>}
+            <span>{formatDuration(latestRun.startedAt)}</span>
+          </span>
+        )}
       </div>
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap mb-4">
         {onViewLogs
           ? <Button label="View logs" variant="secondary" onClick={onViewLogs} />
           : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
@@ -93,7 +121,7 @@ export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, on
             </div>
         }
       </div>
-      {error && <p className="mt-4 text-danger text-sm">{error}</p>}
+      {error && <p className="mt-2 text-danger text-sm">{error}</p>}
     </div>
   );
 }

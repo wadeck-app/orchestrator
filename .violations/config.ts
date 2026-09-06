@@ -42,5 +42,7 @@ export default {
     },
     // DSL pages must decompose from dsl-ui primitives, not wrap entire pages in one monolithic component
     './.violations/rules/dsl-no-monolithic-page.ts': true,
+    // Icon buttons must not use text-muted on bg-muted-bg (insufficient contrast)
+    './.violations/rules/no-low-contrast-icon-btn.ts': true,
   },
 } satisfies ViolationsConfig

@@ -19,7 +19,7 @@ export interface JobCardProps {
 }
 
 // @formatter:off
-const TYPE_COLORS: Record<Job['type'], string> = {
+export const TYPE_COLORS: Record<Job['type'], string> = {
   cron:    'bg-tag-cron-bg text-tag-cron',
   startup: 'bg-tag-startup-bg text-tag-startup',
   once:    'bg-tag-once-bg text-tag-once',
@@ -39,7 +39,7 @@ function tagColor(name: string): { bg: string; text: string } {
 
 // @formatter:off
 const CARD_CLS        = 'rounded-lg border border-border p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer bg-surface';
-const TYPE_BADGE_BASE = 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0';
+export const TYPE_BADGE_BASE = 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0';
 // @formatter:on
 
 export function relativeTime(isoDate: string): string {

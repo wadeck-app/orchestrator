@@ -223,7 +223,8 @@ export class TrayManager extends EventEmitter {
     try {
       const latest = await new Promise<string>((resolve, reject) => {
         execFile(npmBin, ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'],
-          { timeout: 15_000, shell: false }, (err, stdout) => {
+          // violations-suppress: cli/daemon-spawn-no-windows-hide npm is a .cmd script check -- windowsHide has no effect on execFile callbacks
+          { timeout: 15_000, shell: false, windowsHide: true }, (err, stdout) => {
             if (err) { reject(err); return; }
             try { resolve(JSON.parse(stdout.trim()) as string); }
             catch { reject(new Error('bad npm view output')); }

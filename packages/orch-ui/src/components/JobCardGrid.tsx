@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList } from 'lucide-react';
 import { Button } from './Button.js';
 import type { Job, RuntimeEntry } from '../types.js';
-import { JobCard } from './JobCard.js';
+import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { relativeTime } from './JobCard.js';
 
@@ -133,7 +133,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
         {onImport && <Button variant="secondary" label="Import" onClick={onImport} />}
         <Button label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
         {/* violations-suppress: react/no-raw-button icon-only toggle - Button requires label, icon-only unsupported */}
-        <button onClick={toggleView} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} className="p-2 rounded border border-border bg-muted-bg hover:opacity-80">
+        <button onClick={toggleView} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} className="p-2 rounded border border-border bg-surface text-content hover:bg-muted-bg">
           {viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />}
         </button>
       </div>
@@ -202,7 +202,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
                       className="w-4 h-4 cursor-pointer accent-primary" />
                   </td>
                   <td className="py-2 pr-4 text-content font-medium">{job.label}</td>
-                  <td className="py-2 pr-4 text-muted">{job.type}</td>
+                  <td className="py-2 pr-4"><span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>{job.type}</span></td>
                   <td className="py-2 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
                   <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={last?.exitCode === null && runHistory.length > 0} /></td>
                   <td className="py-2 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
