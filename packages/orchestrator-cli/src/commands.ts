@@ -86,7 +86,7 @@ export function makeCommands(
 
     'list-failures': () => state.getUnacknowledgedFailures(),
 
-    'ack-failures': () => { state.acknowledgeAll(); return {}; },
+    'ack-failures': () => { state.acknowledgeAll(); trayManager?.clearFailures(); return {}; },
 
     'list-audit': (p) => {
       const limit = ((p as { limit?: number })?.limit) ?? 50;

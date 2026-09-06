@@ -150,6 +150,13 @@ export class TrayManager extends EventEmitter {
     await this._spawnTray();
   }
 
+  /** Clear in-memory failure list and refresh the tray icon. Called when failures are acked from the UI. */
+  clearFailures(): void {
+    this._failures.length = 0;
+    this._logAction('[tray] failures acknowledged (from UI)');
+    this._refresh();
+  }
+
   /** Gracefully kill the tray then emit 'restart'. Used by tray click AND CLI 'restart' command. */
   async triggerRestart(): Promise<void> {
     this._logAction('[tray] action: restart requested');
