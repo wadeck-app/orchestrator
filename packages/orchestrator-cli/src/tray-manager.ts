@@ -152,17 +152,21 @@ export class TrayManager extends EventEmitter {
 
   /** Gracefully kill the tray then emit 'restart'. Used by tray click AND CLI 'restart' command. */
   async triggerRestart(): Promise<void> {
+    this._log.write('[tray] action: restart requested');
     this._intentionalStop = true;
     if (this._tp && !this._tp.killed) await this._tp.kill();
     this._tp = null;
+    this._log.write('[tray] restarting daemon');
     this.emit('restart');
   }
 
   /** Gracefully kill the tray then emit 'quit'. Used by tray click AND CLI 'quit' command. */
   async triggerQuit(): Promise<void> {
+    this._log.write('[tray] action: quit requested');
     this._intentionalStop = true;
     if (this._tp && !this._tp.killed) await this._tp.kill();
     this._tp = null;
+    this._log.write('[tray] quitting daemon');
     this.emit('quit');
   }
 
@@ -211,6 +215,7 @@ export class TrayManager extends EventEmitter {
   }
 
   private async _checkForUpdate(): Promise<void> {
+    this._log.write(`[tray] check-update: starting (current=${this._version})`);
     this._updateStatus = 'checking';
     this._refresh();
     // npm is a .cmd script on Windows -- execFile requires the exact executable name
@@ -228,7 +233,9 @@ export class TrayManager extends EventEmitter {
       // Strip optional trailing git-hash suffix (e.g. "2026.9.5-153-f4a6e93" -> "2026.9.5-153")
       const normalize = (v: string) => v.replace(/-[0-9a-f]{6,8}$/, '');
       this._updateStatus = normalize(latest) !== normalize(this._version) ? 'available' : 'up-to-date';
-    } catch {
+      this._log.write(`[tray] check-update: latest=${latest} current=${this._version} status=${this._updateStatus}`);
+    } catch (err) {
+      this._log.write(`[tray] check-update: error fetching latest version: ${getErrorMessage(err)}`);
       this._updateStatus = 'idle';
     }
     this._refresh();
@@ -242,8 +249,10 @@ export class TrayManager extends EventEmitter {
     const hasRunning  = this._runningJobIds.size > 0;
     const icons   = getIcons(this._trayColor);
     const successIcons = getIcons(SUCCESS_ICON_COLOR);
+    const updateAvailable = this._updateStatus === 'available';
     const icon =
       hasFailures      ? icons.error :
+      updateAvailable   ? icons.error :
       this._showSuccess ? successIcons.idle :
       hasRunning        ? icons.running :
       icons.idle;
@@ -257,7 +266,7 @@ export class TrayManager extends EventEmitter {
 
     const items: MenuItemSnapshot[] = [];
 
-    items.push({ id: 'header', type: 'normal', title: `v${this._version}`, enabled: false });
+    items.push({ id: 'header', type: 'normal', title: `Orchestrator v${this._version}`, enabled: false });
     const updateItem = this._updateStatus === 'checking'
       ? { id: 'update-btn', type: 'normal' as const, title: 'Checking...', enabled: false }
       : this._updateStatus === 'available'
@@ -394,12 +403,17 @@ export class TrayManager extends EventEmitter {
   private _handleClick(id: string): void {
     switch (id) {
       case 'open-dashboard': {
+        this._log.write('[tray] action: open-dashboard');
         const dm = this._dashboardManager;
         if (dm) {
           if (!dm.isRunning()) {
             dm.start()
               .then(() => { setTimeout(() => dm.openBrowser(), 500); })
-              .catch((err: unknown) => { console.error('[tray] failed to start dashboard server:', getErrorMessage(err)); });
+              .catch((err: unknown) => {
+                const msg = getErrorMessage(err);
+                this._log.write(`[tray] open-dashboard: failed to start server: ${msg}`);
+                console.error('[tray] failed to start dashboard server:', msg);
+              });
           } else {
             dm.openBrowser();
           }
@@ -407,19 +421,26 @@ export class TrayManager extends EventEmitter {
         break;
       }
       case 'open-logs': {
+        this._log.write('[tray] action: open-logs');
         const logsDir = path.join(this._configDir, 'logs');
         const cmd = process.platform === 'win32' ? 'explorer.exe' : 'open';
         // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
         execFile(cmd, [logsDir], (err) => {
-          if (err) console.error('[tray] open-logs failed:', getErrorMessage(err));
+          if (err) {
+            const msg = getErrorMessage(err);
+            this._log.write(`[tray] open-logs: failed: ${msg}`);
+            console.error('[tray] open-logs failed:', msg);
+          }
         });
         break;
       }
       case 'startup-toggle': {
         if (this._startupEnabled) {
+          this._log.write('[tray] action: start-at-login disabled');
           disableStartup(this._configDir);
           this._startupEnabled = false;
         } else {
+          this._log.write('[tray] action: start-at-login enabled');
           enableStartup(this._configDir);
           this._startupEnabled = true;
         }
@@ -427,23 +448,28 @@ export class TrayManager extends EventEmitter {
         break;
       }
       case 'ack-failures':
+        this._log.write(`[tray] action: acknowledge-failures (${this._failures.length} cleared)`);
         this._failures.length = 0;
         this._state.acknowledgeAll();
         this._refresh();
         break;
       case 'update-btn':
         if (this._updateStatus === 'idle' || this._updateStatus === 'up-to-date') {
+          this._log.write('[tray] action: check-for-update clicked');
           void this._checkForUpdate();
         } else if (this._updateStatus === 'available') {
+          this._log.write(`[tray] action: update-and-restart clicked (target=${this._latestVersion ?? '?'})`);
           this._updateStatus = 'updating';
           this._refresh();
           this.emit('check-update');
         }
         break;
       case 'restart':
+        this._log.write('[tray] action: restart clicked');
         void this.triggerRestart();
         break;
       case 'quit':
+        this._log.write('[tray] action: quit clicked');
         void this.triggerQuit();
         break;
       // violations-suppress: ts/no-switch-default-break unknown tray IDs from Go binary are intentionally ignored (forward-compat)
