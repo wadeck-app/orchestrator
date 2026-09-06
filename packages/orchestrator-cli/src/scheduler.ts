@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
+import { spawn as nodeSpawn, execSync, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import os   from 'node:os';
 import { EventEmitter } from 'node:events';
@@ -158,8 +158,15 @@ export class Scheduler extends EventEmitter {
     const child = this._activeChildren.get(id);
     if (child && !child.killed) {
       this._killedByUser.add(id);
-      child.kill('SIGTERM');
-      setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+      if (process.platform === 'win32' && child.pid) {
+        // On Windows, child.kill() only kills the shell (cmd.exe), leaving the
+        // actual subprocess as an orphan with open pipes. taskkill /f /t kills
+        // the entire process tree, so the close event fires immediately.
+        try { execSync(`taskkill /f /t /pid ${child.pid}`, { stdio: 'ignore' }); } catch { /* already dead */ }
+      } else {
+        child.kill('SIGTERM');
+        setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+      }
       return { killed: true };
     }
     // Stale state: no active child but state still shows running - clean it up
