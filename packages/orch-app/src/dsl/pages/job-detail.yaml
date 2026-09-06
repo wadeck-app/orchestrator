@@ -44,7 +44,7 @@ $type: PageContent
 sections:
   - $type: PageHeader
     title: $sources.jobData.job.label
-  - $type: JobDetailActions
+  - $type: RunningBannerDetail
     $id: jobActions
     jobId: $route.id
     job: $sources.jobData.job

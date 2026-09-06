@@ -8,12 +8,5 @@ $type: PageContent
 sections:
   - $type: PageHeader
     title: Audit log
-  - $type: DataTable
-    rows: $sources.auditData
-    columns:
-      - field: event
-        label: Event
-      - field: ts
-        label: Time
-        format: datetime
-        width: 40
+  - $type: AuditList
+    entries: $sources.auditData

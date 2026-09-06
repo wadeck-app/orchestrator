@@ -12,7 +12,6 @@ import jobFormNewYaml from './dsl/pages/job-form-new.yaml?raw';
 import jobFormEditYaml from './dsl/pages/job-form-edit.yaml?raw';
 import jobLogsYaml    from './dsl/pages/job-logs.yaml?raw';
 import auditYaml      from './dsl/pages/audit.yaml?raw';
-import audit2Yaml       from './dsl/pages/audit-2.yaml?raw';
 import scheduleYaml     from './dsl/pages/schedule.yaml?raw';
 import jobDetailAYaml   from './dsl/pages/job-detail-a.yaml?raw';
 import jobDetailBYaml   from './dsl/pages/job-detail-b.yaml?raw';
@@ -43,9 +42,6 @@ export default function App(): React.ReactElement {
           } />
           <Route path="/audit" element={
             <GenericPageRunner key="/audit" yamlText={auditYaml} registry={appRegistry} fetcher={fetcher} />
-          } />
-          <Route path="/audit-2" element={
-            <GenericPageRunner key="/audit-2" yamlText={audit2Yaml} registry={appRegistry} fetcher={fetcher} />
           } />
           <Route path="/jobs/:id/design-a" element={
             <KeyedPageRunner baseKey="/jobs/design-a" yamlText={jobDetailAYaml} registry={appRegistry} fetcher={fetcher} />

@@ -49,21 +49,24 @@ export function makeCommands(
 
     'enable-job':  (p) => {
       const id = (p as { id: string }).id;
+      const job = registry.get(id);
       registry.enable(id);
-      audit?.log('job.enabled', { jobId: id });
+      audit?.log('job.enabled', { jobId: id, label: job?.label });
     },
 
     'disable-job': (p) => {
       const id = (p as { id: string }).id;
+      const job = registry.get(id);
       registry.disable(id);
-      audit?.log('job.disabled', { jobId: id });
+      audit?.log('job.disabled', { jobId: id, label: job?.label });
     },
 
     'edit-job':    (p) => {
       const { id, updates } = p as { id: string; updates: Partial<Job> };
       registry.edit(id, updates);
-      audit?.log('job.edited', { jobId: id });
-      return registry.get(id)!;
+      const updatedJob = registry.get(id);
+      audit?.log('job.edited', { jobId: id, label: updatedJob?.label, changes: Object.keys(updates) });
+      return updatedJob!;
     },
 
     'trigger-job': (p) => {

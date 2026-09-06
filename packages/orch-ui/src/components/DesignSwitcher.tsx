@@ -1,5 +1,9 @@
 import React from 'react';
 
+// @formatter:off
+const SWITCHER_INACTIVE = 'text-xs px-2.5 py-1 rounded border border-border text-content hover:bg-muted-bg transition-colors';
+// @formatter:on
+
 export interface DesignSwitcherProps {
   jobId?: string;
   current?: string;
@@ -11,9 +15,9 @@ export interface DesignSwitcherProps {
  */
 export function DesignSwitcher({ jobId, current }: DesignSwitcherProps): React.ReactElement {
   const designs = [
-    { id: 'design-a', label: 'Design A — Banner' },
-    { id: 'design-b', label: 'Design B — Alert' },
-    { id: 'design-c', label: 'Design C — Inline' },
+    { id: 'design-a', label: 'Design A - Banner' },
+    { id: 'design-b', label: 'Design B - Alert' },
+    { id: 'design-c', label: 'Design C - Inline' },
   ];
   return (
     <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -24,8 +28,8 @@ export function DesignSwitcher({ jobId, current }: DesignSwitcherProps): React.R
           href={`/jobs/${jobId}/${d.id}`}
           className={`text-xs px-2.5 py-1 rounded border transition-colors ${
             current === d.id
-              ? 'bg-primary text-on-primary border-primary font-medium'
-              : 'border-border text-muted hover:text-content hover:bg-muted-bg'
+              ? 'bg-primary text-on-primary border-primary font-medium text-xs px-2.5 py-1 rounded border transition-colors'
+              : SWITCHER_INACTIVE
           }`}
         >
           {d.label}
@@ -33,7 +37,7 @@ export function DesignSwitcher({ jobId, current }: DesignSwitcherProps): React.R
       ))}
       <a
         href={`/jobs/${jobId}`}
-        className="text-xs px-2.5 py-1 rounded border border-border text-muted hover:text-content hover:bg-muted-bg transition-colors"
+        className={SWITCHER_INACTIVE}
       >
         Default
       </a>

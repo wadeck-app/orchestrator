@@ -1,6 +1,6 @@
 import React from 'react';
 import type { RuntimeEntry } from '../types.js';
-import { JobStatusBadge } from './JobStatusBadge.js';
+import { JobStatusBadge, BADGE_CANCELLED } from './JobStatusBadge.js';
 import { TriggerBadge } from './TriggerBadge.js';
 
 export interface RunHistoryProps {
@@ -53,7 +53,11 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
               <td className="py-1 pr-4 text-muted">{formatDuration(entry)}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
-              <td className="py-1 pr-4"><JobStatusBadge exitCode={entry.exitCode} /></td>
+              <td className="py-1 pr-4">
+                {entry.exitCode === null && entry.finishedAt
+                  ? <span className={BADGE_CANCELLED}>Cancelled</span>
+                  : <JobStatusBadge exitCode={entry.exitCode} running={entry.exitCode === null && !entry.finishedAt} />}
+              </td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
               <td className="py-1 text-muted">{entry.pid ?? '-'}</td>
             </tr>
