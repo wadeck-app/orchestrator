@@ -63,8 +63,9 @@ export class State {
       ...(entry.triggeredBy  !== undefined && { triggeredBy:  entry.triggeredBy  }),
       ...(entry.finishedAt   !== undefined && { finishedAt:   entry.finishedAt   }),
       ...(entry.acknowledgedAt !== undefined && { acknowledgedAt: entry.acknowledgedAt }),
-      ...(entry.peakCpuPct   !== undefined && { peakCpuPct:   entry.peakCpuPct   }),
-      ...(entry.peakRamMb    !== undefined && { peakRamMb:    entry.peakRamMb    }),
+      ...(entry.peakCpuPct      !== undefined && { peakCpuPct:      entry.peakCpuPct      }),
+      ...(entry.peakRamMb       !== undefined && { peakRamMb:       entry.peakRamMb       }),
+      ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
     };
     const existing = this._cache![id] ?? [];
     // If the most-recent entry has the same startedAt, update it in-place rather than
