@@ -43,7 +43,6 @@ interface FailureEntry {
 }
 
 const SUCCESS_FLASH_MS = 5_000;
-const SUCCESS_ICON_COLOR = '#6EE7B7';
 
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'updating';
 
@@ -268,12 +267,11 @@ export class TrayManager extends EventEmitter {
     const hasFailures = this._failures.length > 0;
     const hasRunning  = this._runningJobIds.size > 0;
     const icons   = getIcons(this._trayColor);
-    const successIcons = getIcons(SUCCESS_ICON_COLOR);
     const updateAvailable = this._updateStatus === 'available';
     const icon =
-      hasFailures      ? icons.error :
+      hasFailures       ? icons.error :
       updateAvailable   ? icons.error :
-      this._showSuccess ? successIcons.idle :
+      this._showSuccess ? icons.success :
       hasRunning        ? icons.running :
       icons.idle;
     const tooltip = hasFailures

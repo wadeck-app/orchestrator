@@ -47,6 +47,17 @@ function listClockRunningSvg(color: string): string {
 </svg>`;
 }
 
+// Success state: clock icon with a solid green checkmark badge (bottom-right)
+function listClockSuccessSvg(color: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 12H3"/>
+  <path d="M16 6H3"/>
+  <path d="M10 18H3"/>
+  <circle cx="17" cy="17" r="5" fill="#22C55E" stroke="#22C55E"/>
+  <path d="M14.5 17l1.5 1.5 3-3" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>`;
+}
+
 async function svgToPng(svg: string): Promise<Buffer> {
   return sharp(Buffer.from(svg)).resize(64, 64).png().toBuffer();
 }
@@ -55,9 +66,9 @@ async function main(): Promise<void> {
   const lines: string[] = [
     `// AUTO-GENERATED - do not edit manually.`,
     `// Re-run: npm run gen-icons -w packages/orchestrator`,
-    `// Lucide list-clock, 64x64 PNG base64 - ${COLORS.length} colors x 3 states`,
+    `// Lucide list-clock, 64x64 PNG base64 - ${COLORS.length} colors x 4 states`,
     ``,
-    `export type IconState = 'idle' | 'error' | 'running';`,
+    `export type IconState = 'idle' | 'error' | 'running' | 'success';`,
     `export type IconSet = Record<IconState, string>;`,
     `export const DEFAULT_TRAY_COLOR = '${DEFAULT_COLOR}';`,
     `export const SUPPORTED_TRAY_COLORS = ${JSON.stringify(COLORS)} as const;`,
@@ -69,11 +80,13 @@ async function main(): Promise<void> {
     const idlePng    = await svgToPng(listClockSvg(color));
     const errorPng   = await svgToPng(listClockErrorSvg(color));
     const runningPng = await svgToPng(listClockRunningSvg(color));
+    const successPng = await svgToPng(listClockSuccessSvg(color));
     lines.push(`  // ${color}`);
     lines.push(`  ${JSON.stringify(color)}: {`);
     lines.push(`    idle:    '${idlePng.toString('base64')}',`);
     lines.push(`    error:   '${errorPng.toString('base64')}',`);
     lines.push(`    running: '${runningPng.toString('base64')}',`);
+    lines.push(`    success: '${successPng.toString('base64')}',`);
     lines.push(`  },`);
   }
 

@@ -8,5 +8,7 @@ $type: PageContent
 sections:
   - $type: PageHeader
     title: Audit log
-  - $type: AuditList
-    entries: $sources.auditData
+  - $type: Section
+    items:
+      - $type: AuditList
+        entries: $sources.auditData

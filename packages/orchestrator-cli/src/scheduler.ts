@@ -115,6 +115,21 @@ export class Scheduler extends EventEmitter {
         }
       }
     }
+
+    // Clean up stale "running" entries from previous sessions whose process is no longer alive
+    for (const job of this._registry.list()) {
+      const entry = this._state.get(job.id);
+      if (entry && entry.exitCode === null) {
+        let alive = false;
+        if (entry.pid) {
+          try { process.kill(entry.pid, 0); alive = true; } catch { /* dead */ }
+        }
+        if (!alive) {
+          const finishedAt = this._now().toISOString();
+          this._state.record(job.id, { ...entry, exitCode: 1, finishedAt });
+        }
+      }
+    }
   }
 
   async stop(): Promise<void> {
@@ -140,10 +155,19 @@ export class Scheduler extends EventEmitter {
 
   killJob(id: string): { killed: boolean } {
     const child = this._activeChildren.get(id);
-    if (!child || child.killed) return { killed: false };
-    child.kill('SIGTERM');
-    setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
-    return { killed: true };
+    if (child && !child.killed) {
+      child.kill('SIGTERM');
+      setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+      return { killed: true };
+    }
+    // Stale state: no active child but state still shows running - clean it up
+    const entry = this._state.get(id);
+    if (entry && entry.exitCode === null) {
+      const finishedAt = this._now().toISOString();
+      this._state.record(id, { ...entry, exitCode: 1, finishedAt });
+      return { killed: true };
+    }
+    return { killed: false };
   }
 
   private _scheduleCron(job: Job): void {
@@ -183,10 +207,18 @@ export class Scheduler extends EventEmitter {
     const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv);
     const pid   = child.pid ?? null;
 
+    // Per-job rotating log: tee stdout/stderr to file + terminal.
+    // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log
+    const jobLogger = new DailyLogger(
+      path.join(this._configDir, 'logs', job.id),
+      job.id,
+    );
+
     this._activeChildren.set(job.id, child);
     this._state.record(job.id, { startedAt, exitCode: null, pid, triggeredBy: trigger });
     this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
     this.emit('job-started', { id: job.id });
+    jobLogger.write(`[job:started] pid=${pid} triggeredBy=${trigger.kind}`);
 
     // Resource monitoring: sample CPU/RAM every 2s, enforce auto-budget thresholds
     let peakCpuPct = 0;
@@ -221,13 +253,6 @@ export class Scheduler extends EventEmitter {
         }).catch(() => { clearInterval(resourceTimer!); });
       }, 2000);
     }
-
-    // Per-job rotating log: tee stdout/stderr to file + terminal.
-    // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log
-    const jobLogger = new DailyLogger(
-      path.join(this._configDir, 'logs', job.id),
-      job.id,
-    );
     child.stdout?.on('data', (d: Buffer) => {
       jobLogger.write(d.toString().trimEnd());
       try { process.stdout.write(d); } catch { /* EPIPE: launcher pipe closed */ }
@@ -269,6 +294,7 @@ export class Scheduler extends EventEmitter {
           peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
           peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
         });
+        jobLogger.write(`[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s`);
         jobLogger.close();
         this.emit('job-finished', { id: job.id, exitCode, job });
 

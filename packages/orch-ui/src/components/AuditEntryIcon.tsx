@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   CheckCircle, XCircle, Play, Clock, Plus, Trash2,
-  Pencil, ToggleLeft, ToggleRight, Power, RefreshCw,
+  Pencil, ToggleLeft, ToggleRight, Power, RefreshCw, Square,
 } from 'lucide-react';
 import type { AuditEntry } from './AuditEntryRow.js';
 
@@ -26,6 +26,7 @@ export function AuditEntryIcon({ event, entry }: AuditEntryIconProps): React.Rea
       : <XCircle size={sz} className="text-danger" />;
   }
   if (event === 'job.triggered_manual') return <Play size={sz} className="text-primary" />;
+  if (event === 'job.killed_manual')    return <Square size={sz} className="text-warning" />;
   if (event === 'job.started')          return <Clock size={sz} className="text-muted" />;
   if (event === 'job.added')            return <Plus size={sz} className="text-green-600" />;
   if (event === 'job.deleted')          return <Trash2 size={sz} className="text-danger" />;
