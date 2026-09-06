@@ -154,19 +154,20 @@ export class Scheduler extends EventEmitter {
     return this._fire(job, source);
   }
 
+  private _killChild(child: ChildProcess): void {
+    if (process.platform === 'win32' && child.pid) {
+      try { execSync(`taskkill /f /t /pid ${child.pid}`, { stdio: 'ignore' }); } catch { /* already dead */ }
+    } else {
+      child.kill('SIGTERM');
+      setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+    }
+  }
+
   killJob(id: string): { killed: boolean } {
     const child = this._activeChildren.get(id);
     if (child && !child.killed) {
       this._killedByUser.add(id);
-      if (process.platform === 'win32' && child.pid) {
-        // On Windows, child.kill() only kills the shell (cmd.exe), leaving the
-        // actual subprocess as an orphan with open pipes. taskkill /f /t kills
-        // the entire process tree, so the close event fires immediately.
-        try { execSync(`taskkill /f /t /pid ${child.pid}`, { stdio: 'ignore' }); } catch { /* already dead */ }
-      } else {
-        child.kill('SIGTERM');
-        setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
-      }
+      this._killChild(child);
       return { killed: true };
     }
     // Stale state: no active child but state still shows running - clean it up
@@ -251,8 +252,7 @@ export class Scheduler extends EventEmitter {
             try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
             this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold });
             clearInterval(resourceTimer!);
-            child.kill('SIGTERM');
-            setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+            this._killChild(child);
           } else if (!softAlertSent && softThreshold && (cpuPct > softThreshold.cpuPct || ramMb > softThreshold.ramMb)) {
             softAlertSent = true;
             const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
@@ -278,10 +278,7 @@ export class Scheduler extends EventEmitter {
       timeoutHandle = setTimeout(() => {
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
         this._events.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
-        child.kill('SIGTERM');
-        setTimeout(() => {
-          if (!child.killed) child.kill('SIGKILL');
-        }, 2000);
+        this._killChild(child);
       }, timeoutMs);
     }
 
