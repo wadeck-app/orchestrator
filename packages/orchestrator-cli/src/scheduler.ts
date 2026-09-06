@@ -38,6 +38,7 @@ export class Scheduler extends EventEmitter {
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly _activeChildren = new Map<string, ChildProcess>();
+  private readonly _killedByUser   = new Set<string>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
     super();
@@ -156,6 +157,7 @@ export class Scheduler extends EventEmitter {
   killJob(id: string): { killed: boolean } {
     const child = this._activeChildren.get(id);
     if (child && !child.killed) {
+      this._killedByUser.add(id);
       child.kill('SIGTERM');
       setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
       return { killed: true };
@@ -164,7 +166,7 @@ export class Scheduler extends EventEmitter {
     const entry = this._state.get(id);
     if (entry && entry.exitCode === null) {
       const finishedAt = this._now().toISOString();
-      this._state.record(id, { ...entry, exitCode: 1, finishedAt });
+      this._state.record(id, { ...entry, exitCode: 1, finishedAt, cancelledByUser: true });
       return { killed: true };
     }
     return { killed: false };
@@ -284,6 +286,7 @@ export class Scheduler extends EventEmitter {
         const exitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
         const durationMs = Date.now() - new Date(startedAt).getTime();
+        const cancelledByUser = this._killedByUser.delete(job.id);
 
         // Recovery detection: was previous run a failure?
         const prev = this._state.get(job.id);
@@ -293,6 +296,7 @@ export class Scheduler extends EventEmitter {
           startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
           peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
           peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
+          cancelledByUser: cancelledByUser || undefined,
         });
         jobLogger.write(`[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s`);
         jobLogger.close();

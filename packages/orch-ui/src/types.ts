@@ -51,4 +51,5 @@ export interface RuntimeEntry {
   acknowledgedAt?: string;
   peakCpuPct?: number;
   peakRamMb?: number;
+  cancelledByUser?: boolean;
 }

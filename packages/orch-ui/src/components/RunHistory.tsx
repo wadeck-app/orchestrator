@@ -54,7 +54,7 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
               <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
               <td className="py-1 pr-4">
-                {entry.exitCode === null && entry.finishedAt
+                {entry.cancelledByUser || (entry.exitCode === null && entry.finishedAt)
                   ? <span className={BADGE_CANCELLED}>Cancelled</span>
                   : <JobStatusBadge exitCode={entry.exitCode} running={entry.exitCode === null && !entry.finishedAt} />}
               </td>
