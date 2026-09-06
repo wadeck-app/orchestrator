@@ -250,10 +250,18 @@ export class TrayManager extends EventEmitter {
       this._logAction(`[tray] check-update: error fetching latest version: ${getErrorMessage(err)}`);
       this._updateStatus = 'idle';
     }
-    this._refresh();
+    // Flash green success icon when already up-to-date, then reset
     if (this._updateStatus === 'up-to-date') {
-      setTimeout(() => { this._updateStatus = 'idle'; this._refresh(); }, 5_000);
+      this._showSuccess = true;
+      if (this._successTimer) clearTimeout(this._successTimer);
+      this._successTimer = setTimeout(() => {
+        this._showSuccess = false;
+        this._successTimer = null;
+        this._updateStatus = 'idle';
+        this._refresh();
+      }, SUCCESS_FLASH_MS);
     }
+    this._refresh();
   }
 
   private _buildMenu(): MenuSnapshot {
