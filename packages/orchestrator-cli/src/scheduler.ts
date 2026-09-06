@@ -140,7 +140,7 @@ export class Scheduler extends EventEmitter {
     this._timeouts.clear();
   }
 
-  async dryRun(id: string): Promise<{ pid: number | null } | { exitCode: number } | { error: string }> {
+  async dryRun(id: string): Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }> {
     const job = this._registry.get(id);
     if (!job) throw new Error(`Job not found: "${id}"`);
     if (!job.dryRunSupported) return { error: `Job "${id}" does not declare dryRunSupported: true` };
@@ -148,7 +148,7 @@ export class Scheduler extends EventEmitter {
     return this._fire(dryJob, { kind: 'manual' });
   }
 
-  async trigger(id: string, source: TriggerSource = { kind: 'manual' }): Promise<{ pid: number | null } | { exitCode: number }> {
+  async trigger(id: string, source: TriggerSource = { kind: 'manual' }): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const job = this._registry.get(id);
     if (!job) throw new Error(`Job not found: "${id}"`);
     return this._fire(job, source);
@@ -200,7 +200,7 @@ export class Scheduler extends EventEmitter {
     void this._fire(job);
   }
 
-  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<{ pid: number | null } | { exitCode: number }> {
+  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
     const jobEnv = (job.env || job.secrets?.length)
@@ -278,15 +278,17 @@ export class Scheduler extends EventEmitter {
       }, timeoutMs);
     }
 
-    const done = new Promise<{ exitCode: number }>((resolve) => {
+    const done = new Promise<{ exitCode: number | null }>((resolve) => {
       child.on('close', (code) => {
         this._activeChildren.delete(job.id);
         if (timeoutHandle !== null) clearTimeout(timeoutHandle);
         if (resourceTimer !== null) clearInterval(resourceTimer);
-        const exitCode = code ?? 1;
+        const rawExitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
         const durationMs = Date.now() - new Date(startedAt).getTime();
         const cancelledByUser = this._killedByUser.delete(job.id);
+        // exitCode=null + finishedAt = "Cancelled" in RunHistory
+        const exitCode = cancelledByUser ? null : rawExitCode;
 
         // Recovery detection: was previous run a failure?
         const prev = this._state.get(job.id);
@@ -302,7 +304,9 @@ export class Scheduler extends EventEmitter {
         jobLogger.close();
         this.emit('job-finished', { id: job.id, exitCode, job });
 
-        if (exitCode === 0) {
+        if (cancelledByUser) {
+          this._events.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
+        } else if (exitCode === 0) {
           this._events.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
           // Trigger dependent jobs
           for (const dep of this._registry.list().filter(j => j.dependsOn === job.id && j.enabled)) {
@@ -317,7 +321,7 @@ export class Scheduler extends EventEmitter {
             jobLogger.write(`[warn] Job ${job.id} took ${durationMs}ms (3x avg ${Math.round(avgMs)}ms) - anomaly detected`);
             this._events.publish('job.anomaly', { jobId: job.id, label: job.label, durationMs, avgMs: Math.round(avgMs), multiplier: 3 });
           }
-        } else {
+        } else if (exitCode !== null) {
           this._events.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
           // Consecutive-failure alert
           const threshold = job.alertAfterFailures ?? 3;
