@@ -76,6 +76,13 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
     };
   }
 
+  // Design variants for running job detail
+  const outputs = ['onTrigger', 'onDelete', 'onDryRun', 'onViewLogs', 'onEdit', 'onKill'];
+  for (const name of ['RunningBannerDetail', 'RunningAlertDetail', 'RunningInlineDetail']) {
+    const entry = registry[name];
+    if (entry) entry.render = withOutputCallbacks(entry.render, outputs);
+  }
+
   // JobFormSection: form lifecycle as DSL $outputs
   const jfs = registry['JobFormSection'];
   if (jfs) {

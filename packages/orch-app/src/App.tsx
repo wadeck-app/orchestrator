@@ -12,8 +12,11 @@ import jobFormNewYaml from './dsl/pages/job-form-new.yaml?raw';
 import jobFormEditYaml from './dsl/pages/job-form-edit.yaml?raw';
 import jobLogsYaml    from './dsl/pages/job-logs.yaml?raw';
 import auditYaml      from './dsl/pages/audit.yaml?raw';
-import audit2Yaml     from './dsl/pages/audit-2.yaml?raw';
-import scheduleYaml   from './dsl/pages/schedule.yaml?raw';
+import audit2Yaml       from './dsl/pages/audit-2.yaml?raw';
+import scheduleYaml     from './dsl/pages/schedule.yaml?raw';
+import jobDetailAYaml   from './dsl/pages/job-detail-a.yaml?raw';
+import jobDetailBYaml   from './dsl/pages/job-detail-b.yaml?raw';
+import jobDetailCYaml   from './dsl/pages/job-detail-c.yaml?raw';
 
 export default function App(): React.ReactElement {
   const { failures, acknowledgeOne, acknowledgeAll } = useFailures();
@@ -43,6 +46,15 @@ export default function App(): React.ReactElement {
           } />
           <Route path="/audit-2" element={
             <GenericPageRunner key="/audit-2" yamlText={audit2Yaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/:id/design-a" element={
+            <KeyedPageRunner baseKey="/jobs/design-a" yamlText={jobDetailAYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/:id/design-b" element={
+            <KeyedPageRunner baseKey="/jobs/design-b" yamlText={jobDetailBYaml} registry={appRegistry} fetcher={fetcher} />
+          } />
+          <Route path="/jobs/:id/design-c" element={
+            <KeyedPageRunner baseKey="/jobs/design-c" yamlText={jobDetailCYaml} registry={appRegistry} fetcher={fetcher} />
           } />
           <Route path="/schedule" element={
             <GenericPageRunner key="/schedule" yamlText={scheduleYaml} registry={appRegistry} fetcher={fetcher} />

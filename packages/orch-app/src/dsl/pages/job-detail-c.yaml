@@ -1,0 +1,67 @@
+$route: /jobs/:id/design-c
+
+$sources:
+  jobData:
+    url: GET /api/jobs/{id}
+    params:
+      id: $route.id
+    poll: 5s
+
+$brains:
+  triggerJob:
+    $brain: $brains.$http.post
+    url: POST /api/jobs/{id}/trigger
+    id: $route.id
+    _event: $outputs.jobActions.onTrigger
+    $reload: [jobData]
+
+  killJob:
+    $brain: $brains.$http.post
+    url: POST /api/jobs/{id}/kill
+    id: $route.id
+    _event: $outputs.jobActions.onKill
+    $reload: [jobData]
+
+  deleteJob:
+    $brain: $brains.$http.delete
+    url: DELETE /api/jobs/{id}
+    id: $route.id
+    _event: $outputs.jobActions.onDelete
+
+  navigateAfterDelete:
+    $brain: $brains.$ctx.navigate
+    to: /
+    _event: $outputs.jobActions.onDelete
+
+  navigateViewLogs:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}/logs
+    _event: $outputs.jobActions.onViewLogs
+
+  navigateEdit:
+    $brain: $brains.$ctx.navigate
+    to: /jobs/{id}/edit
+    _event: $outputs.jobActions.onEdit
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: $sources.jobData.job.label
+  - $type: RunningInlineDetail
+    $id: jobActions
+    jobId: $route.id
+    job: $sources.jobData.job
+    runHistory: $sources.jobData.runHistory
+    $outputs:
+      onTrigger: [_]
+      onKill: [_]
+      onDelete: [_]
+      onViewLogs: [_]
+      onEdit: [_]
+  - $type: JobConfigDisplay
+    job: $sources.jobData.job
+  - $type: Section
+    title: Run history
+    children:
+      - $type: RunHistory
+        entries: $sources.jobData.runHistory

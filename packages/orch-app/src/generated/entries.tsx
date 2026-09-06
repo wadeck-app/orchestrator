@@ -71,6 +71,9 @@ import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
 import { LogViewerSection } from '../../../orch-ui/src/components/LogViewerSection.js'
 import { NextFireCountdown } from '../../../orch-ui/src/components/NextFireCountdown.js'
 import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
+import { RunningAlertDetail } from '../../../orch-ui/src/components/RunningAlertDetail.js'
+import { RunningBannerDetail } from '../../../orch-ui/src/components/RunningBannerDetail.js'
+import { RunningInlineDetail } from '../../../orch-ui/src/components/RunningInlineDetail.js'
 import { ScheduleTimeline } from '../../../orch-ui/src/components/ScheduleTimeline.js'
 import { TriggerBadge } from '../../../orch-ui/src/components/TriggerBadge.js'
 import { TriggerButton } from '../../../orch-ui/src/components/TriggerButton.js'
@@ -948,6 +951,57 @@ export const RunHistoryEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const RunningAlertDetailEntry: ComponentRegistryEntry = {
+	name: 'RunningAlertDetail', category: 'composite', tags: ["job","detail","running","alert","design-b"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['job']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['runHistory']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
+		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+	},
+}
+
+export const RunningBannerDetailEntry: ComponentRegistryEntry = {
+	name: 'RunningBannerDetail', category: 'composite', tags: ["job","detail","running","banner","design-a"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['job']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['runHistory']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
+		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+	},
+}
+
+export const RunningInlineDetailEntry: ComponentRegistryEntry = {
+	name: 'RunningInlineDetail', category: 'composite', tags: ["job","detail","running","inline","design-c"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['job']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['runHistory']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
+		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+	},
+}
+
 export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	name: 'ScheduleTimeline', category: 'composite', tags: ["schedule","timeline","cron","firings"],
 	nodeSchema: null as never,
@@ -1046,6 +1100,9 @@ export const allEntries: ComponentRegistryEntry[] = [
 	LogViewerSectionEntry,
 	NextFireCountdownEntry,
 	RunHistoryEntry,
+	RunningAlertDetailEntry,
+	RunningBannerDetailEntry,
+	RunningInlineDetailEntry,
 	ScheduleTimelineEntry,
 	TriggerBadgeEntry,
 	TriggerButtonEntry,

@@ -21,6 +21,12 @@ export type { FailureEntry as FailureBannerEntry } from './components/FailureBan
 export { JobConfigDisplay } from './components/JobConfigDisplay.js';
 export { JobToggle } from './components/JobToggle.js';
 export { JobDetailActions } from './components/JobDetailActions.js';
+export { RunningBannerDetail } from './components/RunningBannerDetail.js';
+export type { RunningBannerDetailProps } from './components/RunningBannerDetail.js';
+export { RunningAlertDetail } from './components/RunningAlertDetail.js';
+export type { RunningAlertDetailProps } from './components/RunningAlertDetail.js';
+export { RunningInlineDetail } from './components/RunningInlineDetail.js';
+export type { RunningInlineDetailProps } from './components/RunningInlineDetail.js';
 export { AuditEntryIcon } from './components/AuditEntryIcon.js';
 export type { AuditEntryIconProps } from './components/AuditEntryIcon.js';
 export { AuditEntryRow } from './components/AuditEntryRow.js';
