@@ -45,6 +45,8 @@ interface FailureEntry {
 const SUCCESS_FLASH_MS = 5_000;
 const SUCCESS_ICON_COLOR = '#6EE7B7';
 
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'updating';
+
 export class TrayManager extends EventEmitter {
   private _tp:               TrayProcess | null = null;
   private _spawning          = false;   // guard: prevent concurrent _spawnTray() calls
@@ -57,6 +59,8 @@ export class TrayManager extends EventEmitter {
   private _startupEnabled: boolean;
   private readonly _failures: FailureEntry[] = [];
   private readonly _log:      DailyLogger;
+  private _updateStatus: UpdateStatus = 'idle';
+  private _latestVersion: string | null = null;
 
   constructor(
     private readonly _configDir: string,
@@ -206,6 +210,28 @@ export class TrayManager extends EventEmitter {
     void this._tp.send({ type: 'set-menu', menu: this._buildMenu() });
   }
 
+  private async _checkForUpdate(): Promise<void> {
+    this._updateStatus = 'checking';
+    this._refresh();
+    try {
+      const latest = await new Promise<string>((resolve, reject) => {
+        execFile('npm', ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'], { timeout: 15_000 }, (err, stdout) => {
+          if (err) { reject(err); return; }
+          resolve(JSON.parse(stdout.trim()) as string);
+        });
+      });
+      this._latestVersion = latest;
+      this._updateStatus = latest !== this._version ? 'available' : 'up-to-date';
+    } catch {
+      this._updateStatus = 'idle';
+    }
+    this._refresh();
+    // Auto-reset "up-to-date" label after 5s
+    if (this._updateStatus === 'up-to-date') {
+      setTimeout(() => { this._updateStatus = 'idle'; this._refresh(); }, 5_000);
+    }
+  }
+
   private _buildMenu(): MenuSnapshot {
     const hasFailures = this._failures.length > 0;
     const hasRunning  = this._runningJobIds.size > 0;
@@ -226,7 +252,17 @@ export class TrayManager extends EventEmitter {
 
     const items: MenuItemSnapshot[] = [];
 
-    items.push({ id: 'header', type: 'normal', title: `v${this._version}`, enabled: true });
+    items.push({ id: 'header', type: 'normal', title: `v${this._version}`, enabled: false });
+    const updateItem = this._updateStatus === 'checking'
+      ? { id: 'update-btn', type: 'normal' as const, title: 'Checking...', enabled: false }
+      : this._updateStatus === 'available'
+        ? { id: 'update-btn', type: 'normal' as const, title: `Update to v${this._latestVersion ?? '?'} and restart`, enabled: true }
+        : this._updateStatus === 'up-to-date'
+          ? { id: 'update-btn', type: 'normal' as const, title: 'Already up to date', enabled: false }
+          : this._updateStatus === 'updating'
+            ? { id: 'update-btn', type: 'normal' as const, title: 'Updating...', enabled: false }
+            : { id: 'update-btn', type: 'normal' as const, title: 'Check for update', enabled: true };
+    items.push(updateItem);
     items.push({ id: 'sep1',   type: 'separator', title: '', enabled: false });
 
     if (hasFailures) {
@@ -390,8 +426,14 @@ export class TrayManager extends EventEmitter {
         this._state.acknowledgeAll();
         this._refresh();
         break;
-      case 'header':
-        this.emit('check-update');
+      case 'update-btn':
+        if (this._updateStatus === 'idle' || this._updateStatus === 'up-to-date') {
+          void this._checkForUpdate();
+        } else if (this._updateStatus === 'available') {
+          this._updateStatus = 'updating';
+          this._refresh();
+          this.emit('check-update');
+        }
         break;
       case 'restart':
         void this.triggerRestart();
