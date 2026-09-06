@@ -79,6 +79,13 @@ const MOCK_JOB_DETAIL = {
   ],
 };
 
+const MOCK_JOB_DETAIL_RUNNING = {
+  job: MOCK_JOB,
+  runHistory: [
+    { startedAt: new Date(Date.now() - 30000).toISOString(), exitCode: null, pid: 55555 },
+  ],
+};
+
 // -- YAML strings (inline - not loaded from disk) ------------------------------
 
 const JOB_LIST_YAML = `
@@ -140,6 +147,7 @@ sections:
   - $type: JobDetailActions
     jobId: $route.id
     job: $sources.jobData.job
+    runHistory: $sources.jobData.runHistory
 `;
 
 const JOB_FORM_NEW_YAML = `
@@ -407,5 +415,73 @@ describe('Job detail page - action button navigation (TDD)', () => {
     const editLink = screen.getByRole('link', { name: /^edit$/i });
     expect(editLink).toBeInTheDocument();
     expect(editLink).toHaveAttribute('href', '/jobs/backup-db/edit');
+  });
+});
+
+describe('Running job: Kill button, PID, duration (TDD)', () => {
+  it('Test 20: Kill button is visible when job is running (exitCode === null)', async () => {
+    server.use(http.get('http://localhost/api/jobs/backup-db', () => HttpResponse.json(MOCK_JOB_DETAIL_RUNNING)));
+    renderJobDetail('backup-db');
+    await waitFor(() => expect(screen.getByText('Database backup')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /kill/i })).toBeInTheDocument();
+    // Run now should NOT be shown when running
+    expect(screen.queryByRole('button', { name: /run now/i })).not.toBeInTheDocument();
+  });
+
+  it('Test 21: Kill button is NOT visible when job is not running', async () => {
+    server.use(http.get('http://localhost/api/jobs/backup-db', () => HttpResponse.json(MOCK_JOB_DETAIL)));
+    renderJobDetail('backup-db');
+    await waitFor(() => expect(screen.getByText('Database backup')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /kill/i })).not.toBeInTheDocument();
+    // Run now should be shown when not running
+    expect(screen.getByRole('button', { name: /run now/i })).toBeInTheDocument();
+  });
+
+  it('Test 22: PID is displayed when job is running', async () => {
+    server.use(http.get('http://localhost/api/jobs/backup-db', () => HttpResponse.json(MOCK_JOB_DETAIL_RUNNING)));
+    renderJobDetail('backup-db');
+    await waitFor(() => expect(screen.getByText('Database backup')).toBeInTheDocument());
+    expect(screen.getByText(/PID 55555/)).toBeInTheDocument();
+  });
+});
+
+describe('Audit-2 page - AuditList with icons (TDD)', () => {
+  const AUDIT_LIST_YAML = `
+$sources:
+  auditData:
+    url: GET /api/audit?limit=100
+$type: PageContent
+sections:
+  - $type: AuditList
+    entries: $sources.auditData
+`;
+
+  function renderAuditList() {
+    return render(
+      <MemoryRouter initialEntries={['/audit-2']}>
+        <GenericPageRunner yamlText={AUDIT_LIST_YAML} registry={appRegistry} fetcher={testFetcher} />
+      </MemoryRouter>
+    );
+  }
+
+  it('Test 23: AuditList renders entries with event text', async () => {
+    server.use(
+      http.get('http://localhost/api/audit', () => HttpResponse.json([
+        { ts: '2026-09-01T10:00:00Z', event: 'daemon.start' },
+        { ts: '2026-09-01T10:01:00Z', event: 'job.completed', exitCode: 0, label: 'backup-db' },
+      ])),
+    );
+    renderAuditList();
+    await waitFor(() => {
+      expect(screen.getByText('daemon.start')).toBeInTheDocument();
+      expect(screen.getByText('job.completed')).toBeInTheDocument();
+    });
+  });
+
+  it('Test 24: AuditList shows spinner when entries not yet loaded', () => {
+    // Never resolves — spinner should be visible
+    server.use(http.get('http://localhost/api/audit', () => new Promise(() => undefined)));
+    renderAuditList();
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
   });
 });

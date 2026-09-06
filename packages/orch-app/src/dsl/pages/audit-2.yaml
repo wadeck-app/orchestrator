@@ -1,0 +1,12 @@
+$route: /audit-2
+
+$sources:
+  auditData:
+    url: GET /api/audit?limit=100
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: Audit log
+  - $type: AuditList
+    entries: $sources.auditData
