@@ -74,7 +74,7 @@ export function makeCommands(
       return scheduler.trigger(id, { kind: 'manual', ip, userAgent });
     },
 
-    'kill-job': (p) => {
+    'kill-job': (p: unknown) => {
       const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
       const job = registry.get(id);
       audit?.log('job.killed_manual', { jobId: id, label: job?.label, ip, userAgent });

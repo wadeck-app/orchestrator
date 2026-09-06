@@ -75,6 +75,7 @@ export type OrchestratorCommands = {
   'disable-job': (payload?: unknown) => void;
   'edit-job':    (payload?: unknown) => Job;
   'trigger-job': (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number }>;
+  'kill-job':    (payload?: unknown) => void;
   'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;
   'list-failures': (payload?: unknown) => Array<{ jobId: string; entry: RuntimeEntry }>;
   'ack-failures':  (payload?: unknown) => Record<string, never>;

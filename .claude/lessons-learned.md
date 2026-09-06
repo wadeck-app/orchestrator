@@ -1,8 +1,15 @@
 # Lessons learned
 
-<!-- Last updated: 2026-09-02T20:13:24.949Z -->
+<!-- Last updated: 2026-09-05T20:38:55.580Z -->
 
 ## Recurring feedback
+
+<!-- session 9bc60855 2026-09-05 -->
+- Invisible Node.js stderr in hidden process must be captured to daemon logs. Startup errors were lost because uncaught exceptions/unhandled rejections not wired to logger before crash.
+- Violations suppress comment format (`shared/no-emoji,shared/no-unicode-symbol` on one line) was assumed but incorrect — requires individual suppress lines per rule. Format is not self-evident.
+- Dark mode UI fixes (badge colors, text contrast) required screenshot verification; TypeScript/linting did not catch these visual regressions.
+- Parallel agents on same repo can cause file contention; check-parallel-agents skill was invoked to diagnose potential locks.
+- Component decomposition + glue-logic extraction into YAML callbacks appeared twice (job-list, job-detail) — extraction pattern (callback props → $brains in YAML) should be templated/documented for future DSL pages.
 
 <!-- session 379d8f62 2026-09-02 -->
 - Excessive file checking and grepping without clear investigation direction. Many commands like `grep "routes\|register" <file>` didn't advance debugging — a single read of the actual source file would have been faster than cumulative grep attempts.
@@ -29,6 +36,22 @@
 - Repeated pattern of push → sleep 10-90s → retry broken CI checks. Agent doesn't have working CI polling despite poll-ci skill being available. Consider automatic fallback to poll-ci skill when GitHub MCP tools fail.
 
 ## Agent errors
+
+<!-- session 9bc60855 2026-09-05 -->
+- Log location not initially known — assistant searched many paths before user corrected: `~/.config/orchestrator` is the standard config dir. Should be documented in CLAUDE.md or threat-model.
+- Dead `.tsx` page files left in `packages/orch-app/src/pages/` violated DSL-only design principle — user explicitly rejected non-YAML pages. Codebase should have been cleaned on migration.
+- Created local violations rule `no-unicode-symbol.ts` when user explicitly rejected it ("pas de local rule") and demanded improving global `shared/no-emoji` in violations-framework instead.
+- NOTIF-01 webhook implemented as HTTP subscriber store + external URL callbacks, but user requirement was event-queue-only (CLI triggering), no HTTP at all. Scope misread upfront.
+- Test `makeCommands()` calls missed new `configDir` parameter during recent refactor — API contract not propagated to all call sites.
+- Timestamp misread: assistant checked log entries at 14:23:57 when user clarified crash was "18h environ" (16h UTC). Did not ask user to confirm timezone interpretation before analyzing logs.
+- Partial fix → regression: fixed only 2 `process.stderr.write` calls in scheduler.ts, believing that was root cause. Later discovered the real culprit was `console.log` in index.ts. Required second round of EPIPE suppression at module level to actually solve the crash.
+- Speculative debugging cascade: hypothesized port conflict → Go launcher JobObject handling → EPIPE. Multiple dead-end investigations before pinpointing the actual root cause (stdout pipe closing in hidden launcher window). Wasted ~3 rounds of testing on wrong angles.
+- Vitest alias resolution debugging used trial-and-error with repeated config edits (07:31-07:32) rather than investigating actual module paths first; agent made 4 sequential attempts with different assumptions without validating intermediate failures.
+- Fork agent (a5c9) had to coordinate cross-workspace changes (fixing capability-framework dsl-renderer while main session worked in orchestrator) — no upfront discovery of which files were in dependency vs. local
+- Component registry category generation fails silently when Props interface naming is wrong — type errors only surfaced after full build, late-stage detection
+- MON-05 resource baseline calculation required mid-stream correction: should filter to only successful runs (exitCode === 0), not all runs — agent did not initially apply this constraint.
+- Multiple fixed-interval sleep-retry loops (sleep 30-40s + orch status) for daemon startup; should check logs immediately before retrying, not after delays.
+- Webhook feature implemented without request — agent should have confirmed scope explicitly before building features not in the task description; removal took multiple commit rounds.
 
 <!-- session 379d8f62 2026-09-02 -->
 - Extended trial-and-error debugging without establishing clear hypotheses first. Assistant made ~15+ speculative edits to orch-server/src/index.ts, routes/events.ts, and routes/logs.ts (changing wildcard option, hijack vs raw.writeHead, route registration order) before understanding the actual constraint: @fastify/static with wildcard:true was interfering with custom API route handlers.
@@ -68,6 +91,15 @@
 
 ## Documentation gaps
 
+<!-- session 9bc60855 2026-09-05 -->
+- Agent fork invoked `write-doc` skill which reported "NOT YET KNOWN" (07:40:12, 08:12:21) but recovered by using Write tool; suggests agent skill registry may not be current or skills not pre-loaded into fork context.
+- entries.tsx generation pipeline not documented — cost ~10 grep/find iterations to discover it comes from @wadeck-app/dsl-renderer in capability-framework; no documentation on generator requirements for component Props naming (must be XxxProps, not Props)
+- Feature rejections (e.g., DX-05 config-as-code) are marked in v3-todo.md with [!] but should be documented in `.claude/out-of-scope.md` or design docs to prevent future reintroduction attempts.
+- DSL app pattern: data fetching belongs in YAML $sources, not component useState/useEffect. No linter rule existed; violations were discovered manually late in session.
+- When to use deploy-dev.mjs vs npm install -g — sync path unclear; appears to be dev-only workaround that should be documented or formalized.
+- $brains/$outputs/publishOutput callback pattern required extensive cross-project code exploration (dsl-renderer, capability-framework) — no DSL pattern reference for HTTP mutations documented in orchestrator.
+- Registry override pattern (registry.ts → registry-overrides.ts → back to registry.ts) wasn't self-documenting; inconsistent file naming caused mid-task confusion about which file holds component mappings.
+
 <!-- session 379d8f62 2026-09-02 -->
 - Missing clarity on how @fastify/static plugin's wildcard option interacts with custom route registration in Fastify. Assistant repeatedly tried different route registration orders and hook combinations without reading the plugin's source first to understand the behavior.
 - No guide on scraper environment configuration (.env.local files must be copied from workspace to ~/.config/scraper-name/.env.local); user discovered by accident after 30+ min of searching.
@@ -94,6 +126,18 @@
 - ToolSearch workflow for deferred MCP tools is unclear — multiple attempts to search for tools returned NOT YET KNOWN despite tools being in deferred list; no clear guidance on when/how to load schemas for MCP tools
 
 ## Known constraints
+
+<!-- session 9bc60855 2026-09-05 -->
+- Launcher only checks `config.restart` sentinel if daemon exits with code 0. Exit code 1 (crash) skips restart logic — can leave daemon dead without relaunch.
+- Auto-update check interval tuned to 30 minutes (user explicit requirement), not default 4 hours.
+- Hidden process launcher pipes close silently on Windows (`SW_HIDE`): causes `console.log()` EPIPE crash, not obvious from error logs. The daemon itself was healthy; the launcher's hidden window pipe closure triggered the crash in child process stdout writes.
+- GitHub Actions CI queuing: run #128 stuck in `in_progress` for 15+ minutes with frozen `updated_at` timestamp. Prior runs completed in 2–4 min. Polling did not detect actual completion state.
+- @wadeck-app/dsl-renderer entriesGenerator.ts has implicit assumption that components export interface XxxProps (not interface Props); RouterProvider requires RouterProviderProps interface for generator to work; DataTableProps generic type causes render issues requiring post-generation patch script workaround
+- pidusage library lacks TypeScript types; workaround is to create a manual `.d.ts` stub file in the package.
+- violations-framework is a separate workspace; violations rule updates require switching projects and separate build/test cycles.
+- pidusage module hoisting issue requires manual copy between nvm and workspace (xcopy/powershell). Windows-specific workaround fragility; deploy-dev.mjs masks the underlying setup problem.
+- EPIPE errors from process.stderr.write() on subprocess output kills daemon silently on Windows; requires explicit error handling even when stream is closing normally.
+- Browser/daemon asset sync requires ~40s sleep between deploy and screenshot; multiple retry loops (dsl-callbacks.png → dsl-final.png → dsl-final2.png → dsl-final3.png) suggest no robust "ready" detection for orchestrator asset propagation.
 
 <!-- session 379d8f62 2026-09-02 -->
 - Multi-tier deployment friction revealed: changes to orch-server dist files must sync to both local workspace and global npm install location (~/.nvm/v24.11.1/node_modules). This caused multiple rebuild→copy cycles to feel like "changes not taking effect" until both paths were synced.
