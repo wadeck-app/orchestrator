@@ -23,27 +23,27 @@ function listClockSvg(color: string): string {
 </svg>`;
 }
 
-// Error state: clock icon with a solid red badge (bottom-right, r=6 filled)
-// Larger badge so it is clearly visible at small systray sizes.
+// Error state: clock icon with a solid red badge (bottom-right, r=5 filled)
+// Badge center at (17,17) r=5 so it stays 2px inside the 24x24 viewBox boundary.
 function listClockErrorSvg(color: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 12H3"/>
   <path d="M16 6H3"/>
   <path d="M10 18H3"/>
-  <circle cx="18" cy="18" r="6" fill="#EF4444" stroke="#EF4444"/>
-  <path d="M18 15v3.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-  <circle cx="18" cy="20.5" r="0.75" fill="white" stroke="none"/>
+  <circle cx="17" cy="17" r="5" fill="#EF4444" stroke="#EF4444"/>
+  <path d="M17 14.5v3" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="17" cy="19.5" r="0.75" fill="white" stroke="none"/>
 </svg>`;
 }
 
-// Running state: clock icon with a solid blue badge (bottom-right hourglass shape)
+// Running state: clock icon with a solid blue badge (bottom-right)
 function listClockRunningSvg(color: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M12 12H3"/>
   <path d="M16 6H3"/>
   <path d="M10 18H3"/>
-  <circle cx="18" cy="18" r="6" fill="#3B82F6" stroke="#3B82F6"/>
-  <path d="M15.5 14.5h5l-2.5 3 2.5 3h-5l2.5-3-2.5-3z" fill="white" stroke="none"/>
+  <circle cx="17" cy="17" r="5" fill="#3B82F6" stroke="#3B82F6"/>
+  <path d="M14.5 13.5h5l-2.5 3.5 2.5 3.5h-5l2.5-3.5-2.5-3.5z" fill="white" stroke="none"/>
 </svg>`;
 }
 
