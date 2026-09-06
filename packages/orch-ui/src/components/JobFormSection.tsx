@@ -40,6 +40,7 @@ export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCance
       </h1>
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
       <JobForm
+        key={initial?.job?.id ?? 'new'}
         initial={initial?.job}
         onSubmit={handleSubmit}
         onCancel={onCancel ?? (() => window.history.back())}
