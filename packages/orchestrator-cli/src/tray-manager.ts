@@ -152,21 +152,21 @@ export class TrayManager extends EventEmitter {
 
   /** Gracefully kill the tray then emit 'restart'. Used by tray click AND CLI 'restart' command. */
   async triggerRestart(): Promise<void> {
-    this._log.write('[tray] action: restart requested');
+    this._logAction('[tray] action: restart requested');
     this._intentionalStop = true;
     if (this._tp && !this._tp.killed) await this._tp.kill();
     this._tp = null;
-    this._log.write('[tray] restarting daemon');
+    this._logAction('[tray] restarting daemon');
     this.emit('restart');
   }
 
   /** Gracefully kill the tray then emit 'quit'. Used by tray click AND CLI 'quit' command. */
   async triggerQuit(): Promise<void> {
-    this._log.write('[tray] action: quit requested');
+    this._logAction('[tray] action: quit requested');
     this._intentionalStop = true;
     if (this._tp && !this._tp.killed) await this._tp.kill();
     this._tp = null;
-    this._log.write('[tray] quitting daemon');
+    this._logAction('[tray] quitting daemon');
     this.emit('quit');
   }
 
@@ -214,17 +214,21 @@ export class TrayManager extends EventEmitter {
     void this._tp.send({ type: 'set-menu', menu: this._buildMenu() });
   }
 
+  // Log to tray log AND emit 'log' event so index.ts can forward to daemon log
+  private _logAction(msg: string): void {
+    this._log.write(msg);
+    this.emit('log', msg);
+  }
+
   private async _checkForUpdate(): Promise<void> {
-    this._log.write(`[tray] check-update: starting (current=${this._version})`);
+    this._logAction(`[tray] check-update: starting (current=${this._version})`);
     this._updateStatus = 'checking';
     this._refresh();
-    // npm is a .cmd script on Windows -- execFile requires the exact executable name
-    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     try {
       const latest = await new Promise<string>((resolve, reject) => {
-        execFile(npmBin, ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'],
-          // violations-suppress: cli/daemon-spawn-no-windows-hide npm is a .cmd script check -- windowsHide has no effect on execFile callbacks
-          { timeout: 15_000, shell: false, windowsHide: true }, (err, stdout) => {
+        // Use shell:true so npm resolves correctly on all platforms (npm.cmd on Windows)
+        execFile('npm', ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'],
+          { timeout: 15_000, shell: true, windowsHide: true }, (err, stdout) => {
             if (err) { reject(err); return; }
             try { resolve(JSON.parse(stdout.trim()) as string); }
             catch { reject(new Error('bad npm view output')); }
@@ -234,9 +238,9 @@ export class TrayManager extends EventEmitter {
       // Strip optional trailing git-hash suffix (e.g. "2026.9.5-153-f4a6e93" -> "2026.9.5-153")
       const normalize = (v: string) => v.replace(/-[0-9a-f]{6,8}$/, '');
       this._updateStatus = normalize(latest) !== normalize(this._version) ? 'available' : 'up-to-date';
-      this._log.write(`[tray] check-update: latest=${latest} current=${this._version} status=${this._updateStatus}`);
+      this._logAction(`[tray] check-update: latest=${latest} current=${this._version} status=${this._updateStatus}`);
     } catch (err) {
-      this._log.write(`[tray] check-update: error fetching latest version: ${getErrorMessage(err)}`);
+      this._logAction(`[tray] check-update: error fetching latest version: ${getErrorMessage(err)}`);
       this._updateStatus = 'idle';
     }
     this._refresh();
@@ -309,7 +313,7 @@ export class TrayManager extends EventEmitter {
 
   private async _spawnTray(): Promise<void> {
     if (this._spawning) {
-      this._log.write('[tray] _spawnTray() called while already spawning - skipped');
+      this._logAction('[tray] _spawnTray() called while already spawning - skipped');
       return;
     }
     this._spawning = true;
@@ -328,12 +332,12 @@ export class TrayManager extends EventEmitter {
     this._tp = tp;
 
     tp.onStderrLine((line) => {
-      this._log.write(`[tray-go] ${line}`);
+      this._logAction(`[tray-go] ${line}`);
       console.error(`[tray-go] ${line}`);
     });
 
     tp.onExit((code) => {
-      this._log.write(`[tray] process exited with code=${code} stderr=${JSON.stringify(tp.capturedStderr().slice(-500))}`);
+      this._logAction(`[tray] process exited with code=${code} stderr=${JSON.stringify(tp.capturedStderr().slice(-500))}`);
       this._tp = null;
       if (!this._intentionalStop && code !== 0 && code !== null) {
         this._scheduleRestart();
@@ -341,7 +345,7 @@ export class TrayManager extends EventEmitter {
     });
 
     tp.onError((err) => {
-      this._log.write(`[tray] spawn error: ${getErrorMessage(err)}`);
+      this._logAction(`[tray] spawn error: ${getErrorMessage(err)}`);
       console.error(`[tray] spawn error: ${getErrorMessage(err)}`);
       this._tp = null;
       if (!this._intentionalStop) this._scheduleRestart();
@@ -354,14 +358,14 @@ export class TrayManager extends EventEmitter {
       this._restartAttempt = 0;
       // Record PID so the next daemon session can kill this orphan on startup.
       if (tp.process.pid) this._writeTrayPid(tp.process.pid);
-      this._log.write('[tray] ready, sending init');
+      this._logAction('[tray] ready, sending init');
       // Write init DIRECTLY and synchronously to stdin - this guarantees it arrives
       // before any message that may have been queued via tp.send() from other code paths.
       const initLine = JSON.stringify({ type: 'init', menu: this._buildMenu() }) + '\n';
       tp.process.stdin!.write(initLine);
-      this._log.write('[tray] init sent (direct write)');
+      this._logAction('[tray] init sent (direct write)');
     } catch (err) {
-      this._log.write(`[tray] failed to start: ${getErrorMessage(err)}`);
+      this._logAction(`[tray] failed to start: ${getErrorMessage(err)}`);
       console.error('[tray] failed to start:', getErrorMessage(err));
       // Explicitly kill the tray that failed to init so it doesn't linger as an orphan.
       if (tp.process.pid && !tp.killed) this._killByPid(tp.process.pid);
@@ -404,7 +408,7 @@ export class TrayManager extends EventEmitter {
   private _handleClick(id: string): void {
     switch (id) {
       case 'open-dashboard': {
-        this._log.write('[tray] action: open-dashboard');
+        this._logAction('[tray] action: open-dashboard');
         const dm = this._dashboardManager;
         if (dm) {
           if (!dm.isRunning()) {
@@ -412,7 +416,7 @@ export class TrayManager extends EventEmitter {
               .then(() => { setTimeout(() => dm.openBrowser(), 500); })
               .catch((err: unknown) => {
                 const msg = getErrorMessage(err);
-                this._log.write(`[tray] open-dashboard: failed to start server: ${msg}`);
+                this._logAction(`[tray] open-dashboard: failed to start server: ${msg}`);
                 console.error('[tray] failed to start dashboard server:', msg);
               });
           } else {
@@ -422,14 +426,14 @@ export class TrayManager extends EventEmitter {
         break;
       }
       case 'open-logs': {
-        this._log.write('[tray] action: open-logs');
+        this._logAction('[tray] action: open-logs');
         const logsDir = path.join(this._configDir, 'logs');
         const cmd = process.platform === 'win32' ? 'explorer.exe' : 'open';
         // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
         execFile(cmd, [logsDir], (err) => {
           if (err) {
             const msg = getErrorMessage(err);
-            this._log.write(`[tray] open-logs: failed: ${msg}`);
+            this._logAction(`[tray] open-logs: failed: ${msg}`);
             console.error('[tray] open-logs failed:', msg);
           }
         });
@@ -437,11 +441,11 @@ export class TrayManager extends EventEmitter {
       }
       case 'startup-toggle': {
         if (this._startupEnabled) {
-          this._log.write('[tray] action: start-at-login disabled');
+          this._logAction('[tray] action: start-at-login disabled');
           disableStartup(this._configDir);
           this._startupEnabled = false;
         } else {
-          this._log.write('[tray] action: start-at-login enabled');
+          this._logAction('[tray] action: start-at-login enabled');
           enableStartup(this._configDir);
           this._startupEnabled = true;
         }
@@ -449,28 +453,28 @@ export class TrayManager extends EventEmitter {
         break;
       }
       case 'ack-failures':
-        this._log.write(`[tray] action: acknowledge-failures (${this._failures.length} cleared)`);
+        this._logAction(`[tray] action: acknowledge-failures (${this._failures.length} cleared)`);
         this._failures.length = 0;
         this._state.acknowledgeAll();
         this._refresh();
         break;
       case 'update-btn':
         if (this._updateStatus === 'idle' || this._updateStatus === 'up-to-date') {
-          this._log.write('[tray] action: check-for-update clicked');
+          this._logAction('[tray] action: check-for-update clicked');
           void this._checkForUpdate();
         } else if (this._updateStatus === 'available') {
-          this._log.write(`[tray] action: update-and-restart clicked (target=${this._latestVersion ?? '?'})`);
+          this._logAction(`[tray] action: update-and-restart clicked (target=${this._latestVersion ?? '?'})`);
           this._updateStatus = 'updating';
           this._refresh();
           this.emit('check-update');
         }
         break;
       case 'restart':
-        this._log.write('[tray] action: restart clicked');
+        this._logAction('[tray] action: restart clicked');
         void this.triggerRestart();
         break;
       case 'quit':
-        this._log.write('[tray] action: quit clicked');
+        this._logAction('[tray] action: quit clicked');
         void this.triggerQuit();
         break;
       // violations-suppress: ts/no-switch-default-break unknown tray IDs from Go binary are intentionally ignored (forward-compat)

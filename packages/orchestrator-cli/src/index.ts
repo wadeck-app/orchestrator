@@ -145,6 +145,8 @@ async function main(): Promise<void> {
 
     await scheduler.start();
 
+    // Forward tray log entries to the daemon log so 'orch logs' shows tray actions
+    trayManager.on('log', (msg: string) => daemonLog.write(msg));
     trayManager.on('check-update', () => {
       // Always trigger regardless of the startup guard -- user explicitly requested update
       updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
