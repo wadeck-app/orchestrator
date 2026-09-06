@@ -11,21 +11,18 @@ $brains:
   triggerJob:
     $brain: $brains.$http.post
     url: POST /api/jobs/{id}/trigger
-    id: $route.id
     _event: $outputs.jobActions.onTrigger
     $reload: [jobData]
 
   killJob:
     $brain: $brains.$http.post
     url: POST /api/jobs/{id}/kill
-    id: $route.id
     _event: $outputs.jobActions.onKill
     $reload: [jobData]
 
   deleteJob:
     $brain: $brains.$http.delete
     url: DELETE /api/jobs/{id}
-    id: $route.id
     _event: $outputs.jobActions.onDelete
 
   navigateAfterDelete:
@@ -62,6 +59,6 @@ sections:
     job: $sources.jobData.job
   - $type: Section
     title: Run history
-    children:
+    items:
       - $type: RunHistory
         entries: $sources.jobData.runHistory

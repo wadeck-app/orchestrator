@@ -42,6 +42,9 @@ $brains:
 
 $type: PageContent
 sections:
+  - $type: DesignSwitcher
+    jobId: $route.id
+    current: design-c
   - $type: PageHeader
     title: $sources.jobData.job.label
   - $type: RunningInlineDetail
@@ -59,6 +62,6 @@ sections:
     job: $sources.jobData.job
   - $type: Section
     title: Run history
-    children:
+    items:
       - $type: RunHistory
         entries: $sources.jobData.runHistory
