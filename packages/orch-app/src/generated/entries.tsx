@@ -54,6 +54,7 @@ import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
 import { AuditList } from '../../../orch-ui/src/components/AuditList.js'
 import { BackLink } from '../../../orch-ui/src/components/BackLink.js'
 import { Button } from '../../../orch-ui/src/components/Button.js'
+import { DesignSwitcher } from '../../../orch-ui/src/components/DesignSwitcher.js'
 import { EnableToggle } from '../../../orch-ui/src/components/EnableToggle.js'
 import { JobCard } from '../../../orch-ui/src/components/JobCard.js'
 import { JobCardGrid } from '../../../orch-ui/src/components/JobCardGrid.js'
@@ -757,6 +758,16 @@ export const ButtonEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const DesignSwitcherEntry: ComponentRegistryEntry = {
+	name: 'DesignSwitcher', category: 'atomic', tags: ["design","switcher","navigation","compare"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/DesignSwitcher.js').DesignSwitcherProps['jobId']
+		const current = resolveExpressionValue(node['current'], ctx) as import('../../../orch-ui/src/components/DesignSwitcher.js').DesignSwitcherProps['current']
+		return <DesignSwitcher jobId={jobId} current={current} />
+	},
+}
+
 export const EnableToggleEntry: ComponentRegistryEntry = {
 	name: 'EnableToggle', category: 'composite', tags: ["toggle","enable","disable"],
 	nodeSchema: null as never,
@@ -1083,6 +1094,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	AuditListEntry,
 	BackLinkEntry,
 	ButtonEntry,
+	DesignSwitcherEntry,
 	EnableToggleEntry,
 	JobCardEntry,
 	JobCardGridEntry,

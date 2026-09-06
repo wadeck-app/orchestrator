@@ -43,6 +43,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
   if (!job) return null;
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [killing, setKilling] = useState(false);
 
   const latestRun = runHistory?.[0] ?? null;
   const isRunning = latestRun !== null && latestRun.exitCode === null;
@@ -58,9 +59,12 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
     await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
   };
 
-  const handleKill = () => {
-    if (onKill) { onKill(); return; }
-    void fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+  const handleKill = async () => {
+    const pid = runHistory?.[0]?.pid;
+    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
+    setKilling(true);
+    try { if (onKill) await (onKill as () => Promise<void>)(); else await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' }); }
+    finally { setKilling(false); }
   };
 
   const handleDelete = () => {
@@ -90,7 +94,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
               </>
             )}
           </span>
-          <Button label="Kill process" variant="danger" onClick={handleKill} />
+          <Button label={killing ? 'Killing...' : 'Kill process'} variant="danger" onClick={() => { void handleKill(); }} disabled={killing} />
         </div>
       )}
 

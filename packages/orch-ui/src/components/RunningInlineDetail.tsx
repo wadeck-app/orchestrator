@@ -45,6 +45,7 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
   if (!job) return null;
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [killing, setKilling] = useState(false);
 
   const latestRun = runHistory?.[0] ?? null;
   const isRunning = latestRun !== null && latestRun.exitCode === null;
@@ -60,9 +61,12 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
     await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
   };
 
-  const handleKill = () => {
-    if (onKill) { onKill(); return; }
-    void fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+  const handleKill = async () => {
+    const pid = runHistory?.[0]?.pid;
+    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
+    setKilling(true);
+    try { if (onKill) await (onKill as () => Promise<void>)(); else await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' }); }
+    finally { setKilling(false); }
   };
 
   const handleDelete = () => {
@@ -88,9 +92,9 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
               {latestRun.pid != null && <span className="opacity-70">&middot; {latestRun.pid}</span>}
             </span>
             {/* violations-suppress: react/no-raw-button pill-style kill button -- Button component cannot render this shape */}
-            <button onClick={handleKill} className={KILL_BTN_CLS}>
+            <button onClick={() => { void handleKill(); }} disabled={killing} className={KILL_BTN_CLS}>
               <Square size={10} />
-              Kill
+              {killing ? 'Killing...' : 'Kill'}
             </button>
           </>
         ) : (

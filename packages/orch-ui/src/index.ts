@@ -1,4 +1,6 @@
 export { Button } from './components/Button.js';
+export { DesignSwitcher } from './components/DesignSwitcher.js';
+export type { DesignSwitcherProps } from './components/DesignSwitcher.js';
 export { FieldText } from './components/FieldText.js';
 export { FieldNumber } from './components/FieldNumber.js';
 export { JobStatusBadge } from './components/JobStatusBadge.js';
