@@ -213,20 +213,25 @@ export class TrayManager extends EventEmitter {
   private async _checkForUpdate(): Promise<void> {
     this._updateStatus = 'checking';
     this._refresh();
+    // npm is a .cmd script on Windows -- execFile requires the exact executable name
+    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     try {
       const latest = await new Promise<string>((resolve, reject) => {
-        execFile('npm', ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'], { timeout: 15_000 }, (err, stdout) => {
-          if (err) { reject(err); return; }
-          resolve(JSON.parse(stdout.trim()) as string);
-        });
+        execFile(npmBin, ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'],
+          { timeout: 15_000, shell: false }, (err, stdout) => {
+            if (err) { reject(err); return; }
+            try { resolve(JSON.parse(stdout.trim()) as string); }
+            catch { reject(new Error('bad npm view output')); }
+          });
       });
       this._latestVersion = latest;
-      this._updateStatus = latest !== this._version ? 'available' : 'up-to-date';
+      // Strip optional trailing git-hash suffix (e.g. "2026.9.5-153-f4a6e93" -> "2026.9.5-153")
+      const normalize = (v: string) => v.replace(/-[0-9a-f]{6,8}$/, '');
+      this._updateStatus = normalize(latest) !== normalize(this._version) ? 'available' : 'up-to-date';
     } catch {
       this._updateStatus = 'idle';
     }
     this._refresh();
-    // Auto-reset "up-to-date" label after 5s
     if (this._updateStatus === 'up-to-date') {
       setTimeout(() => { this._updateStatus = 'idle'; this._refresh(); }, 5_000);
     }

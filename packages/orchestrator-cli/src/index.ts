@@ -146,7 +146,8 @@ async function main(): Promise<void> {
     await scheduler.start();
 
     trayManager.on('check-update', () => {
-      scheduleUpdate();
+      // Always trigger regardless of the startup guard -- user explicitly requested update
+      updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
     });
     trayManager.on('quit',    () => process.exit(0));
     trayManager.on('restart', () => {
