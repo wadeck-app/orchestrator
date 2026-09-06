@@ -37,6 +37,7 @@ export class Scheduler extends EventEmitter {
   private readonly _secrets:   SecretsManager;
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly _activeChildren = new Map<string, ChildProcess>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
     super();
@@ -137,6 +138,14 @@ export class Scheduler extends EventEmitter {
     return this._fire(job, source);
   }
 
+  killJob(id: string): { killed: boolean } {
+    const child = this._activeChildren.get(id);
+    if (!child || child.killed) return { killed: false };
+    child.kill('SIGTERM');
+    setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+    return { killed: true };
+  }
+
   private _scheduleCron(job: Job): void {
     if (!cron.validate(job.schedule ?? '')) return;
     const task = cron.schedule(job.schedule!, () => {
@@ -174,6 +183,7 @@ export class Scheduler extends EventEmitter {
     const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv);
     const pid   = child.pid ?? null;
 
+    this._activeChildren.set(job.id, child);
     this._state.record(job.id, { startedAt, exitCode: null, pid, triggeredBy: trigger });
     this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
     this.emit('job-started', { id: job.id });
@@ -243,6 +253,7 @@ export class Scheduler extends EventEmitter {
 
     const done = new Promise<{ exitCode: number }>((resolve) => {
       child.on('close', (code) => {
+        this._activeChildren.delete(job.id);
         if (timeoutHandle !== null) clearTimeout(timeoutHandle);
         if (resourceTimer !== null) clearInterval(resourceTimer);
         const exitCode = code ?? 1;

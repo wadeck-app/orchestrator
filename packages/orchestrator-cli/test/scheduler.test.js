@@ -253,3 +253,63 @@ describe('cron jobs', () => {
     await sched.stop();
   });
 });
+
+// ---------------------------------------------------------------------------
+// killJob
+// ---------------------------------------------------------------------------
+
+describe('killJob', () => {
+  const JOB_MANUAL = {
+    id: 'manual-a',
+    type: 'startup',
+    delaySeconds: 0,
+    command: 'echo manual',
+    enabled: true,
+    triggerMode: 'fire-and-forget',
+    liveness: null,
+  };
+
+  test('killJob returns killed:true and kills the running child', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    registry.add(JOB_MANUAL);
+
+    let killedWith = null;
+    const child = new EventEmitter();
+    child.pid = 99999;
+    child.killed = false;
+    child.kill = (sig) => { killedWith = sig; child.killed = true; };
+    child.stdout = null;
+    child.stderr = null;
+
+    const sched = new Scheduler(registry, state, {
+      spawn: () => child,
+      liveness: async () => false,
+    });
+
+    // Trigger (fire-and-forget -- does not wait for child to close)
+    void sched.trigger('manual-a');
+    await new Promise(r => setImmediate(r));
+
+    const result = sched.killJob('manual-a');
+    assert.deepStrictEqual(result, { killed: true });
+    assert.equal(killedWith, 'SIGTERM');
+
+    // Let child close
+    child.emit('close', 1);
+  });
+
+  test('killJob returns killed:false when job is not running', () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    registry.add(JOB_MANUAL);
+
+    const sched = new Scheduler(registry, state, {
+      spawn: () => { throw new Error('should not spawn'); },
+      liveness: async () => false,
+    });
+
+    const result = sched.killJob('manual-a');
+    assert.deepStrictEqual(result, { killed: false });
+  });
+});

@@ -23,8 +23,9 @@ function formatDuration(startedAt: string): string {
 }
 
 export interface JobDetailActionsProps {
-  job: Job & { runHistory?: RuntimeEntry[] };
+  job: Job;
   jobId: string;
+  runHistory?: RuntimeEntry[];
   /** DSL $outputs callbacks -- injected by the registry when $id is declared on the node */
   onTrigger?: () => void;
   onDelete?: () => void;
@@ -38,7 +39,7 @@ export interface JobDetailActionsProps {
  * @registryCategory composite
  * @registryTags job actions detail
  */
-export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, onViewLogs, onEdit, onKill }: JobDetailActionsProps): React.ReactElement | null {
+export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, onDryRun, onViewLogs, onEdit, onKill }: JobDetailActionsProps): React.ReactElement | null {
   if (!job) return null;
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -46,7 +47,7 @@ export function JobDetailActions({ job, jobId, onTrigger, onDelete, onDryRun, on
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
-  const latestRun = (job as { runHistory?: RuntimeEntry[] }).runHistory?.[0] ?? null;
+  const latestRun = runHistory?.[0] ?? null;
   const isRunning = latestRun !== null && latestRun.exitCode === null;
 
   // Re-render every second to update elapsed duration while running

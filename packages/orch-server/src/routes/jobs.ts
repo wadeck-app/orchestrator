@@ -80,6 +80,19 @@ export async function jobsRoutes(
     });
   });
 
+  fastify.post('/api/jobs/:id/kill', async (req, reply) => {
+    return guard(reply, async () => {
+      const { id } = req.params as { id: string };
+      const ip        = req.ip;
+      const userAgent = req.headers['user-agent'];
+      const result = await proxy.send('kill-job', { id, ip, userAgent });
+      if (!(result as { killed: boolean }).killed) {
+        return reply.code(404).send({ error: `Job "${id}" is not currently running` });
+      }
+      return reply.code(204).send();
+    });
+  });
+
   fastify.post('/api/jobs/:id/enable', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };

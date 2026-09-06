@@ -479,7 +479,7 @@ sections:
   });
 
   it('Test 24: AuditList shows spinner when entries not yet loaded', () => {
-    // Never resolves — spinner should be visible
+    // Never resolves -- spinner should be visible
     server.use(http.get('http://localhost/api/audit', () => new Promise(() => undefined)));
     renderAuditList();
     expect(document.querySelector('.animate-spin')).toBeInTheDocument();

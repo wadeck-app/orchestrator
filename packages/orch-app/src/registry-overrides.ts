@@ -43,7 +43,7 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
   // JobDetailActions: all action callbacks as DSL $outputs
   const jda = registry['JobDetailActions'];
   if (jda) {
-    jda.render = withOutputCallbacks(jda.render, ['onTrigger', 'onDelete', 'onDryRun', 'onViewLogs', 'onEdit']);
+    jda.render = withOutputCallbacks(jda.render, ['onTrigger', 'onDelete', 'onDryRun', 'onViewLogs', 'onEdit', 'onKill']);
   }
 
   // JobToggle: expose onToggle as DSL $output

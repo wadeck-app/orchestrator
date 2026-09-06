@@ -51,6 +51,7 @@ import { ShownFetchedCounter } from '@wadeck-app/dsl-ui/src/components/table/Sho
 import { StatusFilter } from '@wadeck-app/dsl-ui/src/components/table/StatusFilter.js'
 import { AuditEntryIcon } from '../../../orch-ui/src/components/AuditEntryIcon.js'
 import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
+import { AuditList } from '../../../orch-ui/src/components/AuditList.js'
 import { BackLink } from '../../../orch-ui/src/components/BackLink.js'
 import { Button } from '../../../orch-ui/src/components/Button.js'
 import { EnableToggle } from '../../../orch-ui/src/components/EnableToggle.js'
@@ -720,6 +721,15 @@ export const AuditEntryRowEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const AuditListEntry: ComponentRegistryEntry = {
+	name: 'AuditList', category: 'composite', tags: ["audit","list","entries","icons"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../orch-ui/src/components/AuditList.js').AuditListProps['entries']
+		return <AuditList entries={entries} />
+	},
+}
+
 export const BackLinkEntry: ComponentRegistryEntry = {
 	name: 'BackLink', category: 'atomic', tags: ["back","navigation","link"],
 	nodeSchema: null as never,
@@ -808,12 +818,14 @@ export const JobDetailActionsEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['runHistory']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDryRun']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onEdit']
-		return <JobDetailActions job={job} jobId={jobId} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} />
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onKill']
+		return <JobDetailActions job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1014,6 +1026,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	StatusFilterEntry,
 	AuditEntryIconEntry,
 	AuditEntryRowEntry,
+	AuditListEntry,
 	BackLinkEntry,
 	ButtonEntry,
 	EnableToggleEntry,
