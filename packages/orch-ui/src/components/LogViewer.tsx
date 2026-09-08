@@ -60,6 +60,15 @@ function linkify(line: string, highlight?: string): React.ReactNode {
   return parts.length > 0 ? parts : line;
 }
 
+interface RunEntry { name: string; file: string; sizeBytes: number; }
+
+function fmtRunName(name: string): string {
+  // "2026-09-08T10-00-00" → "08/09 10:00:00"
+  const m = name.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]} ${m[4]}:${m[5]}:${m[6]}`;
+  return name;
+}
+
 export interface LogViewerProps {
   jobId: string;
   apiBase?: string;
@@ -74,8 +83,18 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   const [connected, setConnected] = useState(false);
   const [paused, setPaused] = useState(false);
   const [search, setSearch] = useState('');
+  const [runs, setRuns] = useState<RunEntry[]>([]);
+  const [selectedRun, setSelectedRun] = useState<string>('');
   const containerRef = useRef<HTMLPreElement>(null);
   const userScrolledUp = useRef(false);
+
+  // Fetch available run list
+  useEffect(() => {
+    fetch(`${apiBase}/api/logs/${jobId}/runs`)
+      .then(r => r.ok ? r.json() as Promise<RunEntry[]> : [])
+      .then(data => { setRuns(data); if (data.length > 0 && !selectedRun) setSelectedRun(data[0]!.name); })
+      .catch(() => {});
+  }, [jobId, apiBase]);
 
   useEffect(() => {
     setLines([]);
@@ -83,7 +102,10 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
     setPaused(false);
     userScrolledUp.current = false;
 
-    const es = new EventSource(`${apiBase}/api/logs/${jobId}/stream`);
+    const url = selectedRun
+      ? `${apiBase}/api/logs/${jobId}/stream?run=${encodeURIComponent(selectedRun)}`
+      : `${apiBase}/api/logs/${jobId}/stream`;
+    const es = new EventSource(url);
     es.onopen = () => { setConnected(true); };
     es.onmessage = (ev) => {
       setConnected(true);
@@ -91,7 +113,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
     };
     es.onerror = () => { setConnected(false); };
     return () => { es.close(); };
-  }, [jobId, apiBase]);
+  }, [jobId, apiBase, selectedRun]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -116,6 +138,18 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
     <div className="flex flex-col h-full">
       {/* violations-suppress-start: tailwind/no-raw-color-class terminal palette - intentional dark theme separate from app theme tokens */}
       <div className={LOG_HEADER_CLS}>
+        {runs.length > 1 && (
+          /* violations-suppress: react/no-raw-input run selector - dark terminal palette incompatible with FieldText light-mode classes */
+          <select
+            value={selectedRun}
+            onChange={e => setSelectedRun(e.target.value)}
+            className="bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-gray-400 mr-2"
+          >
+            {runs.map(r => (
+              <option key={r.name} value={r.name}>{fmtRunName(r.name)}</option>
+            ))}
+          </select>
+        )}
         <span className="flex-1">
           {connected
             ? matchCount !== null ? `${matchCount} / ${lines.length} lines` : `${lines.length} lines`
