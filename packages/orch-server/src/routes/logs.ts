@@ -8,21 +8,30 @@ const JOB_ID_RE = /^[a-z0-9-]+$/i;
 const POLL_INTERVAL_MS = 500;
 
 /**
- * Returns the path to the most recent <jobId>-YYYY-MM-DD.log file in logDir,
- * or null if none exists.
+ * Returns all log files for a job, sorted oldest→newest.
+ * Supports both formats:
+ *   - per-run:  <jobId>-YYYY-MM-DDTHH-MM-SS.log  (new)
+ *   - daily:    <jobId>-YYYY-MM-DD.log             (legacy)
+ */
+export function listLogFiles(logDir: string, jobId: string): string[] {
+  if (!fs.existsSync(logDir)) return [];
+  const esc = escapeRegExp(jobId);
+  const runPat   = new RegExp(`^${esc}-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}\\.log$`);
+  const dailyPat = new RegExp(`^${esc}-\\d{4}-\\d{2}-\\d{2}\\.log$`);
+  let entries: string[];
+  try { entries = fs.readdirSync(logDir); } catch { return []; }
+  return entries
+    .filter(f => runPat.test(f) || dailyPat.test(f))
+    .sort()
+    .map(f => path.join(logDir, f));
+}
+
+/**
+ * Returns the path to the most recent log file for a job, or null if none exists.
  */
 export function findLatestLogFile(logDir: string, jobId: string): string | null {
-  if (!fs.existsSync(logDir)) return null;
-  const pattern = new RegExp(`^${escapeRegExp(jobId)}-\\d{4}-\\d{2}-\\d{2}\\.log$`);
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(logDir);
-  } catch {
-    return null;
-  }
-  const matches = entries.filter(f => pattern.test(f)).sort();
-  if (matches.length === 0) return null;
-  return path.join(logDir, matches[matches.length - 1]!);
+  const files = listLogFiles(logDir, jobId);
+  return files.length > 0 ? files[files.length - 1]! : null;
 }
 
 function escapeRegExp(s: string): string {
@@ -35,11 +44,28 @@ export async function logsRoutes(
 ): Promise<void> {
   const { configDir, idleTimer } = opts;
 
+  // List available run log files for a job
+  fastify.get('/api/logs/:jobId/runs', async (req, reply) => {
+    const { jobId } = req.params as { jobId: string };
+    if (!JOB_ID_RE.test(jobId)) return reply.code(400).send({ error: 'invalid-job-id' });
+    idleTimer.reset();
+    const logDir = path.join(configDir, 'logs', jobId);
+    const files  = listLogFiles(logDir, jobId);
+    const runs = files.map(f => {
+      const name = path.basename(f, '.log').slice(jobId.length + 1); // strip "<jobId>-"
+      return { name, file: path.basename(f), sizeBytes: (() => { try { return fs.statSync(f).size; } catch { return 0; } })() };
+    }).reverse(); // most recent first
+    return reply.send(runs);
+  });
+
   fastify.get('/api/logs/:jobId/stream', async (req, reply) => {
     const { jobId } = req.params as { jobId: string };
     if (!JOB_ID_RE.test(jobId)) {
       return reply.code(400).send({ error: 'invalid-job-id' });
     }
+
+    // Optional ?run=<name> to stream a specific run log
+    const runName = (req.query as { run?: string }).run;
 
     const logDir = path.join(configDir, 'logs', jobId);
 
@@ -57,8 +83,10 @@ export async function logsRoutes(
       reply.raw.write(`data: ${line}\n\n`);
     };
 
-    // Send historical lines from the latest existing log file
-    let currentLogPath = findLatestLogFile(logDir, jobId);
+    // Send historical lines from the requested run log, or the latest
+    let currentLogPath = runName
+      ? (() => { const p = path.join(logDir, `${jobId}-${runName}.log`); return fs.existsSync(p) ? p : null; })()
+      : findLatestLogFile(logDir, jobId);
     let fileSize = 0;
 
     if (currentLogPath !== null) {

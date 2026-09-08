@@ -4,7 +4,7 @@ import path from 'node:path';
 import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
-import { DailyLogger }   from './logger.js';
+import { RunLogger }     from './logger.js';
 import { ensureTmpDir }  from './fsUtil.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
@@ -258,11 +258,11 @@ export class Scheduler extends EventEmitter {
     const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv);
     const pid   = child.pid ?? null;
 
-    // Per-job rotating log: tee stdout/stderr to file + terminal.
-    // Log file: <configDir>/logs/<jobId>/<jobId>-YYYY-MM-DD.log
-    const jobLogger = new DailyLogger(
+    // Per-run log: one file per execution — <jobId>-<startedAt>.log
+    const jobLogger = new RunLogger(
       path.join(this._configDir, 'logs', job.id),
       job.id,
+      startedAt,
     );
 
     this._activeChildren.set(job.id, child);
