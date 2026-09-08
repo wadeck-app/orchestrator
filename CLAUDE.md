@@ -29,6 +29,7 @@ Config dir: `~/.config/orchestrator-cli/`. Port file: `<configDir>/config.port`.
 | `.claude/out-of-scope.md` | What this project explicitly does not cover (dashboard v2 items, auth, remote access) |
 | `.claude/product-vision.md` | v1/v2 roadmap, runtime contracts (ports, idle signal) |
 | `.claude/threat-model.md` | STRIDE analysis (T-01→T-03) + stale port, duplicate instance risks |
+| `docs/daemon-config.md` | `config.yml` keys: autoUpdate, catchUpInitialDelaySeconds, catchUpStaggerSeconds |
 
 ## Knowledge base
 
