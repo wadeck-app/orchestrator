@@ -63,9 +63,13 @@ function linkify(line: string, highlight?: string): React.ReactNode {
 interface RunEntry { name: string; file: string; sizeBytes: number; }
 
 function fmtRunName(name: string): string {
-  // "2026-09-08T10-00-00" → "08/09 10:00:00"
-  const m = name.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[3]}/${m[2]} ${m[4]}:${m[5]}:${m[6]}`;
+  // "2026-09-08T10-00-00" → locale date+time string
+  const m = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const d = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}`);
+    // violations-suppress: ts/no-locale-date display-only run timestamp, locale acceptable
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
   return name;
 }
 
