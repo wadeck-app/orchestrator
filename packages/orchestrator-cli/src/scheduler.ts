@@ -19,11 +19,13 @@ type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv) => ChildP
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
 
 interface SchedulerOptions {
-  spawn?:          SpawnFn;
-  liveness?:       LivenessFn;
-  now?:            () => Date;
-  configDir?:      string;
-  eventPublisher?: EventPublisher;
+  spawn?:                 SpawnFn;
+  liveness?:              LivenessFn;
+  now?:                   () => Date;
+  configDir?:             string;
+  eventPublisher?:        EventPublisher;
+  catchUpInitialDelayMs?: number;
+  catchUpStaggerMs?:      number;
 }
 
 export class Scheduler extends EventEmitter {
@@ -40,6 +42,8 @@ export class Scheduler extends EventEmitter {
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly _activeChildren = new Map<string, ChildProcess>();
   private readonly _killedByUser   = new Set<string>();
+  private readonly _catchUpInitialDelayMs: number;
+  private readonly _catchUpStaggerMs:      number;
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
     super();
@@ -58,6 +62,8 @@ export class Scheduler extends EventEmitter {
     );
     this._events    = options.eventPublisher ?? new EventPublisher();
     this._secrets   = new SecretsManager(this._configDir);
+    this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
+    this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
     // Ensure tmp dir exists; used as default cwd for jobs that don't specify one.
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
@@ -77,9 +83,9 @@ export class Scheduler extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    // Stagger catch-up jobs 30s apart to avoid simultaneous load on wake from hibernate
-    let catchUpStaggerMs = 0;
-    const CATCH_UP_STAGGER_MS = 30_000;
+    // Stagger catch-up jobs to avoid simultaneous load on wake from hibernate.
+    // First job fires after catchUpInitialDelayMs, subsequent jobs add catchUpStaggerMs each.
+    let catchUpStaggerMs = this._catchUpInitialDelayMs;
 
     for (const job of this._registry.list()) {
       if (!job.enabled) continue;
@@ -94,7 +100,7 @@ export class Scheduler extends EventEmitter {
             // Fire if the last expected firing is more recent than the last actual run
             if (lastFiring.getTime() > lastRanAt) {
               const delayMs = catchUpStaggerMs;
-              catchUpStaggerMs += CATCH_UP_STAGGER_MS;
+              catchUpStaggerMs += this._catchUpStaggerMs;
               if (delayMs === 0) {
                 void this._fire(job, { kind: 'cron' });
               } else {

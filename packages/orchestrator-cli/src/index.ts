@@ -16,6 +16,7 @@ import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
+import { loadDaemonConfig } from './daemonConfig.js';
 
 import type { OrchestratorCommands } from './types.js';
 
@@ -87,7 +88,13 @@ async function main(): Promise<void> {
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
     const audit       = new AuditLogger(CONFIG_DIR);
     const events      = new EventPublisher();
-    const scheduler   = new Scheduler(registry, state, { configDir: CONFIG_DIR, eventPublisher: events });
+    const daemonCfg   = loadDaemonConfig(CONFIG_DIR);
+    const scheduler   = new Scheduler(registry, state, {
+      configDir: CONFIG_DIR,
+      eventPublisher: events,
+      catchUpInitialDelayMs: daemonCfg.catchUpInitialDelaySeconds * 1000,
+      catchUpStaggerMs:      daemonCfg.catchUpStaggerSeconds * 1000,
+    });
 
     audit.log('daemon.start', { pid: process.pid, version });
     events.publish('daemon.started', { pid: process.pid, version });
