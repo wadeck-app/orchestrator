@@ -1,7 +1,11 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LogViewer } from './LogViewer.js';
+
+const renderInRouter = (ui: React.ReactElement) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>);
 
 class MockEventSource {
   static instance: MockEventSource | null = null;
@@ -20,7 +24,7 @@ describe('LogViewer', () => {
 
   it('shows "Connecting..." once in the header before connection opens', () => {
     vi.stubGlobal('EventSource', MockEventSource);
-    render(<LogViewer jobId="whatsapp-10h" />);
+    renderInRouter(<LogViewer jobId="whatsapp-10h" />);
 
     // Only the header should say "Connecting..." - not the body
     expect(screen.getAllByText('Connecting...')).toHaveLength(1);
@@ -31,7 +35,7 @@ describe('LogViewer', () => {
 
   it('shows "N lines" in header and log content after lines arrive', () => {
     vi.stubGlobal('EventSource', MockEventSource);
-    render(<LogViewer jobId="j1" />);
+    renderInRouter(<LogViewer jobId="j1" />);
     const es = MockEventSource.instance!;
 
     act(() => {
@@ -47,7 +51,7 @@ describe('LogViewer', () => {
 
   it('shows "No log output yet" when connected but no lines received', () => {
     vi.stubGlobal('EventSource', MockEventSource);
-    render(<LogViewer jobId="j1" />);
+    renderInRouter(<LogViewer jobId="j1" />);
     const es = MockEventSource.instance!;
 
     act(() => { es.onopen!(); });
@@ -58,7 +62,7 @@ describe('LogViewer', () => {
 
   it('shows "Connecting..." again after connection error', () => {
     vi.stubGlobal('EventSource', MockEventSource);
-    render(<LogViewer jobId="j1" />);
+    renderInRouter(<LogViewer jobId="j1" />);
     const es = MockEventSource.instance!;
 
     act(() => { es.onopen!(); });

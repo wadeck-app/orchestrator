@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 // Log viewer uses a fixed dark terminal palette separate from the app theme.
@@ -88,15 +89,25 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   const [paused, setPaused] = useState(false);
   const [search, setSearch] = useState('');
   const [runs, setRuns] = useState<RunEntry[]>([]);
-  const [selectedRun, setSelectedRun] = useState<string>('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedRun, setSelectedRun] = useState<string>(searchParams.get('run') ?? '');
   const containerRef = useRef<HTMLPreElement>(null);
   const userScrolledUp = useRef(false);
+
+  const handleSelectRun = (name: string): void => {
+    setSelectedRun(name);
+    setSearchParams(name ? { run: name } : {}, { replace: true });
+  };
 
   // Fetch available run list
   useEffect(() => {
     fetch(`${apiBase}/api/logs/${jobId}/runs`)
       .then(r => r.ok ? r.json() as Promise<RunEntry[]> : [])
-      .then(data => { setRuns(data); if (data.length > 0 && !selectedRun) setSelectedRun(data[0]!.name); })
+      .then(data => {
+        setRuns(data);
+        // Only default to latest if no ?run= in URL
+        if (data.length > 0 && !searchParams.get('run')) handleSelectRun(data[0]!.name);
+      })
       .catch(() => {});
   }, [jobId, apiBase]);
 
@@ -146,7 +157,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
           /* violations-suppress: react/no-raw-input run selector - dark terminal palette incompatible with FieldText light-mode classes */
           <select
             value={selectedRun}
-            onChange={e => setSelectedRun(e.target.value)}
+            onChange={e => handleSelectRun(e.target.value)}
             className="bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-gray-400 mr-2"
           >
             {runs.map(r => (
