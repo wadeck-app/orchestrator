@@ -80,6 +80,17 @@ export async function jobsRoutes(
     });
   });
 
+  fastify.post('/api/jobs/:id/trigger-early', async (req, reply) => {
+    return guard(reply, async () => {
+      const { id } = req.params as { id: string };
+      const ip        = req.ip;
+      const userAgent = req.headers['user-agent'];
+      await proxy.send('trigger-job', { id, ip, userAgent });
+      await proxy.send('skip-next-firing', { id });
+      return reply.code(204).send();
+    });
+  });
+
   fastify.post('/api/jobs/:id/kill', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };

@@ -8,7 +8,7 @@ import { DailyLogger }   from './logger.js';
 import { ensureTmpDir }  from './fsUtil.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
-import { getLastFiring }  from './cronNext.js';
+import { getLastFiring, getNextFirings } from './cronNext.js';
 // pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
 import pidusage from 'pidusage';
 import type { Job, TriggerSource } from './types.js';
@@ -42,6 +42,7 @@ export class Scheduler extends EventEmitter {
   private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly _activeChildren = new Map<string, ChildProcess>();
   private readonly _killedByUser   = new Set<string>();
+  private readonly _skippedJobs    = new Map<string, number>();
   private readonly _catchUpInitialDelayMs: number;
   private readonly _catchUpStaggerMs:      number;
 
@@ -204,9 +205,25 @@ export class Scheduler extends EventEmitter {
     return { killed: false };
   }
 
+  skipNextFiring(id: string): void {
+    const job = this._registry.get(id);
+    if (!job || job.type !== 'cron' || !job.schedule) return;
+    // Compute the next occurrence from 1 minute from now (avoids current-minute edge case)
+    const firings = getNextFirings(job.schedule, 1, new Date(Date.now() + 60_000));
+    if (firings.length > 0) {
+      // Mark as skip-until 1 minute after that occurrence fires
+      this._skippedJobs.set(id, firings[0]!.getTime() + 60_000);
+    }
+  }
+
   private _scheduleCron(job: Job): void {
     if (!cron.validate(job.schedule ?? '')) return;
     const task = cron.schedule(job.schedule!, () => {
+      const skipUntil = this._skippedJobs.get(job.id);
+      if (skipUntil && Date.now() < skipUntil) {
+        this._skippedJobs.delete(job.id);
+        return; // occurrence was pre-empted by trigger-early
+      }
       const scheduledAt = this._now().toISOString();
       void this._fire(job);
       // SLA window check: alert if job hasn't succeeded within slaWindowMinutes

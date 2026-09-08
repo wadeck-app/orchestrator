@@ -4,9 +4,19 @@ $sources:
   schedule:
     url: GET /api/schedule
 
+$brains:
+  triggerEarly:
+    $brain: $brains.$http.post
+    url: POST /api/jobs/{jobId}/trigger-early
+    jobId: $outputs.scheduleTimeline.onRunEarly.jobId
+    $reload: [schedule]
+
 $type: PageContent
 sections:
   - $type: PageHeader
     title: Upcoming schedule
   - $type: ScheduleTimeline
+    $id: scheduleTimeline
     firings: $sources.schedule
+    $outputs:
+      onRunEarly: [jobId]

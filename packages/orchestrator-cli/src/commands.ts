@@ -85,6 +85,14 @@ export function makeCommands(
       return scheduler.killJob(id);
     },
 
+    'skip-next-firing': (p) => {
+      const { id } = p as { id: string };
+      const job = registry.get(id);
+      scheduler.skipNextFiring(id);
+      audit?.log('job.skip_next_firing', { jobId: id, label: job?.label });
+      return {};
+    },
+
     'list-state': () => state.getAll(),
 
     'list-failures': () => state.getUnacknowledgedFailures(),

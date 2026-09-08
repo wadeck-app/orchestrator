@@ -17,7 +17,7 @@ const DEFAULTS: Required<DaemonConfig> = {
 
 /**
  * Reads <configDir>/config.yml into a DaemonConfig object.
- * Only handles simple "key: value" lines — no nested YAML.
+ * Only handles simple "key: value" lines - no nested YAML.
  * Missing file or parse errors fall back to defaults silently.
  */
 export function loadDaemonConfig(configDir: string): Required<DaemonConfig> {
@@ -36,6 +36,6 @@ export function loadDaemonConfig(configDir: string): Required<DaemonConfig> {
       if (key === 'catchUpInitialDelaySeconds')   result.catchUpInitialDelaySeconds = Number(val);
       if (key === 'catchUpStaggerSeconds')        result.catchUpStaggerSeconds = Number(val);
     }
-  } catch { /* file absent or unreadable — use defaults */ }
+  } catch { /* file absent or unreadable - use defaults */ }
   return { ...DEFAULTS, ...result };
 }

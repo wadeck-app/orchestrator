@@ -18,6 +18,7 @@ interface FlatFiring {
 
 export interface ScheduleTimelineProps {
   firings?: ScheduleEntry[];
+  onRunEarly?: (jobId: string) => void;
 }
 
 function relTime(iso: string): string {
@@ -48,7 +49,7 @@ const OS_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * @registryCategory composite
  * @registryTags schedule timeline cron firings
  */
-export function ScheduleTimeline({ firings = [] }: ScheduleTimelineProps): React.ReactElement {
+export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineProps): React.ReactElement {
   const flat: FlatFiring[] = (firings as ScheduleEntry[]).flatMap(e =>
     (e.next ?? []).map(ts => ({ ts, label: e.label, jobId: e.jobId }))
   ).sort((a, b) => a.ts.localeCompare(b.ts));
@@ -79,6 +80,14 @@ export function ScheduleTimeline({ firings = [] }: ScheduleTimelineProps): React
               <span className="shrink-0 font-mono text-xs text-muted w-12">{fmtTime(f.ts)}</span>
               <span className="flex-1 text-content truncate">{f.label}</span>
               <span className="shrink-0 text-xs text-muted">{relTime(f.ts)}</span>
+              {onRunEarly && (
+                <button
+                  className="shrink-0 text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors"
+                  onClick={() => onRunEarly(f.jobId)}
+                >
+                  Run early
+                </button>
+              )}
             </div>
           </React.Fragment>
         );
