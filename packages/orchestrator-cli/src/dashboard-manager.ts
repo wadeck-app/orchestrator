@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -23,8 +23,28 @@ export class DashboardManager {
     private readonly _serverBinaryPath: string,
   ) {}
 
+  private _killStaleFromFile(): void {
+    try {
+      const filePath = path.join(this._configDir, 'config.dashboard');
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const info = JSON.parse(raw) as DashboardPortInfo;
+      if (!info.pid) return;
+      // Check if the process is still alive
+      try { process.kill(info.pid, 0); } catch { return; /* already dead */ }
+      // Kill the orphaned dashboard process tree
+      if (process.platform === 'win32') {
+        try { execSync(`taskkill /f /t /pid ${info.pid}`, { stdio: 'ignore' }); } catch { /* ignore */ }
+      } else {
+        try { process.kill(info.pid, 'SIGTERM'); } catch { /* ignore */ }
+      }
+      // Remove stale file so the new server can write fresh port
+      try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+    } catch { /* file absent or invalid — nothing to kill */ }
+  }
+
   start(): Promise<void> {
     if (this._running) return Promise.resolve();
+    this._killStaleFromFile();
 
     return new Promise<void>((resolve, reject) => {
       const child = spawn(process.execPath, [
