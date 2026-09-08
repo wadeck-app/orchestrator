@@ -100,4 +100,20 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
   if (jfc) {
     jfc.render = withOutputCallbacks(jfc.render, ['onChange']);
   }
+
+  // ScheduleTimeline: expose onRunEarly as DSL $output
+  const st = registry['ScheduleTimeline'];
+  if (st) {
+    const originalSt = st.render;
+    st.render = (props) => {
+      const { node, ctx } = props;
+      const id = node['$id'] as string | undefined;
+      const pub = ctx['$publishOutput'] as PublishFn | undefined;
+      if (!id || !pub) return originalSt(props);
+      const extra = {
+        onRunEarly: (jobId: string) => pub(id, 'onRunEarly', { jobId }),
+      };
+      return originalSt({ ...props, node: { ...node, ...extra } });
+    };
+  }
 }

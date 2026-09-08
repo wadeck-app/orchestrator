@@ -1018,7 +1018,8 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const firings = resolveExpressionValue(node['firings'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['firings']
-		return <ScheduleTimeline firings={firings} />
+		const onRunEarly = resolveExpressionValue(node['onRunEarly'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['onRunEarly']
+		return <ScheduleTimeline firings={firings} onRunEarly={onRunEarly} />
 	},
 }
 
