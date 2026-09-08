@@ -1,4 +1,15 @@
 /**
+ * Returns the most recent firing time for a cron expression strictly before `before`.
+ * Scans backward from `before` up to 48h to find the last match.
+ * Returns null if no firing found in that window.
+ */
+export function getLastFiring(expression: string, before: Date = new Date()): Date | null {
+  const firings = getNextFirings(expression, 1000, new Date(before.getTime() - 48 * 60 * 60 * 1000));
+  const past = firings.filter(d => d < before);
+  return past.length > 0 ? past[past.length - 1]! : null;
+}
+
+/**
  * Returns the next N firing times for a cron expression (5-field: min hour dom mon dow).
  * Uses a simple minute-by-minute scan over the next 24h.
  */

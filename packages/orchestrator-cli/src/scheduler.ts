@@ -8,6 +8,7 @@ import { DailyLogger }   from './logger.js';
 import { ensureTmpDir }  from './fsUtil.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
+import { getLastFiring }  from './cronNext.js';
 // pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
 import pidusage from 'pidusage';
 import type { Job, TriggerSource } from './types.js';
@@ -76,14 +77,31 @@ export class Scheduler extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    // Stagger catch-up jobs 30s apart to avoid simultaneous load on wake from hibernate
+    let catchUpStaggerMs = 0;
+    const CATCH_UP_STAGGER_MS = 30_000;
+
     for (const job of this._registry.list()) {
       if (!job.enabled) continue;
 
       if (job.type === 'cron') {
         this._scheduleCron(job);
-        if (job.missedFiring === 'catch-up') {
-          const last = this._state.get(job.id);
-          if (!last || last.exitCode === null) void this._fire(job);
+        if (job.missedFiring === 'catch-up' && job.schedule) {
+          const lastFiring = getLastFiring(job.schedule, this._now());
+          if (lastFiring) {
+            const last = this._state.get(job.id);
+            const lastRanAt = last?.startedAt ? new Date(last.startedAt).getTime() : 0;
+            // Fire if the last expected firing is more recent than the last actual run
+            if (lastFiring.getTime() > lastRanAt) {
+              const delayMs = catchUpStaggerMs;
+              catchUpStaggerMs += CATCH_UP_STAGGER_MS;
+              if (delayMs === 0) {
+                void this._fire(job, { kind: 'cron' });
+              } else {
+                setTimeout(() => { void this._fire(job, { kind: 'cron' }); }, delayMs);
+              }
+            }
+          }
         }
       }
 
