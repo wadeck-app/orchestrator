@@ -63,15 +63,10 @@ function linkify(line: string, highlight?: string): React.ReactNode {
 
 interface RunEntry { name: string; file: string; sizeBytes: number; }
 
-function fmtRunName(name: string): string {
-  // "2026-09-08T10-00-00" → locale date+time string
+function fmtRunName(name: string, index: number, total: number): string {
   const m = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
-  if (m) {
-    const d = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}`);
-    // violations-suppress: ts/no-locale-date display-only run timestamp, locale acceptable
-    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-  return name;
+  if (m) return `${m[1]} ${m[2]}:${m[3]}:${m[4]} #${total - index}`;
+  return name; // legacy daily format: already yyyy-mm-dd
 }
 
 export interface LogViewerProps {
@@ -160,8 +155,8 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
             onChange={e => handleSelectRun(e.target.value)}
             className="bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-gray-400 mr-2"
           >
-            {runs.map(r => (
-              <option key={r.name} value={r.name}>{fmtRunName(r.name)}</option>
+            {runs.map((r, i) => (
+              <option key={r.name} value={r.name}>{fmtRunName(r.name, i, runs.length)}</option>
             ))}
           </select>
         )}
