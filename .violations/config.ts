@@ -1,7 +1,7 @@
 import type { ViolationsConfig } from '@wadeck/violations-rules'
 
 export default {
-  projectTags: ['ts', 'react', 'tailwind', 'shared', 'cli'],
+  projectTags: ['ts', 'react', 'tailwind', 'cli'],
   globalExclude: [
     'node_modules/**',
     'dist/**',
