@@ -233,10 +233,11 @@ describe('orch logs (top-level)', () => {
 
   test('does not exit with error when log file exists', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-test-'));
-    const logsDir = path.join(dir, 'logs');
-    fs.mkdirSync(logsDir);
+    // orch logs now reads logs/daemon/daemon-YYYY-MM-DD.log (daemon operational log)
+    const daemonLogsDir = path.join(dir, 'logs', 'daemon');
+    fs.mkdirSync(daemonLogsDir, { recursive: true });
     const today = new Date().toISOString().slice(0, 10);
-    const logFile = path.join(logsDir, `${today}.ndjson`);
+    const logFile = path.join(daemonLogsDir, `daemon-${today}.log`);
     fs.writeFileSync(logFile, 'test log line\n');
     try {
       const written = [];
@@ -260,7 +261,7 @@ describe('orch logs (top-level)', () => {
       const { exitCode } = await run(['logs'], { deps: { configDir: dir } });
       process.stdout.write = origWrite;
       assert.equal(exitCode, 0, 'orch logs must exit 0 with helpful message when no log file');
-      assert.ok(written.join('').includes('No log file'), 'must mention missing log file');
+      assert.ok(written.join('').includes('No daemon log'), 'must mention missing log file');
     } finally {
       fs.rmSync(dir, { recursive: true });
     }
