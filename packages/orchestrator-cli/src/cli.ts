@@ -66,7 +66,7 @@ Concepts:
 Usage: orch <command> [options]
 
 Daemon lifecycle:
-  orch start                   Start the daemon (idempotent)
+  orch start [-f|--follow]     Start the daemon (detaches immediately); --follow tails logs
   orch stop                    Stop the daemon
   orch restart                 Restart the daemon
   orch status [--json]         Show daemon pid, port, uptime
@@ -217,7 +217,26 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       break;
     }
 
-    case 'start': startDaemon(); break;
+    case 'start': {
+      startDaemon();
+      if (has(rest, '--follow') || has(rest, '-f')) {
+        const portFile = path.join(configDir, 'config.port');
+        const deadline = Date.now() + 5000;
+        const ready = await new Promise<boolean>((resolve) => {
+          const fsCheck = require('node:fs') as typeof import('node:fs');
+          const tick = (): void => {
+            if (fsCheck.existsSync(portFile)) { resolve(true); return; }
+            if (Date.now() >= deadline) { resolve(false); return; }
+            setTimeout(tick, 200);
+          };
+          tick();
+        });
+        if (!ready) { console.error('Daemon did not start within 5s'); process.exit(2); }
+        console.log('Following logs (Ctrl+C to stop)...');
+        await cliLogsCommand(configDir, { follow: true });
+      }
+      break;
+    }
 
     case 'stop': {
       const fs = require('node:fs') as typeof import('node:fs');
@@ -663,10 +682,40 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       }
     }
 
-    // Top-level alias for `orch cli logs`
+    // Top-level logs command: reads from the daemon operational log (logs/daemon/)
+    // which aggregates daemon events, tray actions, and dashboard messages.
+    // Note: cliLogsCommand reads the CLI invocation ndjson -- use our own reader here.
     case 'logs': {
       warnUnknownArgs(rest, ['--follow', '-f'], 'orch logs');
-      await cliLogsCommand(configDir, { follow: has(rest, '--follow') || has(rest, '-f') });
+      const follow = has(rest, '--follow') || has(rest, '-f');
+      const today   = new Date().toISOString().slice(0, 10);
+      const logFile = path.join(configDir, 'logs', 'daemon', `daemon-${today}.log`);
+      const fsLogs  = require('node:fs') as typeof import('node:fs');
+      if (!fsLogs.existsSync(logFile)) {
+        process.stdout.write(`No daemon log for today: ${logFile}\n`);
+        if (!follow) return;
+      }
+      let offset = 0;
+      if (fsLogs.existsSync(logFile)) {
+        const content = fsLogs.readFileSync(logFile, 'utf8');
+        process.stdout.write(content);
+        offset = Buffer.byteLength(content, 'utf8');
+      }
+      if (!follow) return;
+      await new Promise<void>((resolve) => {
+        fsLogs.watchFile(logFile, { interval: 250 }, () => {
+          if (!fsLogs.existsSync(logFile)) return;
+          const size = fsLogs.statSync(logFile).size;
+          if (size <= offset) return;
+          const buf = Buffer.alloc(size - offset);
+          const fd  = fsLogs.openSync(logFile, 'r');
+          fsLogs.readSync(fd, buf, 0, buf.length, offset);
+          fsLogs.closeSync(fd);
+          offset = size;
+          process.stdout.write(buf.toString('utf8'));
+        });
+        process.on('SIGINT', () => { fsLogs.unwatchFile(logFile); resolve(); });
+      });
       return;
     }
 
@@ -703,13 +752,28 @@ export async function main(): Promise<void> {
 
   function startDaemon(): void {
     const daemonPath = path.join(__dirname, 'index.js');
-    const child = spawn(process.execPath, [daemonPath], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      env: { ...process.env, ORCH_CONFIG_DIR: configDir },
-    });
-    child.unref();
+    if (process.platform === 'win32') {
+      // On Windows, spawn/detach doesn't truly detach from MSYS2/Git Bash process group.
+      // wscript.exe SW_HIDE (0) creates a completely independent process with no visible
+      // window and no parent-child relationship — true fire-and-forget.
+      const esc = (s: string): string => s.replace(/"/g, '""');
+      const vbsPath = path.join(configDir, 'orchestrator-start.vbs');
+      fs.writeFileSync(vbsPath, [
+        'Dim oShell',
+        'Set oShell = CreateObject("WScript.Shell")',
+        `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
+        `oShell.Run """${esc(process.execPath)}"" ""${esc(daemonPath)}"", 0, False`,
+      ].join('\r\n'), 'utf8');
+      const ws = spawn('wscript.exe', [vbsPath], { stdio: 'ignore', detached: true, windowsHide: true });
+      ws.unref();
+    } else {
+      const child = spawn(process.execPath, [daemonPath], {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, ORCH_CONFIG_DIR: configDir },
+      });
+      child.unref();
+    }
     console.log('Orchestrator starting...');
   }
 

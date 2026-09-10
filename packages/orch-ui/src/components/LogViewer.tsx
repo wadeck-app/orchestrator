@@ -22,8 +22,19 @@ function toFileUrl(raw: string): string {
   return 'file:///' + raw.replace(/\\/g, '/');
 }
 
-function linkify(line: string, highlight?: string): React.ReactNode {
-  // First apply URL linkification, then highlight search term
+function isLocalFile(raw: string): boolean {
+  return raw.startsWith('file:///') || /^[A-Za-z]:[\\\/]/.test(raw);
+}
+
+// Chrome blocks file:// navigation from http:// pages.
+// Route local file opens through the dashboard server's /api/open endpoint instead.
+function openHref(raw: string, apiBase: string): string {
+  if (!isLocalFile(raw)) return raw; // http(s) URLs open directly
+  const fileUrl = toFileUrl(raw);
+  return `${apiBase}/api/open?path=${encodeURIComponent(fileUrl)}`;
+}
+
+function linkify(line: string, highlight: string | undefined, apiBase: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
@@ -34,7 +45,6 @@ function linkify(line: string, highlight?: string): React.ReactNode {
       parts.push(text);
       return;
     }
-    // Highlight search term within text segment
     const re = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     const sub = text.split(re);
     sub.forEach((s, i) => {
@@ -49,10 +59,10 @@ function linkify(line: string, highlight?: string): React.ReactNode {
 
   while ((m = URL_RE.exec(line)) !== null) {
     if (m.index > last) pushText(line.slice(last, m.index));
-    const href = toFileUrl(m[0]);
+    const href = openHref(m[0], apiBase);
     parts.push(
       // violations-suppress: tailwind/no-raw-color-class link inside dark terminal - no semantic token for terminal-link color
-      <a key={m.index} href={href} target="_blank" rel="noopener noreferrer"
+      <a key={m.index} href={href} target={isLocalFile(m[0]) ? '_self' : '_blank'} rel="noopener noreferrer"
         className="underline opacity-80 hover:opacity-100">{m[0]}</a>
     );
     last = m.index + m[0].length;
@@ -183,7 +193,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
           ? <span className="text-gray-500">{search ? 'No matching lines.' : 'No log output yet'}</span>
           : filtered.map((line, i) => (
             <React.Fragment key={i}>
-              {linkify(line, search || undefined)}
+              {linkify(line, search || undefined, apiBase)}
               {i < filtered.length - 1 ? '\n' : null}
             </React.Fragment>
           ))}

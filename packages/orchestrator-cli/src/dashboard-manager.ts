@@ -17,11 +17,15 @@ export class DashboardManager {
   private _proc: ChildProcess | null = null;
   private _running = false;
   private _port: number | null = null;
+  private readonly _log: (msg: string) => void;
 
   constructor(
     private readonly _configDir: string,
     private readonly _serverBinaryPath: string,
-  ) {}
+    onLog?: (msg: string) => void,
+  ) {
+    this._log = onLog ?? ((msg) => { try { process.stderr.write(`[dashboard] ${msg}\n`); } catch { /* ignore */ } });
+  }
 
   private _killStaleFromFile(): void {
     try {
@@ -76,7 +80,9 @@ export class DashboardManager {
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
-        process.stderr.write(`[dashboard-server] ${chunk.toString()}`);
+        // Route dashboard server stderr to the daemon log (not process.stderr which is
+        // invisible when the daemon runs as a hidden Windows process)
+        this._log(`[dashboard-server] ${chunk.toString().trimEnd()}`);
       });
 
       child.on('error', (err) => {
@@ -148,19 +154,25 @@ export class DashboardManager {
   openBrowser(): void {
     const port = this.getPort();
     if (port === null) {
-      console.error('[dashboard] cannot open browser: port unknown');
+      this._log('[dashboard] cannot open browser: port unknown (config.dashboard missing or stale)');
       return;
     }
     const url = `http://localhost:${port}`;
+    this._log(`[dashboard] opening browser: ${url}`);
     if (process.platform === 'win32') {
+      // Use cmd /c start which handles http:// URLs reliably on all Windows versions.
+      // explorer.exe with a URL can fail on some Windows 11 configurations when the
+      // default browser association is not set up for explorer.exe to delegate.
       // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
-      execFile('explorer.exe', [url], (err) => {
-        if (err) console.error('[dashboard] open browser failed:', getErrorMessage(err));
+      execFile('cmd.exe', ['/c', 'start', '', url], (err) => {
+        if (err) this._log(`[dashboard] open browser failed (cmd /c start "${url}"): ${getErrorMessage(err)}`);
+        else this._log(`[dashboard] browser opened successfully`);
       });
     } else {
       // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
       execFile('open', [url], (err) => {
-        if (err) console.error('[dashboard] open browser failed:', getErrorMessage(err));
+        if (err) this._log(`[dashboard] open browser failed (open "${url}"): ${getErrorMessage(err)}`);
+        else this._log(`[dashboard] browser opened successfully`);
       });
     }
   }

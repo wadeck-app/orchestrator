@@ -34,23 +34,42 @@ const CONFIG_DIR: string =
 process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
 process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
 
-// Synchronous early-startup log written before any async operation.
-// Tells us whether the process reaches JS execution at all.
-// If a crash produces exit code 1 with no "daemon starting" in the log,
-// checking for this "pre-start" entry reveals whether the crash is before
-// or after this point (i.e. module-load-level vs. early async).
-function writePreStartLog(): void {
+// Synchronous write to the daemon log file — used for both pre-start markers and
+// early crash capture before daemonLog (DailyLogger) is initialised.
+function _syncLogWrite(msg: string): void {
   try {
     const logDir = path.join(CONFIG_DIR, 'logs', 'daemon');
     fs.mkdirSync(logDir, { recursive: true });
     const today = new Date().toISOString().slice(0, 10);
     const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    fs.appendFileSync(path.join(logDir, `daemon-${today}.log`), `[${ts}] daemon pre-start (pid=${process.pid})\n`);
+    fs.appendFileSync(path.join(logDir, `daemon-${today}.log`), `[${ts}] ${msg}\n`);
   } catch { /* truly unrecoverable */ }
 }
 
+function writePreStartLog(): void {
+  _syncLogWrite(`daemon pre-start (pid=${process.pid})`);
+}
+
+// Early-crash handler: active from module load until daemonLog is ready.
+// Catches crashes during import resolution and early async (ESM dynamic imports).
+// Replaced in main() by the daemonLog-based handler once the logger is initialised.
+function _earlyUncaughtHandler(err: Error): void {
+  _syncLogWrite(`daemon crash (uncaughtException, pre-init): ${getErrorMessage(err)}`);
+  if (err.stack) _syncLogWrite(err.stack);
+  process.exit(1);
+}
+function _earlyRejectionHandler(reason: unknown): void {
+  _syncLogWrite(`daemon crash (unhandledRejection, pre-init): ${getErrorMessage(reason)}`);
+  process.exit(1);
+}
+
+// Install early handlers immediately at module level.
+writePreStartLog();
+process.on('uncaughtException',  _earlyUncaughtHandler);
+process.on('unhandledRejection', _earlyRejectionHandler);
+
 async function main(): Promise<void> {
-  writePreStartLog();
+  // writePreStartLog() already called at module level — no duplicate call needed.
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   cleanTmpDir(path.join(CONFIG_DIR, 'tmp'), { maxAgeDays: 7, maxSizeMb: 100 });
 
@@ -69,9 +88,13 @@ async function main(): Promise<void> {
   // Create the logger before try/finally so crash paths can always write to it.
   const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'daemon'), 'daemon');
 
-  // Capture uncaught exceptions and unhandled rejections that bypass main()'s catch.
+  // Upgrade from early module-level handlers to daemonLog-based handlers now that
+  // the logger is ready. This ensures ALL crashes (including pre-init) write to the log.
+  process.removeListener('uncaughtException',  _earlyUncaughtHandler);
+  process.removeListener('unhandledRejection', _earlyRejectionHandler);
   process.on('uncaughtException', (err: Error) => {
     daemonLog.write(`daemon crash (uncaughtException): ${getErrorMessage(err)}`);
+    if ((err as Error & { stack?: string }).stack) daemonLog.write((err as Error & { stack?: string }).stack!);
     daemonLog.close();
     process.exit(1);
   });
@@ -102,7 +125,7 @@ async function main(): Promise<void> {
     let dashboardManager: DashboardManager | null = null;
     try {
       const serverBinary = findOrchServerBinary();
-      dashboardManager = new DashboardManager(CONFIG_DIR, serverBinary);
+      dashboardManager = new DashboardManager(CONFIG_DIR, serverBinary, (msg) => daemonLog.write(msg));
     } catch {
       // orch-server not built yet -- dashboard unavailable
     }
