@@ -234,8 +234,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         if (!ready) { console.error('Daemon did not start within 5s'); process.exit(2); }
         console.log('Following logs (Ctrl+C to stop)...');
         await cliLogsCommand(configDir, { follow: true });
+        process.exit(0);
       }
-      break;
+      // Without --follow, exit immediately so the shell prompt returns.
+      // UpdateManager and other SDK internals may keep the event loop alive otherwise.
+      process.exit(0);
     }
 
     case 'stop': {
