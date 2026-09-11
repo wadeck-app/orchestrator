@@ -40,6 +40,11 @@ function buildLiveness(argv: string[]): LivenessConfig | null {
   return liveness;
 }
 
+function errorExit(message: string, exitCode: number = 1): never {
+  console.error(`\nError: ${message}\n`);
+  process.exit(exitCode);
+}
+
 // ---------------------------------------------------------------------------
 // Output: context-aware (TTY -> human, no-TTY or --json -> JSON)
 // ---------------------------------------------------------------------------
@@ -356,9 +361,25 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         addRest = r;
       }
 
-      if (!id) { console.error('Missing job id.'); process.exit(4); }
+      if (!id) {
+        errorExit(`Missing job id.
+
+Usage patterns:
+  orch add cron <id> --schedule "..." --command "..."
+  orch add startup <id> --command "..."
+  orch add --once <id> --delay <duration> --command "..."
+
+Examples:
+  orch add cron backup --schedule "0 2 * * *" --command "/home/user/backup.sh"
+  orch add startup check-health --command "curl http://localhost:8080/health"
+  orch add --once report --delay 1h --command "node scripts/report.js"`, 4);
+      }
       const command = flag(addRest, '--command');
-      if (!command) { console.error('--command is required.'); process.exit(4); }
+      if (!command) {
+        errorExit(`--command is required for all job types.
+
+Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4);
+      }
 
       const body: Record<string, unknown> = {
         id, type, command, enabled: !has(addRest, '--disabled'),
@@ -376,7 +397,19 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
       if (type === 'cron') {
         const schedule = flag(addRest, '--schedule');
-        if (!schedule) { console.error('--schedule is required for cron jobs.'); process.exit(4); }
+        if (!schedule) {
+          errorExit(`--schedule is required for cron jobs.
+
+Format: 5-field cron (min hour day month weekday)
+
+Examples:
+  "*/5 * * * *"   every 5 minutes
+  "0 9 * * 1-5"   9 AM on weekdays (Monday-Friday)
+  "30 8 * * *"    8:30 AM daily
+  "0 0 1 * *"     midnight on the 1st of each month
+
+Full usage: orch add cron <id> --schedule "<expr>" --command "..."`, 4);
+        }
         body['schedule'] = schedule;
         const missedFiring = flag(addRest, '--missed-firing');
         if (missedFiring) body['missedFiring'] = missedFiring;
@@ -389,13 +422,21 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
       if (type === 'once') {
         const delayStr = flag(addRest, '--delay');
-        if (!delayStr) { console.error('--delay is required for once jobs.'); process.exit(4); }
+        if (!delayStr) {
+          errorExit(`--delay is required for once jobs.
+
+Supported formats: 30s, 2m, 1h, 1d
+
+Examples:
+  orch add --once report --delay 30s --command "node scripts/report.js"
+  orch add --once cleanup --delay 2h --command "rm /tmp/*.log"
+  orch add --once archive --delay 1d --command "tar czf archive.tar.gz /data"`, 4);
+        }
         let delayMs: number;
         try {
           delayMs = parseDuration(delayStr);
         } catch (e) {
-          console.error((e as Error).message);
-          process.exit(4);
+          errorExit((e as Error).message, 4);
         }
         body['delayMs']     = delayMs;
         body['scheduledAt'] = new Date().toISOString();
@@ -452,7 +493,18 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     case 'exec': {
       // One-shot command execution via the daemon (for agent delegation)
       const cmd = rest.join(' ');
-      if (!cmd.trim()) { console.error('Usage: orch exec "<command>"'); process.exit(1); }
+      if (!cmd.trim()) {
+        errorExit(`Missing command for exec.
+
+Usage: orch exec "<command>" [--wait] [--label <label>]
+
+Examples:
+  orch exec "npm run build"
+  orch exec "curl https://example.com" --wait
+  orch exec "docker ps" --label "check-docker"
+
+Use --wait to block until the command finishes.`);
+      }
       const waitForExec = has(rest, '--wait');
       const label = rest.find(a => a.startsWith('--label='))?.slice('--label='.length);
       const cleanCmd = rest.filter(a => !a.startsWith('--')).join(' ');
@@ -829,21 +881,31 @@ export async function main(): Promise<void> {
         startDaemon();
         const ready = await waitForDaemon(3000);
         if (!ready) {
-          console.error('Orchestrator could not be started. Run: orch start');
-          process.exit(2);
+          errorExit(`Orchestrator daemon could not be started.
+
+Try manually:
+  orch start --verbose
+
+Check logs:
+  orch logs --follow`, 2);
         }
         // Retry once after auto-start
         return doSend().catch((e2: unknown) => {
-          console.error(`Error: ${getErrorMessage(e2)}`);
-          process.exit(1);
+          const err2Msg = getErrorMessage(e2);
+          errorExit(`Daemon connection failed after auto-start: ${err2Msg}
+
+Check daemon status:
+  orch status
+  orch logs --follow`, 1);
         });
       }
       if (msg.includes('not found') || msg.includes('Not found')) {
-        console.error(`Error: ${msg}`);
-        process.exit(3);
+        errorExit(`${msg}
+
+List available jobs:
+  orch list`, 3);
       }
-      console.error(`Error: ${msg}`);
-      process.exit(1);
+      errorExit(msg, 1);
     });
   }
 
