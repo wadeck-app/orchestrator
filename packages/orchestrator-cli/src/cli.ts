@@ -66,7 +66,8 @@ Concepts:
 Usage: orch <command> [options]
 
 Daemon lifecycle:
-  orch start [-f|--follow]     Start the daemon (detaches immediately); --follow tails logs
+  orch start [-n|--no-follow]  Start the daemon; tails logs in interactive TTY by default.
+                               Pass --no-follow/-n to suppress (or pipe stdout: orch start | cat)
   orch stop                    Stop the daemon
   orch restart                 Restart the daemon
   orch status [--json]         Show daemon pid, port, uptime
@@ -219,7 +220,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     case 'start': {
       startDaemon();
-      if (has(rest, '--follow') || has(rest, '-f')) {
+      // In an interactive TTY, default to following logs so the user sees startup output.
+      // Pass --no-follow / -n to suppress (or pipe stdout to prevent TTY detection).
+      const noFollow = has(rest, '--no-follow') || has(rest, '-n');
+      const follow = !noFollow && (has(rest, '--follow') || has(rest, '-f') || process.stdout.isTTY);
+      if (follow) {
         const portFile = path.join(configDir, 'config.port');
         const deadline = Date.now() + 5000;
         const ready = await new Promise<boolean>((resolve) => {
@@ -232,12 +237,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
           tick();
         });
         if (!ready) { console.error('Daemon did not start within 5s'); process.exit(2); }
-        console.log('Following logs (Ctrl+C to stop)...');
+        console.log('Daemon started. Following logs (Ctrl+C to stop)...');
         await cliLogsCommand(configDir, { follow: true });
         process.exit(0);
       }
-      // Without --follow, exit immediately so the shell prompt returns.
-      // UpdateManager and other SDK internals may keep the event loop alive otherwise.
+      // Non-TTY or --no-follow: exit immediately (e.g. orch start &, scripts).
       process.exit(0);
     }
 
