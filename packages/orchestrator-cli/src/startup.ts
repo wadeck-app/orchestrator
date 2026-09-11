@@ -8,21 +8,31 @@ const REG_KEY            = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
 const INDEX_JS           = path.join(__dirname, 'index.js');
 
+const _PLATFORM_PKG: Record<string, string> = {
+  'win32-x64':    '@wadeck-app/orchestrator-cli-win32-x64',
+  'darwin-arm64': '@wadeck-app/orchestrator-cli-darwin-arm64',
+  'darwin-x64':   '@wadeck-app/orchestrator-cli-darwin-x64',
+};
+const _platformArch = process.arch === 'arm64' ? 'arm64' : 'x64';
+const _platformKey  = `${process.platform}-${_platformArch}`;
+const _platformPkg  = _PLATFORM_PKG[_platformKey];
+const LAUNCHER_BINARY = process.platform === 'win32' ? 'orchestrator.exe' : 'orchestrator';
+
 function findLauncherBinary(): string | null {
-  if (process.platform === 'win32') {
-    return [
-      path.join(__dirname, 'orchestrator.exe'),
-      path.join(__dirname, '..', 'launcher-go', 'dist', 'orchestrator.exe'),
-    ].find((p) => fs.existsSync(p)) ?? null;
+  // Try the platform package first (production install via optionalDependencies).
+  if (_platformPkg) {
+    try {
+      return require.resolve(`${_platformPkg}/${LAUNCHER_BINARY}`);
+    } catch {
+      // Platform package not installed - fall through to local paths (dev/CI builds).
+    }
   }
-  if (process.platform === 'darwin') {
-    const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-    return [
-      path.join(__dirname, 'orchestrator'),
-      path.join(__dirname, '..', 'launcher-go', 'dist', `orchestrator_darwin_${arch}`),
-    ].find((p) => fs.existsSync(p)) ?? null;
-  }
-  return null;
+  // Fallback: local paths used during development or legacy installs.
+  const candidates = [
+    path.join(__dirname, LAUNCHER_BINARY),
+    path.join(__dirname, '..', 'launcher-go', 'dist', LAUNCHER_BINARY),
+  ];
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
 export function buildRegValueName(configDir: string): string {

@@ -282,21 +282,41 @@ describe('killJob', () => {
     child.stdout = null;
     child.stderr = null;
 
-    const sched = new Scheduler(registry, state, {
-      spawn: () => child,
-      liveness: async () => false,
-    });
+    // On Windows, _killChild uses taskkill which won't find the fake PID.
+    // Mock execSync to verify taskkill is called, or skip this platform.
+    const originalExecSync = require('child_process').execSync;
+    let taskKillCalled = false;
+    if (process.platform === 'win32') {
+      require('child_process').execSync = () => { taskKillCalled = true; };
+    }
 
-    // Trigger (fire-and-forget -- does not wait for child to close)
-    void sched.trigger('manual-a');
-    await new Promise(r => setImmediate(r));
+    try {
+      const sched = new Scheduler(registry, state, {
+        spawn: () => child,
+        liveness: async () => false,
+      });
 
-    const result = sched.killJob('manual-a');
-    assert.deepStrictEqual(result, { killed: true });
-    assert.equal(killedWith, 'SIGTERM');
+      // Trigger (fire-and-forget -- does not wait for child to close)
+      void sched.trigger('manual-a');
+      await new Promise(r => setImmediate(r));
 
-    // Let child close
-    child.emit('close', 1);
+      const result = sched.killJob('manual-a');
+      assert.deepStrictEqual(result, { killed: true });
+
+      // Verify appropriate kill path was used
+      if (process.platform === 'win32') {
+        assert.equal(taskKillCalled, true, 'taskkill should be called on Windows');
+      } else {
+        assert.equal(killedWith, 'SIGTERM', 'SIGTERM should be sent on Unix');
+      }
+
+      // Let child close
+      child.emit('close', 1);
+    } finally {
+      if (process.platform === 'win32') {
+        require('child_process').execSync = originalExecSync;
+      }
+    }
   });
 
   test('killJob returns killed:false when job is not running', () => {
