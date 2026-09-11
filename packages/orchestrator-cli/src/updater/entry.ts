@@ -11,6 +11,7 @@ import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import * as http from 'node:http';
+import semver from 'semver';
 
 declare const __ORCH_VERSION__: string;
 
@@ -27,6 +28,27 @@ try {
   }
 } catch {
   // Skip self-check if npm root is unavailable.
+}
+
+/**
+ * Check if the package version's Node.js engine requirements are satisfied by the current process.
+ * Returns { ok: true } if compatible, or { ok: false, reason } if not.
+ * Fetches package.json from npm registry and checks "engines.node" field.
+ */
+async function checkEngineCompatibility(pkgName: string, version: string): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const npmView = execNpm(['view', `${pkgName}@${version}`, 'engines.node', '--json'], { timeout: 10_000 }).trim();
+    const engineSpec = JSON.parse(npmView) as string;
+    if (!engineSpec) return { ok: true }; // no engine constraint
+    if (!semver.satisfies(process.version, engineSpec)) {
+      return { ok: false, reason: `Node.js engine mismatch: requires ${engineSpec}, current ${process.version}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    // If we can't determine engine requirements, allow the update to proceed
+    // (shared-updater will catch other errors via self-check)
+    return { ok: true };
+  }
 }
 
 /**
@@ -75,7 +97,15 @@ runUpdater({
     portFile: join(configDir, 'config.port'),
     healthTokenFile: join(configDir, 'health_token'),
   },
-  onUpdateAvailable: async (_newVersion: string) => {
+  onUpdateAvailable: async (newVersion: string) => {
+    // Pre-flight check: verify Node.js engine compatibility before attempting install
+    const engineCheck = await checkEngineCompatibility(PKG_NAME, newVersion);
+    if (!engineCheck.ok) {
+      process.stderr.write(`[orchestrator-updater] engine-check: ${engineCheck.reason}\n`);
+      // Defer indefinitely - user must upgrade Node.js before we can proceed
+      return { defer: true, retryIn: 24 * 60 * 60 * 1000 }; // retry in 24h
+    }
+
     try {
       const portJson = readFileSync(join(configDir, 'config.port'), 'utf8');
       const { port } = JSON.parse(portJson) as { port: number };
