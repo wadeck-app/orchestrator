@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 
 // @formatter:off
 const DATE_HDR_CLS = 'text-xs font-semibold text-muted uppercase tracking-wide pt-3 pb-1 border-b border-border';
@@ -50,6 +50,22 @@ const OS_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * @registryTags schedule timeline cron firings
  */
 export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineProps): React.ReactElement {
+  // key = `${jobId}:${ts}` → 'pending'|'ok'|'error'
+  const [btnState, setBtnState] = useState<Record<string, 'pending'|'ok'|'error'>>({});
+
+  const handleRunEarly = useCallback(async (jobId: string, key: string) => {
+    if (!onRunEarly || btnState[key] === 'pending') return;
+    setBtnState(s => ({ ...s, [key]: 'pending' }));
+    try {
+      await onRunEarly(jobId);
+      setBtnState(s => ({ ...s, [key]: 'ok' }));
+      setTimeout(() => setBtnState(s => { const n = { ...s }; delete n[key]; return n; }), 2000);
+    } catch {
+      setBtnState(s => ({ ...s, [key]: 'error' }));
+      setTimeout(() => setBtnState(s => { const n = { ...s }; delete n[key]; return n; }), 3000);
+    }
+  }, [onRunEarly, btnState]);
+
   const flat: FlatFiring[] = (firings as ScheduleEntry[]).flatMap(e =>
     (e.next ?? []).map(ts => ({ ts, label: e.label, jobId: e.jobId }))
   ).sort((a, b) => a.ts.localeCompare(b.ts));
@@ -62,6 +78,7 @@ export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineP
   );
 
   let lastDate = '';
+  // violations-suppress-start: tailwind/no-raw-color-class run-early button feedback states use green/red which have no semantic tokens
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted pb-2">Times shown in: {OS_TZ}</p>
@@ -80,18 +97,28 @@ export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineP
               <span className="shrink-0 font-mono text-xs text-muted w-12">{fmtTime(f.ts)}</span>
               <span className="flex-1 text-content truncate">{f.label}</span>
               <span className="shrink-0 text-xs text-muted">{relTime(f.ts)}</span>
-              {onRunEarly && (
-                <button
-                  className="shrink-0 text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors"
-                  onClick={() => onRunEarly(f.jobId)}
-                >
-                  Run early
-                </button>
-              )}
+              {onRunEarly && (() => {
+                const key = `${f.jobId}:${f.ts}`;
+                const st = btnState[key];
+                const cls = st === 'ok'
+                  ? 'shrink-0 text-xs px-2 py-0.5 rounded border border-green-600 text-green-600 cursor-default'
+                  : st === 'error'
+                  ? 'shrink-0 text-xs px-2 py-0.5 rounded border border-red-500 text-red-500 cursor-default'
+                  : st === 'pending'
+                  ? 'shrink-0 text-xs px-2 py-0.5 rounded border border-border text-muted opacity-50 cursor-wait'
+                  : 'shrink-0 text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
+                return (
+                  <button className={cls} disabled={st === 'pending'}
+                    onClick={() => handleRunEarly(f.jobId, key)}>
+                    {st === 'ok' ? '✓ Triggered' : st === 'error' ? '✗ Error' : st === 'pending' ? 'Running...' : 'Run early'}
+                  </button>
+                );
+              })()}
             </div>
           </React.Fragment>
         );
       })}
     </div>
+  // violations-suppress-end: tailwind/no-raw-color-class
   );
 }

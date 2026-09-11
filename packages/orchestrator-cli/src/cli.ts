@@ -767,7 +767,12 @@ export async function main(): Promise<void> {
         `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
         `oShell.Run """${esc(process.execPath)}"" ""${esc(daemonPath)}"", 0, False`,
       ].join('\r\n'), 'utf8');
-      const ws = spawn('wscript.exe', [vbsPath], { stdio: 'ignore', detached: true, windowsHide: true });
+      // cmd /c start /b creates a new process group outside the MSYS2 session.
+      // Plain spawn('wscript.exe', ...) with detached:true is still tracked by MSYS2's
+      // process group, so bash waits for it. cmd's START /b breaks out of the group.
+      const ws = spawn('cmd.exe', ['/c', 'start', '/b', '/min', 'wscript.exe', vbsPath], {
+        stdio: 'ignore', detached: true, windowsHide: true,
+      });
       ws.unref();
     } else {
       const child = spawn(process.execPath, [daemonPath], {
