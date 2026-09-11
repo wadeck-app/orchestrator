@@ -1,5 +1,6 @@
 import React from 'react';
-import { Flame, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Flame, AlertTriangle, FileText } from 'lucide-react';
 import type { Job, RuntimeEntry } from '../types.js';
 import { BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
@@ -160,7 +161,11 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
         )}
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end items-center gap-2">
+        <Link to={`/jobs/${job.id}/logs`} onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">
+          <FileText size={11} />Logs
+        </Link>
         <TriggerButton jobId={job.id} onTrigger={onTrigger} />
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { LayoutGrid, LayoutList } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { Button } from './Button.js';
 import type { Job, RuntimeEntry } from '../types.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -207,11 +207,17 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
                   <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={last?.exitCode === null && runHistory.length > 0} /></td>
                   <td className="py-2 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
                   <td className="py-2">
-                    {/* violations-suppress: react/no-raw-button inline table run button - no compact Button variant for table cells */}
-                    <button className="text-xs px-2 py-1 bg-primary text-on-primary rounded hover:bg-primary-hover"
-                      onClick={e => { e.stopPropagation(); void handleTrigger(job.id); }}>
-                      Run now
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <Link to={`/jobs/${job.id}/logs`} onClick={e => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">
+                        <FileText size={11} />Logs
+                      </Link>
+                      {/* violations-suppress: react/no-raw-button inline table run button - no compact Button variant for table cells */}
+                      <button className="text-xs px-2 py-1 bg-primary text-on-primary rounded hover:bg-primary-hover"
+                        onClick={e => { e.stopPropagation(); void handleTrigger(job.id); }}>
+                        Run now
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

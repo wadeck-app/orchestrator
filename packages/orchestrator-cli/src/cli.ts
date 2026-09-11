@@ -66,8 +66,7 @@ Concepts:
 Usage: orch <command> [options]
 
 Daemon lifecycle:
-  orch start [-n|--no-follow]  Start the daemon; tails logs in interactive TTY by default.
-                               Pass --no-follow/-n to suppress (or pipe stdout: orch start | cat)
+  orch start                   Start the daemon; tails logs in interactive TTY (Ctrl+C stops tail, daemon keeps running)
   orch stop                    Stop the daemon
   orch restart                 Restart the daemon
   orch status [--json]         Show daemon pid, port, uptime
@@ -221,9 +220,8 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     case 'start': {
       startDaemon();
       // In an interactive TTY, default to following logs so the user sees startup output.
-      // Pass --no-follow / -n to suppress (or pipe stdout to prevent TTY detection).
-      const noFollow = has(rest, '--no-follow') || has(rest, '-n');
-      const follow = !noFollow && (has(rest, '--follow') || has(rest, '-f') || process.stdout.isTTY);
+      // Pipe stdout (orch start | cat) or use orch start & to suppress.
+      const follow = has(rest, '--follow') || has(rest, '-f') || process.stdout.isTTY;
       if (follow) {
         const portFile = path.join(configDir, 'config.port');
         const deadline = Date.now() + 5000;
