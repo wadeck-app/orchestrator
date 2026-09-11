@@ -756,24 +756,34 @@ export async function main(): Promise<void> {
   function startDaemon(): void {
     const daemonPath = path.join(__dirname, 'index.js');
     if (process.platform === 'win32') {
-      // On Windows, spawn/detach doesn't truly detach from MSYS2/Git Bash process group.
-      // wscript.exe SW_HIDE (0) creates a completely independent process with no visible
-      // window and no parent-child relationship — true fire-and-forget.
-      const esc = (s: string): string => s.replace(/"/g, '""');
-      const vbsPath = path.join(configDir, 'orchestrator-start.vbs');
-      fs.writeFileSync(vbsPath, [
-        'Dim oShell',
-        'Set oShell = CreateObject("WScript.Shell")',
-        `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
-        `oShell.Run """${esc(process.execPath)}"" ""${esc(daemonPath)}"", 0, False`,
-      ].join('\r\n'), 'utf8');
-      // cmd /c start /b creates a new process group outside the MSYS2 session.
-      // Plain spawn('wscript.exe', ...) with detached:true is still tracked by MSYS2's
-      // process group, so bash waits for it. cmd's START /b breaks out of the group.
-      const ws = spawn('cmd.exe', ['/c', 'start', '/b', '/min', 'wscript.exe', vbsPath], {
-        stdio: 'ignore', detached: true, windowsHide: true,
-      });
-      ws.unref();
+      // On Windows, any spawn() from MSYS2/Git Bash is tracked in the process group — the shell
+      // waits for all descendants even with detached:true+unref(). The Go launcher binary
+      // (orchestrator.exe) is designed to detach itself cleanly on Windows, so prefer it.
+      // Fall back to wscript.exe SW_HIDE when the launcher is absent (dev / raw install).
+      const launcherPaths = [
+        path.join(__dirname, 'orchestrator.exe'),
+        // Platform package installed alongside the main package (global install)
+        path.join(__dirname, '..', '..', '..', '@wadeck-app', 'orchestrator-cli-win32-x64', 'orchestrator.exe'),
+        path.join(__dirname, '..', 'launcher-go', 'dist', 'orchestrator_windows_release.exe'),
+      ];
+      const launcherPath = launcherPaths.find(p => fs.existsSync(p));
+      if (launcherPath) {
+        const ws = spawn(launcherPath, [configDir], { stdio: 'ignore', detached: true, windowsHide: true });
+        ws.unref();
+      } else {
+        const esc = (s: string): string => s.replace(/"/g, '""');
+        const vbsPath = path.join(configDir, 'orchestrator-start.vbs');
+        fs.writeFileSync(vbsPath, [
+          'Dim oShell',
+          'Set oShell = CreateObject("WScript.Shell")',
+          `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
+          `oShell.Run """${esc(process.execPath)}"" ""${esc(daemonPath)}"", 0, False`,
+        ].join('\r\n'), 'utf8');
+        const ws = spawn('cmd.exe', ['/c', 'start', '/b', '/min', 'wscript.exe', vbsPath], {
+          stdio: 'ignore', detached: true, windowsHide: true,
+        });
+        ws.unref();
+      }
     } else {
       const child = spawn(process.execPath, [daemonPath], {
         detached: true,
