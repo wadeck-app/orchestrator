@@ -300,7 +300,11 @@ export class Scheduler extends EventEmitter {
             try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
             this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
           }
-        }).catch(() => { clearInterval(resourceTimer!); });
+        }).catch((err: unknown) => {
+          const reason = err instanceof Error ? err.message : String(err);
+          jobLogger.write(`[resource-monitor] Failed to get metrics: ${reason}`);
+          clearInterval(resourceTimer!);
+        });
       }, 2000);
     }
     child.stdout?.on('data', (d: Buffer) => {
@@ -381,7 +385,10 @@ export class Scheduler extends EventEmitter {
     });
 
     if (job.triggerMode !== 'wait') {
-      done.catch(() => {});
+      done.catch((err: unknown) => {
+        const reason = err instanceof Error ? err.message : String(err);
+        jobLogger.write(`[error] Job promise rejected (fire-and-forget): ${reason}`);
+      });
       return { pid };
     }
 

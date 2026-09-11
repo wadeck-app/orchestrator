@@ -1,8 +1,37 @@
 # Lessons learned
 
-<!-- Last updated: 2026-09-05T20:38:55.580Z -->
+<!-- Last updated: 2026-09-11T18:56:47.196Z -->
 
 ## Recurring feedback
+
+<!-- session cadd0777 2026-09-11 -->
+- Long session gap (22:57 2026-09-10 → 06:17 2026-09-11) with repeated npm version checks suggests agent was blocking/waiting on external CI/publish rather than using sleep intervals. Heavy polling of single command rather than deferring to eventual notification.
+
+<!-- session b437c52a 2026-09-11 -->
+- Session created 6 ad-hoc test scripts (.js files) to verify behavior incrementally (test-npm-view.js, test-engine-check.js, test-updater-integration.js, etc.) instead of adding unit tests; suggests test coverage for cross-version compatibility is weak or hard to automate.
+
+<!-- session 6f352580 2026-09-11 -->
+- Package publication verified via manual polling loop across many commits instead of relying on CI publish signal as completion marker
+- User had uncommitted changes in tray-manager.ts and .claude/lessons-learned.md at session start; agent pursued investigation and eventually made an edit to tray-manager.ts, but the actual problem statement and resolution rationale are not captured in this chunk.
+
+<!-- session 6502de66 2026-09-11 -->
+- User corrected required output format in transcript — future lesson-extraction tasks should strictly use only: [Recurring feedback], [Agent errors], [Documentation gaps], [Known constraints] patterns
+
+<!-- session 10054f73 2026-09-11 -->
+- After `git commit`, use `/poll-ci` skill to track CI runs rather than polling `npm view` repeatedly.
+
+<!-- session fce7fac0 2026-09-11 -->
+- violations checks used grep filters to suppress known violations rather than running comprehensive checks — masked real violations and relied on suppression list being correct.
+- Multiple commits pushed after violations check with selective grep filtering and incomplete coverage — should run `violations check` without suppression.
+
+<!-- session 8bb7c278 2026-09-11 -->
+- Proper pattern emerged: file edit → build check → violations check → test → commit — agent verified changes at each step before proceeding.
+
+<!-- session c670db16 2026-09-11 -->
+- Polling loops with fixed 8-10s intervals for npm package availability inefficient; multiple version checks (v196→v199→v200→v201→v202→v203) burn cycles
+
+<!-- session 508a6a16 2026-09-08 -->
+- `orch start` blocks in Git Bash/MSYS2 for ~30s even with process.exit(0) and Go launcher. Root cause: MSYS2 tracks ALL descendants via Windows Job Object — no spawn approach escapes this. Always prefer `orch restart` (IPC → returns immediately) for interactive sessions. Only use `orch start &` (background) for cold-start from bash.
 
 <!-- session 9bc60855 2026-09-05 -->
 - Invisible Node.js stderr in hidden process must be captured to daemon logs. Startup errors were lost because uncaught exceptions/unhandled rejections not wired to logger before crash.
@@ -36,6 +65,95 @@
 - Repeated pattern of push → sleep 10-90s → retry broken CI checks. Agent doesn't have working CI polling despite poll-ci skill being available. Consider automatic fallback to poll-ci skill when GitHub MCP tools fail.
 
 ## Agent errors
+
+<!-- session cadd0777 2026-09-11 -->
+- poll-ci skill invoked 3+ times but consistently marked "NOT YET KNOWN" in command log — suggests skill definition not loading or parameters not recognized; skill calls appear to run but warnings indicate misconfiguration.
+- Explore agent's initial investigation focused on EBADENGINE and Node version engine mismatches (16:17–16:18), but actual issue was platform launcher package resolution—initial hypothesis was misdirected.
+
+<!-- session 72227cdf 2026-09-11 -->
+- poll-ci skill + mcp__github-wadeck-app__actions_* tools return "NOT YET KNOWN" across 6+ commit pushes (22:35, 22:42, 22:55, 07:31, 07:38, 09:51); tools not working—stop attempting CI polling
+- Fallback to tight-loop npm view polling (10+ calls per 60-90s) instead of long-interval waits; npm publish latency is 8+ minutes, tight polling wastes quota
+- Multiple edits to `updater/entry.ts` (3+ attempts) suggests agent wasn't clear on correct launcher binary resolution approach; settled on platform package dynamic require.
+- Six temporary test files created (`test-engine-check.js`, `test-npm-view.js`, `test-bundler.js`, `test-updater-integration.js`, etc.) for investigation—unclear if cleanup happened or files committed.
+
+<!-- session b437c52a 2026-09-11 -->
+- poll-ci skill showed "NOT YET KNOWN" warnings (13+ instances across v196→v203 commits); agent fell back to manual `npm view` polling instead of using poll-ci correctly
+- Long session gaps (22:55:23 → 06:17:40 next day → 06:20:55 → 07:31:16 → 09:18:23 → 16:13:56) suggest user had to return manually rather than agent using ScheduleWakeup to self-pace during external waits (CI runs, npm publish delays)
+- Explore agent read compiled .js files from node_modules/@wadeck-app/shared-updater/dist/ instead of locating source files in packages/orchestrator-cli/src; spent time investigating dead ends when the root issue was require.resolve() misuse for platform-specific launcher binaries.
+- Explore agent did not quickly identify that @wadeck-app/orchestrator-cli-win32-x64 platform package needed to be resolved separately; session eventually discovered this by examining node_modules structure and file listings directly.
+
+<!-- session 640db411 2026-09-11 -->
+- poll-ci skill invoked 13+ times with persistent "*** NOT YET KNOWN ***" warnings; agent continued without validation or explicit error handling
+- agent-browser element finding required multiple trial-and-error strategies per element (snapshots, role queries, eval, index-based clicking); UI selectors not reliably documented or stable
+
+<!-- session f0424294 2026-09-11 -->
+- Attempted multiple sequential CI polling calls and npm version checks with `poll-ci` skill showing "*** NOT YET KNOWN ***" warnings repeatedly — should have investigated tool configuration or waited for single completion notification instead of polling 15+ times.
+- Searched for Go launcher binary in global npm paths with repeated `ls` commands to find orchestrator.exe, then used manual `cp dist/cli.js` workaround instead of `npm install -g` — should have understood platform-specific package layout upfront (orchestrator-cli-win32-x64 is a separate dependency).
+- Tested `orch start` with multiple hypothesis-driven approaches (timeout, time, direct calls) rather than diagnosing root cause first (MSYS2 Job Object tracking mentioned in prior session).
+
+<!-- session 7f6ab7ea 2026-09-11 -->
+- Polling loop for npm package availability: checked `npm view @wadeck-app/orchestrator-cli version` every 7-10s across four separate time windows (22:43-22:57, 07:32-07:34, 07:40-07:41, 09:52-09:54) instead of using ScheduleWakeup + noop pattern; blocks context with repetitive queries.
+- poll-ci skill returned "NOT YET KNOWN" repeatedly (22:35:08 onwards, 22:42:05, 22:55:23, 07:31:39, 07:39:03, 09:51:00); schema load or invocation pattern appears broken.
+- Explore agent read multiple bundled dist files from node_modules/@wadeck-app/shared-updater (with-daemon.js, without-daemon.js, npm.js, state.js, lock.js, log.js, config.js) without clear hypothesis — unfocused search before narrowing to tray-manager source.
+- Searched for "EBADENGINE" string in project source code and markdown docs — EBADENGINE is a system/npm error, not user code; misaligned symptom-to-search.
+
+<!-- session 6f352580 2026-09-11 -->
+- Poll-ci skill invocations showed repeated "NOT YET KNOWN" MCP tool warnings — tool schema caching may not work across multiple uses
+- Extensive exploration of shared-updater internals and multiple repeated `npm view` calls for engine version checking across many orchestrator-cli versions suggests agent may have been searching broadly instead of targeting root cause directly; unclear if this path was necessary vs. a rabbit hole.
+
+<!-- session 0f93887d 2026-09-11 -->
+- After commits, agent falls back to manual `npm view @wadeck-app/orchestrator-cli version` polling (20+ checks over 5+ min) instead of using poll-ci to wait for publish — indicates either skill failure goes silent or agent doesn't trust async completion mechanisms.
+- Browser automation queries retry multiple times with escalating strategies (snapshot grep → element selector → eval) to find UI elements like "Run early" button — suggests selectors/element IDs are unstable or agent doesn't know stable DOM query patterns.
+- Explore agent read compiled .d.ts and .js files from node_modules/@wadeck-app/shared-updater instead of source — not actionable; should have targeted source files in packages/ directly.
+- Extended grep fishing ("EBADENGINE", "rollback" patterns in .md files) without explicit problem hypothesis first — burned context before the actual issue (Node engine version + startup behavior) was framed.
+
+<!-- session 6502de66 2026-09-11 -->
+- `poll-ci` skill invoked multiple times with "NOT YET KNOWN" status, suggesting skill definition or context loading issue — appeared on commits 200311a, 6c9c9b3, 8d72132
+- GitHub API calls (mcp__github-wadeck-app__actions_list, mcp__github-wadeck-app__get_job_logs) repeatedly returned "NOT YET KNOWN", indicating tools were not properly loaded in agent context
+- Agent read tray-manager.ts in 50-line chunks (lines 200-250, 260-310, etc.) instead of grepping for the target or reading the full file once—inefficient search pattern for a bounded file.
+
+<!-- session 10054f73 2026-09-11 -->
+- Launcher binary location search required trial-and-error across multiple paths (`npm root -g`, platform subdirs) before finding correct pattern.
+
+<!-- session fce7fac0 2026-09-11 -->
+- poll-ci skill repeatedly invoked but failed as "NOT YET KNOWN" — caused fallback to `npm view` polling loops instead of escalating the failure.
+
+<!-- session fe32e78e 2026-09-11 -->
+- Used manual polling loop (repeated `npm view` calls) instead of recognizing pattern as publishable polling task; poll-ci skill was invoked but showed "NOT YET KNOWN" warnings instead of properly executing.
+- Output format violated required structure at start of chunk — assistant produced malformed findings instead of adhering to strict format specification before user correction.
+
+<!-- session c670db16 2026-09-11 -->
+- poll-ci skill invocations show repeated "NOT YET KNOWN" warnings followed by multiple MCP retry attempts; skill/tool not initialized before first use
+
+<!-- session 703a40e4 2026-09-11 -->
+- Launcher binary path (`orchestrator-cli-win32-x64/orchestrator.exe`) required multiple directory searches across npm package structure before being found; path calculation should assume platform-specific package layout from the start.
+- Browser element selection for "Run early" button required multiple retry strategies (`snapshot -i`, enumerated clicks `@e6`, attribute selectors) before finding working approach; UI query API not well understood upfront.
+
+<!-- session f09d03c6 2026-09-11 -->
+- `poll-ci` skill invoked multiple times but marked "NOT YET KNOWN"; deferred tool loading blocked CI monitoring, causing fallback to manual polling.
+- Multiple `mcp__github-wadeck-app__actions_list` calls failed with "NOT YET KNOWN" status; tool schemas were not fetched before invocation, generating noise without value.
+- Relied on manual npm version polling (~8s intervals × 13+ checks per version) instead of intelligent wait strategy; no early termination or batch checking.
+
+<!-- session 63e78bdf 2026-09-11 -->
+- poll-ci skill and mcp__github-wadeck-app__actions_* tools repeatedly warned "NOT YET KNOWN" across 4+ commit pushes (22:35, 22:42, 22:55, 07:31, 07:38, 09:51). Assistant attempted polling after each push without checking availability first or understanding why it failed. No fallback or retry logic observed.
+- Go launcher path resolution (07:36:40) wasn't validated before use — assistant had to manually construct and verify the path with sed and ls commands after implementation, indicating insufficient upfront validation of the calculated path string.
+- Browser automation retries (07:43:56–07:46:26) struggled finding "Run early" button — tried snapshot -i, click @e6, eval in sequence, suggesting element selector or timing issues not diagnosed upfront.
+
+<!-- session 7d180be6 2026-09-11 -->
+- Polling loop instead of ScheduleWakeup: checked `npm view @wadeck-app/orchestrator-cli version` every 7-10s repeatedly across multiple time windows (22:43-22:57, 07:32-07:34, 07:40-07:41, 09:52-09:54) instead of using ScheduleWakeup tool for package publish waits
+- Deferred tool schemas not pre-loaded: attempted poll-ci skill and mcp__github-wadeck-app__* MCP tools without calling ToolSearch first; resulted in "NOT YET KNOWN" warnings (22:35:08 onwards, repeated throughout session)
+
+<!-- session bc8809c2 2026-09-11 -->
+- Launcher binary path (`orchestrator-cli-win32-x64/orchestrator.exe`) required multiple directory searches before being found; path calculation assumes platform-specific npm package structure but this wasn't self-evident.
+- Violations check filtering uses fragile negative patterns (`grep -v "no-emoji\|→\|docs/out-of-scope\|cli.ts:10[89]"`) to suppress false positives; output format not well understood, leading to trial-and-error filtering.
+
+<!-- session 28b5e191 2026-09-11 -->
+- Assistant tried to use `poll-ci` skill and GitHub Actions MCP tools multiple times with "NOT YET KNOWN" warnings — indicates skill/tool config or availability issue at session start.
+- Misdiagnosed visible terminal windows from `orch restart` as a daemon restart bug; actually caused by Chrome background scrapers lacking `windowsHidden` flag — root cause unrelated to orchestrator code.
+
+<!-- session 366dda51 2026-09-11 -->
+- Repetitive polling instead of ScheduleWakeup: assistant checked `npm view @wadeck-app/orchestrator-cli version` every 8s for 7+ minutes waiting for package publish (timestamps 22:43-22:57, 07:32-07:41, 07:40-07:49, 09:52-09:54), burning cache repeatedly. Should delegate to ScheduleWakeup with 300s+ intervals for external publishing waits.
+- Over-reliance on manual browser testing for feature validation: used agent-browser to take screenshots and manually click through UI (Run early button, logs button, list/grid toggle) rather than confirming tests existed or using automated verification. No clear evidence tests were written to cover the new "Logs button" feature before manual browser validation.
 
 <!-- session 9bc60855 2026-09-05 -->
 - Log location not initially known — assistant searched many paths before user corrected: `~/.config/orchestrator` is the standard config dir. Should be documented in CLAUDE.md or threat-model.
@@ -91,6 +209,62 @@
 
 ## Documentation gaps
 
+<!-- session cadd0777 2026-09-11 -->
+- No pre-existing test utilities for engine/updater verification; agent created test-engine-check.js, test-npm-view.js, test-bundler.js from scratch to debug and validate fixes.
+- Missing @types/semver initially despite semver import in updater/entry.ts—required install step at 18:08:31 after build failures.
+
+<!-- session 72227cdf 2026-09-11 -->
+- Windows process detach behavior (orch start should return immediately) not documented; required manual investigation of registry + timing
+- Windows registry startup path (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) and platform-specific launcher package naming (`@wadeck-app/orchestrator-cli-win32-x64`) require tracing through code; no inline docs.
+- Semver engine compatibility check integration into updater wasn't explicit—agent traced through imports to understand new dependency requirement.
+
+<!-- session b437c52a 2026-09-11 -->
+- Platform-specific launcher binary resolution (orchestrator-cli-win32-x64, orchestrator-cli-darwin-arm64) is complex and not documented; no reference in .claude docs explaining how _PLATFORM_PKG or require.resolve should work for these binaries.
+- Updater's engine compatibility check logic is missing from docs; session discovered it must validate Node.js semver constraints (via shared-updater) before executing scripts, but this contract is not explained in daemon-config.md or guiding-principles.md.
+
+<!-- session f0424294 2026-09-11 -->
+- UI feature implementation (Logs button on job cards) required cross-package navigation (cli → orch-server → LogViewer → ScheduleTimeline → JobCard/JobCardGrid) with grep-based pattern searching — architectural relationships between packages and feature flows should be documented.
+
+<!-- session 7f6ab7ea 2026-09-11 -->
+- Session required manually unzipping downloaded orchestrator.zip and inspecting daemon/tray logs to debug field issue — no captured error logs, no troubleshooting guide for engine version mismatches or startup failures.
+
+<!-- session 6f352580 2026-09-11 -->
+- Violations check filtering requires manual grep per file subset — no documented pattern for scoped checks to only modified files
+- No clear guidance on Node.js engine version constraints strategy, version progression rules, or troubleshooting process for EBADENGINE/engine mismatch errors; required agent to reverse-engineer through npm registry queries and git history.
+
+<!-- session 0f93887d 2026-09-11 -->
+- Node engine version requirement changes (Node 20 vs Node 22) across releases are not documented; user had to manually npm view multiple versions to trace when it changed.
+
+<!-- session 6502de66 2026-09-11 -->
+- Engine version requirements (Node 20 vs 22) and rollback behavior scattered across shared-updater, self-check.ts, startup.ts, tray-manager.ts with no single source of truth; required multi-file investigation to understand.
+
+<!-- session 1572ed6f 2026-09-11 -->
+- Windows launcher selection logic (cli.ts launcher path calculation, Go vs VBS fallback) required multiple edits across the session, suggesting design complexity or unclear strategy; document or refactor to reduce iteration cycles.
+
+<!-- session 10054f73 2026-09-11 -->
+- DashboardManager initialization pattern requires codebase exploration; not evident from imports/exports alone.
+
+<!-- session c670db16 2026-09-11 -->
+- Go launcher binary requirement for Windows `orch start` detach (discovered via trial: `orchestrator.exe` in platform package) not documented; was found empirically
+
+<!-- session 703a40e4 2026-09-11 -->
+- Log command integration with `CliMetaCommands` from `@wadeck-app/shared-cli` required reading node_modules package definition to understand pattern; should be documented in project guide or type definitions.
+
+<!-- session f09d03c6 2026-09-11 -->
+- Deferred tools in system-reminder are listed but no guidance on when/how to invoke ToolSearch before calling them; led to repeated "NOT YET KNOWN" errors.
+
+<!-- session eee06f9b 2026-09-11 -->
+- agent-browser element selection shows fallback from semantic selectors (--name) to positional selectors (button index); lacks guidance on reliable selector strategies for dynamic/rendered components.
+
+<!-- session c1c0a1ab 2026-09-11 -->
+- The daemon log path location used by tests and CLI changed; tests reference this path but tests.md or cli.ts don't document the path scheme for future updates.
+
+<!-- session bc8809c2 2026-09-11 -->
+- Platform-specific npm package naming convention (`@wadeck-app/orchestrator-cli-win32-x64`) for native binaries not documented; Go launcher bundling strategy unclear until runtime discovery.
+
+<!-- session 28b5e191 2026-09-11 -->
+- Session showed ~1-minute polling cycle checking npm package versions (v199→v200→v201→v202→v203); no clear guidance on expected publish latency or how long to wait between checks.
+
 <!-- session 9bc60855 2026-09-05 -->
 - Agent fork invoked `write-doc` skill which reported "NOT YET KNOWN" (07:40:12, 08:12:21) but recovered by using Write tool; suggests agent skill registry may not be current or skills not pre-loaded into fork context.
 - entries.tsx generation pipeline not documented — cost ~10 grep/find iterations to discover it comes from @wadeck-app/dsl-renderer in capability-framework; no documentation on generator requirements for component Props naming (must be XxxProps, not Props)
@@ -126,6 +300,96 @@
 - ToolSearch workflow for deferred MCP tools is unclear — multiple attempts to search for tools returned NOT YET KNOWN despite tools being in deferred list; no clear guidance on when/how to load schemas for MCP tools
 
 ## Known constraints
+
+<!-- session cadd0777 2026-09-11 -->
+- npm publish to GitHub Packages is asynchronous; `npm view` polls show multi-minute delays before version appears in registry. Agent polled repeatedly (v196→v199→v200→v201) waiting for publish completion.
+- Launcher binary resolution requires careful interplay: platform-specific optionalDependencies in package.json, require.resolve() in startup.ts, and compiled output consistency in dist/. Fixing one place (entry.ts) required synchronizing tray-manager.ts and scheduler.test.js.
+
+<!-- session 72227cdf 2026-09-11 -->
+- Platform-specific package path (@wadeck-app/orchestrator-cli-win32-x64) not discoverable from install dir structure—requires glob or inspection of node_modules
+- Windows scheduler test has platform-specific killJob behavior requiring conditional assertions (test skip/modification at line 290+).
+- Node engine version checks critical for updates (Node 20 vs 22); multiple npm view calls needed to verify engine field compatibility across versions.
+
+<!-- session b437c52a 2026-09-11 -->
+- Waiting for npm package publication: manual repeated polling with `npm view @wadeck-app/orchestrator-cli version` (every 7-10s) used for v196, v199, v200, v201, v203 — indicates poll-ci skill was not functional or not invoked properly
+- Windows scheduler test requires platform-aware mocking for process termination (kill behavior differs from Unix); the fix involves checking process.platform in test mocks, not just abstracting killJob().
+
+<!-- session 640db411 2026-09-11 -->
+- bash.exe.stackdump in working tree indicates crash event; timing, cause, and recovery steps not evident from command log
+
+<!-- session f0424294 2026-09-11 -->
+- Windows process detaching requires Go launcher (orchestrator.exe) as primary approach with VBScript fallback; platform-specific binaries are in separate npm packages (orchestrator-cli-win32-x64) not in main dist folder.
+
+<!-- session 7f6ab7ea 2026-09-11 -->
+- Browser automation selector discovery: agent-browser required multiple trial attempts (snapshot -i, click @e6, find role button click, eval) to locate "Run early" and "Toggle list view" buttons; best-practice selector pattern unclear from available docs.
+- Multiple npm view commands for versions 2026.9.10-199 through 2026.8.29-040 checking engine specs suggest Node >=22 constraint was added recently; no clear commit or changelog entry for the change.
+
+<!-- session 6f352580 2026-09-11 -->
+- Dashboard server lifecycle requires hardcoded port 47950, explicit config state resets (echo "stale" > config.dashboard), and empirically-tuned sleep durations instead of active readiness detection
+- Windows development: platform package binary path calculation requires Unix→Windows path conversion (sed 's|/|\\\\|g') from npm root -g output
+- Node.js engine version compatibility (Node 20 vs 22) is a known pain point requiring investigation of package.json engine fields, npm registry, daemon/tray logs, and git history; consider consolidating engine strategy documentation.
+
+<!-- session 0f93887d 2026-09-11 -->
+- poll-ci skill invocations return "*** NOT YET KNOWN ***" warnings repeatedly (commits c93beda, 200311a, 5d5859b, 6c9c9b3, 8d72132) followed by GitHub MCP tool warnings — verify tool/skill availability before relying on CI polling.
+- Startup-at-login feature in tray-manager.ts has issues with Node version compatibility or daemon state; actual logs examined from ~/.orchestrator config dump, not from active session logs.
+
+<!-- session 6502de66 2026-09-11 -->
+- npm publish to GitHub Packages requires repeated polling; manual `npm view` checks ran ~15 times per commit to wait for version propagation — expected delay, but highlights need for async polling pattern or timeout tolerance
+- npm view commands across different @wadeck-app/orchestrator-cli versions fail or return unexpected engine constraints—not documented in lessons-learned as a known investigation pattern or blockers.
+
+<!-- session 1572ed6f 2026-09-11 -->
+- CI monitoring via poll-ci tool repeatedly calls list_workflow_jobs with 8-10s intervals across multiple rounds; consider batch queries or exponential backoff instead of tight polling cycles.
+
+<!-- session 10054f73 2026-09-11 -->
+- Platform-specific npm packages (e.g., `@wadeck-app/orchestrator-cli-win32-x64`) distribute compiled binaries; launcher path must be calculated from `npm root -g` at runtime.
+- Dashboard config state (version, stale flag) persisted in config files (`config.dashboard`, `config.port`); force-refresh requires writing "stale" marker before restart.
+
+<!-- session fce7fac0 2026-09-11 -->
+- No async notification for GitHub Packages publishes; extended polling loops indicate waiting for CI completion with only synchronous polling available.
+
+<!-- session 8bb7c278 2026-09-11 -->
+- Heavy polling of npm registry version checks (20+ repetitions of `npm view @wadeck-app/orchestrator-cli version`) to wait for package publication — inefficient pattern; consider using GitHub release/tag webhooks or CI notification instead.
+- MCP tool schemas must be fetched before calling (poll-ci, mcp__github-wadeck-app__actions_list, mcp__github-wadeck-app__get_job_logs repeatedly marked "NOT YET KNOWN").
+
+<!-- session 7ea07a3f 2026-09-11 -->
+- Windows Go launcher (orchestrator.exe) path must be calculated at runtime from npm root for platform-specific package (@wadeck-app/orchestrator-cli-win32-x64); fallback to VBS required if launcher unavailable.
+
+<!-- session fe32e78e 2026-09-11 -->
+- Skills invoked with "*** NOT YET KNOWN ***" indicate tool schemas were unavailable; assistant should proactively use ToolSearch to load schema before attempting to invoke unfamiliar skills or deferred tools.
+
+<!-- session c670db16 2026-09-11 -->
+- Windows Git Bash forward-slash encoding breaks cmd.exe `/PID` arguments (converted to file path); use `powershell.exe -c` directly for process control on Windows
+- Agent-browser uses hard-coded sleep delays (`sleep 2000`, `sleep 8`) instead of event-based waits; tests are brittle to timing
+
+<!-- session 703a40e4 2026-09-11 -->
+- Package version polling required repeated `npm view @wadeck-app/orchestrator-cli version` calls with ~8-10s intervals over multiple minutes; waiting for publish is slow and polling should be replaced with event-driven or timeout-based strategy.
+
+<!-- session f09d03c6 2026-09-11 -->
+- UI element interaction testing required multiple selector strategies (snapshot→eval→click) to reliably locate buttons; no stable test IDs or role-based selectors observed, forcing workarounds.
+
+<!-- session b6fbe6dc 2026-09-11 -->
+- npm package publishing delays 8+ hours; session polled `npm view @wadeck-app/orchestrator-cli version` 15+ times sequentially instead of using event-driven wait or CI notification mechanism.
+
+<!-- session 63e78bdf 2026-09-11 -->
+- Manual npm version polling (repeated `npm view @wadeck-app/orchestrator-cli version` every 7-8s) used instead of automated CI watch — inefficient and burned context waiting for package publish (~1-2 min waits per release cycle).
+
+<!-- session 7d180be6 2026-09-11 -->
+- Session disconnection/resume over 7+ hours (22:57:49 → 06:17:40 next day) caused redundant polling for same package version after reconnection; suggests tool schema cache reset across session boundaries
+
+<!-- session eee06f9b 2026-09-11 -->
+- npm package publishing delays lead to inefficient polling cycles (7-9s intervals over multiple minutes); future sessions should use longer backoff or event-based triggers instead of tight polling loops.
+
+<!-- session c1c0a1ab 2026-09-11 -->
+- Windows Go launcher (orchestrator.exe) path must be calculated at runtime from npm root for platform-specific package (@wadeck-app/orchestrator-cli-win32-x64); fallback to VBS required if binary absent.
+
+<!-- session bc8809c2 2026-09-11 -->
+- npm package publish has variable delays; agent polls 10+ times after commits waiting for version bump to appear, suggesting no clear feedback on publish readiness.
+
+<!-- session 28b5e191 2026-09-11 -->
+- Multiple permission prompts for git-commit-push required external bypass requests; consider pre-authorizing in settings if pattern repeats.
+
+<!-- session 366dda51 2026-09-11 -->
+- Long session with 7+ hour gap (22:57 Sept 10 → 06:17 Sept 11) suggests async polling across sleep cycles — assistant correctly resumed work but polling pattern remained inefficient on resume.
 
 <!-- session 9bc60855 2026-09-05 -->
 - Launcher only checks `config.restart` sentinel if daemon exits with code 0. Exit code 1 (crash) skips restart logic — can leave daemon dead without relaunch.

@@ -147,7 +147,11 @@ export class TrayProcess {
         });
       });
     });
-    this._sendQueue = next.catch(() => {});
+    this._sendQueue = next.catch((err: unknown) => {
+      const reason = err instanceof Error ? err.message : String(err);
+      // Log via console as tray-process is remote process; errors here typically mean tray-go crashed
+      console.error(`[tray-process] send() failed: ${reason}`);
+    });
     return next;
   }
 
