@@ -124,7 +124,12 @@ Dashboard:
   orch server status           Show dashboard server status and URL
 
 Logs:
-  orch logs [--follow]         Read today's orchestrator log file; --follow tails it
+  orch logs [--follow] [--job <id>] [--tail <N>] [--json]
+                               Read today's orchestrator or job log file
+                               --follow     Tail log in real-time (Ctrl+C to stop)
+                               --job <id>   Show logs for specific job (default: daemon logs)
+                               --tail <N>   Show last N lines (default: all)
+                               --json       Output as JSON (timestamp + message per line)
 
 Global flags:
   --json                       Force JSON output
@@ -743,19 +748,56 @@ Use --wait to block until the command finishes.`);
     // which aggregates daemon events, tray actions, and dashboard messages.
     // Note: cliLogsCommand reads the CLI invocation ndjson -- use our own reader here.
     case 'logs': {
-      warnUnknownArgs(rest, ['--follow', '-f'], 'orch logs');
+      const followFlags = ['--follow', '-f'];
+      const jobFlag = flag(rest, '--job');
+      const tailFlag = flag(rest, '--tail');
+      const sinceFlag = flag(rest, '--since');
+      const jsonFlag = has(rest, '--json');
+      warnUnknownArgs(rest, [...followFlags, '--job', '--tail', '--since', '--json'], 'orch logs');
       const follow = has(rest, '--follow') || has(rest, '-f');
+      const tailLines = tailFlag ? parseInt(tailFlag, 10) : undefined;
+      const json = jsonFlag || !process.stdout.isTTY;
+
       const today   = new Date().toISOString().slice(0, 10);
-      const logFile = path.join(configDir, 'logs', 'daemon', `daemon-${today}.log`);
+      let logFile: string;
+      if (jobFlag) {
+        logFile = path.join(configDir, 'logs', 'jobs', jobFlag, `${jobFlag}-${today}.log`);
+      } else {
+        logFile = path.join(configDir, 'logs', 'daemon', `daemon-${today}.log`);
+      }
+
       const fsLogs  = require('node:fs') as typeof import('node:fs');
       if (!fsLogs.existsSync(logFile)) {
-        process.stdout.write(`No daemon log for today: ${logFile}\n`);
+        const msg = jobFlag
+          ? `No logs for job "${jobFlag}" today`
+          : `No daemon logs for today`;
+        process.stdout.write(json ? JSON.stringify({ message: msg }) + '\n' : msg + '\n');
         if (!follow) return;
       }
+
+      const parseLines = (content: string): string[] => {
+        let lines = content.split('\n').filter(l => l);
+        if (tailLines !== undefined) lines = lines.slice(Math.max(0, lines.length - tailLines));
+        return lines;
+      };
+
       let offset = 0;
       if (fsLogs.existsSync(logFile)) {
         const content = fsLogs.readFileSync(logFile, 'utf8');
-        process.stdout.write(content);
+        const lines = parseLines(content);
+        if (json) {
+          for (const line of lines) {
+            const match = line.match(/\[([\d-: ]+)\] (.*)/);
+            if (match) {
+              console.log(JSON.stringify({ timestamp: match[1], message: match[2] }));
+            } else {
+              console.log(JSON.stringify({ message: line }));
+            }
+          }
+        } else {
+          process.stdout.write(lines.join('\n'));
+          if (lines.length > 0) process.stdout.write('\n');
+        }
         offset = Buffer.byteLength(content, 'utf8');
       }
       if (!follow) return;
@@ -769,7 +811,20 @@ Use --wait to block until the command finishes.`);
           fsLogs.readSync(fd, buf, 0, buf.length, offset);
           fsLogs.closeSync(fd);
           offset = size;
-          process.stdout.write(buf.toString('utf8'));
+          const newLines = buf.toString('utf8').split('\n').filter(l => l);
+          if (json) {
+            for (const line of newLines) {
+              const match = line.match(/\[([\d-: ]+)\] (.*)/);
+              if (match) {
+                console.log(JSON.stringify({ timestamp: match[1], message: match[2] }));
+              } else {
+                console.log(JSON.stringify({ message: line }));
+              }
+            }
+          } else {
+            process.stdout.write(newLines.join('\n'));
+            if (newLines.length > 0) process.stdout.write('\n');
+          }
         });
         process.on('SIGINT', () => { fsLogs.unwatchFile(logFile); resolve(); });
       });
