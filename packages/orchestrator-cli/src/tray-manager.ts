@@ -455,12 +455,22 @@ export class TrayManager extends EventEmitter {
       case 'startup-toggle': {
         if (this._startupEnabled) {
           this._logAction('[tray] action: start-at-login disabled');
-          disableStartup(this._configDir);
-          this._startupEnabled = false;
+          const result = disableStartup(this._configDir);
+          if (result.ok) {
+            this._startupEnabled = false;
+            this._logAction(`[tray] startup-toggle: disabled (${result.detail})`);
+          } else {
+            this._logAction(`[tray] startup-toggle: disable failed: ${result.error}`);
+          }
         } else {
           this._logAction('[tray] action: start-at-login enabled');
-          enableStartup(this._configDir);
-          this._startupEnabled = true;
+          const result = enableStartup(this._configDir);
+          if (result.ok) {
+            this._startupEnabled = true;
+            this._logAction(`[tray] startup-toggle: enabled (${result.detail})`);
+          } else {
+            this._logAction(`[tray] startup-toggle: enable failed: ${result.error}`);
+          }
         }
         this._refresh();
         break;
