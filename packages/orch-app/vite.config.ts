@@ -13,10 +13,6 @@ export default defineConfig(async () => {
       emptyOutDir: true,
       // Fixed filenames so the running HTTP server never gets stale hash mismatches
       rollupOptions: {
-        // dsl-ui and all its sub-paths are loaded separately by the server —
-        // mark every @wadeck-app/dsl-ui/* specifier external so Rollup never
-        // tries to bundle them (and never hits their devDeps like @radix-ui/*).
-        external: (id: string) => id === '@wadeck-app/dsl-ui' || id.startsWith('@wadeck-app/dsl-ui/'),
         output: {
           entryFileNames: 'assets/index.js',
           chunkFileNames: 'assets/[name].js',
@@ -26,7 +22,10 @@ export default defineConfig(async () => {
     },
     base: '/',
     optimizeDeps: {
-      exclude: ['@wadeck-app/dsl-renderer', '@wadeck-app/dsl-ui'],
+      // dsl-renderer excluded to avoid double-processing its build plugins.
+      // dsl-ui intentionally NOT excluded: Vite must pre-bundle it to handle
+      // CJS interop for its transitive deps (lodash via @radix-ui/*).
+      exclude: ['@wadeck-app/dsl-renderer'],
     },
   };
 });
