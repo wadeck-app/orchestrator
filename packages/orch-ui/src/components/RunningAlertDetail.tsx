@@ -108,7 +108,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
                 {latestRun.pid != null && <span>&middot; PID {latestRun.pid}</span>}
               </div>
             </div>
-            <Button label={killing ? 'Killing...' : 'Kill'} variant="danger" onClick={() => { void handleKill(); }} disabled={killing} />
+            <ButtonAction label="Kill" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
           </div>
         </div>
       ) : (

@@ -118,7 +118,7 @@ export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, 
           ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">
               <span className="text-sm text-content">Are you sure?</span>
-              <Button label={deleting ? 'Deleting...' : 'Yes, delete'} variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
+              <ButtonAction label="Yes, delete" variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
               <ButtonCancel onCancel={() => setConfirmDelete(false)} />
             </div>
         }

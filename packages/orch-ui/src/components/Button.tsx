@@ -29,7 +29,7 @@ export function Button({ label, variant = 'primary', onClick, disabled, loading,
       disabled={disabled ?? loading}
       className={`px-4 py-2 text-sm rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${VARIANT_CLASSES[variant]}`}
     >
-      {loading ? 'Loading...' : label}
+      {label}
     </button>
   );
 }

@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { EnableToggle } from './EnableToggle.js';
 import { TriggerButton } from './TriggerButton.js';
 import { RunHistory } from './RunHistory.js';
-import { Button } from './Button.js';
 import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import type { JobWithHistory } from './JobListSection.js';
 import { getErrorMessage } from '../types.js';
@@ -148,7 +147,7 @@ export function JobDetailSection({ data, jobId }: JobDetailSectionProps): React.
         ) : (
           <div className="flex items-center gap-2">
             <span className="text-sm text-content">Are you sure?</span>
-            <Button label={deleting ? 'Deleting...' : 'Yes, delete'} variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
+            <ButtonAction label="Yes, delete" variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
             <ButtonCancel onCancel={() => setConfirmDelete(false)} />
           </div>
         )}

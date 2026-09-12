@@ -95,7 +95,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
               </>
             )}
           </span>
-          <Button label={killing ? 'Killing...' : 'Kill process'} variant="danger" onClick={() => { void handleKill(); }} disabled={killing} />
+          <ButtonAction label="Kill process" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
         </div>
       )}
 
