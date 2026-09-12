@@ -14,23 +14,44 @@ const MAX_RUN_LOGS  = 100; // keep last 100 run log files per job
 export class RunLogger {
   private readonly _file: string;
   private _fd: number;
+  private _writeError: string | null = null;
 
   constructor(logDir: string, prefix: string, startedAt: string) {
     fs.mkdirSync(logDir, { recursive: true });
     const compact = startedAt.replace(/:/g, '-').slice(0, 19); // YYYY-MM-DDTHH-MM-SS
     this._file = path.join(logDir, `${prefix}-${compact}.log`);
-    this._fd   = fs.openSync(this._file, 'a');
+    try {
+      this._fd = fs.openSync(this._file, 'a');
+    } catch (e) {
+      this._fd = -1;
+      const err = e instanceof Error ? e.message : String(e);
+      this._writeError = `Failed to open log file: ${err}`;
+      try { process.stderr.write(`[RunLogger] ${this._writeError}\n`); } catch { /* EPIPE */ }
+    }
     RunLogger._prune(logDir, prefix);
   }
 
   write(line: string): void {
     const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const entry = `[${ts}] ${line}\n`;
-    if (this._fd >= 0) fs.writeSync(this._fd, entry);
+    if (this._fd >= 0) {
+      try {
+        fs.writeSync(this._fd, entry);
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        if (!this._writeError) {
+          this._writeError = err;
+          try { process.stderr.write(`[RunLogger] Write failed: ${err}\n`); } catch { /* EPIPE */ }
+        }
+      }
+    }
   }
 
   close(): void {
-    if (this._fd >= 0) { fs.closeSync(this._fd); this._fd = -1; }
+    if (this._fd >= 0) {
+      try { fs.closeSync(this._fd); } catch { /* ignore close errors */ }
+      this._fd = -1;
+    }
   }
 
   get filePath(): string { return this._file; }
@@ -56,11 +77,18 @@ export class DailyLogger {
   private readonly _prefix: string;
   private _date = '';
   private _fd:   number | null = null;
+  private _writeError: string | null = null;
 
   constructor(logDir: string, prefix: string) {
     this._dir    = logDir;
     this._prefix = prefix;
-    fs.mkdirSync(logDir, { recursive: true });
+    try {
+      fs.mkdirSync(logDir, { recursive: true });
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this._writeError = `Failed to create log dir: ${err}`;
+      try { process.stderr.write(`[DailyLogger] ${this._writeError}\n`); } catch { /* EPIPE */ }
+    }
     this._rotate();
     this._prune();
   }
@@ -69,11 +97,24 @@ export class DailyLogger {
     this._rotate();
     const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const entry = `[${ts}] ${line}\n`;
-    if (this._fd !== null) fs.writeSync(this._fd, entry);
+    if (this._fd !== null) {
+      try {
+        fs.writeSync(this._fd, entry);
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        if (!this._writeError) {
+          this._writeError = err;
+          try { process.stderr.write(`[DailyLogger] Write failed: ${err}\n`); } catch { /* EPIPE */ }
+        }
+      }
+    }
   }
 
   close(): void {
-    if (this._fd !== null) { fs.closeSync(this._fd); this._fd = null; }
+    if (this._fd !== null) {
+      try { fs.closeSync(this._fd); } catch { /* ignore close errors */ }
+      this._fd = null;
+    }
   }
 
   private _rotate(): void {
@@ -82,7 +123,16 @@ export class DailyLogger {
     this.close();
     this._date = today;
     const file = path.join(this._dir, `${this._prefix}-${today}.log`);
-    this._fd   = fs.openSync(file, 'a');
+    try {
+      this._fd = fs.openSync(file, 'a');
+    } catch (e) {
+      this._fd = null;
+      const err = e instanceof Error ? e.message : String(e);
+      if (!this._writeError) {
+        this._writeError = err;
+        try { process.stderr.write(`[DailyLogger] Failed to rotate: ${err}\n`); } catch { /* EPIPE */ }
+      }
+    }
   }
 
   private _prune(): void {

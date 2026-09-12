@@ -14,44 +14,57 @@ export class State {
 
   private _ensure(): void {
     if (this._cache !== null) return;
-    if (fs.existsSync(this._file)) {
-      const raw = readJsonFile<StateData>(this._file) ?? { jobs: {} };
-      // Migrate legacy single-entry format: { jobs: { id: RuntimeEntry } } -> arrays
-      const migrated: Record<string, RuntimeEntry[]> = {};
-      for (const [id, value] of Object.entries(raw.jobs)) {
-        if (Array.isArray(value)) {
-          migrated[id] = value as RuntimeEntry[];
-        } else if (value && typeof value === 'object') {
-          migrated[id] = [value as RuntimeEntry];
-        }
-      }
-      // Deduplicate entries that share the same startedAt (artifact of the old
-      // record() bug that prepended the in-flight null-exitCode entry AND the final entry).
-      // Keep only the entry with the non-null exitCode; fall back to the first if all are null.
-      for (const id of Object.keys(migrated)) {
-        const seen = new Map<string, RuntimeEntry>();
-        for (const entry of migrated[id]!) {
-          const prev = seen.get(entry.startedAt);
-          if (!prev || (prev.exitCode === null && entry.exitCode !== null)) {
-            seen.set(entry.startedAt, entry);
+    try {
+      if (fs.existsSync(this._file)) {
+        const raw = readJsonFile<StateData>(this._file) ?? { jobs: {} };
+        // Migrate legacy single-entry format: { jobs: { id: RuntimeEntry } } -> arrays
+        const migrated: Record<string, RuntimeEntry[]> = {};
+        for (const [id, value] of Object.entries(raw.jobs)) {
+          if (Array.isArray(value)) {
+            migrated[id] = value as RuntimeEntry[];
+          } else if (value && typeof value === 'object') {
+            migrated[id] = [value as RuntimeEntry];
           }
         }
-        // Preserve original order (most-recent first)
-        migrated[id] = migrated[id]!.filter((e, i, arr) =>
-          arr.findIndex(x => x.startedAt === e.startedAt) === i
-            ? seen.get(e.startedAt) === e
-            : false
-        );
+        // Deduplicate entries that share the same startedAt (artifact of the old
+        // record() bug that prepended the in-flight null-exitCode entry AND the final entry).
+        // Keep only the entry with the non-null exitCode; fall back to the first if all are null.
+        for (const id of Object.keys(migrated)) {
+          const seen = new Map<string, RuntimeEntry>();
+          for (const entry of migrated[id]!) {
+            const prev = seen.get(entry.startedAt);
+            if (!prev || (prev.exitCode === null && entry.exitCode !== null)) {
+              seen.set(entry.startedAt, entry);
+            }
+          }
+          // Preserve original order (most-recent first)
+          migrated[id] = migrated[id]!.filter((e, i, arr) =>
+            arr.findIndex(x => x.startedAt === e.startedAt) === i
+              ? seen.get(e.startedAt) === e
+              : false
+          );
+        }
+        this._cache = migrated;
+      } else {
+        this._cache = {};
+        this._flush();
       }
-      this._cache = migrated;
-    } else {
+    } catch (e) {
+      // On load failure, start with empty cache
       this._cache = {};
-      this._flush();
+      const err = e instanceof Error ? e.message : String(e);
+      try { process.stderr.write(`[State] Failed to load state: ${err}, starting with empty cache\n`); } catch { /* EPIPE */ }
     }
   }
 
   private _flush(): void {
-    atomicWriteJson(this._file, { jobs: this._cache });
+    try {
+      atomicWriteJson(this._file, { jobs: this._cache });
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      try { process.stderr.write(`[State] Failed to flush: ${err}\n`); } catch { /* EPIPE */ }
+      throw e;
+    }
   }
 
   record(id: string, entry: RuntimeEntry): void {

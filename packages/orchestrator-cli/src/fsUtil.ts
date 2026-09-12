@@ -3,16 +3,51 @@ import path from 'node:path';
 
 export function atomicWriteJson(filePath: string, data: unknown): void {
   const dir = path.dirname(filePath);
-  fs.mkdirSync(dir, { recursive: true });
   const tmp = filePath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: 'utf8', flag: 'w', mode: 0o600 });
-  fs.renameSync(tmp, filePath);
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const content = JSON.stringify(data, null, 2);
+      fs.writeFileSync(tmp, content, { encoding: 'utf8', flag: 'w', mode: 0o600 });
+      fs.renameSync(tmp, filePath);
+      return;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      // Cleanup temp file on failure
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+
+      if (attempt < maxRetries) {
+        // Exponential backoff before retry
+        const backoffMs = Math.min(100 * Math.pow(2, attempt - 1), 1000);
+        // eslint-disable-next-line no-console
+        console.error(`[atomicWriteJson] Attempt ${attempt}/${maxRetries} failed (${lastError.message}), retrying in ${backoffMs}ms...`);
+        const end = Date.now() + backoffMs;
+        while (Date.now() < end) {
+          // Busy-wait (sync operation, can't use async)
+        }
+      }
+    }
+  }
+
+  // All retries exhausted
+  const msg = `Failed to write ${filePath} after ${maxRetries} attempts: ${lastError?.message ?? 'unknown'}`;
+  try { process.stderr.write(`[CRITICAL] ${msg}\n`); } catch { /* EPIPE */ }
+  throw lastError ?? new Error(msg);
 }
 
 export function readJsonFile<T>(filePath: string): T | null {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
-  } catch {
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    // Log at debug level (via process.stderr) rather than warning level
+    // to avoid spamming when file simply doesn't exist (ENOENT)
+    if (!err.includes('ENOENT')) {
+      try { process.stderr.write(`[readJsonFile] Failed to read ${filePath}: ${err}\n`); } catch { /* EPIPE */ }
+    }
     return null;
   }
 }
