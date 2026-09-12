@@ -5,8 +5,10 @@
 import sharp from 'sharp';
 import fs   from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const OUT = path.join(import.meta.dirname, '..', 'src', 'tray-icons.ts');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const OUT = path.join(__dirname, '..', 'src', 'tray-icons.ts');
 
 // Supported colors - same as wdrive
 const COLORS = ['#FFFFFF', '#93C5FD', '#6EE7B7', '#FCA5A5', '#FCD34D', '#A5B4FC', '#F9A8D4', '#CBD5E1', '#FED7AA'];
