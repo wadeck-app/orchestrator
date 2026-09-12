@@ -2,13 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Job, RuntimeEntry } from '../types.js';
 import { JobCard } from './JobCard.js';
-import { Button } from './Button.js';
+import { ButtonAction, ChipButton } from '@wadeck-app/dsl-ui';
 import { JobSearchBar } from './JobSearchBar.js';
-
-// @formatter:off
-const CHIP_ACTIVE   = 'px-3 py-1 rounded-full text-sm font-medium bg-primary text-on-primary';
-const CHIP_INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg text-muted border border-border hover:bg-border';
-// @formatter:on
 
 export interface JobWithHistory {
   job: Job;
@@ -87,21 +82,16 @@ export function JobListSection({ jobs }: JobListSectionProps): React.ReactElemen
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-content">Orchestrator Dashboard</h1>
-        <Button label="Add job" onClick={() => navigate('/jobs/new')} />
+        <ButtonAction label="Add job" onClick={() => navigate('/jobs/new')} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <JobSearchBar value={search} onChange={setSearch} />
         <div className="flex gap-2 flex-wrap">
           {filterLabels.map(({ key, label }) => (
-            // violations-suppress: react/no-raw-button filter chip toggle - active/inactive state not supported by Button
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={filter === key ? CHIP_ACTIVE : CHIP_INACTIVE}
-            >
+            <ChipButton key={key} active={filter === key} onClick={() => setFilter(key)}>
               {label}
-            </button>
+            </ChipButton>
           ))}
         </div>
       </div>

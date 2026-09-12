@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChipButton } from '@wadeck-app/dsl-ui';
 
 export type JobFilterType = 'all' | 'cron' | 'startup' | 'once' | 'failed';
 
@@ -15,11 +16,6 @@ const FILTERS: { key: JobFilterType; label: string }[] = [
   { key: 'failed',  label: 'Failed' },
 ];
 
-// @formatter:off
-const ACTIVE   = 'px-3 py-1 rounded-full text-sm font-medium bg-primary text-on-primary';
-const INACTIVE = 'px-3 py-1 rounded-full text-sm font-medium bg-muted-bg text-muted border border-border hover:bg-border';
-// @formatter:on
-
 /**
  * @registryCategory atomic
  * @registryTags filter chips jobs type
@@ -28,10 +24,9 @@ export function JobFilterChips({ selected = 'all', onChange }: JobFilterChipsPro
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {FILTERS.map(({ key, label }) => (
-        // violations-suppress: react/no-raw-button filter chip - active/inactive state not supported by Button
-        <button key={key} onClick={() => onChange?.(key)} className={selected === key ? ACTIVE : INACTIVE}>
+        <ChipButton key={key} active={selected === key} onClick={() => onChange?.(key)}>
           {label}
-        </button>
+        </ChipButton>
       ))}
     </div>
   );

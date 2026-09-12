@@ -2,10 +2,15 @@
   "name": "orchestrator-workspace",
   "private": true,
   "version": "0.0.0",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "deploy": "node scripts/deploy-dev.mjs"
+  },
+  "dependencies": {
+    "@wadeck-app/dsl-ui": "^2026.9.11-022-a61bf7a1"
   }
 }

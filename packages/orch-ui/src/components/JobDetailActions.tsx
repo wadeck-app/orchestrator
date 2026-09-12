@@ -5,6 +5,7 @@ import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
+import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { getErrorMessage } from '../types.js';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
@@ -94,7 +95,7 @@ export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, 
         <span className={typeBadgeCls}>{job.type}</span>
         <JobToggle job={job} />
         {isRunning
-          ? <Button label="Kill" variant="danger" onClick={handleKill} />
+          ? <ButtonAction label="Kill" variant="danger" onClick={handleKill} />
           : <TriggerButton jobId={jobId} onTrigger={handleTrigger} />}
         {isRunning && latestRun && (
           <span className="text-sm text-muted">
@@ -114,11 +115,11 @@ export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, 
           <Button label="Dry run" variant="secondary" onClick={handleDryRun} />
         )}
         {!confirmDelete
-          ? <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
+          ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">
               <span className="text-sm text-content">Are you sure?</span>
               <Button label={deleting ? 'Deleting...' : 'Yes, delete'} variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
-              <Button label="Cancel" variant="secondary" onClick={() => setConfirmDelete(false)} />
+              <ButtonCancel onCancel={() => setConfirmDelete(false)} />
             </div>
         }
       </div>

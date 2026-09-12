@@ -5,6 +5,7 @@ import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
+import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
@@ -108,11 +109,11 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
           ? <Button label="Edit" variant="secondary" onClick={onEdit} />
           : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
         {!confirmDelete
-          ? <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
+          ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">
               <span className="text-sm text-content">Are you sure?</span>
-              <Button label="Yes, delete" variant="danger" onClick={handleDelete} />
-              <Button label="Cancel" variant="secondary" onClick={() => setConfirmDelete(false)} />
+              <ButtonAction label="Yes, delete" variant="danger" onClick={handleDelete} />
+              <ButtonCancel onCancel={() => setConfirmDelete(false)} />
             </div>}
       </div>
     </div>

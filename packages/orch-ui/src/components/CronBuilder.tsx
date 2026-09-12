@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChipButton } from '@wadeck-app/dsl-ui';
 
 type CronFreq = 'minutely' | 'every-n-min' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -88,11 +89,9 @@ export function CronBuilder({ onChange, onClose }: CronBuilderProps): React.Reac
       {freq === 'weekly' && (
         <div className="flex gap-1 flex-wrap">
           {DAYS.map((d, i) => (
-            // violations-suppress: react/no-raw-button day-toggle chip - CronBuilder IS the atomic wizard; toggle chips have no Button variant
-            <button key={d} type="button" onClick={() => setWeekdays(prev => prev.map((v, j) => j === i ? !v : v))}
-              className={`px-2 py-0.5 rounded text-xs border ${weekdays[i] ? 'bg-primary text-on-primary border-primary' : 'border-border text-muted bg-surface'}`}>
+            <ChipButton key={d} active={weekdays[i]} shape="square" onClick={() => setWeekdays(prev => prev.map((v, j) => j === i ? !v : v))}>
               {d}
-            </button>
+            </ChipButton>
           ))}
         </div>
       )}

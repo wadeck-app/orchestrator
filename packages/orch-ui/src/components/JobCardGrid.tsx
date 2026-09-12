@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { Button } from './Button.js';
+import { ButtonAction, IconButton } from '@wadeck-app/dsl-ui';
 import type { Job, RuntimeEntry } from '../types.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
@@ -131,11 +132,8 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
       <div className="flex items-center justify-end gap-2 mb-4">
         {onExport && <Button variant="secondary" label="Export" onClick={onExport} />}
         {onImport && <Button variant="secondary" label="Import" onClick={onImport} />}
-        <Button label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
-        {/* violations-suppress: react/no-raw-button icon-only toggle - Button requires label, icon-only unsupported */}
-        <button onClick={toggleView} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} className="p-2 rounded border border-border bg-surface text-content hover:bg-muted-bg">
-          {viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />}
-        </button>
+        <ButtonAction label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
+        <IconButton icon={viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />} label={viewMode === 'grid' ? 'List view' : 'Grid view'} onClick={toggleView} variant="ghost" />
       </div>
 
       {selected.size > 0 && (
@@ -143,8 +141,8 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
           <span className="text-sm text-muted">{selected.size} selected</span>
           <Button label={`Enable (${selected.size})`} variant="secondary" onClick={handleBulkEnable} />
           <Button label={`Disable (${selected.size})`} variant="secondary" onClick={handleBulkDisable} />
-          <Button label={`Run now (${selected.size})`} variant="primary" onClick={handleBulkTrigger} />
-          <Button label={`Delete (${selected.size})`} variant="danger" onClick={handleBulkDelete} />
+          <ButtonAction label={`Run now (${selected.size})`} variant="primary" onClick={handleBulkTrigger} />
+          <ButtonAction label={`Delete (${selected.size})`} variant="danger" onClick={handleBulkDelete} />
           {/* violations-suppress: react/no-raw-button bulk clear text-link - no Button variant for inline text-link */}
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-muted hover:text-content">Clear</button>
         </div>

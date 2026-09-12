@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import type { Job, MissedFiring, LivenessConfig, LivenessStrategy } from '../types.js';
 import { Button } from './Button.js';
+import { ButtonCancel } from '@wadeck-app/dsl-ui';
 import { FieldText } from './FieldText.js';
 import { FieldNumber } from './FieldNumber.js';
 import { CronBuilder } from './CronBuilder.js';
@@ -344,7 +345,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
       )}
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button label="Cancel" variant="secondary" onClick={onCancel} type="button" />
+        <ButtonCancel onCancel={onCancel} />
         <Button label={loading ? 'Saving...' : 'Save'} variant="primary" type="submit" loading={loading} />
       </div>
     </form>

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, Moon, Sun } from 'lucide-react';
+import { IconButton } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
 const NAV_LINK_ACTIVE = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-content bg-muted-bg font-medium';
-const ICON_BTN_CLS    = 'p-1 rounded text-muted hover:text-content hover:bg-muted-bg transition-colors';
 const THEME_KEY       = 'orch-theme';
 // @formatter:on
 
@@ -67,11 +67,7 @@ export function NavBar(): React.ReactElement {
         </div>
       )}
       {/* violations-suppress: react/no-raw-button icon-only toggle - no Button variant for compact icon-only nav action */}
-      <button onClick={toggleDark} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-        aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-        className={ICON_BTN_CLS}>
-        {dark ? <Sun size={14} /> : <Moon size={14} />}
-      </button>
+      <IconButton icon={dark ? <Sun size={14} /> : <Moon size={14} />} label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleDark} variant="ghost" size="sm" />
     </nav>
   );
 }
