@@ -4,7 +4,6 @@ import { ArrowLeft, Square } from 'lucide-react';
 import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
-import { Button } from './Button.js';
 import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
@@ -103,10 +102,10 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
         )}
         <span className="w-px h-5 bg-border mx-1" />
         {onViewLogs
-          ? <Button label="View logs" variant="secondary" onClick={onViewLogs} />
+          ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
           : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
         {onEdit
-          ? <Button label="Edit" variant="secondary" onClick={onEdit} />
+          ? <ButtonAction label="Edit" variant="secondary" onClick={onEdit} />
           : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
         {!confirmDelete
           ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />

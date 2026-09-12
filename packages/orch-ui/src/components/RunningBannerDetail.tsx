@@ -5,7 +5,7 @@ import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
-import { ButtonCancel } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
@@ -104,10 +104,10 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
         <JobToggle job={job} />
         {!isRunning && <TriggerButton jobId={jobId} onTrigger={handleTrigger} />}
         {onViewLogs
-          ? <Button label="View logs" variant="secondary" onClick={onViewLogs} />
+          ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
           : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
         {onEdit
-          ? <Button label="Edit" variant="secondary" onClick={onEdit} />
+          ? <ButtonAction label="Edit" variant="secondary" onClick={onEdit} />
           : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
         {!confirmDelete
           ? <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />

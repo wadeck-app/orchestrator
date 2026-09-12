@@ -5,7 +5,7 @@ import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
-import { ButtonCancel } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { getErrorMessage } from '../types.js';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
@@ -106,13 +106,13 @@ export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, 
       </div>
       <div className="flex gap-3 flex-wrap mb-4">
         {onViewLogs
-          ? <Button label="View logs" variant="secondary" onClick={onViewLogs} />
+          ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
           : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
         {onEdit
-          ? <Button label="Edit" variant="secondary" onClick={onEdit} />
+          ? <ButtonAction label="Edit" variant="secondary" onClick={onEdit} />
           : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
         {job.dryRunSupported && (
-          <Button label="Dry run" variant="secondary" onClick={handleDryRun} />
+          <ButtonAction label="Dry run" variant="secondary" onClick={handleDryRun} />
         )}
         {!confirmDelete
           ? <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
