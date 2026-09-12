@@ -65,7 +65,7 @@ export class ExecManager {
     };
     this._runs.set(runId, run);
 
-    const tmpDir = ensureTmpDir(this._configDir);
+    const tmpDir = ensureTmpDir(this._configDir, runId);
     const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [command];
     const [bin, ...args] = parts;
     const spawnEnv = opts.env ? { ...process.env, ...opts.env } : undefined;
@@ -81,7 +81,7 @@ export class ExecManager {
     this._pids.set(runId, child);
 
     const logger = new DailyLogger(
-      path.join(this._configDir, 'logs', 'exec'),
+      path.join(this._configDir, 'logs', 'app'),
       runId,
     );
 

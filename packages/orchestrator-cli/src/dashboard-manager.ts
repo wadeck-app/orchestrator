@@ -163,8 +163,9 @@ export class DashboardManager {
       // Use cmd /c start which handles http:// URLs reliably on all Windows versions.
       // explorer.exe with a URL can fail on some Windows 11 configurations when the
       // default browser association is not set up for explorer.exe to delegate.
+      // Wrap URL in quotes to handle special characters and URLs reliably.
       // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
-      execFile('cmd.exe', ['/c', 'start', '', url], (err) => {
+      execFile('cmd.exe', ['/c', 'start', '', `"${url}"`], (err) => {
         if (err) this._log(`[dashboard] open browser failed (cmd /c start "${url}"): ${getErrorMessage(err)}`);
         else this._log(`[dashboard] browser opened successfully`);
       });

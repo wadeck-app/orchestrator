@@ -15,7 +15,7 @@ import type { Job, TriggerSource } from './types.js';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 
-type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv) => ChildProcess;
+type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
 
 interface SchedulerOptions {
@@ -51,7 +51,7 @@ export class Scheduler extends EventEmitter {
     this._registry  = registry;
     this._state     = state;
     // Default spawn is set below after _tmpDir is resolved.
-    this._spawn     = options.spawn     ?? ((cmd, cwd, env) => {
+    this._spawn     = options.spawn     ?? ((cmd, cwd, env, _jobId) => {
       const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
       const [bin, ...args] = parts;
       return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
@@ -65,16 +65,17 @@ export class Scheduler extends EventEmitter {
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
-    // Ensure tmp dir exists; used as default cwd for jobs that don't specify one.
+    // Ensure root tmp dir exists (will create per-job subdirs as needed).
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
     if (!options.spawn) {
-      const tmpDir = this._tmpDir;
-      this._spawn = (cmd, cwd, env) => {
+      const configDir = this._configDir;
+      this._spawn = (cmd, cwd, env, jobId) => {
         const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
         const [bin, ...args] = parts;
+        const jobTmpDir = jobId ? ensureTmpDir(configDir, jobId) : this._tmpDir;
         return nodeSpawn(bin!, args, {
-          cwd: cwd ?? tmpDir,
+          cwd: cwd ?? jobTmpDir,
           windowsHide: true,
           shell: true,
           env: env ?? process.env,
@@ -255,12 +256,12 @@ export class Scheduler extends EventEmitter {
     const jobEnv = (job.env || job.secrets?.length)
       ? { ...process.env, ...job.env, ...secretEnv }
       : undefined;
-    const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv);
+    const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv, job.id);
     const pid   = child.pid ?? null;
 
     // Per-run log: one file per execution — <jobId>-<startedAt>.log
     const jobLogger = new RunLogger(
-      path.join(this._configDir, 'logs', job.id),
+      path.join(this._configDir, 'logs', 'jobs', job.id),
       job.id,
       startedAt,
     );

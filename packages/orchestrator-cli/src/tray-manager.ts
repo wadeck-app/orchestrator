@@ -72,7 +72,7 @@ export class TrayManager extends EventEmitter {
   ) {
     super();
     this._startupEnabled = isStartupEnabled(_configDir);
-    this._log = new DailyLogger(path.join(_configDir, 'logs', 'tray'), 'tray');
+    this._log = new DailyLogger(path.join(_configDir, 'logs', 'app'), 'tray');
   }
 
   private get _trayPidFile(): string {
@@ -441,15 +441,24 @@ export class TrayManager extends EventEmitter {
       case 'open-logs': {
         this._logAction('[tray] action: open-logs');
         const logsDir = path.join(this._configDir, 'logs');
-        const cmd = process.platform === 'win32' ? 'explorer.exe' : 'open';
-        // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
-        execFile(cmd, [logsDir], (err) => {
-          if (err) {
-            const msg = getErrorMessage(err);
-            this._logAction(`[tray] open-logs: failed: ${msg}`);
-            console.error('[tray] open-logs failed:', msg);
-          }
-        });
+        if (process.platform === 'win32') {
+          // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
+          execFile('cmd.exe', ['/c', 'start', '', `"${logsDir}"`], (err) => {
+            if (err) {
+              const msg = getErrorMessage(err);
+              this._logAction(`[tray] open-logs: failed: ${msg}`);
+              console.error('[tray] open-logs failed:', msg);
+            }
+          });
+        } else {
+          execFile('open', [logsDir], (err) => {
+            if (err) {
+              const msg = getErrorMessage(err);
+              this._logAction(`[tray] open-logs: failed: ${msg}`);
+              console.error('[tray] open-logs failed:', msg);
+            }
+          });
+        }
         break;
       }
       case 'startup-toggle': {

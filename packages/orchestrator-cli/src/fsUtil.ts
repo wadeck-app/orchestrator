@@ -107,9 +107,10 @@ export function cleanTmpDir(tmpDir: string, opts: { maxAgeDays: number; maxSizeM
   }
 }
 
-// Resolve and create the tmp directory under configDir; returns its path.
-export function ensureTmpDir(configDir: string): string {
-  const tmpDir = path.join(configDir, 'tmp');
+// Resolve and create the root tmp directory under configDir; returns its path.
+export function ensureTmpDir(configDir: string, jobId?: string): string {
+  const baseTmp = path.join(configDir, 'tmp');
+  const tmpDir = jobId ? path.join(baseTmp, jobId) : baseTmp;
   fs.mkdirSync(tmpDir, { recursive: true });
   return tmpDir;
 }

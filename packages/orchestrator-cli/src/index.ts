@@ -86,7 +86,7 @@ async function main(): Promise<void> {
   };
 
   // Create the logger before try/finally so crash paths can always write to it.
-  const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'daemon'), 'daemon');
+  const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'app'), 'daemon');
 
   // Upgrade from early module-level handlers to daemonLog-based handlers now that
   // the logger is ready. This ensures ALL crashes (including pre-init) write to the log.

@@ -49,7 +49,7 @@ export async function logsRoutes(
     const { jobId } = req.params as { jobId: string };
     if (!JOB_ID_RE.test(jobId)) return reply.code(400).send({ error: 'invalid-job-id' });
     idleTimer.reset();
-    const logDir = path.join(configDir, 'logs', jobId);
+    const logDir = path.join(configDir, 'logs', 'jobs', jobId);
     const files  = listLogFiles(logDir, jobId);
     const runs = files.map(f => {
       const name = path.basename(f, '.log').slice(jobId.length + 1); // strip "<jobId>-"
@@ -67,7 +67,7 @@ export async function logsRoutes(
     // Optional ?run=<name> to stream a specific run log
     const runName = (req.query as { run?: string }).run;
 
-    const logDir = path.join(configDir, 'logs', jobId);
+    const logDir = path.join(configDir, 'logs', 'jobs', jobId);
 
     reply.hijack();
     reply.raw.writeHead(200, {
