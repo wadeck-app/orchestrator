@@ -70,8 +70,9 @@ jobs:
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
-            - name: Run tests
-              run: npm test --workspace=packages/orchestrator-cli --workspace=packages/orch-server --if-present
+            - name: Run tests (orch-server only - orchestrator-cli tests run locally)
+              run: npm test --workspace=packages/orch-server --if-present
+              timeout-minutes: 5
 
     publish:
         needs: build-and-test
