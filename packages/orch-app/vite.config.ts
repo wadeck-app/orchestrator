@@ -20,7 +20,9 @@ export default defineConfig(async () => {
       emptyOutDir: true,
       // Fixed filenames so the running HTTP server never gets stale hash mismatches
       rollupOptions: {
-        external: ['@wadeck-app/dsl-ui'],
+        // entriesGenerator() emits @wadeck-app/dsl-ui/src/* sub-path imports;
+        // the exact-string form misses those, so use a predicate instead.
+        external: (id: string) => id === '@wadeck-app/dsl-ui' || id.startsWith('@wadeck-app/dsl-ui/'),
         output: {
           entryFileNames: 'assets/index.js',
           chunkFileNames: 'assets/[name].js',
