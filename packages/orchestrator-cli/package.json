@@ -42,9 +42,9 @@
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/static": "^8.0.0",
-    "@wadeck-app/shared-cli": "^2026.8.31-022-55ef14e0",
-    "@wadeck-app/shared-updater": "^2026.9.1-014-558289d8",
-    "@wadeck-app/singleton-daemon-kit": "2026.9.8-088-fb2501fa",
+    "@wadeck-app/shared-cli": "latest",
+    "@wadeck-app/shared-updater": "latest",
+    "@wadeck-app/singleton-daemon-kit": "latest",
     "fastify": "^5.0.0",
     "node-cron": "^4.6.0",
     "pidusage": "^4.0.1",
