@@ -11,6 +11,6 @@
     "deploy": "node scripts/deploy-dev.mjs"
   },
   "dependencies": {
-    "@wadeck-app/dsl-ui": "file:../dsl-view/packages/dsl-ui"
+    "@wadeck-app/dsl-ui": "^2026.9.12-055-c16225de"
   }
 }

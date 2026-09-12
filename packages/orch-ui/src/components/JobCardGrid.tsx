@@ -133,7 +133,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
         {onExport && <Button variant="secondary" label="Export" onClick={onExport} />}
         {onImport && <Button variant="secondary" label="Import" onClick={onImport} />}
         <ButtonAction label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
-        <IconButton icon={viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />} label={viewMode === 'grid' ? 'List view' : 'Grid view'} onClick={toggleView} variant="ghost" />
+        <IconButton icon={viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} onClick={toggleView} variant="ghost" />
       </div>
 
       {selected.size > 0 && (

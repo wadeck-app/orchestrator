@@ -67,7 +67,7 @@ export function NavBar(): React.ReactElement {
         </div>
       )}
       {/* violations-suppress: react/no-raw-button icon-only toggle - no Button variant for compact icon-only nav action */}
-      <IconButton icon={dark ? <Sun size={14} /> : <Moon size={14} />} label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleDark} variant="ghost" size="sm" />
+      <IconButton icon={dark ? <Sun size={14} /> : <Moon size={14} />} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleDark} variant="ghost" size="icon-sm" />
     </nav>
   );
 }
