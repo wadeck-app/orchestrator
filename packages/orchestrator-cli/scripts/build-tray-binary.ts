@@ -2,11 +2,11 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
-const pkgPath = path.join(__dirname, '..', 'package.json');
+const pkgPath = path.join(import.meta.dirname, '..', 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version: string };
 const version = pkg.version;
 
-const trayDir = path.join(__dirname, '..', 'tray-go');
+const trayDir = path.join(import.meta.dirname, '..', 'tray-go');
 const distDir = path.join(trayDir, 'dist');
 fs.mkdirSync(distDir, { recursive: true });
 
