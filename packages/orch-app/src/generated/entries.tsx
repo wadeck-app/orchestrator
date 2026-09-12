@@ -4,51 +4,93 @@ import React from 'react'
 import { renderChildren, resolveExpressionValue } from '@wadeck-app/dsl-renderer'
 import type { ComponentRegistryEntry, RegistryRenderProps } from '@wadeck-app/dsl-renderer'
 import { useFormContext } from '@wadeck-app/dsl-ui'
-import { ButtonAction } from '@wadeck-app/dsl-ui/src/components/controls/ButtonAction.js'
-import { ChipButton } from '@wadeck-app/dsl-ui/src/components/controls/ChipButton.js'
-import { ColorPicker } from '@wadeck-app/dsl-ui/src/components/controls/ColorPicker.js'
-import { InviteTokenWidget } from '@wadeck-app/dsl-ui/src/components/controls/InviteTokenWidget.js'
-import { LiveToggle } from '@wadeck-app/dsl-ui/src/components/controls/LiveToggle.js'
-import { PageSizeSelect } from '@wadeck-app/dsl-ui/src/components/controls/PageSizeSelect.js'
-import { RefreshButton } from '@wadeck-app/dsl-ui/src/components/controls/RefreshButton.js'
-import { ThemePicker } from '@wadeck-app/dsl-ui/src/components/controls/ThemePicker.js'
-import { Chart } from '@wadeck-app/dsl-ui/src/components/display/Chart.js'
-import { FetchSpinner } from '@wadeck-app/dsl-ui/src/components/display/FetchSpinner.js'
-import { HttpMethodBadge } from '@wadeck-app/dsl-ui/src/components/display/HttpMethodBadge.js'
-import { HttpStatusBadge } from '@wadeck-app/dsl-ui/src/components/display/HttpStatusBadge.js'
-import { JsonViewer } from '@wadeck-app/dsl-ui/src/components/display/JsonViewer.js'
-import { PageHeader } from '@wadeck-app/dsl-ui/src/components/display/PageHeader.js'
-import { ButtonCancel } from '@wadeck-app/dsl-ui/src/components/form/ButtonCancel.js'
-import { ButtonSave } from '@wadeck-app/dsl-ui/src/components/form/ButtonSave.js'
-import { FieldNumber } from '@wadeck-app/dsl-ui/src/components/form/FieldNumber.js'
-import { FieldReadOnly } from '@wadeck-app/dsl-ui/src/components/form/FieldReadOnly.js'
-import { FieldSelect } from '@wadeck-app/dsl-ui/src/components/form/FieldSelect.js'
-import { FieldText } from '@wadeck-app/dsl-ui/src/components/form/FieldText.js'
-import { FieldTextarea } from '@wadeck-app/dsl-ui/src/components/form/FieldTextarea.js'
-import { FieldWrapper } from '@wadeck-app/dsl-ui/src/components/form/FieldWrapper.js'
-import { Form } from '@wadeck-app/dsl-ui/src/components/form/Form.js'
-import { UnsavedBadge } from '@wadeck-app/dsl-ui/src/components/form/UnsavedBadge.js'
-import { ActionBar } from '@wadeck-app/dsl-ui/src/components/layout/ActionBar.js'
-import { HorizontalStack } from '@wadeck-app/dsl-ui/src/components/layout/HorizontalStack.js'
-import { PageContent } from '@wadeck-app/dsl-ui/src/components/layout/PageContent.js'
-import { Section } from '@wadeck-app/dsl-ui/src/components/layout/Section.js'
-import { VerticalStack } from '@wadeck-app/dsl-ui/src/components/layout/VerticalStack.js'
-import { Breadcrumb } from '@wadeck-app/dsl-ui/src/components/navigation/Breadcrumb.js'
-import { PageTabs } from '@wadeck-app/dsl-ui/src/components/navigation/PageTabs.js'
-import { RouterProvider } from '@wadeck-app/dsl-ui/src/components/navigation/RouterProvider.js'
-import { Stepper } from '@wadeck-app/dsl-ui/src/components/navigation/Stepper.js'
-import { Tabs } from '@wadeck-app/dsl-ui/src/components/navigation/Tabs.js'
-import { ConfirmDialog } from '@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js'
-import { Dialog } from '@wadeck-app/dsl-ui/src/components/overlay/Dialog.js'
-import { DialogForm } from '@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js'
-import { ToastProvider } from '@wadeck-app/dsl-ui/src/components/overlay/Toast.js'
-import { Tooltip } from '@wadeck-app/dsl-ui/src/components/overlay/Tooltip.js'
-import { DataTable } from '@wadeck-app/dsl-ui/src/components/table/DataTable.js'
-import { FilterChips } from '@wadeck-app/dsl-ui/src/components/table/FilterChips.js'
-import { Pagination } from '@wadeck-app/dsl-ui/src/components/table/Pagination.js'
-import { SearchBar } from '@wadeck-app/dsl-ui/src/components/table/SearchBar.js'
-import { ShownFetchedCounter } from '@wadeck-app/dsl-ui/src/components/table/ShownFetchedCounter.js'
-import { StatusFilter } from '@wadeck-app/dsl-ui/src/components/table/StatusFilter.js'
+import { ButtonAction } from '@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js'
+import { CheckboxGroup } from '@wadeck-app/dsl-ui/dist/components/controls/CheckboxGroup.js'
+import { ChipButton } from '@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js'
+import { ColorPicker } from '@wadeck-app/dsl-ui/dist/components/controls/ColorPicker.js'
+import { DeleteButton } from '@wadeck-app/dsl-ui/dist/components/controls/DeleteButton.js'
+import { IconButton } from '@wadeck-app/dsl-ui/dist/components/controls/IconButton.js'
+import { InviteTokenWidget } from '@wadeck-app/dsl-ui/dist/components/controls/InviteTokenWidget.js'
+import { LiveToggle } from '@wadeck-app/dsl-ui/dist/components/controls/LiveToggle.js'
+import { PageSizeSelect } from '@wadeck-app/dsl-ui/dist/components/controls/PageSizeSelect.js'
+import { RadioGroup } from '@wadeck-app/dsl-ui/dist/components/controls/RadioGroup.js'
+import { RefreshButton } from '@wadeck-app/dsl-ui/dist/components/controls/RefreshButton.js'
+import { Slider } from '@wadeck-app/dsl-ui/dist/components/controls/Slider.js'
+import { Switch } from '@wadeck-app/dsl-ui/dist/components/controls/Switch.js'
+import { TabButton } from '@wadeck-app/dsl-ui/dist/components/controls/TabButton.js'
+import { ThemePicker } from '@wadeck-app/dsl-ui/dist/components/controls/ThemePicker.js'
+import { Avatar } from '@wadeck-app/dsl-ui/dist/components/display/Avatar.js'
+import { Badge } from '@wadeck-app/dsl-ui/dist/components/display/Badge.js'
+import { Chart } from '@wadeck-app/dsl-ui/dist/components/display/Chart.js'
+import { FetchSpinner } from '@wadeck-app/dsl-ui/dist/components/display/FetchSpinner.js'
+import { HttpMethodBadge } from '@wadeck-app/dsl-ui/dist/components/display/HttpMethodBadge.js'
+import { HttpStatusBadge } from '@wadeck-app/dsl-ui/dist/components/display/HttpStatusBadge.js'
+import { InlineEdit } from '@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js'
+import { JsonViewer } from '@wadeck-app/dsl-ui/dist/components/display/JsonViewer.js'
+import { PageHeader } from '@wadeck-app/dsl-ui/dist/components/display/PageHeader.js'
+import { Progress } from '@wadeck-app/dsl-ui/dist/components/display/Progress.js'
+import { RelativeDate } from '@wadeck-app/dsl-ui/dist/components/display/RelativeDate.js'
+import { Skeleton } from '@wadeck-app/dsl-ui/dist/components/display/Skeleton.js'
+import { Spinner } from '@wadeck-app/dsl-ui/dist/components/display/Spinner.js'
+import { Tag } from '@wadeck-app/dsl-ui/dist/components/display/Tag.js'
+import { ButtonCancel } from '@wadeck-app/dsl-ui/dist/components/form/ButtonCancel.js'
+import { ButtonSave } from '@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js'
+import { DatePicker } from '@wadeck-app/dsl-ui/dist/components/form/DatePicker.js'
+import { DateRangePicker } from '@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js'
+import { FieldAsyncSelect } from '@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js'
+import { FieldAutocomplete } from '@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js'
+import { FieldDate } from '@wadeck-app/dsl-ui/dist/components/form/FieldDate.js'
+import { FieldDateRange } from '@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js'
+import { FieldMultiSelect } from '@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js'
+import { FieldNumber } from '@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js'
+import { FieldReadOnly } from '@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js'
+import { FieldSelect } from '@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js'
+import { FieldTags } from '@wadeck-app/dsl-ui/dist/components/form/FieldTags.js'
+import { FieldText } from '@wadeck-app/dsl-ui/dist/components/form/FieldText.js'
+import { FieldTextarea } from '@wadeck-app/dsl-ui/dist/components/form/FieldTextarea.js'
+import { FieldTime } from '@wadeck-app/dsl-ui/dist/components/form/FieldTime.js'
+import { FieldWrapper } from '@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js'
+import { Form } from '@wadeck-app/dsl-ui/dist/components/form/Form.js'
+import { TimePicker } from '@wadeck-app/dsl-ui/dist/components/form/TimePicker.js'
+import { UnsavedBadge } from '@wadeck-app/dsl-ui/dist/components/form/UnsavedBadge.js'
+import { ActionBar } from '@wadeck-app/dsl-ui/dist/components/layout/ActionBar.js'
+import { Card } from '@wadeck-app/dsl-ui/dist/components/layout/Card.js'
+import { CardActions } from '@wadeck-app/dsl-ui/dist/components/layout/CardActions.js'
+import { Collapsible } from '@wadeck-app/dsl-ui/dist/components/layout/Collapsible.js'
+import { DialogFooter } from '@wadeck-app/dsl-ui/dist/components/layout/DialogFooter.js'
+import { Divider } from '@wadeck-app/dsl-ui/dist/components/layout/Divider.js'
+import { HorizontalStack } from '@wadeck-app/dsl-ui/dist/components/layout/HorizontalStack.js'
+import { NavBar } from '@wadeck-app/dsl-ui/dist/components/layout/NavBar.js'
+import { PageContent } from '@wadeck-app/dsl-ui/dist/components/layout/PageContent.js'
+import { PageSection } from '@wadeck-app/dsl-ui/dist/components/layout/PageHeader.js'
+import { Section } from '@wadeck-app/dsl-ui/dist/components/layout/Section.js'
+import { StatTile } from '@wadeck-app/dsl-ui/dist/components/layout/StatTile.js'
+import { TableRowActions } from '@wadeck-app/dsl-ui/dist/components/layout/TableRowActions.js'
+import { VerticalStack } from '@wadeck-app/dsl-ui/dist/components/layout/VerticalStack.js'
+import { Breadcrumb } from '@wadeck-app/dsl-ui/dist/components/navigation/Breadcrumb.js'
+import { Link } from '@wadeck-app/dsl-ui/dist/components/navigation/Link.js'
+import { PageTabs } from '@wadeck-app/dsl-ui/dist/components/navigation/PageTabs.js'
+import { RouterProvider } from '@wadeck-app/dsl-ui/dist/components/navigation/RouterProvider.js'
+import { Stepper } from '@wadeck-app/dsl-ui/dist/components/navigation/Stepper.js'
+import { Tabs } from '@wadeck-app/dsl-ui/dist/components/navigation/Tabs.js'
+import { TreeView } from '@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js'
+import { ConfirmDialog } from '@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js'
+import { ContextMenu } from '@wadeck-app/dsl-ui/dist/components/overlay/ContextMenu.js'
+import { Dialog } from '@wadeck-app/dsl-ui/dist/components/overlay/Dialog.js'
+import { DialogForm } from '@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js'
+import { Drawer } from '@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js'
+import { Popover } from '@wadeck-app/dsl-ui/dist/components/overlay/Popover.js'
+import { ToastProvider } from '@wadeck-app/dsl-ui/dist/components/overlay/Toast.js'
+import { Tooltip } from '@wadeck-app/dsl-ui/dist/components/overlay/Tooltip.js'
+import { BulkActionsToolbar } from '@wadeck-app/dsl-ui/dist/components/table/BulkActionsToolbar.js'
+import { DataTable } from '@wadeck-app/dsl-ui/dist/components/table/DataTable.js'
+import { FilterBar } from '@wadeck-app/dsl-ui/dist/components/table/FilterBar.js'
+import { FilterChips } from '@wadeck-app/dsl-ui/dist/components/table/FilterChips.js'
+import { Pagination } from '@wadeck-app/dsl-ui/dist/components/table/Pagination.js'
+import { SearchBar } from '@wadeck-app/dsl-ui/dist/components/table/SearchBar.js'
+import { ShownFetchedCounter } from '@wadeck-app/dsl-ui/dist/components/table/ShownFetchedCounter.js'
+import { SortableColumn } from '@wadeck-app/dsl-ui/dist/components/table/SortableColumn.js'
+import { StatusFilter } from '@wadeck-app/dsl-ui/dist/components/table/StatusFilter.js'
 import { AuditEntryIcon } from '../../../orch-ui/src/components/AuditEntryIcon.js'
 import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
 import { AuditList } from '../../../orch-ui/src/components/AuditList.js'
@@ -83,10 +125,34 @@ export const ButtonActionEntry: ComponentRegistryEntry = {
 	name: 'ButtonAction', category: 'atomic', tags: ["button","action"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ButtonAction.js').ButtonActionProps['label']
-		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ButtonAction.js').ButtonActionProps['variant']
-		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ButtonAction.js').ButtonActionProps['onClick']
-		return <ButtonAction label={label} variant={variant} onClick={onClick} />
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['label']
+		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['variant']
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['onClick']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['disabled']
+		const disabledReason = resolveExpressionValue(node['disabledReason'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['disabledReason']
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['loading']
+		const type = resolveExpressionValue(node['type'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['type']
+		return <ButtonAction label={label} variant={variant} onClick={onClick} disabled={disabled} disabledReason={disabledReason} loading={loading} type={type} />
+	},
+}
+
+export const CheckboxGroupEntry: ComponentRegistryEntry = {
+	name: 'CheckboxGroup', category: 'atomic', tags: ["checkbox","group","field"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CheckboxGroup.js').CheckboxGroupProps['options']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CheckboxGroup.js').CheckboxGroupProps['label']
+		const orientation = resolveExpressionValue(node['orientation'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CheckboxGroup.js').CheckboxGroupProps['orientation']
+		function CheckboxGroupWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<CheckboxGroup options={options} label={label} orientation={orientation} value={(formData?.[bind] as string[] | undefined) ?? []} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <CheckboxGroupWithContext />
 	},
 }
 
@@ -95,13 +161,14 @@ export const ChipButtonEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const active = resolveExpressionValue(node['active'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ChipButton.js').ChipButtonProps['active']
-		const color = resolveExpressionValue(node['color'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ChipButton.js').ChipButtonProps['color']
-		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ChipButton.js').ChipButtonProps['onClick']
-		const shape = resolveExpressionValue(node['shape'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ChipButton.js').ChipButtonProps['shape']
-		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ChipButton.js').ChipButtonProps['title']
+		const active = resolveExpressionValue(node['active'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['active']
+		const color = resolveExpressionValue(node['color'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['color']
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['onClick']
+		const shape = resolveExpressionValue(node['shape'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['shape']
+		const ariaPressed = resolveExpressionValue(node['aria-pressed'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['aria-pressed']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['title']
 		return (
-			<ChipButton active={active} color={color} onClick={onClick} shape={shape} title={title}>
+			<ChipButton active={active} color={color} onClick={onClick} shape={shape} aria-pressed={ariaPressed} title={title}>
 				{items ? renderChildren(items, registry, ctx) : null}
 			</ChipButton>
 		)
@@ -113,8 +180,8 @@ export const ColorPickerEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const bind = node['bind'] as string
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ColorPicker.js').ColorPickerProps['label']
-		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ColorPicker.js').ColorPickerProps['options']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ColorPicker.js').ColorPickerProps['label']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ColorPicker.js').ColorPickerProps['options']
 		function ColorPickerWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
@@ -127,13 +194,33 @@ export const ColorPickerEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const DeleteButtonEntry: ComponentRegistryEntry = {
+	name: 'DeleteButton', category: 'atomic', tags: [],
+	nodeSchema: null as never,
+	render: ({ node, registry }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		return <DeleteButton>{items ? renderChildren(items, registry, {}) : null}</DeleteButton>
+	},
+}
+
+export const IconButtonEntry: ComponentRegistryEntry = {
+	name: 'IconButton', category: 'atomic', tags: [],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const icon = node['icon'] as unknown[] | undefined
+		const ariaLabel = resolveExpressionValue(node['aria-label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/IconButton.js').IconButtonProps['aria-label']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/IconButton.js').IconButtonProps['size']
+		return <IconButton icon={icon ? renderChildren(icon, registry, ctx) : null} aria-label={ariaLabel} size={size} />
+	},
+}
+
 export const InviteTokenWidgetEntry: ComponentRegistryEntry = {
 	name: 'InviteTokenWidget', category: 'composite', tags: ["button","token","admin"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const inviteToken = resolveExpressionValue(node['inviteToken'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/InviteTokenWidget.js').InviteTokenWidgetProps['inviteToken']
-		const onGenerateToken = resolveExpressionValue(node['onGenerateToken'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/InviteTokenWidget.js').InviteTokenWidgetProps['onGenerateToken']
-		const isPending = resolveExpressionValue(node['isPending'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/InviteTokenWidget.js').InviteTokenWidgetProps['isPending']
+		const inviteToken = resolveExpressionValue(node['inviteToken'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/InviteTokenWidget.js').InviteTokenWidgetProps['inviteToken']
+		const onGenerateToken = resolveExpressionValue(node['onGenerateToken'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/InviteTokenWidget.js').InviteTokenWidgetProps['onGenerateToken']
+		const isPending = resolveExpressionValue(node['isPending'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/InviteTokenWidget.js').InviteTokenWidgetProps['isPending']
 		return <InviteTokenWidget inviteToken={inviteToken} onGenerateToken={onGenerateToken} isPending={isPending} />
 	},
 }
@@ -142,8 +229,8 @@ export const LiveToggleEntry: ComponentRegistryEntry = {
 	name: 'LiveToggle', category: 'atomic', tags: ["live","toggle","refresh"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const live = resolveExpressionValue(node['live'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/LiveToggle.js').LiveToggleProps['live']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/LiveToggle.js').LiveToggleProps['onChange']
+		const live = resolveExpressionValue(node['live'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/LiveToggle.js').LiveToggleProps['live']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/LiveToggle.js').LiveToggleProps['onChange']
 		return <LiveToggle live={live} onChange={onChange} />
 	},
 }
@@ -152,10 +239,30 @@ export const PageSizeSelectEntry: ComponentRegistryEntry = {
 	name: 'PageSizeSelect', category: 'atomic', tags: ["pagination","select"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/PageSizeSelect.js').PageSizeSelectProps['value']
-		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/PageSizeSelect.js').PageSizeSelectProps['options']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/PageSizeSelect.js').PageSizeSelectProps['onChange']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/PageSizeSelect.js').PageSizeSelectProps['value']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/PageSizeSelect.js').PageSizeSelectProps['options']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/PageSizeSelect.js').PageSizeSelectProps['onChange']
 		return <PageSizeSelect value={value} options={options} onChange={onChange} />
+	},
+}
+
+export const RadioGroupEntry: ComponentRegistryEntry = {
+	name: 'RadioGroup', category: 'atomic', tags: ["radio","group","field"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/RadioGroup.js').RadioGroupProps['options']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/RadioGroup.js').RadioGroupProps['label']
+		const orientation = resolveExpressionValue(node['orientation'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/RadioGroup.js').RadioGroupProps['orientation']
+		function RadioGroupWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<RadioGroup options={options} label={label} orientation={orientation} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <RadioGroupWithContext />
 	},
 }
 
@@ -163,9 +270,61 @@ export const RefreshButtonEntry: ComponentRegistryEntry = {
 	name: 'RefreshButton', category: 'atomic', tags: ["refresh","button"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/RefreshButton.js').RefreshButtonProps['onClick']
-		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/RefreshButton.js').RefreshButtonProps['loading']
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/RefreshButton.js').RefreshButtonProps['onClick']
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/RefreshButton.js').RefreshButtonProps['loading']
 		return <RefreshButton onClick={onClick} loading={loading} />
+	},
+}
+
+export const SliderEntry: ComponentRegistryEntry = {
+	name: 'Slider', category: 'atomic', tags: ["slider","range","input","number"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const min = resolveExpressionValue(node['min'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Slider.js').SliderProps['min']
+		const max = resolveExpressionValue(node['max'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Slider.js').SliderProps['max']
+		const step = resolveExpressionValue(node['step'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Slider.js').SliderProps['step']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Slider.js').SliderProps['disabled']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Slider.js').SliderProps['label']
+		const showValue = resolveExpressionValue(node['showValue'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Slider.js').SliderProps['showValue']
+		function SliderWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<Slider min={min} max={max} step={step} disabled={disabled} label={label} showValue={showValue} value={Number(formData?.[bind] ?? 0)} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <SliderWithContext />
+	},
+}
+
+export const SwitchEntry: ComponentRegistryEntry = {
+	name: 'Switch', category: 'atomic', tags: ["switch","toggle","boolean"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Switch.js').SwitchProps['label']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Switch.js').SwitchProps['disabled']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/Switch.js').SwitchProps['size']
+		function SwitchWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<Switch label={label} disabled={disabled} size={size} checked={Boolean(formData?.[bind])} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <SwitchWithContext />
+	},
+}
+
+export const TabButtonEntry: ComponentRegistryEntry = {
+	name: 'TabButton', category: 'atomic', tags: [],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const active = resolveExpressionValue(node['active'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/TabButton.js').TabButtonProps['active']
+		return <TabButton active={active} />
 	},
 }
 
@@ -174,8 +333,8 @@ export const ThemePickerEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const bind = node['bind'] as string
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ThemePicker.js').ThemePickerProps['label']
-		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/src/components/controls/ThemePicker.js').ThemePickerProps['options']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ThemePicker.js').ThemePickerProps['label']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ThemePicker.js').ThemePickerProps['options']
 		function ThemePickerWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
@@ -188,15 +347,38 @@ export const ThemePickerEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const AvatarEntry: ComponentRegistryEntry = {
+	name: 'Avatar', category: 'atomic', tags: ["avatar","user","profile","image"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const src = resolveExpressionValue(node['src'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Avatar.js').AvatarProps['src']
+		const alt = resolveExpressionValue(node['alt'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Avatar.js').AvatarProps['alt']
+		const fallback = resolveExpressionValue(node['fallback'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Avatar.js').AvatarProps['fallback']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Avatar.js').AvatarProps['size']
+		return <Avatar src={src} alt={alt} fallback={fallback} size={size} />
+	},
+}
+
+export const BadgeEntry: ComponentRegistryEntry = {
+	name: 'Badge', category: 'atomic', tags: ["badge","status"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['label']
+		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['variant']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['size']
+		return <Badge label={label} variant={variant} size={size} />
+	},
+}
+
 export const ChartEntry: ComponentRegistryEntry = {
 	name: 'Chart', category: 'composite', tags: ["chart"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const data = resolveExpressionValue(node['data'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/Chart.js').ChartProps['data']
-		const xAxisKey = resolveExpressionValue(node['xAxisKey'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/Chart.js').ChartProps['xAxisKey']
-		const xAxisType = resolveExpressionValue(node['xAxisType'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/Chart.js').ChartProps['xAxisType']
-		const height = resolveExpressionValue(node['height'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/Chart.js').ChartProps['height']
-		const series = resolveExpressionValue(node['series'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/Chart.js').ChartProps['series']
+		const data = resolveExpressionValue(node['data'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Chart.js').ChartProps['data']
+		const xAxisKey = resolveExpressionValue(node['xAxisKey'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Chart.js').ChartProps['xAxisKey']
+		const xAxisType = resolveExpressionValue(node['xAxisType'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Chart.js').ChartProps['xAxisType']
+		const height = resolveExpressionValue(node['height'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Chart.js').ChartProps['height']
+		const series = resolveExpressionValue(node['series'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Chart.js').ChartProps['series']
 		return <Chart data={data} xAxisKey={xAxisKey} xAxisType={xAxisType} height={height} series={series} />
 	},
 }
@@ -205,7 +387,7 @@ export const FetchSpinnerEntry: ComponentRegistryEntry = {
 	name: 'FetchSpinner', category: 'atomic', tags: ["loading","spinner"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/FetchSpinner.js').FetchSpinnerProps['loading']
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/FetchSpinner.js').FetchSpinnerProps['loading']
 		return <FetchSpinner loading={loading} />
 	},
 }
@@ -214,7 +396,7 @@ export const HttpMethodBadgeEntry: ComponentRegistryEntry = {
 	name: 'HttpMethodBadge', category: 'atomic', tags: ["badge","http"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const method = resolveExpressionValue(node['method'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/HttpMethodBadge.js').HttpMethodBadgeProps['method']
+		const method = resolveExpressionValue(node['method'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/HttpMethodBadge.js').HttpMethodBadgeProps['method']
 		return <HttpMethodBadge method={method} />
 	},
 }
@@ -223,8 +405,23 @@ export const HttpStatusBadgeEntry: ComponentRegistryEntry = {
 	name: 'HttpStatusBadge', category: 'atomic', tags: ["badge","http"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const status = resolveExpressionValue(node['status'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/HttpStatusBadge.js').HttpStatusBadgeProps['status']
+		const status = resolveExpressionValue(node['status'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/HttpStatusBadge.js').HttpStatusBadgeProps['status']
 		return <HttpStatusBadge status={status} />
+	},
+}
+
+export const InlineEditEntry: ComponentRegistryEntry = {
+	name: 'InlineEdit', category: 'atomic', tags: ["inline","edit","editable"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['onChange']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['disabled']
+		const multiline = resolveExpressionValue(node['multiline'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['multiline']
+		const editClassName = resolveExpressionValue(node['editClassName'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['editClassName']
+		const validate = resolveExpressionValue(node['validate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/InlineEdit.js').InlineEditProps['validate']
+		return <InlineEdit value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} multiline={multiline} editClassName={editClassName} validate={validate} />
 	},
 }
 
@@ -232,8 +429,8 @@ export const JsonViewerEntry: ComponentRegistryEntry = {
 	name: 'JsonViewer', category: 'atomic', tags: ["json","viewer","code"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const row = resolveExpressionValue(node['row'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/JsonViewer.js').JsonViewerProps['row']
-		const field = resolveExpressionValue(node['field'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/JsonViewer.js').JsonViewerProps['field']
+		const row = resolveExpressionValue(node['row'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/JsonViewer.js').JsonViewerProps['row']
+		const field = resolveExpressionValue(node['field'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/JsonViewer.js').JsonViewerProps['field']
 		return <JsonViewer row={row} field={field} />
 	},
 }
@@ -242,12 +439,71 @@ export const PageHeaderEntry: ComponentRegistryEntry = {
 	name: 'PageHeader', category: 'composite', tags: ["header"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/PageHeader.js').PageHeaderProps['title']
-		const subtitle = resolveExpressionValue(node['subtitle'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/PageHeader.js').PageHeaderProps['subtitle']
-		const icon = resolveExpressionValue(node['icon'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/PageHeader.js').PageHeaderProps['icon']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/PageHeader.js').PageHeaderProps['title']
+		const subtitle = resolveExpressionValue(node['subtitle'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/PageHeader.js').PageHeaderProps['subtitle']
+		const icon = resolveExpressionValue(node['icon'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/PageHeader.js').PageHeaderProps['icon']
 		const headerActions = node['headerActions'] as unknown[] | undefined
-		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/src/components/display/PageHeader.js').PageHeaderProps['size']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/PageHeader.js').PageHeaderProps['size']
 		return <PageHeader title={title} subtitle={subtitle} icon={icon} headerActions={headerActions ? renderChildren(headerActions, registry, ctx) : null} size={size} />
+	},
+}
+
+export const ProgressEntry: ComponentRegistryEntry = {
+	name: 'Progress', category: 'atomic', tags: ["progress","bar","loading"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['value']
+		const max = resolveExpressionValue(node['max'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['max']
+		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['variant']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['label']
+		const showValue = resolveExpressionValue(node['showValue'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['showValue']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['size']
+		return <Progress value={value} max={max} variant={variant} label={label} showValue={showValue} size={size} />
+	},
+}
+
+export const RelativeDateEntry: ComponentRegistryEntry = {
+	name: 'RelativeDate', category: 'atomic', tags: ["date","relative","time"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const date = resolveExpressionValue(node['date'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/RelativeDate.js').RelativeDateProps['date']
+		const live = resolveExpressionValue(node['live'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/RelativeDate.js').RelativeDateProps['live']
+		const tooltip = resolveExpressionValue(node['tooltip'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/RelativeDate.js').RelativeDateProps['tooltip']
+		const format = resolveExpressionValue(node['format'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/RelativeDate.js').RelativeDateProps['format']
+		return <RelativeDate date={date} live={live} tooltip={tooltip} format={format} />
+	},
+}
+
+export const SkeletonEntry: ComponentRegistryEntry = {
+	name: 'Skeleton', category: 'atomic', tags: ["skeleton","loading","placeholder"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const width = resolveExpressionValue(node['width'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Skeleton.js').SkeletonProps['width']
+		const height = resolveExpressionValue(node['height'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Skeleton.js').SkeletonProps['height']
+		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Skeleton.js').SkeletonProps['variant']
+		const count = resolveExpressionValue(node['count'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Skeleton.js').SkeletonProps['count']
+		return <Skeleton width={width} height={height} variant={variant} count={count} />
+	},
+}
+
+export const SpinnerEntry: ComponentRegistryEntry = {
+	name: 'Spinner', category: 'atomic', tags: ["loading","spinner"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Spinner.js').SpinnerProps['size']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Spinner.js').SpinnerProps['label']
+		return <Spinner size={size} label={label} />
+	},
+}
+
+export const TagEntry: ComponentRegistryEntry = {
+	name: 'Tag', category: 'atomic', tags: ["tag","chip","label"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Tag.js').TagProps['label']
+		const color = resolveExpressionValue(node['color'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Tag.js').TagProps['color']
+		const onRemove = resolveExpressionValue(node['onRemove'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Tag.js').TagProps['onRemove']
+		return <Tag label={label} color={color} onRemove={onRemove} />
 	},
 }
 
@@ -255,9 +511,10 @@ export const ButtonCancelEntry: ComponentRegistryEntry = {
 	name: 'ButtonCancel', category: 'atomic', tags: ["button","form-specific"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonCancel.js').ButtonCancelProps['label']
-		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonCancel.js').ButtonCancelProps['onCancel']
-		return <ButtonCancel label={label} onCancel={onCancel} />
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonCancel.js').ButtonCancelProps['label']
+		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonCancel.js').ButtonCancelProps['onCancel']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonCancel.js').ButtonCancelProps['disabled']
+		return <ButtonCancel label={label} onCancel={onCancel} disabled={disabled} />
 	},
 }
 
@@ -265,12 +522,186 @@ export const ButtonSaveEntry: ComponentRegistryEntry = {
 	name: 'ButtonSave', category: 'atomic', tags: ["button","form-specific"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonSave.js').ButtonSaveProps['label']
-		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonSave.js').ButtonSaveProps['onClick']
-		const isPending = resolveExpressionValue(node['isPending'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonSave.js').ButtonSaveProps['isPending']
-		const hasChanges = resolveExpressionValue(node['hasChanges'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonSave.js').ButtonSaveProps['hasChanges']
-		const disabledReason = resolveExpressionValue(node['disabledReason'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/ButtonSave.js').ButtonSaveProps['disabledReason']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js').ButtonSaveProps['label']
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js').ButtonSaveProps['onClick']
+		const isPending = resolveExpressionValue(node['isPending'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js').ButtonSaveProps['isPending']
+		const hasChanges = resolveExpressionValue(node['hasChanges'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js').ButtonSaveProps['hasChanges']
+		const disabledReason = resolveExpressionValue(node['disabledReason'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js').ButtonSaveProps['disabledReason']
 		return <ButtonSave label={label} onClick={onClick} isPending={isPending} hasChanges={hasChanges} disabledReason={disabledReason} />
+	},
+}
+
+export const DatePickerEntry: ComponentRegistryEntry = {
+	name: 'DatePicker', category: 'atomic', tags: ["field","date","calendar"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const onSelect = resolveExpressionValue(node['onSelect'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['onSelect']
+		const isDateDisabled = resolveExpressionValue(node['isDateDisabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['isDateDisabled']
+		const minDate = resolveExpressionValue(node['minDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['minDate']
+		const maxDate = resolveExpressionValue(node['maxDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['maxDate']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['disabled']
+		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DatePicker.js').DatePickerProps['dateFormat']
+		function DatePickerWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<DatePicker onSelect={onSelect} isDateDisabled={isDateDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} value={formData?.[bind] ? new Date(String(formData?.[bind])) : null} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <DatePickerWithContext />
+	},
+}
+
+export const DateRangePickerEntry: ComponentRegistryEntry = {
+	name: 'DateRangePicker', category: 'atomic', tags: ["field","date","range","calendar"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['disabled']
+		const isDisabled = resolveExpressionValue(node['isDisabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['isDisabled']
+		const minDate = resolveExpressionValue(node['minDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['minDate']
+		const maxDate = resolveExpressionValue(node['maxDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['maxDate']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['placeholder']
+		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['dateFormat']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js').DateRangePickerProps['onOpenChange']
+		function DateRangePickerWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<DateRangePicker disabled={disabled} isDisabled={isDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} dateFormat={dateFormat} open={open} onOpenChange={onOpenChange} value={(formData?.[bind] as { from: Date | null; to: Date | null } | undefined) ?? { from: new Date(), to: null }} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <DateRangePickerWithContext />
+	},
+}
+
+export const FieldAsyncSelectEntry: ComponentRegistryEntry = {
+	name: 'FieldAsyncSelect', category: 'atomic', tags: ["field","async","select","search","combobox"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const name = resolveExpressionValue(node['name'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['name']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['description']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['error']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['disabled']
+		const loadOptions = resolveExpressionValue(node['loadOptions'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['loadOptions']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['placeholder']
+		const debounceMs = resolveExpressionValue(node['debounceMs'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['debounceMs']
+		const noOptionsMessage = resolveExpressionValue(node['noOptionsMessage'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js').FieldAsyncSelectProps['noOptionsMessage']
+		function FieldAsyncSelectWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldAsyncSelect name={name} label={label} description={description} required={required} error={error} disabled={disabled} loadOptions={loadOptions} placeholder={placeholder} debounceMs={debounceMs} noOptionsMessage={noOptionsMessage} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldAsyncSelectWithContext />
+	},
+}
+
+export const FieldAutocompleteEntry: ComponentRegistryEntry = {
+	name: 'FieldAutocomplete', category: 'atomic', tags: ["field","autocomplete","search"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js').FieldAutocompleteProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js').FieldAutocompleteProps['description']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js').FieldAutocompleteProps['options']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js').FieldAutocompleteProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js').FieldAutocompleteProps['disabled']
+		function FieldAutocompleteWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldAutocomplete label={label} description={description} options={options} placeholder={placeholder} disabled={disabled} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldAutocompleteWithContext />
+	},
+}
+
+export const FieldDateEntry: ComponentRegistryEntry = {
+	name: 'FieldDate', category: 'atomic', tags: ["field","date"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['description']
+		const isDateDisabled = resolveExpressionValue(node['isDateDisabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['isDateDisabled']
+		const minDate = resolveExpressionValue(node['minDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['minDate']
+		const maxDate = resolveExpressionValue(node['maxDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['maxDate']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['disabled']
+		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['dateFormat']
+		function FieldDateWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldDate label={label} description={description} isDateDisabled={isDateDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} value={formData?.[bind] ? new Date(String(formData?.[bind])) : null} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldDateWithContext />
+	},
+}
+
+export const FieldDateRangeEntry: ComponentRegistryEntry = {
+	name: 'FieldDateRange', category: 'atomic', tags: ["field","date","range"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['description']
+		const isDisabled = resolveExpressionValue(node['isDisabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['isDisabled']
+		const minDate = resolveExpressionValue(node['minDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['minDate']
+		const maxDate = resolveExpressionValue(node['maxDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['maxDate']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['disabled']
+		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['dateFormat']
+		function FieldDateRangeWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldDateRange label={label} description={description} isDisabled={isDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} value={(formData?.[bind] as { from: Date | null; to: Date | null } | undefined) ?? { from: new Date(), to: null }} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldDateRangeWithContext />
+	},
+}
+
+export const FieldMultiSelectEntry: ComponentRegistryEntry = {
+	name: 'FieldMultiSelect', category: 'atomic', tags: ["field","multi-select"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const name = resolveExpressionValue(node['name'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['name']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['description']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['error']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['disabled']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['options']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['placeholder']
+		const maxSelected = resolveExpressionValue(node['maxSelected'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js').FieldMultiSelectProps['maxSelected']
+		function FieldMultiSelectWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldMultiSelect name={name} label={label} description={description} required={required} error={error} disabled={disabled} options={options} placeholder={placeholder} maxSelected={maxSelected} value={(formData?.[bind] as string[] | undefined) ?? []} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldMultiSelectWithContext />
 	},
 }
 
@@ -279,15 +710,15 @@ export const FieldNumberEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const bind = node['bind'] as string
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['label']
-		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['description']
-		const min = resolveExpressionValue(node['min'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['min']
-		const max = resolveExpressionValue(node['max'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['max']
-		const suffix = resolveExpressionValue(node['suffix'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['suffix']
-		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['disabled']
-		const unlimited = resolveExpressionValue(node['unlimited'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['unlimited']
-		const unlimitedValue = resolveExpressionValue(node['unlimitedValue'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['unlimitedValue']
-		const onUnlimitedChange = resolveExpressionValue(node['onUnlimitedChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldNumber.js').FieldNumberProps['onUnlimitedChange']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['description']
+		const min = resolveExpressionValue(node['min'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['min']
+		const max = resolveExpressionValue(node['max'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['max']
+		const suffix = resolveExpressionValue(node['suffix'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['suffix']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['disabled']
+		const unlimited = resolveExpressionValue(node['unlimited'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['unlimited']
+		const unlimitedValue = resolveExpressionValue(node['unlimitedValue'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['unlimitedValue']
+		const onUnlimitedChange = resolveExpressionValue(node['onUnlimitedChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['onUnlimitedChange']
 		function FieldNumberWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
@@ -304,11 +735,11 @@ export const FieldReadOnlyEntry: ComponentRegistryEntry = {
 	name: 'FieldReadOnly', category: 'atomic', tags: ["field","readonly"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldReadOnly.js').FieldReadOnlyProps['label']
-		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldReadOnly.js').FieldReadOnlyProps['description']
-		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldReadOnly.js').FieldReadOnlyProps['value']
-		const mono = resolveExpressionValue(node['mono'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldReadOnly.js').FieldReadOnlyProps['mono']
-		const copyable = resolveExpressionValue(node['copyable'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldReadOnly.js').FieldReadOnlyProps['copyable']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js').FieldReadOnlyProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js').FieldReadOnlyProps['description']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js').FieldReadOnlyProps['value']
+		const mono = resolveExpressionValue(node['mono'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js').FieldReadOnlyProps['mono']
+		const copyable = resolveExpressionValue(node['copyable'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js').FieldReadOnlyProps['copyable']
 		return <FieldReadOnly label={label} description={description} value={value} mono={mono} copyable={copyable} />
 	},
 }
@@ -318,10 +749,10 @@ export const FieldSelectEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const bind = node['bind'] as string
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldSelect.js').FieldSelectProps['label']
-		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldSelect.js').FieldSelectProps['description']
-		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldSelect.js').FieldSelectProps['options']
-		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldSelect.js').FieldSelectProps['placeholder']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['description']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['options']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['placeholder']
 		function FieldSelectWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
@@ -334,14 +765,40 @@ export const FieldSelectEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const FieldTagsEntry: ComponentRegistryEntry = {
+	name: 'FieldTags', category: 'atomic', tags: ["field","tags","input"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const name = resolveExpressionValue(node['name'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['name']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['description']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['error']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['disabled']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['placeholder']
+		const maxTags = resolveExpressionValue(node['maxTags'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['maxTags']
+		const allowDuplicates = resolveExpressionValue(node['allowDuplicates'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTags.js').FieldTagsProps['allowDuplicates']
+		function FieldTagsWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldTags name={name} label={label} description={description} required={required} error={error} disabled={disabled} placeholder={placeholder} maxTags={maxTags} allowDuplicates={allowDuplicates} value={(formData?.[bind] as string[] | undefined) ?? []} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldTagsWithContext />
+	},
+}
+
 export const FieldTextEntry: ComponentRegistryEntry = {
 	name: 'FieldText', category: 'atomic', tags: ["field"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const bind = node['bind'] as string
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldText.js').FieldTextProps['label']
-		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldText.js').FieldTextProps['description']
-		const readOnly = resolveExpressionValue(node['readOnly'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldText.js').FieldTextProps['readOnly']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['description']
+		const readOnly = resolveExpressionValue(node['readOnly'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['readOnly']
 		function FieldTextWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
@@ -359,9 +816,9 @@ export const FieldTextareaEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const bind = node['bind'] as string
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldTextarea.js').FieldTextareaProps['label']
-		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldTextarea.js').FieldTextareaProps['description']
-		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldTextarea.js').FieldTextareaProps['rows']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTextarea.js').FieldTextareaProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTextarea.js').FieldTextareaProps['description']
+		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTextarea.js').FieldTextareaProps['rows']
 		function FieldTextareaWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
@@ -374,13 +831,36 @@ export const FieldTextareaEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const FieldTimeEntry: ComponentRegistryEntry = {
+	name: 'FieldTime', category: 'atomic', tags: ["field","time"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['description']
+		const is12Hour = resolveExpressionValue(node['is12Hour'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['is12Hour']
+		const minuteStep = resolveExpressionValue(node['minuteStep'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['minuteStep']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['disabled']
+		function FieldTimeWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldTime label={label} description={description} is12Hour={is12Hour} minuteStep={minuteStep} placeholder={placeholder} disabled={disabled} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldTimeWithContext />
+	},
+}
+
 export const FieldWrapperEntry: ComponentRegistryEntry = {
 	name: 'FieldWrapper', category: 'disposition', tags: ["field","wrapper"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldWrapper.js').FieldWrapperProps['label']
-		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/FieldWrapper.js').FieldWrapperProps['description']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['description']
 		return (
 			<FieldWrapper label={label} description={description}>
 				{items ? renderChildren(items, registry, ctx) : null}
@@ -395,9 +875,32 @@ export const FormEntry: ComponentRegistryEntry = {
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const fields = node['fields'] as unknown[] | undefined
 		const actions = node['actions'] as unknown[] | undefined
-		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/Form.js').FormProps['onSubmit']
-		const initialData = resolveExpressionValue(node['initialData'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/Form.js').FormProps['initialData']
+		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/Form.js').FormProps['onSubmit']
+		const initialData = resolveExpressionValue(node['initialData'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/Form.js').FormProps['initialData']
 		return <Form fields={fields ? renderChildren(fields, registry, ctx) : null} actions={actions ? renderChildren(actions, registry, ctx) : null} onSubmit={onSubmit} initialData={initialData} />
+	},
+}
+
+export const TimePickerEntry: ComponentRegistryEntry = {
+	name: 'TimePicker', category: 'atomic', tags: ["field","time","clock"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const is12Hour = resolveExpressionValue(node['is12Hour'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/TimePicker.js').TimePickerProps['is12Hour']
+		const minuteStep = resolveExpressionValue(node['minuteStep'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/TimePicker.js').TimePickerProps['minuteStep']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/TimePicker.js').TimePickerProps['disabled']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/TimePicker.js').TimePickerProps['placeholder']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/TimePicker.js').TimePickerProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/TimePicker.js').TimePickerProps['onOpenChange']
+		function TimePickerWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<TimePicker is12Hour={is12Hour} minuteStep={minuteStep} disabled={disabled} placeholder={placeholder} open={open} onOpenChange={onOpenChange} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <TimePickerWithContext />
 	},
 }
 
@@ -405,7 +908,7 @@ export const UnsavedBadgeEntry: ComponentRegistryEntry = {
 	name: 'UnsavedBadge', category: 'atomic', tags: ["status","form-specific"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const hasChanges = resolveExpressionValue(node['hasChanges'], ctx) as import('@wadeck-app/dsl-ui/src/components/form/UnsavedBadge.js').UnsavedBadgeProps['hasChanges']
+		const hasChanges = resolveExpressionValue(node['hasChanges'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/UnsavedBadge.js').UnsavedBadgeProps['hasChanges']
 		return <UnsavedBadge hasChanges={hasChanges} />
 	},
 }
@@ -423,19 +926,102 @@ export const ActionBarEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const CardEntry: ComponentRegistryEntry = {
+	name: 'Card', category: 'disposition', tags: ["card","container","surface"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const padding = resolveExpressionValue(node['padding'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Card.js').CardProps['padding']
+		const shadow = resolveExpressionValue(node['shadow'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Card.js').CardProps['shadow']
+		const border = resolveExpressionValue(node['border'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Card.js').CardProps['border']
+		const header = node['header'] as unknown[] | undefined
+		const footer = node['footer'] as unknown[] | undefined
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Card.js').CardProps['onClick']
+		return (
+			<Card padding={padding} shadow={shadow} border={border} header={header ? renderChildren(header, registry, ctx) : null} footer={footer ? renderChildren(footer, registry, ctx) : null} onClick={onClick}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</Card>
+		)
+	},
+}
+
+export const CardActionsEntry: ComponentRegistryEntry = {
+	name: 'CardActions', category: 'disposition', tags: ["card-actions","card","actions"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		return (
+			<CardActions>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</CardActions>
+		)
+	},
+}
+
+export const CollapsibleEntry: ComponentRegistryEntry = {
+	name: 'Collapsible', category: 'disposition', tags: ["collapsible","accordion","expandable"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Collapsible.js').CollapsibleProps['title']
+		const defaultOpen = resolveExpressionValue(node['defaultOpen'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Collapsible.js').CollapsibleProps['defaultOpen']
+		return (
+			<Collapsible title={title} defaultOpen={defaultOpen}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</Collapsible>
+		)
+	},
+}
+
+export const DialogFooterEntry: ComponentRegistryEntry = {
+	name: 'DialogFooter', category: 'disposition', tags: ["dialog-footer","dialog","footer"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		return (
+			<DialogFooter>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</DialogFooter>
+		)
+	},
+}
+
+export const DividerEntry: ComponentRegistryEntry = {
+	name: 'Divider', category: 'atomic', tags: ["divider","separator","line"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const orientation = resolveExpressionValue(node['orientation'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Divider.js').DividerProps['orientation']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Divider.js').DividerProps['label']
+		return <Divider orientation={orientation} label={label} />
+	},
+}
+
 export const HorizontalStackEntry: ComponentRegistryEntry = {
 	name: 'HorizontalStack', category: 'disposition', tags: ["layout","IN","SCOPE:","horizontal","flex","container","with","configurable","gap,","alignment,","and","justification.","OUT","OF","SCOPE:","business-specific","layouts","-","use","PageHeader.headerActions","for","header+button","patterns."],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const gap = resolveExpressionValue(node['gap'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/HorizontalStack.js').HorizontalStackProps['gap']
-		const align = resolveExpressionValue(node['align'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/HorizontalStack.js').HorizontalStackProps['align']
-		const justify = resolveExpressionValue(node['justify'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/HorizontalStack.js').HorizontalStackProps['justify']
-		const itemSizes = resolveExpressionValue(node['itemSizes'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/HorizontalStack.js').HorizontalStackProps['itemSizes']
+		const gap = resolveExpressionValue(node['gap'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/HorizontalStack.js').HorizontalStackProps['gap']
+		const align = resolveExpressionValue(node['align'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/HorizontalStack.js').HorizontalStackProps['align']
+		const justify = resolveExpressionValue(node['justify'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/HorizontalStack.js').HorizontalStackProps['justify']
+		const itemSizes = resolveExpressionValue(node['itemSizes'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/HorizontalStack.js').HorizontalStackProps['itemSizes']
 		return (
 			<HorizontalStack gap={gap} align={align} justify={justify} itemSizes={itemSizes}>
 				{items ? renderChildren(items, registry, ctx) : null}
 			</HorizontalStack>
+		)
+	},
+}
+
+export const NavBarEntry: ComponentRegistryEntry = {
+	name: 'NavBar', category: 'disposition', tags: ["nav-bar","navigation"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		return (
+			<NavBar>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</NavBar>
 		)
 	},
 }
@@ -445,8 +1031,23 @@ export const PageContentEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const sections = node['sections'] as unknown[] | undefined
-		const maxWidth = resolveExpressionValue(node['maxWidth'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/PageContent.js').PageContentProps['maxWidth']
+		const maxWidth = resolveExpressionValue(node['maxWidth'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/PageContent.js').PageContentProps['maxWidth']
 		return <PageContent sections={sections ? renderChildren(sections, registry, ctx) : null} maxWidth={maxWidth} />
+	},
+}
+
+export const PageSectionEntry: ComponentRegistryEntry = {
+	name: 'PageSection', category: 'disposition', tags: ["page-section","page","header","title"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/PageHeader.js').PageSectionProps['title']
+		const actions = node['actions'] as unknown[] | undefined
+		return (
+			<PageSection title={title} actions={actions ? renderChildren(actions, registry, ctx) : null}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</PageSection>
+		)
 	},
 }
 
@@ -455,11 +1056,37 @@ export const SectionEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/Section.js').SectionProps['title']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/Section.js').SectionProps['title']
 		return (
 			<Section title={title}>
 				{items ? renderChildren(items, registry, ctx) : null}
 			</Section>
+		)
+	},
+}
+
+export const StatTileEntry: ComponentRegistryEntry = {
+	name: 'StatTile', category: 'disposition', tags: ["stat","kpi","metric","dashboard"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/StatTile.js').StatTileProps['label']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/StatTile.js').StatTileProps['value']
+		const trend = resolveExpressionValue(node['trend'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/StatTile.js').StatTileProps['trend']
+		const icon = node['icon'] as unknown[] | undefined
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/StatTile.js').StatTileProps['loading']
+		return <StatTile label={label} value={value} trend={trend} icon={icon ? renderChildren(icon, registry, ctx) : null} loading={loading} />
+	},
+}
+
+export const TableRowActionsEntry: ComponentRegistryEntry = {
+	name: 'TableRowActions', category: 'disposition', tags: ["table-row-actions","row","actions"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		return (
+			<TableRowActions>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</TableRowActions>
 		)
 	},
 }
@@ -469,7 +1096,7 @@ export const VerticalStackEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const gap = resolveExpressionValue(node['gap'], ctx) as import('@wadeck-app/dsl-ui/src/components/layout/VerticalStack.js').VerticalStackProps['gap']
+		const gap = resolveExpressionValue(node['gap'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/VerticalStack.js').VerticalStackProps['gap']
 		return (
 			<VerticalStack gap={gap}>
 				{items ? renderChildren(items, registry, ctx) : null}
@@ -482,9 +1109,21 @@ export const BreadcrumbEntry: ComponentRegistryEntry = {
 	name: 'Breadcrumb', category: 'atomic', tags: ["navigation","breadcrumb"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const currentPath = resolveExpressionValue(node['currentPath'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Breadcrumb.js').BreadcrumbProps['currentPath']
-		const onNavigate = resolveExpressionValue(node['onNavigate'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Breadcrumb.js').BreadcrumbProps['onNavigate']
+		const currentPath = resolveExpressionValue(node['currentPath'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Breadcrumb.js').BreadcrumbProps['currentPath']
+		const onNavigate = resolveExpressionValue(node['onNavigate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Breadcrumb.js').BreadcrumbProps['onNavigate']
 		return <Breadcrumb currentPath={currentPath} onNavigate={onNavigate} />
+	},
+}
+
+export const LinkEntry: ComponentRegistryEntry = {
+	name: 'Link', category: 'atomic', tags: ["link","anchor","navigation"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const href = resolveExpressionValue(node['href'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Link.js').LinkProps['href']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Link.js').LinkProps['label']
+		const external = resolveExpressionValue(node['external'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Link.js').LinkProps['external']
+		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Link.js').LinkProps['variant']
+		return <Link href={href} label={label} external={external} variant={variant} />
 	},
 }
 
@@ -492,9 +1131,9 @@ export const PageTabsEntry: ComponentRegistryEntry = {
 	name: 'PageTabs', category: 'disposition', tags: ["tabs","navigation"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const tabs = resolveExpressionValue(node['tabs'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/PageTabs.js').PageTabsProps['tabs']
-		const activeTab = resolveExpressionValue(node['activeTab'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/PageTabs.js').PageTabsProps['activeTab']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/PageTabs.js').PageTabsProps['onChange']
+		const tabs = resolveExpressionValue(node['tabs'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/PageTabs.js').PageTabsProps['tabs']
+		const activeTab = resolveExpressionValue(node['activeTab'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/PageTabs.js').PageTabsProps['activeTab']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/PageTabs.js').PageTabsProps['onChange']
 		return <PageTabs tabs={tabs} activeTab={activeTab} onChange={onChange} />
 	},
 }
@@ -502,13 +1141,9 @@ export const PageTabsEntry: ComponentRegistryEntry = {
 export const RouterProviderEntry: ComponentRegistryEntry = {
 	name: 'RouterProvider', category: 'disposition', tags: ["router","navigation"],
 	nodeSchema: null as never,
-	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+	render: ({ node, registry }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		return (
-			<RouterProvider>
-				{items ? renderChildren(items, registry, ctx) : null}
-			</RouterProvider>
-		)
+		return <RouterProvider>{items ? renderChildren(items, registry, {}) : null}</RouterProvider>
 	},
 }
 
@@ -516,10 +1151,10 @@ export const StepperEntry: ComponentRegistryEntry = {
 	name: 'Stepper', category: 'disposition', tags: ["stepper","wizard"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const steps = resolveExpressionValue(node['steps'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Stepper.js').StepperProps['steps']
-		const onComplete = resolveExpressionValue(node['onComplete'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Stepper.js').StepperProps['onComplete']
-		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Stepper.js').StepperProps['onCancel']
-		const completedLabel = resolveExpressionValue(node['completedLabel'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Stepper.js').StepperProps['completedLabel']
+		const steps = resolveExpressionValue(node['steps'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Stepper.js').StepperProps['steps']
+		const onComplete = resolveExpressionValue(node['onComplete'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Stepper.js').StepperProps['onComplete']
+		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Stepper.js').StepperProps['onCancel']
+		const completedLabel = resolveExpressionValue(node['completedLabel'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Stepper.js').StepperProps['completedLabel']
 		return <Stepper steps={steps} onComplete={onComplete} onCancel={onCancel} completedLabel={completedLabel} />
 	},
 }
@@ -528,11 +1163,25 @@ export const TabsEntry: ComponentRegistryEntry = {
 	name: 'Tabs', category: 'disposition', tags: ["tabs","layout"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const tabs = resolveExpressionValue(node['tabs'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Tabs.js').TabsProps['tabs']
-		const defaultTab = resolveExpressionValue(node['defaultTab'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Tabs.js').TabsProps['defaultTab']
-		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Tabs.js').TabsProps['value']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/navigation/Tabs.js').TabsProps['onChange']
+		const tabs = resolveExpressionValue(node['tabs'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Tabs.js').TabsProps['tabs']
+		const defaultTab = resolveExpressionValue(node['defaultTab'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Tabs.js').TabsProps['defaultTab']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Tabs.js').TabsProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/Tabs.js').TabsProps['onChange']
 		return <Tabs tabs={tabs} defaultTab={defaultTab} value={value} onChange={onChange} />
+	},
+}
+
+export const TreeViewEntry: ComponentRegistryEntry = {
+	name: 'TreeView', category: 'composite', tags: ["tree","treeview","hierarchy","expandable"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const nodes = resolveExpressionValue(node['nodes'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js').TreeViewProps['nodes']
+		const onSelect = resolveExpressionValue(node['onSelect'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js').TreeViewProps['onSelect']
+		const selectedId = resolveExpressionValue(node['selectedId'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js').TreeViewProps['selectedId']
+		const defaultExpandedIds = resolveExpressionValue(node['defaultExpandedIds'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js').TreeViewProps['defaultExpandedIds']
+		const expandedIds = resolveExpressionValue(node['expandedIds'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js').TreeViewProps['expandedIds']
+		const onExpandChange = resolveExpressionValue(node['onExpandChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/TreeView.js').TreeViewProps['onExpandChange']
+		return <TreeView nodes={nodes} onSelect={onSelect} selectedId={selectedId} defaultExpandedIds={defaultExpandedIds} expandedIds={expandedIds} onExpandChange={onExpandChange} />
 	},
 }
 
@@ -540,14 +1189,28 @@ export const ConfirmDialogEntry: ComponentRegistryEntry = {
 	name: 'ConfirmDialog', category: 'composite', tags: ["dialog","modal","overlay"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js').ConfirmDialogProps['open']
-		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js').ConfirmDialogProps['onOpenChange']
-		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js').ConfirmDialogProps['title']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js').ConfirmDialogProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js').ConfirmDialogProps['onOpenChange']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js').ConfirmDialogProps['title']
 		const message = node['message'] as unknown[] | undefined
-		const confirmLabel = resolveExpressionValue(node['confirmLabel'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js').ConfirmDialogProps['confirmLabel']
-		const confirmVariant = resolveExpressionValue(node['confirmVariant'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js').ConfirmDialogProps['confirmVariant']
-		const onConfirm = resolveExpressionValue(node['onConfirm'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/ConfirmDialog.js').ConfirmDialogProps['onConfirm']
+		const confirmLabel = resolveExpressionValue(node['confirmLabel'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js').ConfirmDialogProps['confirmLabel']
+		const confirmVariant = resolveExpressionValue(node['confirmVariant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js').ConfirmDialogProps['confirmVariant']
+		const onConfirm = resolveExpressionValue(node['onConfirm'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ConfirmDialog.js').ConfirmDialogProps['onConfirm']
 		return <ConfirmDialog open={open} onOpenChange={onOpenChange} title={title} message={message ? renderChildren(message, registry, ctx) : null} confirmLabel={confirmLabel} confirmVariant={confirmVariant} onConfirm={onConfirm} />
+	},
+}
+
+export const ContextMenuEntry: ComponentRegistryEntry = {
+	name: 'ContextMenu', category: 'disposition', tags: ["context-menu","dropdown","menu","kebab","overlay"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const trigger = node['trigger'] as unknown[] | undefined
+		const items = resolveExpressionValue(node['items'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ContextMenu.js').ContextMenuProps['items']
+		const side = resolveExpressionValue(node['side'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ContextMenu.js').ContextMenuProps['side']
+		const align = resolveExpressionValue(node['align'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ContextMenu.js').ContextMenuProps['align']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ContextMenu.js').ContextMenuProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/ContextMenu.js').ContextMenuProps['onOpenChange']
+		return <ContextMenu trigger={trigger ? renderChildren(trigger, registry, ctx) : null} items={items} side={side} align={align} open={open} onOpenChange={onOpenChange} />
 	},
 }
 
@@ -556,12 +1219,12 @@ export const DialogEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/Dialog.js').DialogProps['title']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Dialog.js').DialogProps['title']
 		const trigger = node['trigger'] as unknown[] | undefined
-		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/Dialog.js').DialogProps['open']
-		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/Dialog.js').DialogProps['onOpenChange']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Dialog.js').DialogProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Dialog.js').DialogProps['onOpenChange']
 		const actions = node['actions'] as unknown[] | undefined
-		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/Dialog.js').DialogProps['size']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Dialog.js').DialogProps['size']
 		return (
 			<Dialog title={title} trigger={trigger ? renderChildren(trigger, registry, ctx) : null} open={open} onOpenChange={onOpenChange} actions={actions ? renderChildren(actions, registry, ctx) : null} size={size}>
 				{items ? renderChildren(items, registry, ctx) : null}
@@ -574,15 +1237,53 @@ export const DialogFormEntry: ComponentRegistryEntry = {
 	name: 'DialogForm', category: 'composite', tags: ["dialog","form"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['title']
-		const visible = resolveExpressionValue(node['visible'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['visible']
-		const initialData = resolveExpressionValue(node['initialData'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['initialData']
-		const onClose = resolveExpressionValue(node['onClose'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['onClose']
-		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['onSubmit']
-		const onSubmitEdit = resolveExpressionValue(node['onSubmitEdit'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['onSubmitEdit']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['title']
+		const visible = resolveExpressionValue(node['visible'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['visible']
+		const initialData = resolveExpressionValue(node['initialData'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['initialData']
+		const onClose = resolveExpressionValue(node['onClose'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['onClose']
+		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['onSubmit']
+		const onSubmitEdit = resolveExpressionValue(node['onSubmitEdit'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['onSubmitEdit']
 		const fields = node['fields'] as unknown[] | undefined
-		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/DialogForm.js').DialogFormProps['size']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/DialogForm.js').DialogFormProps['size']
 		return <DialogForm title={title} visible={visible} initialData={initialData} onClose={onClose} onSubmit={onSubmit} onSubmitEdit={onSubmitEdit} fields={fields ? renderChildren(fields, registry, ctx) : null} size={size} />
+	},
+}
+
+export const DrawerEntry: ComponentRegistryEntry = {
+	name: 'Drawer', category: 'disposition', tags: ["drawer","panel","overlay","slide"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js').DrawerProps['open']
+		const onClose = resolveExpressionValue(node['onClose'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js').DrawerProps['onClose']
+		const side = resolveExpressionValue(node['side'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js').DrawerProps['side']
+		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js').DrawerProps['title']
+		const footer = node['footer'] as unknown[] | undefined
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js').DrawerProps['size']
+		const hideCloseButton = resolveExpressionValue(node['hideCloseButton'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Drawer.js').DrawerProps['hideCloseButton']
+		return (
+			<Drawer open={open} onClose={onClose} side={side} title={title} footer={footer ? renderChildren(footer, registry, ctx) : null} size={size} hideCloseButton={hideCloseButton}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</Drawer>
+		)
+	},
+}
+
+export const PopoverEntry: ComponentRegistryEntry = {
+	name: 'Popover', category: 'disposition', tags: ["popover","overlay","panel","interactive"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const trigger = node['trigger'] as unknown[] | undefined
+		const side = resolveExpressionValue(node['side'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Popover.js').PopoverProps['side']
+		const align = resolveExpressionValue(node['align'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Popover.js').PopoverProps['align']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Popover.js').PopoverProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Popover.js').PopoverProps['onOpenChange']
+		return (
+			<Popover trigger={trigger ? renderChildren(trigger, registry, ctx) : null} side={side} align={align} open={open} onOpenChange={onOpenChange}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</Popover>
+		)
 	},
 }
 
@@ -604,7 +1305,7 @@ export const TooltipEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = node['items'] as unknown[] | undefined
-		const content = resolveExpressionValue(node['content'], ctx) as import('@wadeck-app/dsl-ui/src/components/overlay/Tooltip.js').TooltipProps['content']
+		const content = resolveExpressionValue(node['content'], ctx) as import('@wadeck-app/dsl-ui/dist/components/overlay/Tooltip.js').TooltipProps['content']
 		return (
 			<Tooltip content={content}>
 				{items ? renderChildren(items, registry, ctx) : null}
@@ -613,34 +1314,63 @@ export const TooltipEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const BulkActionsToolbarEntry: ComponentRegistryEntry = {
+	name: 'BulkActionsToolbar', category: 'atomic', tags: ["table","bulk","actions","selection","toolbar"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const selectedCount = resolveExpressionValue(node['selectedCount'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/BulkActionsToolbar.js').BulkActionsToolbarProps['selectedCount']
+		const onClearSelection = resolveExpressionValue(node['onClearSelection'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/BulkActionsToolbar.js').BulkActionsToolbarProps['onClearSelection']
+		return (
+			<BulkActionsToolbar selectedCount={selectedCount} onClearSelection={onClearSelection}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</BulkActionsToolbar>
+		)
+	},
+}
+
 export const DataTableEntry: ComponentRegistryEntry = {
 	name: 'DataTable', category: 'composite', tags: ["table"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['rows']
-		const columns = resolveExpressionValue(node['columns'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['columns']
-		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['loading']
-		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['emptyMessage']
-		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onAction']
-		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['navigateTo']
+		const rows = resolveExpressionValue(node['rows'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['rows']
+		const columns = resolveExpressionValue(node['columns'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['columns']
+		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['loading']
+		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['emptyMessage']
+		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onAction']
+		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['navigateTo']
 		const filtersTop = node['filtersTop'] as unknown[] | undefined
 		const filters = node['filters'] as unknown[] | undefined
-		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['id']
-		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['page']
-		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onPageChange']
-		const sortCol = resolveExpressionValue(node['sortCol'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortCol']
-		const onSortColChange = resolveExpressionValue(node['onSortColChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortColChange']
-		const sortDir = resolveExpressionValue(node['sortDir'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortDir']
-		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortDirChange']
-		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['defaultFilters']
-		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansion']
-		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['renderNode']
-		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['selectable']
-		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['batchActions']
-		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onBatchAction']
-		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansionCondition']
-		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['fontMono']
+		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['id']
+		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['page']
+		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onPageChange']
+		const sortCol = resolveExpressionValue(node['sortCol'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortCol']
+		const onSortColChange = resolveExpressionValue(node['onSortColChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortColChange']
+		const sortDir = resolveExpressionValue(node['sortDir'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['sortDir']
+		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortDirChange']
+		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['defaultFilters']
+		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansion']
+		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['renderNode']
+		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['selectable']
+		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['batchActions']
+		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onBatchAction']
+		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansionCondition']
+		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['fontMono']
 		return <DataTable rows={rows} columns={columns} loading={loading} emptyMessage={emptyMessage} onAction={onAction} navigateTo={navigateTo} filtersTop={filtersTop ? renderChildren(filtersTop, registry, ctx) : null} filters={filters ? renderChildren(filters, registry, ctx) : null} id={id} page={page} onPageChange={onPageChange} sortCol={sortCol} onSortColChange={onSortColChange} sortDir={sortDir} onSortDirChange={onSortDirChange} defaultFilters={defaultFilters} expansion={expansion} renderNode={renderNode} selectable={selectable} batchActions={batchActions} onBatchAction={onBatchAction} expansionCondition={expansionCondition} fontMono={fontMono} />
+	},
+}
+
+export const FilterBarEntry: ComponentRegistryEntry = {
+	name: 'FilterBar', category: 'composite', tags: ["filter","search","bar"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const search = resolveExpressionValue(node['search'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterBar.js').FilterBarProps['search']
+		const onSearchChange = resolveExpressionValue(node['onSearchChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterBar.js').FilterBarProps['onSearchChange']
+		const filters = resolveExpressionValue(node['filters'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterBar.js').FilterBarProps['filters']
+		const onFilterChange = resolveExpressionValue(node['onFilterChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterBar.js').FilterBarProps['onFilterChange']
+		const onClearAll = resolveExpressionValue(node['onClearAll'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterBar.js').FilterBarProps['onClearAll']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterBar.js').FilterBarProps['placeholder']
+		return <FilterBar search={search} onSearchChange={onSearchChange} filters={filters} onFilterChange={onFilterChange} onClearAll={onClearAll} placeholder={placeholder} />
 	},
 }
 
@@ -648,10 +1378,10 @@ export const FilterChipsEntry: ComponentRegistryEntry = {
 	name: 'FilterChips', category: 'composite', tags: ["filter"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const bind = resolveExpressionValue(node['bind'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/FilterChips.js').FilterChipsProps['bind']
-		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/FilterChips.js').FilterChipsProps['options']
-		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/FilterChips.js').FilterChipsProps['value']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/FilterChips.js').FilterChipsProps['onChange']
+		const bind = resolveExpressionValue(node['bind'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['bind']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['options']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['onChange']
 		return <FilterChips bind={bind} options={options} value={value} onChange={onChange} />
 	},
 }
@@ -660,11 +1390,11 @@ export const PaginationEntry: ComponentRegistryEntry = {
 	name: 'Pagination', category: 'atomic', tags: ["pagination"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/Pagination.js').PaginationProps['page']
-		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/Pagination.js').PaginationProps['onPageChange']
-		const total = resolveExpressionValue(node['total'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/Pagination.js').PaginationProps['total']
-		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/Pagination.js').PaginationProps['size']
-		const onSizeChange = resolveExpressionValue(node['onSizeChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/Pagination.js').PaginationProps['onSizeChange']
+		const page = resolveExpressionValue(node['page'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/Pagination.js').PaginationProps['page']
+		const onPageChange = resolveExpressionValue(node['onPageChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/Pagination.js').PaginationProps['onPageChange']
+		const total = resolveExpressionValue(node['total'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/Pagination.js').PaginationProps['total']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/Pagination.js').PaginationProps['size']
+		const onSizeChange = resolveExpressionValue(node['onSizeChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/Pagination.js').PaginationProps['onSizeChange']
 		return <Pagination page={page} onPageChange={onPageChange} total={total} size={size} onSizeChange={onSizeChange} />
 	},
 }
@@ -673,11 +1403,11 @@ export const SearchBarEntry: ComponentRegistryEntry = {
 	name: 'SearchBar', category: 'composite', tags: ["filter","search"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/SearchBar.js').SearchBarProps['value']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/SearchBar.js').SearchBarProps['onChange']
-		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/SearchBar.js').SearchBarProps['placeholder']
-		const debounceMs = resolveExpressionValue(node['debounceMs'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/SearchBar.js').SearchBarProps['debounceMs']
-		const focusExpand = resolveExpressionValue(node['focusExpand'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/SearchBar.js').SearchBarProps['focusExpand']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SearchBar.js').SearchBarProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SearchBar.js').SearchBarProps['onChange']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SearchBar.js').SearchBarProps['placeholder']
+		const debounceMs = resolveExpressionValue(node['debounceMs'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SearchBar.js').SearchBarProps['debounceMs']
+		const focusExpand = resolveExpressionValue(node['focusExpand'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SearchBar.js').SearchBarProps['focusExpand']
 		return <SearchBar value={value} onChange={onChange} placeholder={placeholder} debounceMs={debounceMs} focusExpand={focusExpand} />
 	},
 }
@@ -686,11 +1416,23 @@ export const ShownFetchedCounterEntry: ComponentRegistryEntry = {
 	name: 'ShownFetchedCounter', category: 'atomic', tags: ["counter","pagination"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const raw = resolveExpressionValue(node['raw'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['raw']
-		const entriesField = resolveExpressionValue(node['entriesField'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['entriesField']
-		const totalField = resolveExpressionValue(node['totalField'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['totalField']
-		const pushRight = resolveExpressionValue(node['pushRight'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['pushRight']
+		const raw = resolveExpressionValue(node['raw'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['raw']
+		const entriesField = resolveExpressionValue(node['entriesField'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['entriesField']
+		const totalField = resolveExpressionValue(node['totalField'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['totalField']
+		const pushRight = resolveExpressionValue(node['pushRight'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/ShownFetchedCounter.js').ShownFetchedCounterProps['pushRight']
 		return <ShownFetchedCounter raw={raw} entriesField={entriesField} totalField={totalField} pushRight={pushRight} />
+	},
+}
+
+export const SortableColumnEntry: ComponentRegistryEntry = {
+	name: 'SortableColumn', category: 'atomic', tags: ["table","sort","column","header"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SortableColumn.js').SortableColumnProps['label']
+		const sortKey = resolveExpressionValue(node['sortKey'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SortableColumn.js').SortableColumnProps['sortKey']
+		const currentSort = resolveExpressionValue(node['currentSort'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SortableColumn.js').SortableColumnProps['currentSort']
+		const onSort = resolveExpressionValue(node['onSort'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/SortableColumn.js').SortableColumnProps['onSort']
+		return <SortableColumn label={label} sortKey={sortKey} currentSort={currentSort} onSort={onSort} />
 	},
 }
 
@@ -698,10 +1440,10 @@ export const StatusFilterEntry: ComponentRegistryEntry = {
 	name: 'StatusFilter', category: 'atomic', tags: ["filter"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const field = resolveExpressionValue(node['field'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/StatusFilter.js').StatusFilterProps['field']
-		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/StatusFilter.js').StatusFilterProps['value']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/StatusFilter.js').StatusFilterProps['onChange']
-		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/src/components/table/StatusFilter.js').StatusFilterProps['options']
+		const field = resolveExpressionValue(node['field'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/StatusFilter.js').StatusFilterProps['field']
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/StatusFilter.js').StatusFilterProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/StatusFilter.js').StatusFilterProps['onChange']
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/StatusFilter.js').StatusFilterProps['options']
 		return <StatusFilter field={field} value={value} onChange={onChange} options={options} />
 	},
 }
@@ -1046,49 +1788,91 @@ export const TriggerButtonEntry: ComponentRegistryEntry = {
 
 export const allEntries: ComponentRegistryEntry[] = [
 	ButtonActionEntry,
+	CheckboxGroupEntry,
 	ChipButtonEntry,
 	ColorPickerEntry,
+	DeleteButtonEntry,
+	IconButtonEntry,
 	InviteTokenWidgetEntry,
 	LiveToggleEntry,
 	PageSizeSelectEntry,
+	RadioGroupEntry,
 	RefreshButtonEntry,
+	SliderEntry,
+	SwitchEntry,
+	TabButtonEntry,
 	ThemePickerEntry,
+	AvatarEntry,
+	BadgeEntry,
 	ChartEntry,
 	FetchSpinnerEntry,
 	HttpMethodBadgeEntry,
 	HttpStatusBadgeEntry,
+	InlineEditEntry,
 	JsonViewerEntry,
 	PageHeaderEntry,
+	ProgressEntry,
+	RelativeDateEntry,
+	SkeletonEntry,
+	SpinnerEntry,
+	TagEntry,
 	ButtonCancelEntry,
 	ButtonSaveEntry,
+	DatePickerEntry,
+	DateRangePickerEntry,
+	FieldAsyncSelectEntry,
+	FieldAutocompleteEntry,
+	FieldDateEntry,
+	FieldDateRangeEntry,
+	FieldMultiSelectEntry,
 	FieldNumberEntry,
 	FieldReadOnlyEntry,
 	FieldSelectEntry,
+	FieldTagsEntry,
 	FieldTextEntry,
 	FieldTextareaEntry,
+	FieldTimeEntry,
 	FieldWrapperEntry,
 	FormEntry,
+	TimePickerEntry,
 	UnsavedBadgeEntry,
 	ActionBarEntry,
+	CardEntry,
+	CardActionsEntry,
+	CollapsibleEntry,
+	DialogFooterEntry,
+	DividerEntry,
 	HorizontalStackEntry,
+	NavBarEntry,
 	PageContentEntry,
+	PageSectionEntry,
 	SectionEntry,
+	StatTileEntry,
+	TableRowActionsEntry,
 	VerticalStackEntry,
 	BreadcrumbEntry,
+	LinkEntry,
 	PageTabsEntry,
 	RouterProviderEntry,
 	StepperEntry,
 	TabsEntry,
+	TreeViewEntry,
 	ConfirmDialogEntry,
+	ContextMenuEntry,
 	DialogEntry,
 	DialogFormEntry,
+	DrawerEntry,
+	PopoverEntry,
 	ToastProviderEntry,
 	TooltipEntry,
+	BulkActionsToolbarEntry,
 	DataTableEntry,
+	FilterBarEntry,
 	FilterChipsEntry,
 	PaginationEntry,
 	SearchBarEntry,
 	ShownFetchedCounterEntry,
+	SortableColumnEntry,
 	StatusFilterEntry,
 	AuditEntryIconEntry,
 	AuditEntryRowEntry,
@@ -1134,15 +1918,23 @@ FormEntry.allowedChildren = {"fields":["field"],"actions":["action-bar","form-sp
 FormEntry.providesContext = ["FormContext"];
 UnsavedBadgeEntry.requiresContext = ["FormContext"];
 ActionBarEntry.allowedChildren = {"children":["btn"]};
+ActionBarEntry.providesContext = ["ButtonContext"];
+CardEntry.allowedChildren = {"children":["layout","display","composite"]};
+CardActionsEntry.providesContext = ["ButtonContext"];
+CollapsibleEntry.allowedChildren = {"children":["field","layout","atomic"]};
+DialogFooterEntry.providesContext = ["ButtonContext"];
 HorizontalStackEntry.allowedChildren = {"children":["layout","table","form","display","composite","atomic"]};
+NavBarEntry.providesContext = ["ButtonContext"];
 PageContentEntry.allowedChildren = {"sections":["layout","composite","header","content","chart","table","tabs","navigation","action-bar","form","stepper","wizard","upload","dropzone","file","navigator","browser","keys","security","scopes","admin","management","versions","history"]};
 SectionEntry.allowedChildren = {"children":["layout","table","form","display","composite"]};
+TableRowActionsEntry.providesContext = ["ButtonContext"];
 VerticalStackEntry.allowedChildren = {"children":["layout","table","form","display","composite","atomic"]};
 RouterProviderEntry.providesContext = ["RouterContext","UrlParamContext"];
 ConfirmDialogEntry.allowedChildren = {"message":["content"]};
 DialogEntry.allowedChildren = {"trigger":["btn"],"children":["field","layout","table","display","composite"],"actions":["btn"]};
 DialogEntry.providesContext = ["DialogCloseContext"];
 DialogFormEntry.allowedChildren = {"fields":["field"]};
+DrawerEntry.providesContext = ["DrawerCloseContext"];
 ToastProviderEntry.allowedChildren = {"children":["layout","content"]};
 ToastProviderEntry.providesContext = ["ToastContext"];
 TooltipEntry.allowedChildren = {"children":["atomic","composite"]};

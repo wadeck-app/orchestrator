@@ -9,8 +9,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
-      "@wadeck-app/dsl-renderer": ["../../node_modules/@wadeck-app/dsl-renderer/src/index.ts"],
-      "@wadeck-app/dsl-ui": ["../../node_modules/@wadeck-app/dsl-ui/src/index.ts"]
+      "@wadeck-app/dsl-renderer": ["../../node_modules/@wadeck-app/dsl-renderer/src/index.ts"]
     }
   },
   "include": ["src"],
