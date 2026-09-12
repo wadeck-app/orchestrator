@@ -8,6 +8,13 @@ export default defineConfig(async () => {
   const { entriesGenerator } = await import('@wadeck-app/dsl-renderer/build/entriesGenerator');
   return {
     plugins: [react(), entriesGenerator()],
+    // @dsl-ui/* is an internal path alias used by dsl-ui's own dist files.
+    // Without this alias, Vite cannot resolve those imports in the consumer.
+    resolve: {
+      alias: {
+        '@dsl-ui': path.resolve(nodeModules, '@wadeck-app/dsl-ui/dist'),
+      },
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,
