@@ -5,7 +5,7 @@ import type { Job, RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
-import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
+import { ButtonCancel } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
@@ -95,7 +95,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
               </>
             )}
           </span>
-          <ButtonAction label="Kill process" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
+          <Button label="Kill process" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
         </div>
       )}
 
@@ -110,10 +110,10 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
           ? <Button label="Edit" variant="secondary" onClick={onEdit} />
           : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
         {!confirmDelete
-          ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
+          ? <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">
               <span className="text-sm text-content">Are you sure?</span>
-              <ButtonAction label="Yes, delete" variant="danger" onClick={handleDelete} />
+              <Button label="Yes, delete" variant="danger" onClick={handleDelete} />
               <ButtonCancel onCancel={() => setConfirmDelete(false)} />
             </div>}
       </div>

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { EnableToggle } from './EnableToggle.js';
 import { TriggerButton } from './TriggerButton.js';
 import { RunHistory } from './RunHistory.js';
-import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
+import { ButtonCancel } from '@wadeck-app/dsl-ui';
+import { Button } from './Button.js';
 import type { JobWithHistory } from './JobListSection.js';
 import { getErrorMessage } from '../types.js';
 import { ArrowLeft } from 'lucide-react';
@@ -143,11 +144,11 @@ export function JobDetailSection({ data, jobId }: JobDetailSectionProps): React.
           Edit
         </Link>
         {!confirmDelete ? (
-          <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
+          <Button label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
         ) : (
           <div className="flex items-center gap-2">
             <span className="text-sm text-content">Are you sure?</span>
-            <ButtonAction label="Yes, delete" variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
+            <Button label="Yes, delete" variant="danger" onClick={handleDelete} disabled={deleting} loading={deleting} />
             <ButtonCancel onCancel={() => setConfirmDelete(false)} />
           </div>
         )}
