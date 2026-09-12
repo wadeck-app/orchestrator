@@ -7,6 +7,9 @@ const MAX_HISTORY = 20;
 export class State {
   private readonly _file: string;
   private _cache: Record<string, RuntimeEntry[]> | null = null;
+  private _flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private _flushPending = false;
+  private readonly _flushIntervalMs = 500; // batch writes every 500ms
 
   constructor(filePath: string) {
     this._file = filePath;
@@ -47,7 +50,7 @@ export class State {
         this._cache = migrated;
       } else {
         this._cache = {};
-        this._flush();
+        this._doFlush();
       }
     } catch (e) {
       // On load failure, start with empty cache
@@ -57,7 +60,7 @@ export class State {
     }
   }
 
-  private _flush(): void {
+  private _doFlush(): void {
     try {
       atomicWriteJson(this._file, { jobs: this._cache });
     } catch (e) {
@@ -65,6 +68,18 @@ export class State {
       try { process.stderr.write(`[State] Failed to flush: ${err}\n`); } catch { /* EPIPE */ }
       throw e;
     }
+  }
+
+  private _scheduledFlush(): void {
+    if (this._flushTimer !== null) return; // already scheduled
+    this._flushPending = true;
+    this._flushTimer = setTimeout(() => {
+      this._flushTimer = null;
+      if (this._flushPending) {
+        this._flushPending = false;
+        this._doFlush();
+      }
+    }, this._flushIntervalMs);
   }
 
   record(id: string, entry: RuntimeEntry): void {
@@ -90,7 +105,7 @@ export class State {
     } else {
       this._cache![id] = [normalized, ...existing].slice(0, MAX_HISTORY);
     }
-    this._flush();
+    this._scheduledFlush();
   }
 
   get(id: string): RuntimeEntry | null {
@@ -102,7 +117,7 @@ export class State {
 
   getAll(): Record<string, RuntimeEntry[]> {
     this._ensure();
-    if (!fs.existsSync(this._file)) this._flush();
+    if (!fs.existsSync(this._file)) this._doFlush();
     const copy: Record<string, RuntimeEntry[]> = {};
     for (const [k, arr] of Object.entries(this._cache!)) {
       copy[k] = arr.map(e => ({ ...e }));
@@ -135,7 +150,7 @@ export class State {
         changed = true;
       }
     }
-    if (changed) this._flush();
+    if (changed) this._scheduledFlush();
   }
 
   getRollingAvgDurationMs(id: string, n = 10): number | null {
@@ -187,7 +202,18 @@ export class State {
     this._ensure();
     if (this._cache![id] !== undefined) {
       delete this._cache![id];
-      this._flush();
+      this._scheduledFlush();
+    }
+  }
+
+  shutdown(): void {
+    if (this._flushTimer !== null) {
+      clearTimeout(this._flushTimer);
+      this._flushTimer = null;
+    }
+    if (this._flushPending) {
+      this._flushPending = false;
+      this._doFlush();
     }
   }
 }
