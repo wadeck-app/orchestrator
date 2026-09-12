@@ -1,13 +1,15 @@
 import fs   from 'node:fs';
 import type { Job, RegistryData } from './types.js';
+import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 
 const CRON_RE = /^(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)$/;
 
-const VALID_TYPES         = new Set<string>(['cron', 'startup', 'once']);
-const VALID_TRIGGER_MODES = new Set<string>(['fire-and-forget', 'wait']);
-const VALID_MISSED_FIRING = new Set<string>(['catch-up', 'skip']);
-const VALID_LIVENESS      = new Set<string>(['none', 'portFile', 'pidFile', 'command']);
+// Use Sets from enums for validation (single source of truth)
+const VALID_TYPES         = new Set(JOB_TYPES);
+const VALID_TRIGGER_MODES = new Set(TRIGGER_MODES);
+const VALID_MISSED_FIRING = new Set(MISSED_FIRINGS);
+const VALID_LIVENESS      = new Set(LIVENESS_STRATEGIES);
 
 function validateJob(job: Partial<Job>): void {
   if (!job.id || typeof job.id !== 'string')           throw new Error('Job id must be a non-empty string');

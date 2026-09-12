@@ -1,7 +1,14 @@
-export type JobType = 'cron' | 'startup' | 'once';
-export type TriggerMode = 'fire-and-forget' | 'wait';
-export type MissedFiring = 'catch-up' | 'skip';
-export type LivenessStrategy = 'none' | 'portFile' | 'pidFile' | 'command';
+// Enum values - single source of truth
+export const JOB_TYPES = ['cron', 'startup', 'once'] as const;
+export const TRIGGER_MODES = ['fire-and-forget', 'wait'] as const;
+export const MISSED_FIRINGS = ['catch-up', 'skip'] as const;
+export const LIVENESS_STRATEGIES = ['none', 'portFile', 'pidFile', 'command'] as const;
+
+// Derived types from enums (prevents divergence)
+export type JobType = typeof JOB_TYPES[number];
+export type TriggerMode = typeof TRIGGER_MODES[number];
+export type MissedFiring = typeof MISSED_FIRINGS[number];
+export type LivenessStrategy = typeof LIVENESS_STRATEGIES[number];
 
 export interface LivenessConfig {
   strategy: LivenessStrategy;
