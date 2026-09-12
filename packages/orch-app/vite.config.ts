@@ -13,6 +13,7 @@ export default defineConfig(async () => {
       emptyOutDir: true,
       // Fixed filenames so the running HTTP server never gets stale hash mismatches
       rollupOptions: {
+        external: ['@wadeck-app/dsl-ui'],
         output: {
           entryFileNames: 'assets/index.js',
           chunkFileNames: 'assets/[name].js',
