@@ -9,7 +9,7 @@
 import { runUpdater, execNpm } from '@wadeck-app/shared-updater';
 import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import semver from 'semver';
 
@@ -18,6 +18,21 @@ declare const __ORCH_VERSION__: string;
 const PKG_NAME = '@wadeck-app/orchestrator-cli';
 const configDir = process.env['ORCH_CONFIG_DIR'] ?? ConfigDir.get('orchestrator');
 const currentVersion = typeof __ORCH_VERSION__ !== 'undefined' ? __ORCH_VERSION__ : '0.0.0-dev';
+
+// When UPDATER_FORCE=1 (manual update from tray), shared-updater still exits early on
+// autoUpdate:false. Work around by temporarily commenting out that line so runUpdater proceeds.
+const isForced = process.env['UPDATER_FORCE'] === '1';
+let _patchedConfigYml: { path: string; original: string } | null = null;
+if (isForced) {
+  const cfgPath = join(configDir, 'config.yml');
+  try {
+    const content = readFileSync(cfgPath, 'utf8');
+    if (/^autoUpdate:\s*false/im.test(content)) {
+      _patchedConfigYml = { path: cfgPath, original: content };
+      writeFileSync(cfgPath, content.replace(/^(autoUpdate:\s*false)/im, '# $1'));
+    }
+  } catch { /* ignore -- config.yml missing or unreadable, runUpdater will handle */ }
+}
 
 // Compute self-check command so shared-updater can verify the install after upgrade.
 try {
@@ -127,4 +142,8 @@ runUpdater({
 }).catch(err => {
   process.stderr.write(`[orchestrator-updater] fatal: ${err}\n`);
   process.exit(1);
+}).finally(() => {
+  if (_patchedConfigYml) {
+    try { writeFileSync(_patchedConfigYml.path, _patchedConfigYml.original); } catch { /* ignore */ }
+  }
 });

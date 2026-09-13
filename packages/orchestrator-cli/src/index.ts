@@ -178,8 +178,13 @@ async function main(): Promise<void> {
     // Forward tray log entries to the daemon log so 'orch logs' shows tray actions
     trayManager.on('log', (msg: string) => daemonLog.write(msg));
     trayManager.on('check-update', () => {
-      // Always trigger regardless of the startup guard -- user explicitly requested update
+      // Always trigger regardless of the startup guard -- user explicitly requested update.
+      // Set UPDATER_FORCE so entry.ts bypasses autoUpdate:false (manual update must always work).
+      const prev = process.env['UPDATER_FORCE'];
+      process.env['UPDATER_FORCE'] = '1';
       updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
+      if (prev === undefined) delete process.env['UPDATER_FORCE'];
+      else process.env['UPDATER_FORCE'] = prev;
     });
     trayManager.on('quit',    () => process.exit(0));
     trayManager.on('restart', () => {
