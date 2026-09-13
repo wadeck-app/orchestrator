@@ -8,7 +8,8 @@ export interface BackLinkProps {
 }
 
 // @formatter:off
-const CLS = 'inline-flex items-center gap-1 text-sm text-muted hover:text-content mb-4';
+const CLS        = 'inline-flex items-center gap-1 text-sm text-muted hover:text-content mb-4';
+const STICKY_CLS = 'sticky top-0 z-10 bg-bg py-2 -mx-4 px-4';
 // @formatter:on
 
 /**
@@ -20,8 +21,10 @@ export function BackLink({ to, label = 'Back' }: BackLinkProps): React.ReactElem
   // When no explicit `to`, go up one path segment: /jobs/foo/logs -> /jobs/foo
   const resolvedTo = to ?? (location.pathname.split('/').slice(0, -1).join('/') || '/');
   return (
-    <Link to={resolvedTo} className={CLS}>
-      <ArrowLeft size={14} />{label}
-    </Link>
+    <div className={STICKY_CLS}>
+      <Link to={resolvedTo} className={CLS}>
+        <ArrowLeft size={14} />{label}
+      </Link>
+    </div>
   );
 }

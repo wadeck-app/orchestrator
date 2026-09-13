@@ -1,10 +1,17 @@
 $route: /jobs/:id/logs
 
+$sources:
+  jobData:
+    url: GET /api/jobs/{id}
+    params:
+      id: $route.id
+
 $type: PageContent
 sections:
   - $type: BackLink
     label: Back to job
   - $type: PageHeader
-    title: Logs
+    title: $sources.jobData.job.label
+    subtitle: Logs
   - $type: LogViewer
     jobId: $route.id
