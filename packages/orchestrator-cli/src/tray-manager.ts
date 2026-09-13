@@ -21,7 +21,8 @@ export const TRAY_ACTIONS = [
   'open-logs',
   'startup-toggle',
   'ack-failures',
-  'update-btn',
+  'update-btn',      // check for update (version item click)
+  'update-install',  // install available update and restart
   'restart',
   'quit',
 ] as const;
@@ -72,6 +73,9 @@ export class TrayManager extends EventEmitter {
   private readonly _log:      DailyLogger;
   private _updateStatus: UpdateStatus = 'idle';
   private _latestVersion: string | null = null;
+  // Transient version label shown during check ("Checking...", "Up to date"); null → show version string
+  private _versionLabel: string | null = null;
+  private _versionLabelTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly _configDir: string,
@@ -250,9 +254,22 @@ export class TrayManager extends EventEmitter {
     this.emit('log', msg);
   }
 
+  private _setVersionLabel(label: string | null, revertAfterMs?: number): void {
+    if (this._versionLabelTimer) { clearTimeout(this._versionLabelTimer); this._versionLabelTimer = null; }
+    this._versionLabel = label;
+    if (revertAfterMs != null) {
+      this._versionLabelTimer = setTimeout(() => {
+        this._versionLabel = null;
+        this._versionLabelTimer = null;
+        this._refresh();
+      }, revertAfterMs);
+    }
+  }
+
   private async _checkForUpdate(): Promise<void> {
     this._logAction(`[tray] check-update: starting (current=${this._version})`);
     this._updateStatus = 'checking';
+    this._setVersionLabel('Checking...');
     this._refresh();
     try {
       const latest = await new Promise<string>((resolve, reject) => {
@@ -269,12 +286,17 @@ export class TrayManager extends EventEmitter {
       const normalize = (v: string) => v.replace(/-[0-9a-f]{6,8}$/, '');
       this._updateStatus = normalize(latest) !== normalize(this._version) ? 'available' : 'up-to-date';
       this._logAction(`[tray] check-update: latest=${latest} current=${this._version} status=${this._updateStatus}`);
+      if (this._updateStatus === 'available') {
+        this._setVersionLabel(null); // update item itself is the feedback
+      }
     } catch (err) {
       this._logAction(`[tray] check-update: error fetching latest version: ${getErrorMessage(err)}`);
       this._updateStatus = 'idle';
+      this._setVersionLabel(null);
     }
     // Flash green success icon when already up-to-date, then reset
     if (this._updateStatus === 'up-to-date') {
+      this._setVersionLabel('Up to date', 4_000);
       this._showSuccess = true;
       if (this._successTimer) clearTimeout(this._successTimer);
       this._successTimer = setTimeout(() => {
@@ -308,17 +330,29 @@ export class TrayManager extends EventEmitter {
 
     const items: MenuItemSnapshot[] = [];
 
-    items.push({ id: 'header', type: 'normal', title: `Orchestrator v${this._version}`, enabled: false });
-    const updateItem = this._updateStatus === 'checking'
-      ? { id: 'update-btn', type: 'normal' as const, title: 'Checking...', enabled: false }
-      : this._updateStatus === 'available'
-        ? { id: 'update-btn', type: 'normal' as const, title: `Update to v${this._latestVersion ?? '?'} and restart`, enabled: true }
-        : this._updateStatus === 'up-to-date'
-          ? { id: 'update-btn', type: 'normal' as const, title: 'Already up to date', enabled: false }
-          : this._updateStatus === 'updating'
-            ? { id: 'update-btn', type: 'normal' as const, title: 'Updating...', enabled: false }
-            : { id: 'update-btn', type: 'normal' as const, title: 'Check for update', enabled: true };
-    items.push(updateItem);
+    // Header: app name + PIDs for Task Manager cross-reference
+    const trayPid = this._tp?.process.pid ?? null;
+    const pidSuffix = trayPid != null
+      ? ` [orch:${process.ppid} node:${process.pid} tray:${trayPid}]`
+      : ` [orch:${process.ppid} node:${process.pid}]`;
+    items.push({ id: 'header',     type: 'normal', title: `Orchestrator${pidSuffix}`, enabled: false });
+
+    // Version item — clickable, doubles as the update-check trigger
+    const versionTitle = this._versionLabel ?? `v${this._version}`;
+    const versionEnabled = this._updateStatus !== 'checking' && this._updateStatus !== 'updating';
+    items.push({ id: 'update-btn', type: 'normal', title: versionTitle, enabled: versionEnabled });
+
+    // Config dir — helps orient when multiple instances run
+    const shortConfig = this._configDir.replace(/^\/c\/Users\/[^/]+/, '~').replace(/^C:\\Users\\[^\\]+/, '~');
+    items.push({ id: 'config-dir', type: 'normal', title: `Config: ${shortConfig}`, enabled: false });
+
+    // Update-available item (only shown when update is ready or installing)
+    if (this._updateStatus === 'available') {
+      items.push({ id: 'update-install', type: 'normal' as const, title: `Update to v${this._latestVersion ?? '?'} and restart`, enabled: true });
+    } else if (this._updateStatus === 'updating') {
+      items.push({ id: 'update-install', type: 'normal' as const, title: 'Updating...', enabled: false });
+    }
+
     items.push({ id: 'sep1',   type: 'separator', title: '', enabled: false });
 
     if (hasFailures) {
@@ -467,7 +501,8 @@ export class TrayManager extends EventEmitter {
         const logsDir = path.join(this._configDir, 'logs');
         if (process.platform === 'win32') {
           // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
-          execFile('cmd.exe', ['/c', 'start', '', `"${logsDir}"`], (err) => {
+          // Pass path without embedded quotes — execFile is not a shell, quotes become literal backslashes.
+          execFile('cmd.exe', ['/c', 'start', '', logsDir], (err) => {
             if (err) {
               const msg = getErrorMessage(err);
               this._logAction(`[tray] open-logs: failed: ${msg}`);
@@ -515,10 +550,15 @@ export class TrayManager extends EventEmitter {
         this._refresh();
         break;
       case 'update-btn':
+        // Version item doubles as check-update trigger
         if (this._updateStatus === 'idle' || this._updateStatus === 'up-to-date') {
           this._logAction('[tray] action: check-for-update clicked');
           void this._checkForUpdate();
-        } else if (this._updateStatus === 'available') {
+        }
+        break;
+      case 'update-install':
+        // Separate install item only shown when update is available
+        if (this._updateStatus === 'available') {
           this._logAction(`[tray] action: update-and-restart clicked (target=${this._latestVersion ?? '?'})`);
           this._updateStatus = 'updating';
           this._refresh();
