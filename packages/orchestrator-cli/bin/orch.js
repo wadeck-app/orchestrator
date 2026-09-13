@@ -58,9 +58,12 @@ const args = _rawArgs.filter(function(a) { return a !== '--cli-background' && a 
 
 var _stdio;
 if (!_hasBackground && !_hasForeground) {
-  // Auto-detect: pipe context (non-TTY) → NUL handles to prevent AllocConsole() from libuv
-  // when a GUI-parent (orch.exe SUBSYSTEM:WINDOWS) passes PIPE handles.
-  _stdio = process.stdin.isTTY ? 'inherit' : 'ignore';
+  // In TTY: fully inherit so the user sees output and can interact.
+  // In non-TTY (piped/scripted): ignore stdin to prevent AllocConsole() from libuv
+  // (triggered when a GUI-parent passes PIPE handles), but inherit stdout/stderr so
+  // commands like `orch tray list` can be used in scripts and their output captured.
+  // windowsHide:true below prevents any spurious console window from appearing.
+  _stdio = process.stdin.isTTY ? 'inherit' : ['ignore', 'inherit', 'inherit'];
 } else {
   _stdio = 'ignore';
   for (var _i = 0; _i < _rawArgs.length; _i++) {
