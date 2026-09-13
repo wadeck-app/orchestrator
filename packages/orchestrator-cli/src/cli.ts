@@ -123,6 +123,10 @@ Dashboard:
   orch server stop             Stop the web dashboard server
   orch server status           Show dashboard server status and URL
 
+Systray automation:
+  orch tray list               List all triggerable tray actions
+  orch tray <action>           Trigger a tray action (same as clicking it)
+
 Logs:
   orch logs [--follow] [--job <id>] [--tail <N>] [--json]
                                Read today's orchestrator or job log file
@@ -742,6 +746,23 @@ Use --wait to block until the command finishes.`);
         console.error('Usage: orch server start|stop|status');
         process.exit(1);
       }
+    }
+
+    case 'tray': {
+      const subCmd = rest[0];
+      if (!subCmd || subCmd === 'list' || subCmd === '--help' || subCmd === '-h') {
+        const actions = await send('tray-list') as string[];
+        process.stdout.write(actions.join('\n') + '\n');
+        return;
+      }
+      const result = await send('tray-action', { id: subCmd }) as { ok: boolean; error?: string };
+      if (!result.ok) {
+        process.stderr.write(`Error: ${result.error ?? 'unknown error'}\n`);
+        process.exitCode = 1;
+      } else {
+        process.stdout.write(`✓ tray action "${subCmd}" triggered\n`);
+      }
+      return;
     }
 
     // Top-level logs command: reads from the daemon operational log (logs/daemon/)

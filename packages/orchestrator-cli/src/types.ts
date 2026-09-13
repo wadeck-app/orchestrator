@@ -102,6 +102,8 @@ export type OrchestratorCommands = {
   'exec-kill':   (payload?: unknown) => { ok: boolean };
   'quit':        (payload?: unknown) => void;
   'restart':     (payload?: unknown) => void;
+  'tray-action': (payload?: unknown) => { ok: boolean; error?: string };
+  'tray-list':   (payload?: unknown) => string[];
 };
 
 export interface CliDeps {

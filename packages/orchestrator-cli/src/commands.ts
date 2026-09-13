@@ -7,6 +7,7 @@ import type { Registry } from './registry.js';
 import type { State }    from './state.js';
 import type { Scheduler } from './scheduler.js';
 import type { TrayManager } from './tray-manager.js';
+import { TRAY_ACTIONS } from './tray-manager.js';
 import type { AuditLogger } from './audit.js';
 import type { EventPublisher } from './event-publisher.js';
 import type { ExecManager } from './exec-manager.js';
@@ -98,6 +99,14 @@ export function makeCommands(
     'list-failures': () => state.getUnacknowledgedFailures(),
 
     'ack-failures': () => { state.acknowledgeAll(); trayManager?.clearFailures(); return {}; },
+
+    'tray-list': () => [...TRAY_ACTIONS],
+
+    'tray-action': (p) => {
+      const id = (p as { id?: string })?.id ?? '';
+      if (!trayManager) return { ok: false, error: 'Tray not running (daemon started without tray)' };
+      return trayManager.triggerAction(id);
+    },
 
     'list-audit': (p) => {
       const limit = ((p as { limit?: number })?.limit) ?? 50;

@@ -15,6 +15,18 @@ import type { DashboardManager } from './dashboard-manager.js';
 
 const MAX_FAILURES = 5;
 
+/** All tray action IDs that can be triggered programmatically (e.g. via `orch tray <action>`). */
+export const TRAY_ACTIONS = [
+  'open-dashboard',
+  'open-logs',
+  'startup-toggle',
+  'ack-failures',
+  'update-btn',
+  'restart',
+  'quit',
+] as const;
+export type TrayActionId = typeof TRAY_ACTIONS[number];
+
 const TRAY_BINARY =
   process.platform === 'win32'
     ? 'orchestrator-tray.exe'
@@ -174,6 +186,18 @@ export class TrayManager extends EventEmitter {
     this._tp = null;
     this._logAction('[tray] quitting daemon');
     this.emit('quit');
+  }
+
+  /**
+   * Programmatically trigger a tray action by ID — same as the user clicking it.
+   * Used by `orch tray <action>` for scriptable / test automation.
+   */
+  triggerAction(id: string): { ok: boolean; error?: string } {
+    if (!TRAY_ACTIONS.includes(id as TrayActionId)) {
+      return { ok: false, error: `Unknown tray action "${id}". Valid actions: ${TRAY_ACTIONS.join(', ')}` };
+    }
+    this._handleClick(id);
+    return { ok: true };
   }
 
   async stop(): Promise<void> {
