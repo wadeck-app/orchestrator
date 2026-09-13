@@ -12,6 +12,7 @@ import { getLastFiring, getNextFirings } from './cronNext.js';
 // pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
 import pidusage from 'pidusage';
 import type { Job, TriggerSource } from './types.js';
+import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 
@@ -26,6 +27,7 @@ interface SchedulerOptions {
   eventPublisher?:        EventPublisher;
   catchUpInitialDelayMs?: number;
   catchUpStaggerMs?:      number;
+  hookDispatcher?:        HookDispatcher;
 }
 
 export class Scheduler extends EventEmitter {
@@ -45,6 +47,9 @@ export class Scheduler extends EventEmitter {
   private readonly _skippedJobs    = new Map<string, number>();
   private readonly _catchUpInitialDelayMs: number;
   private readonly _catchUpStaggerMs:      number;
+  private readonly _hookDispatcher:  HookDispatcher | null;
+  private readonly _retryTimers    = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly _retryCounters  = new Map<string, number>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
     super();
@@ -65,6 +70,7 @@ export class Scheduler extends EventEmitter {
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
+    this._hookDispatcher        = options.hookDispatcher        ?? null;
     // Ensure root tmp dir exists (will create per-job subdirs as needed).
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
@@ -164,6 +170,9 @@ export class Scheduler extends EventEmitter {
     this._cronTasks.clear();
     for (const handle of this._timeouts.values()) clearTimeout(handle);
     this._timeouts.clear();
+    for (const t of this._retryTimers.values()) clearTimeout(t);
+    this._retryTimers.clear();
+    this._retryCounters.clear();
   }
 
   async dryRun(id: string): Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }> {
@@ -267,7 +276,10 @@ export class Scheduler extends EventEmitter {
     );
 
     this._activeChildren.set(job.id, child);
-    this._state.record(job.id, { startedAt, exitCode: null, pid, triggeredBy: trigger });
+    this._state.record(job.id, {
+      startedAt, exitCode: null, pid, triggeredBy: trigger,
+      retryAttempt: trigger.kind === 'retry' ? trigger.attempt : undefined,
+    });
     this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
     this.emit('job-started', { id: job.id });
     jobLogger.write(`[job:started] pid=${pid} triggeredBy=${trigger.kind}`);
@@ -357,6 +369,7 @@ export class Scheduler extends EventEmitter {
         if (cancelledByUser) {
           this._events.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
         } else if (exitCode === 0) {
+          this._retryCounters.delete(job.id);
           this._events.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
           // Trigger dependent jobs
           for (const dep of this._registry.list().filter(j => j.dependsOn === job.id && j.enabled)) {
@@ -378,6 +391,33 @@ export class Scheduler extends EventEmitter {
           const consecutive = this._state.getConsecutiveFailures(job.id);
           if (consecutive >= threshold) {
             this._events.publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
+          }
+          // Retry on specific exit codes (extension point: hooks fire for each retry/exhaustion)
+          if (job.retryOnExitCodes?.includes(exitCode)) {
+            const attempts = this._retryCounters.get(job.id) ?? 0;
+            const delays   = job.retryDelays ?? [];
+            if (attempts < delays.length) {
+              const delayMs     = delays[attempts]! * 1000;
+              const nextAttempt = attempts + 1;
+              this._retryCounters.set(job.id, nextAttempt);
+              jobLogger.write(`[retry] attempt ${nextAttempt}/${delays.length} in ${delays[attempts]}s (exitCode=${exitCode})`);
+              void this._hookDispatcher?.dispatch('onJobRetry' as never, {
+                jobId: job.id, label: job.label, exitCode,
+                attempt: nextAttempt, totalAttempts: delays.length, delaySeconds: delays[attempts],
+              }, (err: unknown) => console.error('[hook:onJobRetry]', err));
+              const timer = setTimeout(() => {
+                this._retryTimers.delete(job.id);
+                void this._fire(job, { kind: 'retry', attempt: nextAttempt });
+              }, delayMs);
+              this._retryTimers.set(job.id, timer);
+            } else {
+              this._retryCounters.delete(job.id);
+              jobLogger.write(`[retry] exhausted after ${delays.length} attempts (exitCode=${exitCode}) — permanent failure`);
+              void this._hookDispatcher?.dispatch('onJobExhausted' as never, {
+                jobId: job.id, label: job.label, exitCode, attempts: delays.length,
+              }, (err: unknown) => console.error('[hook:onJobExhausted]', err));
+              this._events.publish('alert.retry_exhausted', { jobId: job.id, label: job.label, exitCode, attempts: delays.length });
+            }
           }
         }
 

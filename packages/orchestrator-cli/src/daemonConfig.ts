@@ -1,5 +1,6 @@
 import fs   from 'node:fs';
 import path from 'node:path';
+import type { HookConfig } from '@wadeck-app/shared-cli/HookDispatcher';
 
 export interface DaemonConfig {
   autoUpdate?: boolean;
@@ -14,6 +15,19 @@ const DEFAULTS: Required<DaemonConfig> = {
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,
 };
+
+/**
+ * Reads <configDir>/hooks.json into a hooks map for HookDispatcher.
+ * Format: { "onJobRetry": [{ "type": "cli", "command": "...", "args": [...] }], ... }
+ * Missing file or parse errors silently return empty map.
+ */
+export function loadOrchestratorHooks(configDir: string): Record<string, HookConfig[]> {
+  const file = path.join(configDir, 'hooks.json');
+  try {
+    const raw = fs.readFileSync(file, 'utf8');
+    return JSON.parse(raw) as Record<string, HookConfig[]>;
+  } catch { return {}; }
+}
 
 /**
  * Reads <configDir>/config.yml into a DaemonConfig object.

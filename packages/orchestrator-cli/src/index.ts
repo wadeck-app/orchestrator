@@ -16,7 +16,8 @@ import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
-import { loadDaemonConfig } from './daemonConfig.js';
+import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
+import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 
 import type { OrchestratorCommands } from './types.js';
 
@@ -111,12 +112,14 @@ async function main(): Promise<void> {
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
     const audit       = new AuditLogger(CONFIG_DIR);
     const events      = new EventPublisher();
-    const daemonCfg   = loadDaemonConfig(CONFIG_DIR);
-    const scheduler   = new Scheduler(registry, state, {
+    const daemonCfg      = loadDaemonConfig(CONFIG_DIR);
+    const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
+    const scheduler      = new Scheduler(registry, state, {
       configDir: CONFIG_DIR,
       eventPublisher: events,
       catchUpInitialDelayMs: daemonCfg.catchUpInitialDelaySeconds * 1000,
       catchUpStaggerMs:      daemonCfg.catchUpStaggerSeconds * 1000,
+      hookDispatcher,
     });
 
     audit.log('daemon.start', { pid: process.pid, version });

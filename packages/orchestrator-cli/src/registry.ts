@@ -43,6 +43,17 @@ function validateJob(job: Partial<Job>): void {
     throw new Error(`missedFiring must be "catch-up" or "skip" (got: ${job.missedFiring})`);
   }
 
+  if (job.retryOnExitCodes !== undefined) {
+    if (!Array.isArray(job.retryOnExitCodes) || job.retryOnExitCodes.some(c => typeof c !== 'number')) {
+      throw new Error('retryOnExitCodes must be an array of numbers');
+    }
+  }
+  if (job.retryDelays !== undefined) {
+    if (!Array.isArray(job.retryDelays) || job.retryDelays.some(d => typeof d !== 'number' || d <= 0)) {
+      throw new Error('retryDelays must be an array of positive numbers');
+    }
+  }
+
   if (job.liveness != null) {
     const s = job.liveness.strategy;
     if (!VALID_LIVENESS.has(s)) throw new Error(`Unknown liveness strategy: "${s}". Valid: ${[...VALID_LIVENESS].join(', ')}`);
@@ -61,7 +72,9 @@ function applyDefaults(job: Partial<Job>): Job {
     triggerMode: job.triggerMode ?? 'fire-and-forget',
     liveness:    job.liveness    ?? null,
     cwd:         job.cwd         ?? null,
-    ...(job.onExitCode ? { onExitCode: job.onExitCode } : {}),
+    ...(job.onExitCode       ? { onExitCode: job.onExitCode }             : {}),
+    ...(job.retryOnExitCodes ? { retryOnExitCodes: job.retryOnExitCodes } : {}),
+    ...(job.retryDelays      ? { retryDelays: job.retryDelays }           : {}),
     ...(job.type === 'cron'    ? { schedule: job.schedule, missedFiring: job.missedFiring ?? 'skip' } : {}),
     ...(job.type === 'startup' ? { delaySeconds: job.delaySeconds ?? 0 }                                  : {}),
     ...(job.type === 'once'    ? { delayMs: job.delayMs!, scheduledAt: job.scheduledAt! }                 : {}),

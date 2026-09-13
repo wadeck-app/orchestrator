@@ -39,6 +39,8 @@ export interface Job {
   slaWindowMinutes?: number;
   secrets?: string[];
   dryRunSupported?: boolean;
+  retryOnExitCodes?: number[];
+  retryDelays?: number[];
 }
 
 export interface StartupResult {
@@ -50,7 +52,8 @@ export interface StartupResult {
 export type TriggerSource =
   | { kind: 'cron' }
   | { kind: 'manual'; ip?: string; userAgent?: string }
-  | { kind: 'dependency'; dependsOnJobId: string };
+  | { kind: 'dependency'; dependsOnJobId: string }
+  | { kind: 'retry'; attempt: number };
 
 export interface RuntimeEntry {
   startedAt: string;
@@ -62,6 +65,7 @@ export interface RuntimeEntry {
   peakCpuPct?: number;
   peakRamMb?: number;
   cancelledByUser?: boolean;
+  retryAttempt?: number;
 }
 
 export interface RegistryData {

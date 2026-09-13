@@ -127,6 +127,11 @@ Systray automation:
   orch tray list               List all triggerable tray actions
   orch tray <action>           Trigger a tray action (same as clicking it)
 
+Retry on failure:
+  --retry-on-exit-codes <codes>  Comma-separated exit codes that trigger retry, e.g. 3
+  --retry-delays <seconds>       Comma-separated delays in seconds, e.g. 300,600,1800,5400
+  Hooks: configure onJobRetry / onJobExhausted in ~/.config/orchestrator/hooks.json
+
 Logs:
   orch logs [--follow] [--job <id>] [--tail <N>] [--json]
                                Read today's orchestrator or job log file
@@ -451,6 +456,11 @@ Examples:
         body['scheduledAt'] = new Date().toISOString();
       }
 
+      const addRetryOnExitCodes = flag(addRest, '--retry-on-exit-codes');
+      const addRetryDelays      = flag(addRest, '--retry-delays');
+      if (addRetryOnExitCodes) body['retryOnExitCodes'] = addRetryOnExitCodes.split(',').map(Number);
+      if (addRetryDelays)      body['retryDelays']      = addRetryDelays.split(',').map(Number);
+
       await send('add-job', body);
       console.log(`Job "${id}" added.`);
       break;
@@ -493,6 +503,10 @@ Examples:
       if (delay !== undefined) updates['delaySeconds'] = parseInt(delay, 10);
       const livenessStrategy = flag(editRest, '--liveness-strategy');
       if (livenessStrategy) updates['liveness'] = buildLiveness(editRest);
+      const editRetryOnExitCodes = flag(editRest, '--retry-on-exit-codes');
+      const editRetryDelays      = flag(editRest, '--retry-delays');
+      if (editRetryOnExitCodes) updates['retryOnExitCodes'] = editRetryOnExitCodes.split(',').map(Number);
+      if (editRetryDelays)      updates['retryDelays']      = editRetryDelays.split(',').map(Number);
 
       await send('edit-job', { id, updates });
       console.log(`Job "${id}" updated.`);
