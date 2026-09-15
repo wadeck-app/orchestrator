@@ -62,10 +62,12 @@ export function latestRun(entries: RuntimeEntry[] | undefined): RuntimeEntry | n
   return entries.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
 }
 
-// A process killed by signal has no exit code, so a cancelled run is recorded with
-// exitCode:null just like an in-flight one. Only finishedAt separates the two.
+// Both conditions are required. A process killed by signal has no exit code, so a cancelled
+// run looks exactly like an in-flight one on exitCode alone and finishedAt is what separates
+// them. But history written before finishedAt existed has an exit code and no finishedAt, and
+// treating those as running would leave old entries stuck on "Running" forever.
 export function isRunActive(entry: RuntimeEntry | null): boolean {
-  return entry !== null && entry.finishedAt == null;
+  return entry !== null && entry.finishedAt == null && entry.exitCode == null;
 }
 
 // Finished without an exit code (killed by signal), or explicitly cancelled.

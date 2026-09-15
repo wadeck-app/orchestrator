@@ -2,12 +2,18 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, IconButton } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunFailed, latestRun, type RuntimeEntry } from '../types.js';
+import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { relativeTime } from './JobCard.js';
 
-export interface JobWithHistory { job: Job; runHistory: RuntimeEntry[]; uptimePercent?: number | null; }
+// Extends the shared shape rather than redeclaring it: a second exported interface with the
+// same name but an extra field meant the type you got depended on which file you imported
+// from, and only the module-level one is re-exported from the package index.
+export interface JobWithUptime extends JobWithHistory {
+  uptimePercent?: number | null;
+}
 
 type ViewMode = 'grid' | 'list';
 
@@ -32,7 +38,7 @@ function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
 }
 
 export interface JobCardGridProps {
-  items?: JobWithHistory[];
+  items?: JobWithUptime[];
   // Filter props -- driven by DSL $vars (JobSearchBar + JobFilterChips)
   search?: string;
   filter?: string;

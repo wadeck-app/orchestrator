@@ -27,6 +27,11 @@ export default defineConfig({
     alias: [
       { find: '@wadeck-app/dsl-renderer', replacement: path.join(nodeModules, '@wadeck-app/dsl-renderer/src/index.ts') },
       { find: '@wadeck-app/dsl-ui',       replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/src/index.ts') },
+      // Resolving dsl-ui from source means its own internal @dsl-ui/* imports must resolve
+      // too: that alias only exists inside dsl-ui's build, so without it every test file
+      // that reaches a dsl-ui control (ChipButton -> @dsl-ui/utils/chipColors.js) fails to
+      // load. Must come after the package alias so the longer prefix is not shadowed.
+      { find: '@dsl-ui',                  replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/src') },
     ],
   },
   test: {

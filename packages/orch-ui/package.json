@@ -20,15 +20,16 @@
     "tailwindcss": "^3.0.0"
   },
   "devDependencies": {
-    "typescript": "*",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "*",
+    "@testing-library/react": "*",
+    "@testing-library/user-event": "*",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "vitest": "*",
-    "jsdom": "*",
-    "@testing-library/react": "*",
-    "@testing-library/jest-dom": "*",
-    "@testing-library/user-event": "*",
     "@vitejs/plugin-react": "^4.0.0",
-    "@types/node": "^22.0.0"
+    "jsdom": "*",
+    "typescript": "*",
+    "vitest": "*"
   }
 }
