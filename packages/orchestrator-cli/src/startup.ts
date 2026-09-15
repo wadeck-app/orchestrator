@@ -105,6 +105,12 @@ ${argsXml}
 export function enableStartup(configDir: string): StartupResult {
   if (/[\r\n\x00]/.test(configDir)) return { ok: false, error: 'configDir contains invalid characters' };
 
+  // Platform first: on a target with no start-at-login mechanism at all, reporting a missing
+  // launcher would name a consequence instead of the actual reason.
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    return { ok: false, error: `Unsupported platform: ${process.platform}` };
+  }
+
   const unusable = validateStartupTarget();
   if (unusable) return { ok: false, error: unusable };
 

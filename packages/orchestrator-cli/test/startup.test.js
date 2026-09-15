@@ -29,68 +29,36 @@ describe('buildRegValueName', () => {
   });
 });
 
+// Both builders now REQUIRE the Go launcher and throw without it. The node fallback these
+// tests used to cover was removed deliberately: registering node + the bundle produces a daemon
+// with no supervisor, so nothing would restart it after an update, and nothing said so. The
+// launcher is absent on any host that is not a published target, which is what CI runs on.
+const { findLauncherBinary } = require('../src/platform-binary');
+const hasLauncher = findLauncherBinary() !== null;
+
 describe('buildWindowsCommand', () => {
-  // When the Go launcher binary exists (it does in the dev monorepo at launcher-go/dist/),
-  // the command is: "orchestrator.exe" "configDir" -- 2 quoted segments.
-  // When it doesn't exist (node fallback): "node.exe" "index.js" "configDir" -- 3 segments.
-
-  test('contains configDir', () => {
+  test('two quoted segments, launcher then configDir', () => {
+    if (!hasLauncher) {
+      assert.throws(() => buildWindowsCommand(FAKE_DIR), /no launcher binary/);
+      return;
+    }
     const cmd = buildWindowsCommand(FAKE_DIR);
-    assert.ok(cmd.includes(FAKE_DIR), `expected configDir in command`);
-  });
-
-  test('is a quoted shell string (at least one double-quoted segment)', () => {
-    const cmd = buildWindowsCommand(FAKE_DIR);
-    assert.ok((cmd.match(/"/g) ?? []).length >= 2, `expected double-quoted segments`);
-  });
-
-  test('launcher path includes "orchestrator" when binary present, else node', () => {
-    const cmd = buildWindowsCommand(FAKE_DIR);
-    const hasLauncher = cmd.toLowerCase().includes('orchestrator');
-    const hasNode     = cmd.includes(process.execPath);
-    assert.ok(hasLauncher || hasNode, `expected either orchestrator binary or node in command`);
-  });
-
-  test('uses the launcher binary when present, else node + the daemon entry', () => {
-    // Assert the contract, not a filename: build.sh emits orchestrator_windows_release.exe,
-    // while the platform package ships it as orchestrator.exe.
-    const cmd = buildWindowsCommand(FAKE_DIR);
-    const hasLauncher = /orchestrator(_windows_release)?\.exe/i.test(cmd);
-    const hasNodeFallback = cmd.includes(process.execPath) && /orchestrator\.cjs|index\.js/.test(cmd);
-    assert.ok(hasLauncher || hasNodeFallback, `expected a launcher or a node+daemon-entry command, got: ${cmd}`);
+    assert.ok(cmd.includes(FAKE_DIR), 'expected configDir in the command');
+    assert.match(cmd, /^"[^"]+" "[^"]+"$/, `expected exactly two quoted segments, got: ${cmd}`);
+    assert.ok(!cmd.includes(process.execPath), 'must not fall back to node + bundle');
   });
 });
 
 describe('buildMacArgs', () => {
-  // With Go launcher present: [launcherPath, configDir] (2 elements)
-  // Without launcher (node fallback): [node, index.js, configDir] (3 elements)
-
-  test('returns at least 2 elements', () => {
-    const args = buildMacArgs(FAKE_DIR);
-    assert.ok(args.length >= 2, `expected at least 2 elements, got ${args.length}`);
-  });
-
-  test('first element is a valid executable path (launcher or node)', () => {
-    const first = buildMacArgs(FAKE_DIR)[0];
-    const isLauncher = first.includes('orchestrator');
-    const isNode     = first === process.execPath;
-    assert.ok(isLauncher || isNode, `expected launcher or node as first arg, got ${first}`);
-  });
-
-  test('last element is configDir', () => {
-    const args = buildMacArgs(FAKE_DIR);
-    assert.equal(args[args.length - 1], FAKE_DIR);
-  });
-
-  test('node fallback: second element ends with index.js when no launcher', () => {
-    const args = buildMacArgs(FAKE_DIR);
-    if (args.length === 3) {
-      // node fallback
-      assert.ok(args[1].endsWith('index.js'), `expected index.js as second arg`);
-    } else {
-      // launcher mode: only 2 elements, second is configDir -- already tested above
-      assert.equal(args.length, 2);
+  test('exactly [launcher, configDir]', () => {
+    if (!hasLauncher) {
+      assert.throws(() => buildMacArgs(FAKE_DIR), /no launcher binary/);
+      return;
     }
+    const args = buildMacArgs(FAKE_DIR);
+    assert.equal(args.length, 2, `expected [launcher, configDir], got ${JSON.stringify(args)}`);
+    assert.equal(args[1], FAKE_DIR);
+    assert.notEqual(args[0], process.execPath, 'must not fall back to node + bundle');
   });
 });
 

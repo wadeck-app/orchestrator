@@ -86,7 +86,17 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { findLauncherBinary, findTrayBinary, platformPackage } =
             require('./platform-binary.js') as typeof import('./platform-binary.js');
-          const pkg = platformPackage() ?? `${process.platform}-${process.arch} (unsupported)`;
+          const pkg = platformPackage();
+          if (pkg === null) {
+            // No binaries are published for this target, so there is nothing to verify. Failing
+            // here would make the updater roll back every upgrade on such a host, and CI runs
+            // this suite on linux. Reported rather than passed over in silence.
+            return {
+              name: 'native-binaries',
+              ok: true,
+              detail: `skipped: ${process.platform}-${process.arch} is not a published target`,
+            };
+          }
           if (!findLauncherBinary()) throw new Error(`Go launcher not found; expected in ${pkg}`);
           if (!findTrayBinary())     throw new Error(`tray binary not found; expected in ${pkg}`);
           return { name: 'native-binaries', ok: true };
