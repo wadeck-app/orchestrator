@@ -485,13 +485,25 @@ describe('sampleProcessTree', () => {
     // wrapper baseline was read, which surfaced as an opaque ENOENT from gwmi.
     const scriptPath = path.join(os.tmpdir(), `orch-busy-${process.pid}-${Date.now()}.js`);
     fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 20000);');
-    const child = spawn(`"${process.execPath}" "${scriptPath}"`, { shell: true, windowsHide: true, stdio: 'ignore' });
+    // The trailing `&& exit 0` is what makes this test mean anything on POSIX: for a single
+    // command `sh -c` execs it in place, so there is no separate wrapper and "tree > wrapper"
+    // compares a process against itself -- it failed on macOS with 50.1MB vs 50.1MB. A list
+    // forces the shell to stay and wait, giving a real parent on every platform. Relaxing the
+    // comparison instead would have made the assertion vacuous exactly where it matters.
+    const child = spawn(`"${process.execPath}" "${scriptPath}" && exit 0`, { shell: true, windowsHide: true, stdio: 'ignore' });
     try {
       assert.ok(child.pid, 'expected the wrapper to have a pid');
       await new Promise(resolve => setTimeout(resolve, 700));
 
       const tree = await sampleProcessTree(child.pid);
       assert.ok(tree !== null, 'expected the tree to be sampleable while the job runs');
+
+      // Guard against the assertion going vacuous again if a shell ever collapses the tree.
+      const pidtreeMod = require('pidtree');
+      const listPids = typeof pidtreeMod === 'function' ? pidtreeMod : pidtreeMod.default;
+      const treePids = await listPids(child.pid, { root: true });
+      assert.ok(treePids.length >= 2,
+        `expected a wrapper plus a descendant, got ${treePids.length} pid(s): the RAM comparison would be vacuous`);
 
       // Read the wrapper on its own for the comparison. Surface a real message if it has gone:
       // pidusage throws a bare ENOENT, which says nothing about the job having outrun the test.
