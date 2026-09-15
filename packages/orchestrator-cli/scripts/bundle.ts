@@ -2,13 +2,17 @@
  * Bundles orchestrator into single CommonJS files.
  * ESM dynamic imports are resolved at bundle time by esbuild.
  *
- * Outputs:
- *   dist-bundle/orchestrator.cjs       (daemon entry point)
- *   dist-bundle/orchestrator-cli.cjs   (CLI entry point)
- *   dist-bundle/orchestrator-updater.cjs (updater)
+ * Outputs (next to the tsc output, so every __dirname-relative lookup in the
+ * bundled code keeps resolving the same way in dev and in the published package):
+ *   dist/orchestrator.cjs         (daemon entry point)
+ *   dist/orchestrator-cli.cjs     (CLI entry point)
+ *   dist/orchestrator-updater.cjs (updater)
  *
  * Usage:  npx tsx scripts/bundle.ts
  * Env:    BUNDLE_VERSION  override version baked into bundles
+ *
+ * CI order matters: this must run AFTER the package version has been set, because
+ * esbuild inlines require('../package.json') at bundle time.
  */
 import { build } from 'esbuild';
 import { readFileSync, statSync } from 'node:fs';
@@ -35,7 +39,7 @@ await Promise.all([
     platform: 'node',
     target: 'node22',
     format: 'cjs',
-    outfile: path.join(root, 'dist-bundle/orchestrator.cjs'),
+    outfile: path.join(root, 'dist/orchestrator.cjs'),
     external: [],
     supported: { 'top-level-await': false },
     define: {
@@ -53,7 +57,7 @@ await Promise.all([
     platform: 'node',
     target: 'node22',
     format: 'cjs',
-    outfile: path.join(root, 'dist-bundle/orchestrator-cli.cjs'),
+    outfile: path.join(root, 'dist/orchestrator-cli.cjs'),
     external: [],
     supported: { 'top-level-await': false },
     define: {
@@ -71,7 +75,7 @@ await Promise.all([
     platform: 'node',
     target: 'node22',
     format: 'cjs',
-    outfile: path.join(root, 'dist-bundle/orchestrator-updater.cjs'),
+    outfile: path.join(root, 'dist/orchestrator-updater.cjs'),
     external: [],
     supported: { 'top-level-await': false },
     define: {
@@ -83,13 +87,13 @@ await Promise.all([
   }),
 ]);
 
-console.log('Bundle written to dist-bundle/orchestrator.cjs (daemon)');
-console.log('Bundle written to dist-bundle/orchestrator-cli.cjs (CLI)');
-console.log(`Bundle written to dist-bundle/orchestrator-updater.cjs (version: ${version})`);
+console.log('Bundle written to dist/orchestrator.cjs (daemon)');
+console.log('Bundle written to dist/orchestrator-cli.cjs (CLI)');
+console.log(`Bundle written to dist/orchestrator-updater.cjs (version: ${version})`);
 
 // Size guard: updater must stay under 500 KB to remain a lightweight background process
 const MAX_UPDATER_SIZE = 500 * 1024;
-const updaterPath = path.join(root, 'dist-bundle/orchestrator-updater.cjs');
+const updaterPath = path.join(root, 'dist/orchestrator-updater.cjs');
 const updaterSize = statSync(updaterPath).size;
 if (updaterSize > MAX_UPDATER_SIZE) {
   console.error(

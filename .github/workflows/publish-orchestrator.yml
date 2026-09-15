@@ -132,6 +132,11 @@ jobs:
                   version-input: ${{ github.event.inputs.version || '' }}
                   breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
+            # Must run BEFORE the bundle step: esbuild inlines require('../package.json'),
+            # so bundling first would freeze the version reported by the daemon and the CLI.
+            - name: Set version
+              run: npm pkg set version="${{ steps.version.outputs.version }}" --workspace=packages/orchestrator-cli
+
             - name: Bundle orchestrator CJS
               run: npm run bundle --workspace=packages/orchestrator-cli
               env:
@@ -140,25 +145,17 @@ jobs:
             - name: Generate platform package directories
               run: bash packages/orchestrator-cli/ci/scripts/generate-platform-packages.sh
 
-            - name: Copy binaries and bundles to packages
+            - name: Copy native binaries to platform packages
               run: bash packages/orchestrator-cli/ci/scripts/copy-binaries.sh
 
-            - name: Set version in platform packages
+            # Publishes a platform package only when its binaries changed, then pins the
+            # exact resolved versions into the main package's optionalDependencies.
+            - name: Publish platform packages (only if binaries changed) and pin them
               run: |
-                  for pkg in orchestrator-cli-win32-x64 orchestrator-cli-darwin-arm64 orchestrator-cli-darwin-x64; do
-                    (cd "packages/$pkg" && npm pkg set version="${{ steps.version.outputs.version }}")
-                  done
-
-            - name: Publish platform packages
-              run: |
-                  for pkg in orchestrator-cli-win32-x64 orchestrator-cli-darwin-arm64 orchestrator-cli-darwin-x64; do
-                    (cd "packages/$pkg" && npm publish --tag ${{ steps.version.outputs.dist_tag }})
-                  done
+                  bash packages/orchestrator-cli/ci/scripts/publish-platform-packages.sh \
+                    "${{ steps.version.outputs.version }}" "${{ steps.version.outputs.dist_tag }}"
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Set version
-              run: npm pkg set version="${{ steps.version.outputs.version }}" --workspace=packages/orchestrator-cli
 
             - name: Publish
               run: npm publish --workspace=packages/orchestrator-cli --tag ${{ steps.version.outputs.dist_tag }}

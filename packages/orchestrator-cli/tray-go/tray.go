@@ -30,7 +30,10 @@ import (
 	"github.com/gogpu/systray"
 )
 
-// version is injected at build time via -ldflags "-X main.version=<value>".
+// version is deliberately NOT injected at build time: baking the release version in
+// would change the binary on every release and defeat the binary-hash gate that decides
+// whether a platform package needs republishing. The version shown to the user comes from
+// the daemon over IPC; this value only appears in `--version` and the local tray log.
 var version = "dev"
 
 func logf(format string, args ...interface{}) {

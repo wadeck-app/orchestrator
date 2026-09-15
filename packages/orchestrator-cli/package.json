@@ -2,18 +2,16 @@
   "name": "@wadeck-app/orchestrator-cli",
   "version": "0.2.0",
   "description": "Cross-platform job orchestrator daemon and CLI",
-  "main": "dist/index.js",
+  "main": "dist/orchestrator.cjs",
   "bin": {
     "orch": "bin/orch.js",
     "orchestrator": "bin/orch.js"
   },
   "files": [
     "bin/",
-    "orchestrator.cjs",
-    "orchestrator-cli.cjs",
-    "orchestrator-updater.cjs",
-    "orchestrator.exe",
-    "orchestrator-tray.exe",
+    "dist/orchestrator.cjs",
+    "dist/orchestrator-cli.cjs",
+    "dist/orchestrator-updater.cjs",
     "server/",
     "package.json"
   ],
@@ -28,7 +26,7 @@
     "build-tray": "npx tsx scripts/build-tray-binary.ts",
     "gen-icons": "npx tsx scripts/generate-icons.ts",
     "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
-    "clean": "rimraf dist dist-bundle"
+    "clean": "rimraf dist"
   },
   "repository": {
     "type": "git",

@@ -37,7 +37,7 @@ if (isForced) {
 // Compute self-check command so shared-updater can verify the install after upgrade.
 try {
   const npmRoot = execNpm(['root', '-g'], { timeout: 10_000 }).trim();
-  const selfCheckCmd = `${process.execPath} ${join(npmRoot, PKG_NAME, 'dist', 'cli.js')} cli self-check`;
+  const selfCheckCmd = `${process.execPath} ${join(npmRoot, PKG_NAME, 'dist', 'orchestrator-cli.cjs')} cli self-check`;
   if (!process.env['UPDATER_SELF_CHECK_CMD']) {
     process.env['UPDATER_SELF_CHECK_CMD'] = selfCheckCmd;
   }

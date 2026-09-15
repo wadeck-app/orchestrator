@@ -17,6 +17,7 @@ import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
+import { refreshStartupEntry } from './startup.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 
 import type { OrchestratorCommands } from './types.js';
@@ -197,6 +198,13 @@ async function main(): Promise<void> {
       process.exit(0);
     });
     await trayManager.start();
+
+    // Re-point the start-at-login entry at the current install paths. An nvm/node upgrade
+    // or an npm prefix change moves the launcher and would otherwise leave a dead entry.
+    const startupRefresh = refreshStartupEntry(CONFIG_DIR);
+    if (startupRefresh && !startupRefresh.ok) {
+      daemonLog.write(`start-at-login refresh failed: ${startupRefresh.error}`);
+    }
 
     // Read and log any update state written by the background updater on previous run.
     const updateState = updateManager.readAndClearState();

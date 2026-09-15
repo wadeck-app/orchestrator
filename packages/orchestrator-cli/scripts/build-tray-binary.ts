@@ -4,9 +4,6 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const pkgPath = path.join(__dirname, '..', 'package.json');
-const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version: string };
-const version = pkg.version;
 
 const trayDir = path.join(__dirname, '..', 'tray-go');
 const distDir = path.join(trayDir, 'dist');
@@ -21,7 +18,10 @@ const targets = [
 for (const { GOOS, GOARCH, out } of targets) {
   process.stdout.write(`Building ${GOOS}/${GOARCH} -> ${path.basename(out)} ... `);
   execSync(
-    `go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "${out}" .`,
+    // No -X main.version: the tray reports the version it receives from the daemon over IPC.
+    // Baking it in would change the binary on every release, which would defeat the
+    // binary-hash gate that decides whether a platform package needs republishing.
+    `go build -trimpath -ldflags "-s -w" -o "${out}" .`,
     { cwd: trayDir, env: { ...process.env, GOOS, GOARCH, CGO_ENABLED: '0' }, stdio: ['ignore', 'ignore', 'inherit'], windowsHide: true },
   );
   console.log('ok');

@@ -10,21 +10,25 @@ const PLATFORM_PKG = {
   'darwin-x64':   '@wadeck-app/orchestrator-cli-darwin-x64',
 };
 
-const arch = os.arch() === 'arm64' ? 'arm64' : 'x64';
-const key = `${process.platform}-${arch}`;
-const pkgName = PLATFORM_PKG[key];
-if (!pkgName) {
-  process.stderr.write(`orchestrator: unsupported platform ${key}\n`);
-  process.exit(1);
-}
+// Resolved lazily: only 'start' needs the Go launcher. Resolving it up front made every
+// short-lived command attempt a global npm install and then fail whenever the platform
+// package was not resolvable (e.g. from a monorepo checkout).
+function resolveLauncher() {
+  const arch = os.arch() === 'arm64' ? 'arm64' : 'x64';
+  const key = `${process.platform}-${arch}`;
+  const pkgName = PLATFORM_PKG[key];
+  if (!pkgName) {
+    process.stderr.write(`orchestrator: unsupported platform ${key}\n`);
+    process.exit(1);
+  }
 
-const ext = process.platform === 'win32' ? '.exe' : '';
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  try {
+    return require.resolve(`${pkgName}/orchestrator${ext}`);
+  } catch {
+    process.stderr.write(`orchestrator: platform package ${pkgName} missing -- installing...\n`);
+  }
 
-let launcherPath;
-try {
-  launcherPath = require.resolve(`${pkgName}/orchestrator${ext}`);
-} catch {
-  process.stderr.write(`orchestrator: platform package ${pkgName} missing -- installing...\n`);
   try {
     const out = execSync(`npm install -g ${pkgName}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
     if (out) process.stdout.write(out);
@@ -34,8 +38,9 @@ try {
     process.stderr.write(`orchestrator: install failed (exit ${installErr.status})\n`);
     process.exit(1);
   }
+
   try {
-    launcherPath = require.resolve(`${pkgName}/orchestrator${ext}`);
+    return require.resolve(`${pkgName}/orchestrator${ext}`);
   } catch {
     process.stderr.write(
       `orchestrator: installed ${pkgName} but cannot resolve binary -- try: npm install -g @wadeck-app/orchestrator-cli\n`
@@ -45,10 +50,10 @@ try {
 }
 
 // The CLI entry point (short-lived commands).
-const cliBundlePath = path.join(__dirname, '..', 'orchestrator-cli.cjs');
+const cliBundlePath = path.join(__dirname, '..', 'dist', 'orchestrator-cli.cjs');
 // The daemon entry point (long-running) — used as LAUNCHER_BUNDLE_OVERRIDE for 'start'.
 // The Go launcher keeps this process alive and watches for sentinel files on exit.
-const daemonBundlePath = path.join(__dirname, '..', 'orchestrator.cjs');
+const daemonBundlePath = path.join(__dirname, '..', 'dist', 'orchestrator.cjs');
 const _rawArgs = process.argv.slice(2);
 
 // --cli-background / --cli-foreground: explicit stdio override flags (strip before passing to command).
@@ -84,17 +89,13 @@ function runWithExit(bin, binArgs, bundleOverride) {
   }
 }
 
-// On Windows the Go launcher binary is compiled as SUBSYSTEM:WINDOWS (GUI application).
-// Its hasConsole() check fails when spawned from a terminal, causing node's stdio to be
-// redirected to NUL and swallowing all output. Bypass the launcher for all commands
-// except 'start' so their output reaches the terminal.
-var _bypassLauncher = args[0] !== 'start';
-
-if (process.platform === 'win32' && _bypassLauncher) {
-  runWithExit(process.execPath, [cliBundlePath].concat(args), cliBundlePath);
-} else if (_bypassLauncher) {
-  runWithExit(process.execPath, [cliBundlePath].concat(args), cliBundlePath);
+// Only 'start' goes through the Go launcher, which owns the daemon lifecycle. Every other
+// command runs node directly: on Windows the launcher is built as SUBSYSTEM:WINDOWS, so its
+// hasConsole() check fails when spawned from a terminal and node's stdio gets redirected to
+// NUL, swallowing all output.
+if (args[0] === 'start') {
+  // args.slice(1) omits 'start' itself.
+  runWithExit(resolveLauncher(), args.slice(1), daemonBundlePath);
 } else {
-  // 'start': use Go launcher with daemon entry point; pass args.slice(1) (omit 'start').
-  runWithExit(launcherPath, args.slice(1), daemonBundlePath);
+  runWithExit(process.execPath, [cliBundlePath].concat(args), cliBundlePath);
 }
