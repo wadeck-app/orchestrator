@@ -205,9 +205,11 @@ export class Scheduler extends EventEmitter {
       this._killChild(child);
       return { killed: true };
     }
-    // Stale state: no active child but state still shows running - clean it up
+    // Stale state: no active child but state still shows running - clean it up.
+    // Liveness is finishedAt, not exitCode: a run killed by signal has no exit code,
+    // so testing exitCode would "kill" an already-cancelled run and wrongly report success.
     const entry = this._state.get(id);
-    if (entry && entry.exitCode === null) {
+    if (entry && entry.finishedAt == null) {
       const finishedAt = this._now().toISOString();
       this._state.record(id, { ...entry, exitCode: 1, finishedAt, cancelledByUser: true });
       return { killed: true };

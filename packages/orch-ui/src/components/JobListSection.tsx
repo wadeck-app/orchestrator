@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Job, RuntimeEntry } from '../types.js';
+import { isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { JobCard } from './JobCard.js';
 import { ButtonAction, ChipButton } from '@wadeck-app/dsl-ui';
 import { JobSearchBar } from './JobSearchBar.js';
@@ -64,7 +64,7 @@ export function JobListSection({ jobs }: JobListSectionProps): React.ReactElemen
   ];
 
   const filtered = jobs.filter(({ job, runHistory }) => {
-    const lastRun = runHistory[0] ?? null;
+    const lastRun = latestRun(runHistory);
     const matchSearch =
       !search ||
       job.label.toLowerCase().includes(search.toLowerCase()) ||
@@ -74,7 +74,7 @@ export function JobListSection({ jobs }: JobListSectionProps): React.ReactElemen
       (filter === 'cron' && job.type === 'cron') ||
       (filter === 'startup' && job.type === 'startup') ||
       (filter === 'once' && job.type === 'once') ||
-      (filter === 'failed' && lastRun !== null && lastRun.exitCode !== 0);
+      (filter === 'failed' && isRunFailed(lastRun));
     return matchSearch && matchFilter;
   });
 

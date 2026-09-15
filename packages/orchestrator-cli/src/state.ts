@@ -113,11 +113,23 @@ export class State {
     this._scheduledFlush();
   }
 
+  // State written before the overlapping-runs fix can be out of order, so the newest
+  // entry is resolved by startedAt rather than by position. Returns the live object
+  // (not a copy) so callers can mutate it in place.
+  private _latest(entries: RuntimeEntry[]): RuntimeEntry | undefined {
+    let newest: RuntimeEntry | undefined;
+    for (const e of entries) {
+      if (newest === undefined || e.startedAt > newest.startedAt) newest = e;
+    }
+    return newest;
+  }
+
   get(id: string): RuntimeEntry | null {
     this._ensure();
     const arr = this._cache![id];
     if (!arr || arr.length === 0) return null;
-    return { ...arr[0] };
+    const latest = this._latest(arr);
+    return latest === undefined ? null : { ...latest };
   }
 
   getAll(): Record<string, RuntimeEntry[]> {
@@ -135,7 +147,7 @@ export class State {
     const result: Array<{ jobId: string; entry: RuntimeEntry }> = [];
     for (const [jobId, entries] of Object.entries(this._cache!)) {
       if (!entries || entries.length === 0) continue;
-      const latest = entries[0]!;
+      const latest = this._latest(entries)!;
       if (latest.exitCode !== null && latest.exitCode !== 0 && !latest.acknowledgedAt) {
         result.push({ jobId, entry: { ...latest } });
       }
@@ -149,7 +161,7 @@ export class State {
     let changed = false;
     for (const entries of Object.values(this._cache!)) {
       if (!entries || entries.length === 0) continue;
-      const latest = entries[0]!;
+      const latest = this._latest(entries)!;
       if (latest.exitCode !== null && latest.exitCode !== 0 && !latest.acknowledgedAt) {
         latest.acknowledgedAt = now;
         changed = true;

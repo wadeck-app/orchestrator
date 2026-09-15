@@ -67,3 +67,14 @@ export function latestRun(entries: RuntimeEntry[] | undefined): RuntimeEntry | n
 export function isRunActive(entry: RuntimeEntry | null): boolean {
   return entry !== null && entry.finishedAt == null;
 }
+
+// Finished without an exit code (killed by signal), or explicitly cancelled.
+export function isRunCancelled(entry: RuntimeEntry | null): boolean {
+  if (entry === null || isRunActive(entry)) return false;
+  return entry.cancelledByUser === true || entry.exitCode === null;
+}
+
+// Only a real non-zero exit code is a failure: null means killed, not failed.
+export function isRunFailed(entry: RuntimeEntry | null): boolean {
+  return entry !== null && entry.exitCode != null && entry.exitCode !== 0;
+}

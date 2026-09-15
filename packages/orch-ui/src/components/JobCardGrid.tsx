@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, IconButton } from '@wadeck-app/dsl-ui';
-import type { Job, RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { relativeTime } from './JobCard.js';
@@ -113,7 +113,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
   }
 
   const visible = items.filter(({ job, runHistory }) => {
-    const last = runHistory[0] ?? null;
+    const last = latestRun(runHistory);
     const q = search.toLowerCase();
     const matchSearch = !q || job.label.toLowerCase().includes(q) || job.command.toLowerCase().includes(q);
     const matchFilter =
@@ -121,7 +121,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
       (filter === 'cron'    && job.type === 'cron')    ||
       (filter === 'startup' && job.type === 'startup') ||
       (filter === 'once'    && job.type === 'once')    ||
-      (filter === 'failed'  && last !== null && last.exitCode !== 0 && last.exitCode !== null);
+      (filter === 'failed'  && isRunFailed(last));
     return matchSearch && matchFilter;
   });
 
@@ -189,7 +189,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
           </thead>
           <tbody>
             {visible.map(({ job, runHistory }) => {
-              const last = runHistory[0] ?? null;
+              const last = latestRun(runHistory);
               return (
                 <tr key={job.id} className="border-b hover:bg-muted-bg cursor-pointer" onClick={() => onJobClick ? onJobClick(job.id) : navigate(`/jobs/${job.id}`)}>
                   <td className="py-2 pr-3">
@@ -201,7 +201,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
                   <td className="py-2 pr-4 text-content font-medium">{job.label}</td>
                   <td className="py-2 pr-4"><span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>{job.type}</span></td>
                   <td className="py-2 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
-                  <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={last?.exitCode === null && runHistory.length > 0} /></td>
+                  <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} /></td>
                   <td className="py-2 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
                   <td className="py-2">
                     <div className="flex items-center gap-1">

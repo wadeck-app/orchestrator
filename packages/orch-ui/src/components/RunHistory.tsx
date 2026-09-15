@@ -1,5 +1,5 @@
 import React from 'react';
-import type { RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge, BADGE_CANCELLED } from './JobStatusBadge.js';
 import { TriggerBadge } from './TriggerBadge.js';
 
@@ -8,7 +8,9 @@ export interface RunHistoryProps {
 }
 
 function formatDuration(entry: RuntimeEntry): string {
-  if (entry.exitCode === null) return 'running...';
+  // Liveness is finishedAt: a killed run has no exit code but did finish, and must
+  // show its real duration rather than "running...".
+  if (isRunActive(entry)) return 'running...';
   if (!entry.finishedAt) return '-';
   const ms = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
   if (ms < 0) return '-';
@@ -54,9 +56,9 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
               <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
               <td className="py-1 pr-4">
-                {entry.cancelledByUser || (entry.exitCode === null && entry.finishedAt)
+                {isRunCancelled(entry)
                   ? <span className={BADGE_CANCELLED}>Cancelled</span>
-                  : <JobStatusBadge exitCode={entry.exitCode} running={entry.exitCode === null && !entry.finishedAt} />}
+                  : <JobStatusBadge exitCode={entry.exitCode} running={isRunActive(entry)} />}
               </td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
               <td className="py-1 text-muted">{entry.pid ?? '-'}</td>

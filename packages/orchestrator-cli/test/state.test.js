@@ -59,13 +59,24 @@ describe('record()', () => {
     assert.equal(s.get('job-a').pid, null);
   });
 
-  test('persists to disk after record', () => {
+  // record() batches writes (500ms window), so shutdown() is the documented point
+  // where pending state is guaranteed to be on disk.
+  test('persists to disk after record + shutdown', () => {
+    const f = tmpFile();
+    const s = new State(f);
+    s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 1 });
+    s.shutdown();
+    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+    assert.ok(Array.isArray(raw.jobs['job-a']));
+    assert.equal(raw.jobs['job-a'].length, 1);
+  });
+
+  test('record() alone does not write synchronously (writes are batched)', () => {
     const f = tmpFile();
     const s = new State(f);
     s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 1 });
     const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
-    assert.ok(Array.isArray(raw.jobs['job-a']));
-    assert.equal(raw.jobs['job-a'].length, 1);
+    assert.equal(raw.jobs['job-a'], undefined);
   });
 
   test('caps history at 20 entries', () => {
@@ -97,6 +108,26 @@ describe('overlapping runs', () => {
     // Older run carries its exit code, with no duplicate orphan left behind.
     assert.equal(entries[1].exitCode, 0);
     assert.equal(entries.filter(e => e.exitCode === null).length, 1);
+  });
+});
+
+describe('get() with out-of-order history', () => {
+  test('returns the newest run by startedAt, not the first array element', () => {
+    const f = tmpFile();
+    // Simulate legacy state written before the overlapping-runs fix: a finished run
+    // sits at index 0 while a later run is still in flight.
+    fs.writeFileSync(f, JSON.stringify({
+      jobs: {
+        'job-a': [
+          { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 1, finishedAt: '2026-08-22T08:00:10Z' },
+          { startedAt: '2026-08-22T09:00:00Z', exitCode: null, pid: 2 },
+        ],
+      },
+    }));
+    const s = new State(f);
+    const latest = s.get('job-a');
+    assert.equal(latest.startedAt, '2026-08-22T09:00:00Z');
+    assert.equal(latest.finishedAt, undefined);
   });
 });
 
@@ -171,6 +202,7 @@ describe('persistence across instances', () => {
     const f = tmpFile();
     const s1 = new State(f);
     s1.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 7 });
+    s1.shutdown();
     const s2 = new State(f);
     assert.equal(s2.get('job-a').pid, 7);
   });
@@ -180,6 +212,7 @@ describe('persistence across instances', () => {
     const s1 = new State(f);
     s1.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 1 });
     s1.record('job-a', { startedAt: '2026-08-22T09:00:00Z', exitCode: 1, pid: 2 });
+    s1.shutdown();
     const s2 = new State(f);
     const all = s2.getAll();
     assert.equal(all['job-a'].length, 2);

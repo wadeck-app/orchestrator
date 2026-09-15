@@ -6,7 +6,7 @@ import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
 import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
-import { getErrorMessage } from '../types.js';
+import { getErrorMessage, isRunActive, latestRun } from '../types.js';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
@@ -48,8 +48,8 @@ export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, 
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
-  const latestRun = runHistory?.[0] ?? null;
-  const isRunning = latestRun !== null && latestRun.exitCode === null;
+  const currentRun = latestRun(runHistory);
+  const isRunning = isRunActive(currentRun);
 
   // Re-render every second to update elapsed duration while running
   useEffect(() => {
@@ -97,10 +97,10 @@ export function JobDetailActions({ job, jobId, runHistory, onTrigger, onDelete, 
         {isRunning
           ? <Button label="Kill" variant="danger" onClick={handleKill} />
           : <TriggerButton jobId={jobId} onTrigger={handleTrigger} />}
-        {isRunning && latestRun && (
+        {isRunning && currentRun && (
           <span className="text-sm text-muted">
-            {latestRun.pid != null && <span className="mr-3">PID {latestRun.pid}</span>}
-            <span>{formatDuration(latestRun.startedAt)}</span>
+            {currentRun.pid != null && <span className="mr-3">PID {currentRun.pid}</span>}
+            <span>{formatDuration(currentRun.startedAt)}</span>
           </span>
         )}
       </div>

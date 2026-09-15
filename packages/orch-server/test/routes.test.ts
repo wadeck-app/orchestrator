@@ -253,3 +253,45 @@ describe('Jobs API Routes', () => {
     });
   });
 });
+
+describe('GET /api/health counting', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    app = fastify();
+    const proxy = {
+      send: async (cmd: string) => {
+        if (cmd === 'list-jobs') return [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+        if (cmd === 'list-state') {
+          return {
+            // In flight: no finishedAt.
+            a: [{ startedAt: '2026-01-01T00:00:10Z', exitCode: null }],
+            // Killed by signal: no exit code but finished -- must not count as running.
+            b: [{ startedAt: '2026-01-01T00:00:00Z', exitCode: null, finishedAt: '2026-01-01T00:00:05Z' }],
+            // Never run: must not count as a failure.
+            c: [],
+            // Out of order on purpose: the newest run failed.
+            d: [
+              { startedAt: '2026-01-01T00:00:00Z', exitCode: 0, finishedAt: '2026-01-01T00:00:01Z' },
+              { startedAt: '2026-01-01T00:00:20Z', exitCode: 3, finishedAt: '2026-01-01T00:00:21Z' },
+            ],
+          };
+        }
+        throw new Error(`Unknown command: ${cmd}`);
+      },
+    } as any;
+    await app.register(jobsRoutes, { proxy, idleTimer: { reset: () => {} } as any });
+    await app.ready();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('counts only in-flight runs as running and only real non-zero exits as failures', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.runningJobs).toBe(1);
+    expect(body.recentFailures).toBe(1);
+    expect(body.status).toBe('degraded');
+  });
+});

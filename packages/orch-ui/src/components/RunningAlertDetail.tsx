@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, Clock } from 'lucide-react';
-import type { Job, RuntimeEntry } from '../types.js';
+import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
@@ -52,9 +52,14 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [justKilled, setJustKilled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const latestRun = runHistory?.[0] ?? null;
-  const isRunning = latestRun !== null && latestRun.exitCode === null;
+  const currentRun = latestRun(runHistory);
+  const isRunning = isRunActive(currentRun) && !justKilled;
+
+  // A new run must clear the optimistic hide, otherwise it stays hidden forever.
+  useEffect(() => { setJustKilled(false); }, [currentRun?.pid]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -68,11 +73,22 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
   };
 
   const handleKill = async () => {
-    const pid = runHistory?.[0]?.pid;
+    const pid = currentRun?.pid;
     if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
     setKilling(true);
-    try { if (onKill) await (onKill as () => Promise<void>)(); else await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' }); }
-    finally { setKilling(false); }
+    try {
+      if (onKill) {
+        await (onKill as () => Promise<void>)();
+      } else {
+        const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({})) as { error?: string };
+          setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
+          return;
+        }
+      }
+      setJustKilled(true);
+    } finally { setKilling(false); }
   };
 
   const handleDelete = () => {
@@ -92,7 +108,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
         <JobToggle job={job} />
       </div>
 
-      {isRunning && latestRun ? (
+      {isRunning && currentRun ? (
         <div className={ALERT_CARD_CLS}>
           <div className="flex items-center gap-3 px-4 py-3">
             {/* violations-suppress: tailwind/no-raw-color-class amber icon for alert card running state */}
@@ -102,10 +118,10 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
               <div className="flex items-center gap-3 mt-0.5 text-xs text-muted flex-wrap">
                 <span className="flex items-center gap-1">
                   <Clock size={11} />
-                  {formatDuration(latestRun.startedAt)} elapsed
+                  {formatDuration(currentRun.startedAt)} elapsed
                 </span>
-                <span>&middot; started {fmtTime(latestRun.startedAt)}</span>
-                {latestRun.pid != null && <span>&middot; PID {latestRun.pid}</span>}
+                <span>&middot; started {fmtTime(currentRun.startedAt)}</span>
+                {currentRun.pid != null && <span>&middot; PID {currentRun.pid}</span>}
               </div>
             </div>
             <Button label="Kill" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
@@ -132,6 +148,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
               <ButtonCancel onCancel={() => setConfirmDelete(false)} />
             </div>}
       </div>
+      {error && <p className="mt-2 text-danger text-sm">{error}</p>}
     </div>
   );
 }

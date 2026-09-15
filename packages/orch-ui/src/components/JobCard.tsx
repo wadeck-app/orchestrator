@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Flame, AlertTriangle, FileText } from 'lucide-react';
-import type { Job, RuntimeEntry } from '../types.js';
-import { BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
+import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { BADGE_CANCELLED, BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
 import { EnableToggle } from './EnableToggle.js';
@@ -57,10 +57,11 @@ export function relativeTime(isoDate: string): string {
 
 function jobListBadge(runHistory: RuntimeEntry[]): React.ReactElement {
   if (runHistory.length === 0) return <span className={BADGE_NEVER}>Never run</span>;
-  const last = runHistory[0]!;
-  if (last.exitCode === null) return <span className={BADGE_RUNNING}>Running</span>;
-  if (last.exitCode === 0) return <span className={BADGE_OK}>OK</span>;
-  const failCount = runHistory.filter(e => e.exitCode !== null && e.exitCode !== 0).length;
+  const last = latestRun(runHistory);
+  if (isRunActive(last)) return <span className={BADGE_RUNNING}>Running</span>;
+  if (isRunCancelled(last)) return <span className={BADGE_CANCELLED}>Cancelled</span>;
+  if (last!.exitCode === 0) return <span className={BADGE_OK}>OK</span>;
+  const failCount = runHistory.filter(isRunFailed).length;
   return <span className={BADGE_FAILED}>{failCount}x failed</span>;
 }
 
@@ -107,9 +108,9 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
       </div>
       <div className="flex items-center gap-2 mb-3">
         <p className="text-xs text-muted">
-          {runHistory[0]
+          {latestRun(runHistory)
             ? (() => {
-                const last = runHistory[0]!;
+                const last = latestRun(runHistory)!;
                 const t = `Last run: ${relativeTime(last.startedAt)}`;
                 if (last.finishedAt) {
                   const ms = new Date(last.finishedAt).getTime() - new Date(last.startedAt).getTime();
@@ -131,7 +132,8 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               // violations-suppress-start: tailwind/no-raw-color-class pass/fail/running dot colors have no semantic-token equivalents in design system
               let cls = 'bg-border';
               if (entry) {
-                if (entry.exitCode === null) cls = 'bg-gray-400';
+                if (isRunActive(entry)) cls = 'bg-gray-400';
+                else if (isRunCancelled(entry)) cls = 'bg-orange-400';
                 else if (entry.exitCode === 0) cls = 'bg-green-500';
                 else cls = 'bg-red-500';
               }

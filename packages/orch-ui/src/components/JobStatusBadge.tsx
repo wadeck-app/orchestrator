@@ -3,6 +3,7 @@ import React from 'react';
 export interface JobStatusBadgeProps {
   exitCode: number | null;
   running?: boolean;
+  cancelled?: boolean;
 }
 
 // Status badges use fixed traffic-light colors (not theme tokens): no bg-success/bg-warning/bg-error
@@ -22,8 +23,11 @@ export const BADGE_CANCELLED  = `${BADGE_BASE} bg-orange-100 text-orange-700 dar
  * @registryCategory atomic
  * @registryTags badge status job
  */
-export function JobStatusBadge({ exitCode, running }: JobStatusBadgeProps): React.ReactElement {
+export function JobStatusBadge({ exitCode, running, cancelled }: JobStatusBadgeProps): React.ReactElement {
   if (running) return <span className={BADGE_RUNNING}>Running</span>;
+  // Must come before the exitCode checks: a killed run has no exit code and would
+  // otherwise fall through to "Never run".
+  if (cancelled) return <span className={BADGE_CANCELLED}>Cancelled</span>;
   if (exitCode === 0) return <span className={BADGE_OK}>OK</span>;
   if (exitCode !== null) return <span className={BADGE_FAILED}>Failed - exit {exitCode}</span>;
   return <span className={BADGE_NEVER}>Never run</span>;

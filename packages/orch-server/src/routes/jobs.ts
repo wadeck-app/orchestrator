@@ -2,6 +2,18 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { DaemonProxy, DaemonUnavailableError } from '../daemon-proxy.js';
 import { IdleTimer } from '../idle-timer.js';
 
+interface HealthRunEntry {
+  startedAt: string;
+  exitCode: number | null;
+  finishedAt?: string;
+}
+
+// Run history is not guaranteed to be ordered newest-first, so resolve by startedAt.
+function newestRun(entries: HealthRunEntry[] | undefined): HealthRunEntry | null {
+  if (!entries || entries.length === 0) return null;
+  return entries.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
+}
+
 export async function jobsRoutes(
   fastify: FastifyInstance,
   opts: { proxy: DaemonProxy; idleTimer: IdleTimer }
@@ -254,12 +266,14 @@ export async function jobsRoutes(
     return guard(reply, async () => {
       const [jobs, stateData] = await Promise.all([
         proxy.send('list-jobs') as Promise<{ id: string }[]>,
-        proxy.send('list-state') as Promise<Record<string, { exitCode: number | null }[]>>,
+        proxy.send('list-state') as Promise<Record<string, HealthRunEntry[]>>,
       ]);
-      const runningCount = Object.values(stateData)
-        .filter(entries => entries[0]?.exitCode === null).length;
-      const failureCount = Object.values(stateData)
-        .filter(entries => entries[0]?.exitCode !== null && entries[0]?.exitCode !== 0).length;
+      const latest = Object.values(stateData).map(newestRun);
+      // Liveness is finishedAt: a run killed by signal has no exit code, so testing
+      // exitCode would report it as still running forever.
+      const runningCount = latest.filter(e => e !== null && e.finishedAt == null).length;
+      // A missing exit code is not a failure: null means killed, undefined means never run.
+      const failureCount = latest.filter(e => e !== null && e.exitCode != null && e.exitCode !== 0).length;
       return reply.send({
         status: failureCount > 0 ? 'degraded' : runningCount > 0 ? 'busy' : 'ok',
         totalJobs: jobs.length,
