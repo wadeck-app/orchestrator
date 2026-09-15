@@ -132,10 +132,15 @@ jobs:
                   version-input: ${{ github.event.inputs.version || '' }}
                   breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
+            - name: Bundle orchestrator CJS
+              run: npm run bundle --workspace=packages/orchestrator-cli
+              env:
+                  BUNDLE_VERSION: ${{ steps.version.outputs.version }}
+
             - name: Generate platform package directories
               run: bash packages/orchestrator-cli/ci/scripts/generate-platform-packages.sh
 
-            - name: Copy binaries to platform packages
+            - name: Copy binaries and bundles to packages
               run: bash packages/orchestrator-cli/ci/scripts/copy-binaries.sh
 
             - name: Set version in platform packages
@@ -154,9 +159,6 @@ jobs:
 
             - name: Set version
               run: npm pkg set version="${{ steps.version.outputs.version }}" --workspace=packages/orchestrator-cli
-
-            - name: Bundle updater
-              run: npm run bundle-updater --workspace=packages/orchestrator-cli
 
             - name: Publish
               run: npm publish --workspace=packages/orchestrator-cli --tag ${{ steps.version.outputs.dist_tag }}

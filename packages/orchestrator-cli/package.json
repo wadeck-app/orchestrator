@@ -9,19 +9,24 @@
   },
   "files": [
     "bin/",
-    "dist/",
-    "server/"
+    "orchestrator.cjs",
+    "orchestrator-cli.cjs",
+    "orchestrator-updater.cjs",
+    "orchestrator.exe",
+    "orchestrator-tray.exe",
+    "server/",
+    "package.json"
   ],
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "bundle": "npx tsx scripts/bundle.ts",
     "test": "node --test --require tsx/cjs test/**/*.test.js",
     "test:w": "node --test --watch --require tsx/cjs test/**/*.test.js",
     "build-launcher": "node ci/scripts/build-launcher.mjs",
     "build-tray": "npx tsx scripts/build-tray-binary.ts",
     "gen-icons": "npx tsx scripts/generate-icons.ts",
-    "bundle-updater": "esbuild src/updater/entry.ts --bundle --platform=node --format=cjs --define:__ORCH_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/orchestrator-updater.cjs --external:@wadeck-app/singleton-daemon-kit",
     "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
     "clean": "rimraf dist dist-bundle"
   },
@@ -29,14 +34,14 @@
     "type": "git",
     "url": "https://github.com/wadeck-app/orchestrator.git"
   },
-  "publishConfig": {
-    "@wadeck-app:registry": "https://npm.pkg.github.com/",
-    "access": "public"
-  },
   "optionalDependencies": {
     "@wadeck-app/orchestrator-cli-darwin-arm64": ">=0.0.0-0",
     "@wadeck-app/orchestrator-cli-darwin-x64": ">=0.0.0-0",
     "@wadeck-app/orchestrator-cli-win32-x64": ">=0.0.0-0"
+  },
+  "publishConfig": {
+    "@wadeck-app:registry": "https://npm.pkg.github.com/",
+    "access": "public"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

@@ -45,10 +45,10 @@ try {
 }
 
 // The CLI entry point (short-lived commands).
-const cliBundlePath = path.join(__dirname, '..', 'dist', 'cli.js');
+const cliBundlePath = path.join(__dirname, '..', 'orchestrator-cli.cjs');
 // The daemon entry point (long-running) — used as LAUNCHER_BUNDLE_OVERRIDE for 'start'.
 // The Go launcher keeps this process alive and watches for sentinel files on exit.
-const daemonBundlePath = path.join(__dirname, '..', 'dist', 'index.js');
+const daemonBundlePath = path.join(__dirname, '..', 'orchestrator.cjs');
 const _rawArgs = process.argv.slice(2);
 
 // --cli-background / --cli-foreground: explicit stdio override flags (strip before passing to command).
