@@ -6,7 +6,7 @@
 // npm install is done by Node.js (windowsHide:true) - zero terminal windows, proven by PoC.
 // After successful install, writes config.restart sentinel then POST /quit so the
 // Go launcher restarts the daemon with the new version.
-import { runUpdater, execNpm } from '@wadeck-app/shared-updater';
+import { runUpdater, execNpm, appendLog } from '@wadeck-app/shared-updater';
 import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -34,15 +34,27 @@ if (isForced) {
   } catch { /* ignore -- config.yml missing or unreadable, runUpdater will handle */ }
 }
 
-// Compute self-check command so shared-updater can verify the install after upgrade.
-try {
-  const npmRoot = execNpm(['root', '-g'], { timeout: 10_000 }).trim();
-  const selfCheckCmd = `${process.execPath} ${join(npmRoot, PKG_NAME, 'dist', 'orchestrator-cli.cjs')} cli self-check`;
-  if (!process.env['UPDATER_SELF_CHECK_CMD']) {
-    process.env['UPDATER_SELF_CHECK_CMD'] = selfCheckCmd;
+// Compute the self-check command so shared-updater can verify the install and roll back.
+if (!process.env['UPDATER_SELF_CHECK_CMD']) {
+  let npmRoot: string;
+  try {
+    npmRoot = execNpm(['root', '-g'], { timeout: 10_000 }).trim();
+  } catch (e) {
+    // shared-updater treats a missing UPDATER_SELF_CHECK_CMD as "self-check passed", so
+    // carrying on here would install an unverified upgrade with no rollback. Fail closed,
+    // and record it where `orch logs` can show it: this process is detached with stdio
+    // ignored, so writing to the console would go nowhere.
+    appendLog(configDir, 'error',
+      `${PKG_NAME} update aborted: cannot resolve 'npm root -g', so the post-install `
+      + `self-check could not be armed and an unverified update would not be rollback-able. `
+      + `Cause: ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
   }
-} catch {
-  // Skip self-check if npm root is unavailable.
+  // execSync runs this through a shell, so both paths must be quoted. A default Windows
+  // install puts node under "C:\Program Files\nodejs\", and an unquoted path is split at the
+  // space: the self-check then always fails and every update gets rolled back.
+  const cliBundle = join(npmRoot, PKG_NAME, 'dist', 'orchestrator-cli.cjs');
+  process.env['UPDATER_SELF_CHECK_CMD'] = `"${process.execPath}" "${cliBundle}" cli self-check`;
 }
 
 /**

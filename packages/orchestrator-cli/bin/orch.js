@@ -9,6 +9,15 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 
 const cliBundlePath = path.join(__dirname, '..', 'dist', 'orchestrator-cli.cjs');
+// `npm run build` (tsc) does not produce this file, only `npm run bundle` does. Without this
+// check every orch command in a checkout or an `npm link` dies on a bare MODULE_NOT_FOUND.
+if (!require('fs').existsSync(cliBundlePath)) {
+  process.stderr.write(`orchestrator: CLI bundle missing at ${cliBundlePath}\n`);
+  process.stderr.write('  installed:  npm install -g @wadeck-app/orchestrator-cli\n');
+  process.stderr.write('  checkout:   npm run bundle --workspace=packages/orchestrator-cli\n');
+  process.exit(1);
+}
+
 const _rawArgs = process.argv.slice(2);
 
 // --cli-background / --cli-foreground: explicit stdio override flags (strip before passing to command).

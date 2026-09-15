@@ -17,10 +17,11 @@ function cmdQuote(s: string): string {
 }
 
 // Mirrors `nodeScript` in ci/launcher.config.json, which is baked into the Go launcher.
-// At login the launcher is started bare: neither the registry value nor the launchd plist
-// can inject LAUNCHER_BUNDLE_OVERRIDE the way the CLI does, so the launcher resolves the
-// bundle relative to its own directory. Keep both in sync.
-const LAUNCHER_NODE_SCRIPT = path.join('..', 'orchestrator-cli', 'dist', 'orchestrator.cjs');
+// Windows only: a HKCU\...\Run value is a bare command line with no way to inject
+// LAUNCHER_BUNDLE_OVERRIDE, so there the launcher can only resolve the bundle relative to its
+// own directory. macOS does not need this -- buildMacPlist carries the override in
+// EnvironmentVariables. Keep in sync with ci/launcher.config.json.
+export const LAUNCHER_NODE_SCRIPT = path.join('..', 'orchestrator-cli', 'dist', 'orchestrator.cjs');
 
 /** Absolute path the Go launcher will resolve for its bundle when started bare at login. */
 function launcherBundlePath(launcher: string): string {
@@ -34,35 +35,39 @@ function launcherBundlePath(launcher: string): string {
  */
 function validateStartupTarget(): string | null {
   const launcher = findLauncherBinary();
-  if (launcher) {
+  if (!launcher) {
+    // Registering node + the bundle would start a daemon with no supervisor, so nothing
+    // would restart it after an update. Refuse rather than register a crippled entry.
+    return 'start-at-login cannot be registered: the Go launcher binary was not found, and it '
+      + 'is what supervises the daemon and restarts it after an update. Re-install with: '
+      + 'npm install -g @wadeck-app/orchestrator-cli';
+  }
+  if (!findDaemonEntry()) {
+    return `start-at-login cannot be registered: no daemon bundle next to ${__dirname}. `
+      + 'Re-install with: npm install -g @wadeck-app/orchestrator-cli';
+  }
+  // Only Windows depends on the launcher resolving the bundle by relative path.
+  if (process.platform === 'win32') {
     const bundle = launcherBundlePath(launcher);
     if (!fs.existsSync(bundle)) {
       return `start-at-login would fail: launcher ${launcher} resolves its daemon bundle to `
         + `${bundle}, which does not exist. Re-install with: npm install -g @wadeck-app/orchestrator-cli`;
     }
-    return null;
-  }
-  if (!findDaemonEntry()) {
-    return `start-at-login cannot be registered: no launcher binary, and no daemon bundle next to `
-      + `${__dirname}. Re-install with: npm install -g @wadeck-app/orchestrator-cli`;
   }
   return null;
 }
 
+/** Both builders assume validateStartupTarget() already passed. */
 export function buildWindowsCommand(configDir: string): string {
   const launcher = findLauncherBinary();
-  if (launcher) return `${cmdQuote(launcher)} ${cmdQuote(configDir)}`;
-  const entry = findDaemonEntry();
-  if (!entry) throw new Error('buildWindowsCommand: no launcher binary and no daemon bundle found');
-  return [process.execPath, entry, configDir].map(cmdQuote).join(' ');
+  if (!launcher) throw new Error('buildWindowsCommand: no launcher binary');
+  return `${cmdQuote(launcher)} ${cmdQuote(configDir)}`;
 }
 
 export function buildMacArgs(configDir: string): string[] {
   const launcher = findLauncherBinary();
-  if (launcher) return [launcher, configDir];
-  const entry = findDaemonEntry();
-  if (!entry) throw new Error('buildMacArgs: no launcher binary and no daemon bundle found');
-  return [process.execPath, entry, configDir];
+  if (!launcher) throw new Error('buildMacArgs: no launcher binary');
+  return [launcher, configDir];
 }
 
 function macPlistPath(): string {
@@ -78,6 +83,13 @@ export function buildMacPlist(programArguments: string[], configDir: string): st
   const logDir     = xmlEscape(path.join(configDir, 'logs'));
   const nodeBinDir = xmlEscape(path.dirname(process.execPath));
   const envPath    = [nodeBinDir, '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
+  // launchd can inject environment variables, so on macOS the launcher is handed an absolute
+  // bundle path and never has to resolve it relative to its own directory. That is what makes
+  // start-at-login here independent of whether npm hoisted or nested the platform package.
+  const bundle = findDaemonEntry();
+  const bundleEnv = bundle
+    ? `\n    <key>LAUNCHER_BUNDLE_OVERRIDE</key>\n    <string>${xmlEscape(bundle)}</string>`
+    : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -93,7 +105,7 @@ ${argsXml}
     <key>PATH</key>
     <string>${envPath}</string>
     <key>ORCH_CONFIG_DIR</key>
-    <string>${xmlEscape(configDir)}</string>
+    <string>${xmlEscape(configDir)}</string>${bundleEnv}
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -177,7 +189,15 @@ export function disableStartup(configDir: string): StartupResult {
 }
 
 export function isStartupEnabled(configDir: string): boolean {
-  if (process.platform === 'darwin') return fs.existsSync(macPlistPath());
+  if (process.platform === 'darwin') {
+    // The launchd label is a single global one, so the plist must also be checked to belong to
+    // THIS configDir. Otherwise a second instance sees "enabled" and refreshStartupEntry, which
+    // now runs on every daemon start, silently rewrites the plist to its own configDir and
+    // steals the login entry from the first.
+    try {
+      return fs.readFileSync(macPlistPath(), 'utf8').includes(`<string>${xmlEscape(configDir)}</string>`);
+    } catch { return false; }
+  }
   if (process.platform === 'win32') {
     const valueName = buildRegValueName(configDir);
     try {

@@ -16,8 +16,7 @@ const PLATFORM_PKG: Record<string, string> = {
 
 /** npm package holding the native binaries for the running platform, or null if unsupported. */
 export function platformPackage(): string | null {
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-  return PLATFORM_PKG[`${process.platform}-${arch}`] ?? null;
+  return PLATFORM_PKG[platformKey()] ?? null;
 }
 
 // Inside the platform package the arch is encoded in the package name, so the files are
@@ -25,19 +24,25 @@ export function platformPackage(): string | null {
 const LAUNCHER_IN_PLATFORM_PKG = process.platform === 'win32' ? 'orchestrator.exe' : 'orchestrator';
 const TRAY_IN_PLATFORM_PKG     = process.platform === 'win32' ? 'orchestrator-tray.exe' : 'orchestrator-tray';
 
-const LAUNCHER_DEV_NAME =
-  process.platform === 'win32'
-    ? 'orchestrator_windows_release.exe'
-    : process.arch === 'arm64'
-      ? 'orchestrator_darwin_arm64_release'
-      : 'orchestrator_darwin_amd64_release';
+// Keyed on the platform too, not just the arch: a bare arch ternary returned the darwin
+// binary on any non-Windows host, so a Linux checkout would find and try to exec a Mach-O
+// file. Only the targets build.sh and build-tray-binary.ts actually produce are listed;
+// anything else resolves to null and the caller reports an unsupported platform.
+const LAUNCHER_DEV_NAME: Record<string, string> = {
+  'win32-x64':    'orchestrator_windows_release.exe',
+  'darwin-arm64': 'orchestrator_darwin_arm64_release',
+  'darwin-x64':   'orchestrator_darwin_amd64_release',
+};
 
-const TRAY_DEV_NAME =
-  process.platform === 'win32'
-    ? 'orchestrator-tray.exe'
-    : process.arch === 'arm64'
-      ? 'orchestrator-tray-arm64'
-      : 'orchestrator-tray-amd64';
+const TRAY_DEV_NAME: Record<string, string> = {
+  'win32-x64':    'orchestrator-tray.exe',
+  'darwin-arm64': 'orchestrator-tray-arm64',
+  'darwin-x64':   'orchestrator-tray-amd64',
+};
+
+function platformKey(): string {
+  return `${process.platform}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`;
+}
 
 function resolveInPlatformPackage(fileName: string): string | null {
   const pkg = platformPackage();
@@ -56,14 +61,20 @@ function firstExisting(candidates: string[]): string | null {
 
 /** Go launcher binary: the process that supervises the daemon. */
 export function findLauncherBinary(): string | null {
-  return resolveInPlatformPackage(LAUNCHER_IN_PLATFORM_PKG)
-    ?? firstExisting([path.join(__dirname, '..', 'launcher-go', 'dist', LAUNCHER_DEV_NAME)]);
+  const fromPkg = resolveInPlatformPackage(LAUNCHER_IN_PLATFORM_PKG);
+  if (fromPkg) return fromPkg;
+  const devName = LAUNCHER_DEV_NAME[platformKey()];
+  if (!devName) return null;
+  return firstExisting([path.join(__dirname, '..', 'launcher-go', 'dist', devName)]);
 }
 
 /** Systray binary, spawned by the daemon. */
 export function findTrayBinary(): string | null {
-  return resolveInPlatformPackage(TRAY_IN_PLATFORM_PKG)
-    ?? firstExisting([path.join(__dirname, '..', 'tray-go', 'dist', TRAY_DEV_NAME)]);
+  const fromPkg = resolveInPlatformPackage(TRAY_IN_PLATFORM_PKG);
+  if (fromPkg) return fromPkg;
+  const devName = TRAY_DEV_NAME[platformKey()];
+  if (!devName) return null;
+  return firstExisting([path.join(__dirname, '..', 'tray-go', 'dist', devName)]);
 }
 
 /**
@@ -72,8 +83,14 @@ export function findTrayBinary(): string | null {
  * it does not care where npm put the platform package.
  */
 export function findDaemonEntry(): string | null {
-  return firstExisting([
+  // Published packages ship only the bundle. A dev checkout can hold both, and then the
+  // newest wins: picking the bundle unconditionally would silently run stale code after a
+  // `npm run build` that was not followed by `npm run bundle`.
+  const present = [
     path.join(__dirname, 'orchestrator.cjs'),
     path.join(__dirname, 'index.js'),
-  ]);
+  ].filter((p) => fs.existsSync(p));
+  if (present.length === 0) return null;
+  return present.reduce((newest, p) =>
+    fs.statSync(p).mtimeMs > fs.statSync(newest).mtimeMs ? p : newest);
 }

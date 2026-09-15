@@ -240,29 +240,37 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     case 'start': {
       startDaemon();
+
+      // Readiness is confirmed on BOTH paths. Exiting 0 straight after spawning reported
+      // success to scripts even when the launcher failed to bring the daemon up, so
+      // `orch start --no-follow && orch trigger job` raced against startup.
+      const portFile = path.join(configDir, 'config.port');
+      const deadline = Date.now() + 5000;
+      const ready = await new Promise<boolean>((resolve) => {
+        const fsCheck = require('node:fs') as typeof import('node:fs');
+        const tick = (): void => {
+          if (fsCheck.existsSync(portFile)) { resolve(true); return; }
+          if (Date.now() >= deadline) { resolve(false); return; }
+          setTimeout(tick, 200);
+        };
+        tick();
+      });
+      if (!ready) {
+        console.error('Daemon did not start within 5s. Check: orch logs');
+        process.exit(2);
+      }
+
       // In an interactive TTY, default to following logs so a manual `orch start` shows
       // startup output. --no-follow opts out of that; --follow/-f forces it when piped.
       const follow = has(rest, '--no-follow')
         ? false
         : has(rest, '--follow') || has(rest, '-f') || process.stdout.isTTY;
       if (follow) {
-        const portFile = path.join(configDir, 'config.port');
-        const deadline = Date.now() + 5000;
-        const ready = await new Promise<boolean>((resolve) => {
-          const fsCheck = require('node:fs') as typeof import('node:fs');
-          const tick = (): void => {
-            if (fsCheck.existsSync(portFile)) { resolve(true); return; }
-            if (Date.now() >= deadline) { resolve(false); return; }
-            setTimeout(tick, 200);
-          };
-          tick();
-        });
-        if (!ready) { console.error('Daemon did not start within 5s'); process.exit(2); }
         console.log('Daemon started. Following logs (Ctrl+C to stop)...');
         await cliLogsCommand(configDir, { follow: true });
-        process.exit(0);
+      } else {
+        console.log('Daemon started.');
       }
-      // Non-TTY or --no-follow: exit immediately (e.g. orch start &, scripts).
       process.exit(0);
     }
 
@@ -940,6 +948,14 @@ export async function main(): Promise<void> {
       detached: true,
       windowsHide: true,
       env: { ...process.env, LAUNCHER_BUNDLE_OVERRIDE: daemonPath, ORCH_CONFIG_DIR: configDir },
+    });
+    // Without this, a launcher that cannot be executed (wrong arch, missing exec bit,
+    // corrupt binary) surfaces as an unhandled 'error' event and a raw ENOEXEC/EACCES stack
+    // printed after we already said "starting...".
+    child.on('error', (err) => {
+      console.error(`Failed to execute the Go launcher at ${launcherPath}: ${getErrorMessage(err)}`);
+      console.error('Re-install with: npm install -g @wadeck-app/orchestrator-cli');
+      process.exit(1);
     });
     child.unref();
     console.log('Orchestrator starting...');

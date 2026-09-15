@@ -77,6 +77,23 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           return { name: 'server-binary', ok: false, detail: (err as Error).message };
         }
       },
+      // Check: native-binaries -- the Go launcher supervises the daemon and the tray is
+      // spawned from the same platform package. npm skips optionalDependencies failures
+      // silently, so without this check the updater's rollback gate would accept an install
+      // whose platform package never landed, and the daemon could then never start again.
+      async () => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { findLauncherBinary, findTrayBinary, platformPackage } =
+            require('./platform-binary.js') as typeof import('./platform-binary.js');
+          const pkg = platformPackage() ?? `${process.platform}-${process.arch} (unsupported)`;
+          if (!findLauncherBinary()) throw new Error(`Go launcher not found; expected in ${pkg}`);
+          if (!findTrayBinary())     throw new Error(`tray binary not found; expected in ${pkg}`);
+          return { name: 'native-binaries', ok: true };
+        } catch (err) {
+          return { name: 'native-binaries', ok: false, detail: (err as Error).message };
+        }
+      },
       // Check: package-version -- verify package.json version is present
       async () => {
         try {
