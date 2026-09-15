@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X, ArrowDown, Pause } from 'lucide-react';
-import { isRunActive, latestRun, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 
 // Log viewer uses a fixed dark terminal palette separate from the app theme.
 // Semantic tokens (bg-surface, text-content) would make the terminal look like
@@ -15,6 +15,7 @@ const CONTAINER_CLS      = 'flex flex-col h-full min-h-0 max-h-[75vh]';
 const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-t';
 const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-sm p-4 rounded-b';
 const SEARCH_CLS         = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs w-40 focus:outline-none focus:border-gray-400 placeholder-gray-500';
+const RUN_SELECT_CLS     = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-gray-400 mr-2';
 const KILL_BTN_CLS       = 'flex items-center gap-1 px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors';
 const AUTO_SCROLL_ON_CLS = 'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors bg-green-700 hover:bg-green-800 text-white';
 const AUTO_SCROLL_OFF_CLS= 'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors bg-gray-700 hover:bg-gray-600 text-gray-300';
@@ -189,7 +190,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
       // Hide the button right away; the status poll re-shows it if a new run starts.
       setIsJobRunning(false);
     } catch (err) {
-      alert(`Failed to kill job: ${err instanceof Error ? err.message : 'unknown error'}`);
+      alert(`Failed to kill job: ${getErrorMessage(err)}`);
     } finally {
       setKilling(false);
     }
@@ -219,7 +220,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
           <select
             value={selectedRun}
             onChange={e => handleSelectRun(e.target.value)}
-            className="bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-gray-400 mr-2"
+            className={RUN_SELECT_CLS}
           >
             {runs.map((r, i) => (
               <option key={r.name} value={r.name}>{fmtRunName(r.name, i, runs.length)}</option>

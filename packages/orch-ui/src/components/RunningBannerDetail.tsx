@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Zap } from 'lucide-react';
-import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
@@ -74,14 +74,14 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
       } else {
         const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
         if (!res.ok) {
-          const err = await res.json() as { error?: string };
-          alert(err.error ?? 'Failed to kill job');
+          const err = await res.json().catch(() => ({})) as { error?: string };
+          alert(err.error ?? `Failed to kill job (HTTP ${res.status})`);
           return;
         }
       }
       setJustKilled(true);
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(`Failed to kill job: ${getErrorMessage(err)}`);
     } finally {
       setKilling(false);
     }
