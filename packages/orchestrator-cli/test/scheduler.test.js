@@ -294,10 +294,11 @@ describe('killJob', () => {
     const result = sched.killJob('manual-a');
     assert.deepStrictEqual(result, { killed: true });
 
-    // The direct child is signalled on every platform. Whether the descendants died is a
-    // separate question, asserted against real pids in the next test -- spying on the
-    // syscall used to be the assertion here, and stayed green even when the kill failed.
-    assert.equal(killedWith, 'SIGTERM', 'the direct child should receive SIGTERM');
+    // Deliberately no assertion on which signal or syscall was used. A stub cannot observe
+    // a tree kill, and demanding child.kill() here is what previously forced _killChild to
+    // signal the wrapper before the tree had been enumerated -- killing the job's parent and
+    // orphaning the actual work. Death is asserted against real pids in the next test.
+    void killedWith;
 
     // Let child close
     child.emit('close', 1);

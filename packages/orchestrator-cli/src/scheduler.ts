@@ -230,14 +230,17 @@ export class Scheduler extends EventEmitter {
   }
 
   private _killChild(child: ChildProcess): void {
-    // Tear the tree down FIRST. Order matters on Windows: taskkill /T enumerates descendants
-    // from a live root, so signalling the wrapper first kills cmd.exe, re-parents the real
-    // work, and leaves it running with no root left to walk from. killTreeSync also owns the
-    // SIGTERM-then-SIGKILL escalation, and stays inline on Windows so killJob still reports
-    // only once the tree is down.
-    if (child.pid !== undefined) killTreeSync(child.pid);
-    // Then the direct child: the graceful path for a non-shell child, and the only observable
-    // effect when the child is a test stub. A no-op if the tree kill already took it.
+    // killTreeSync owns the whole job: the root pid AND its descendants, plus the
+    // SIGTERM-then-SIGKILL escalation. Signalling `child` ourselves in addition is not just
+    // redundant, it breaks the kill on both platforms by orphaning the descendants before
+    // they can be found: on Windows terminating cmd.exe leaves `taskkill /T` without a live
+    // root to enumerate, and on POSIX our synchronous signal lands before the asynchronous
+    // pidtree walk has even listed the tree. Either way the real work keeps running.
+    if (child.pid !== undefined) {
+      killTreeSync(child.pid);
+      return;
+    }
+    // No pid: an unspawned or already-reaped handle. Signalling it is all we can do.
     child.kill('SIGTERM');
   }
 
