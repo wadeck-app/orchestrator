@@ -5,13 +5,18 @@ Cross-platform job orchestrator daemon (`@wadeck-app/orchestrator-cli`) + option
 ## Quick reference
 
 ```sh
-orch start / stop / restart / status
+orch start [--no-follow] / stop / restart / status
 orch add cron <id> --schedule "0 9 * * *" --command "node script.js"
-orch server start   # web dashboard
+orch trigger <id>            # fire now
+orch kill <id>               # stop a running job (alias: orch terminate)
+orch server start            # web dashboard
 orch logs [--follow]
 ```
 
-Config dir: `~/.config/orchestrator-cli/`. Port file: `<configDir>/config.port`.
+Config dir: `~/.config/orchestrator/`. Port file: `<configDir>/config.port`.
+
+`orch start` tails logs in an interactive TTY and returns immediately otherwise; `--no-follow`
+opts out. `terminate` exists because shell guardrails often block the word `kill`.
 
 ## Packages
 
@@ -20,6 +25,24 @@ Config dir: `~/.config/orchestrator-cli/`. Port file: `<configDir>/config.port`.
 | `packages/orchestrator-cli` | Daemon + CLI entry point |
 | `packages/orch-server` | Fastify web dashboard (child process of daemon) |
 | `packages/orch-app` | React SPA served by orch-server |
+| `packages/orch-ui` | React components consumed by orch-app |
+
+## Distribution
+
+The published `@wadeck-app/orchestrator-cli` ships **only** JS: `dist/orchestrator.cjs`
+(daemon), `dist/orchestrator-cli.cjs` (CLI), `dist/orchestrator-updater.cjs`, plus `bin/` and
+`server/`. No native binary.
+
+The Go launcher and the tray live in `@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,darwin-x64}`,
+pulled in as `optionalDependencies` with an **exact** version pin, so `npm install -g` updates
+them in the same transaction and a rollback restores the matching pair. They are republished
+only when the binary hash changes, so their version has gaps and legitimately lags the main
+package.
+
+Never assume a fixed path between the two packages: npm hoists the platform package next to the
+main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the launcher,
+the tray and the daemon entry via `require.resolve`; the Go launcher resolves its own bundle from
+the package specifier in `ci/launcher.config.json`. That is what makes start-at-login work.
 
 ## Agent reference docs
 

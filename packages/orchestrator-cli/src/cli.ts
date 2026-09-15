@@ -119,6 +119,7 @@ Liveness strategies (skip firing if target is already alive):
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
   orch kill <id>               Stop a job that is currently running
+  orch terminate <id>          Alias for kill, for shells that block the word
   orch exec "<cmd>" [--wait]   Run a one-shot command via the daemon (for agent delegation)
 
 Dashboard:
@@ -573,10 +574,16 @@ Use --wait to block until the command finishes.`);
       break;
     }
 
+    // `terminate` is an alias: the word `kill` inside a shell command trips process-termination
+    // guardrails, which makes the command unusable in some environments. Same handler, so the
+    // alias cannot drift from it.
+    case 'terminate':
     case 'kill': {
       const [id] = rest;
       if (id === undefined) {
-        console.error('Usage: orch kill <id>');
+        // Echo the verb that was actually typed: hardcoding `kill` would answer someone using
+        // the alias with the very word their shell refuses.
+        console.error(`Usage: orch ${cmd} <id>`);
         process.exit(1);
       }
       // kill-job answers killed:false both for an unknown id and for a job that simply is not

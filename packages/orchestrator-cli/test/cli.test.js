@@ -684,4 +684,21 @@ describe('orch kill', () => {
     assert.deepEqual(calls, []);
     assert.equal(exitCode, 1);
   });
+
+  // `terminate` shares the handler, so it must share the invariants too. An alias that skipped
+  // the get-job resolution would answer "not running" for a typo, which is what the resolution
+  // exists to prevent.
+  test('terminate is the same command, invariants included', async () => {
+    const killed = await runKill(['terminate', 'my-job'], {
+      'get-job': { id: 'my-job' },
+      'kill-job': { killed: true },
+    });
+    assert.deepEqual(killed.calls.map(c => c.command), ['get-job', 'kill-job']);
+    assert.equal(killed.exitCode, 0);
+
+    const unknown = await runKill(['terminate', 'typo'], { 'get-job': null });
+    assert.deepEqual(unknown.calls.map(c => c.command), ['get-job'],
+      'the alias must not send kill-job for a job that does not exist');
+    assert.equal(unknown.exitCode, 1);
+  });
 });

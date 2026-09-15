@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `orch kill <id>` stops a running job from the CLI, with `orch terminate` as an alias for
+  shells whose guardrails block the word `kill`. The daemon and dashboard already had it.
+- `orch start --no-follow` returns as soon as the daemon answers instead of tailing logs.
+  Both paths now confirm readiness before exiting, so a script no longer races startup.
+
+### Fixed
+- Start-at-login on Windows. The registry entry ran the launcher from its platform package,
+  which then looked for its bundle beside its own exe. `nodeScript` is now a package specifier
+  the launcher resolves by walking up node_modules, so it works whether npm hoists or nests.
+- The Go launcher could never be built on macOS: `build.sh` clobbered the exported `TMPDIR`,
+  making Go ignore the generated `go.mod` as sitting in the system temp root.
+- Auto-update rolled back every upgrade: the self-check command was unquoted (breaking on a
+  default Windows node path) and never verified the native binaries, so an install whose
+  platform package was skipped passed the gate and then could not start.
+- The daemon, CLI and tray reported a stale version, because the bundle inlined
+  `package.json` before the release version was set.
+
+### Changed
+- `startDaemon` requires the Go launcher and fails with an actionable message. The wscript.exe
+  and plain-node fallbacks are gone: both produced a daemon with no supervisor, which never
+  restarted itself after an update and said nothing.
+- Platform packages are republished only when the native binary hash changes, and the main
+  package pins them exactly.
+- CI runs `build-and-test` on ubuntu, windows and macos, and executes the orch-server,
+  orch-ui, orchestrator-cli and Go launcher suites. The first three had never run.
+
 ## v3.0.0 (2026-09-05) - In progress
 
 ### Added

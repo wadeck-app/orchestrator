@@ -104,6 +104,54 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           return { name: 'native-binaries', ok: false, detail: (err as Error).message };
         }
       },
+      // Check: version-consistency -- the version the running code believes must match the
+      // installed package. esbuild inlines require('../package.json') at bundle time, so a
+      // bundle built before the version was set reports the stale one forever: the daemon, the
+      // CLI and the tray all announced 0.2.0 while the published package was 2026.9.15-246.
+      // Nothing caught that, because every other check reads the same inlined copy.
+      async () => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { version: inlined } = require('../package.json') as { version: string };
+          const onDisk = (JSON.parse(
+            fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'),
+          ) as { version: string }).version;
+          if (inlined !== onDisk) {
+            throw new Error(
+              `code reports ${inlined} but the installed package is ${onDisk}: `
+              + 'the bundle was built before the version was set',
+            );
+          }
+          return { name: 'version-consistency', ok: true };
+        } catch (err) {
+          return { name: 'version-consistency', ok: false, detail: (err as Error).message };
+        }
+      },
+      // Check: entry-points -- everything package.json points at must exist on disk. Dropping a
+      // path from `files`, or renaming an entry without updating the manifest, leaves `main` and
+      // `bin` dangling: that is how dist/cli.js went missing while the updater kept invoking it,
+      // which failed the self-check and rolled back every update.
+      async () => {
+        try {
+          const root = path.join(__dirname, '..');
+          const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+            main?: string;
+            bin?: string | Record<string, string>;
+          };
+          const targets: string[] = [];
+          if (manifest.main) targets.push(manifest.main);
+          if (typeof manifest.bin === 'string') targets.push(manifest.bin);
+          else if (manifest.bin) targets.push(...Object.values(manifest.bin));
+
+          const missing = [...new Set(targets)].filter((t) => !fs.existsSync(path.join(root, t)));
+          if (missing.length > 0) {
+            throw new Error(`package.json points at missing file(s): ${missing.join(', ')}`);
+          }
+          return { name: 'entry-points', ok: true };
+        } catch (err) {
+          return { name: 'entry-points', ok: false, detail: (err as Error).message };
+        }
+      },
       // Check: package-version -- verify package.json version is present
       async () => {
         try {
