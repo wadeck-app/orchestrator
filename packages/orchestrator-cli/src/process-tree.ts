@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import pidtree from 'pidtree';
 
@@ -12,6 +12,26 @@ export function isAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Tree kill for callers that must report the outcome to their own caller immediately, and so
+ * cannot await. On Windows taskkill tears the tree down inline, preserving the synchronous
+ * guarantee the daemon's kill route already had. Elsewhere the walk needs async, so the kill
+ * is started and not awaited, which is exactly what the previous SIGTERM-then-SIGKILL code did
+ * on those platforms.
+ */
+export function killTreeSync(rootPid: number): void {
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('taskkill', ['/T', '/F', '/PID', String(rootPid)], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } catch { /* already gone */ }
+    return;
+  }
+  void killTree(rootPid);
 }
 
 /**

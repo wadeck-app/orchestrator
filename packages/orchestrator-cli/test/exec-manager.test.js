@@ -8,7 +8,14 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const { ExecManager } = require('../src/exec-manager');
-const pidtree = require('pidtree');
+// pidtree is ESM-only ("type": "module", export default), so under require() the callable sits
+// on .default rather than being the module itself. Resolving it wrong used to throw a
+// TypeError that treeOf() swallowed, silently reducing every tree assertion below to the
+// wrapper pid alone -- the tests then passed without ever checking the process that matters.
+const pidtreeMod = require('pidtree');
+const pidtree = typeof pidtreeMod === 'function' ? pidtreeMod : pidtreeMod.default;
+assert.equal(typeof pidtree, 'function',
+  'pidtree is not callable: tree assertions would silently degrade to the wrapper pid');
 
 const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
@@ -16,9 +23,23 @@ const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { re
  * Pids of a run's whole tree. Commands go through a shell, so the pid the manager tracks is
  * only the wrapper: asserting on it alone cannot tell a killed job from one whose real
  * process is still running.
+ *
+ * Only an async rejection is tolerated, which is the root having already exited. A synchronous
+ * throw (a broken import, a bad argument) must surface instead of being read as "no children".
  */
 async function treeOf(pid) {
-  try { return await pidtree(pid, { root: true }); } catch { return [pid]; }
+  return pidtree(pid, { root: true }).catch(() => [pid]);
+}
+
+/**
+ * Fails when the captured tree cannot prove anything. On Windows the shell wrapper is always a
+ * separate process, so a real tree has at least two pids. POSIX `sh -c` usually execs a simple
+ * command in place, so one pid is legitimate there.
+ */
+function assertTreeIsMeaningful(tree) {
+  const min = process.platform === 'win32' ? 2 : 1;
+  assert.ok(tree.length >= min,
+    `captured ${tree.length} pid(s), expected >= ${min}: the tree assertion would be vacuous`);
 }
 
 /** Waits for every pid to disappear. Returns the ones still alive at the deadline. */
@@ -96,6 +117,7 @@ describe('ExecManager', () => {
       const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"', { timeout: 1 });
       await new Promise(r => setTimeout(r, 300));
       const tree = await treeOf(pid);
+      assertTreeIsMeaningful(tree);
       tree.forEach(p => spawnedPids.add(p));
 
       await new Promise(r => setTimeout(r, 1500));
@@ -121,6 +143,7 @@ describe('ExecManager', () => {
       );
       await new Promise(r => setTimeout(r, 300));
       const tree = await treeOf(pid);
+      assertTreeIsMeaningful(tree);
       tree.forEach(p => spawnedPids.add(p));
 
       await new Promise(r => setTimeout(r, 1500));
@@ -135,6 +158,7 @@ describe('ExecManager', () => {
       const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
       await new Promise(r => setTimeout(r, 300));
       const tree = await treeOf(pid);
+      assertTreeIsMeaningful(tree);
       tree.forEach(p => spawnedPids.add(p));
 
       assert.equal(manager.kill(runId), true);
@@ -162,6 +186,7 @@ describe('ExecManager', () => {
       );
       await new Promise(r => setTimeout(r, 300));
       const tree = await treeOf(pid);
+      assertTreeIsMeaningful(tree);
       tree.forEach(p => spawnedPids.add(p));
 
       manager.kill(runId);
@@ -177,6 +202,7 @@ describe('ExecManager', () => {
       );
       await new Promise(r => setTimeout(r, 300));
       const tree = [...await treeOf(a.pid), ...await treeOf(b.pid)];
+      assertTreeIsMeaningful(tree);
       tree.forEach(p => spawnedPids.add(p));
 
       await manager.stop();
