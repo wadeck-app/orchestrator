@@ -628,3 +628,60 @@ describe('VbsLauncher.runLine', () => {
     assert.equal((line.match(/"/g) ?? []).length % 2, 0, 'odd quote count');
   });
 });
+
+// ---------------------------------------------------------------------------
+// orch kill -- the daemon exposed kill-job and the UI used it, but the CLI had no way in
+// ---------------------------------------------------------------------------
+
+describe('orch kill', () => {
+  // Routes per command: kill resolves the job before killing it, so a single sendResult
+  // cannot express the two answers.
+  async function runKill(argv, results) {
+    const calls = [];
+    const deps = {
+      send: async (command, payload) => {
+        calls.push({ command, payload });
+        if (!(command in results)) throw new Error(`unexpected command: ${command}`);
+        return results[command];
+      },
+      startDaemon: async () => {},
+      configDir: '/tmp/orch-test',
+    };
+    let exitCode = 0;
+    const origExit = process.exit;
+    process.exit = (code) => { exitCode = code ?? 0; throw Object.assign(new Error('exit'), { exitCode }); };
+    try { await runCli(argv, deps); } catch (e) { if (e.message !== 'exit') throw e; } finally { process.exit = origExit; }
+    return { calls, exitCode };
+  }
+
+  test('resolves the job then kills it', async () => {
+    const { calls, exitCode } = await runKill(['kill', 'my-job'], {
+      'get-job': { id: 'my-job' },
+      'kill-job': { killed: true },
+    });
+    assert.deepEqual(calls.map(c => c.command), ['get-job', 'kill-job']);
+    assert.deepEqual(calls[1].payload, { id: 'my-job' });
+    assert.equal(exitCode, 0);
+  });
+
+  test('an unknown id fails without firing a kill', async () => {
+    const { calls, exitCode } = await runKill(['kill', 'typo'], { 'get-job': null });
+    assert.deepEqual(calls.map(c => c.command), ['get-job'],
+      'kill-job must not be sent for a job that does not exist');
+    assert.equal(exitCode, 1);
+  });
+
+  test('a job that is not running is not an error', async () => {
+    const { exitCode } = await runKill(['kill', 'idle'], {
+      'get-job': { id: 'idle' },
+      'kill-job': { killed: false },
+    });
+    assert.equal(exitCode, 0, 'asking a stopped job to stop is idempotent');
+  });
+
+  test('a missing id fails before touching the daemon', async () => {
+    const { calls, exitCode } = await runKill(['kill'], {});
+    assert.deepEqual(calls, []);
+    assert.equal(exitCode, 1);
+  });
+});

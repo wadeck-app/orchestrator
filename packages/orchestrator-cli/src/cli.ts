@@ -118,6 +118,7 @@ Liveness strategies (skip firing if target is already alive):
 
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
+  orch kill <id>               Stop a job that is currently running
   orch exec "<cmd>" [--wait]   Run a one-shot command via the daemon (for agent delegation)
 
 Dashboard:
@@ -569,6 +570,27 @@ Use --wait to block until the command finishes.`);
       console.log(wait
         ? `Job "${id}" finished (exit ${data.exitCode ?? '?'}).`
         : `Job "${id}" triggered (pid ${data.pid ?? '?'}).`);
+      break;
+    }
+
+    case 'kill': {
+      const [id] = rest;
+      if (id === undefined) {
+        console.error('Usage: orch kill <id>');
+        process.exit(1);
+      }
+      // kill-job answers killed:false both for an unknown id and for a job that simply is not
+      // running, so resolve the job first. Reporting "not running" for a typo would send the
+      // user looking for a scheduling problem that does not exist.
+      const job = await send('get-job', { id }) as { id: string } | null;
+      if (job === null) {
+        console.error(`Unknown job "${id}". List them with: orch list`);
+        process.exit(1);
+      }
+      const { killed } = await send('kill-job', { id }) as { killed: boolean };
+      // Not an error: asking for a stopped job to stop is idempotent. Said out loud, though,
+      // so a script does not read silence as "killed".
+      console.log(killed ? `Job "${id}" killed.` : `Job "${id}" is not running.`);
       break;
     }
 

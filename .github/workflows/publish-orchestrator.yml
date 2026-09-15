@@ -22,7 +22,23 @@ permissions:
 
 jobs:
     build-and-test:
-        runs-on: ubuntu-latest
+        # The published targets are win32-x64, darwin-arm64 and darwin-x64, yet this job only
+        # ever ran on ubuntu -- the one platform nothing is published for. Every Windows and
+        # macOS path was therefore untested: the registry entries, taskkill, the generated
+        # VBScript, the launchd plist, launchctl, the MSYS2 detach behaviour. None of the
+        # regressions shipped on 2026-09-15 could have been caught here.
+        # publish stays on ubuntu alone: build.sh cross-compiles all three targets via
+        # GOOS/GOARCH, so matrixing it would publish the same version three times.
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, windows-latest, macos-latest]
+        runs-on: ${{ matrix.os }}
+        defaults:
+            run:
+                # windows-latest defaults to PowerShell, where the POSIX steps below (mkdir -p,
+                # cp -r, bash scripts) do not exist. Git Bash ships on the runner.
+                shell: bash
         steps:
             - uses: actions/checkout@v5
               with:
@@ -69,6 +85,13 @@ jobs:
 
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
+
+            # The launcher is what start-at-login depends on, and its bundle resolution had no
+            # coverage in this repo at all. go.mod sits inside go-launcher, so that is the module
+            # root: running from the package above it fails with "does not contain main module".
+            - name: Run Go launcher tests
+              run: go test ./...
+              working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
             - name: Run tests
               run: |
