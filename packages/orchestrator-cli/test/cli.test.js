@@ -643,3 +643,25 @@ describe('buildStartVbs', () => {
     }
   });
 });
+
+describe('VbsLauncher.runLine', () => {
+  const { VbsLauncher } = require('../src/windows/VbsLauncher');
+
+  test('balances quotes with and without extra args', () => {
+    for (const line of [
+      VbsLauncher.runLine('C:\node.exe'),
+      VbsLauncher.runLine('C:\node.exe', ['C:\s.js']),
+      VbsLauncher.runLine('C:\node.exe', ['C:\s.js', '--a', '--b=1']),
+    ]) {
+      assert.equal((line.match(/"/g) ?? []).length % 2, 0, `odd quote count in: ${line}`);
+      assert.ok(line.endsWith('", 0, False'), `literal not closed: ${line}`);
+    }
+  });
+
+  test('doubles quotes found in the exe path or the args', () => {
+    const line = VbsLauncher.runLine('C:\a"b.exe', ['x"y']);
+    assert.ok(line.includes('C:\a""b.exe'), 'exe quote not doubled');
+    assert.ok(line.includes('x""y'), 'arg quote not doubled');
+    assert.equal((line.match(/"/g) ?? []).length % 2, 0, 'odd quote count');
+  });
+});

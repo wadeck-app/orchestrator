@@ -888,14 +888,13 @@ Use --wait to block until the command finishes.`);
  * exercised, nothing caught it until the launcher stopped resolving.
  */
 export function buildStartVbs(execPath: string, daemonPath: string, configDir: string): string {
-  // VBScript escapes a quote by doubling it. The Run argument is a string literal holding a
-  // quoted command line, so the trailing `"""` is `""` (embedded quote) + `"` (end of literal).
-  const esc = (s: string): string => s.replace(/"/g, '""');
+  const { VbsLauncher, vbsEscape } =
+    require('./windows/VbsLauncher.js') as typeof import('./windows/VbsLauncher.js');
   return [
     'Dim oShell',
     'Set oShell = CreateObject("WScript.Shell")',
-    `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
-    `oShell.Run """${esc(execPath)}"" ""${esc(daemonPath)}""", 0, False`,
+    `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${vbsEscape(configDir)}"`,
+    VbsLauncher.runLine(execPath, [daemonPath]),
   ].join('\r\n');
 }
 
