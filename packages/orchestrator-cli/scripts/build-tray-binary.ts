@@ -18,10 +18,13 @@ const targets = [
 for (const { GOOS, GOARCH, out } of targets) {
   process.stdout.write(`Building ${GOOS}/${GOARCH} -> ${path.basename(out)} ... `);
   execSync(
-    // No -X main.version: the tray reports the version it receives from the daemon over IPC.
-    // Baking it in would change the binary on every release, which would defeat the
-    // binary-hash gate that decides whether a platform package needs republishing.
-    `go build -trimpath -ldflags "-s -w" -o "${out}" .`,
+    // Reproducible output: identical sources must produce an identical binary, because the
+    // publish step only republishes a platform package when the binary hash changes.
+    // -buildvcs=false: this package lives inside the repo, so Go's default -buildvcs=auto
+    //   stamps vcs.revision/vcs.time/vcs.modified into every build, making the binary differ
+    //   on every commit even when no Go source changed.
+    // No -X main.version, for the same reason: the tray gets its version from the daemon.
+    `go build -trimpath -buildvcs=false -ldflags "-s -w" -o "${out}" .`,
     { cwd: trayDir, env: { ...process.env, GOOS, GOARCH, CGO_ENABLED: '0' }, stdio: ['ignore', 'ignore', 'inherit'], windowsHide: true },
   );
   console.log('ok');
