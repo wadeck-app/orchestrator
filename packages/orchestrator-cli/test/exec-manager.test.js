@@ -31,15 +31,39 @@ async function treeOf(pid) {
   return pidtree(pid, { root: true }).catch(() => [pid]);
 }
 
+// On Windows the shell wrapper is always a separate process, so a real tree has at least two
+// pids. POSIX `sh -c` usually execs a simple command in place, so one pid is legitimate there.
+const MIN_TREE_PIDS = process.platform === 'win32' ? 2 : 1;
+
 /**
- * Fails when the captured tree cannot prove anything. On Windows the shell wrapper is always a
- * separate process, so a real tree has at least two pids. POSIX `sh -c` usually execs a simple
- * command in place, so one pid is legitimate there.
+ * Captures a run's process tree, waiting for the wrapper to have actually spawned its child.
+ *
+ * A fixed short delay was enough here but not on a CI runner, where cmd.exe had not started
+ * node yet and the capture came back with the wrapper alone, failing the meaningfulness check.
+ * The wait is bounded, and callers must leave enough slack before the run is killed: waiting
+ * for a tree that has already been torn down would fail just as wrongly.
  */
-function assertTreeIsMeaningful(tree) {
-  const min = process.platform === 'win32' ? 2 : 1;
-  assert.ok(tree.length >= min,
-    `captured ${tree.length} pid(s), expected >= ${min}: the tree assertion would be vacuous`);
+async function captureTree(pid, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let tree = await treeOf(pid);
+  while (tree.length < MIN_TREE_PIDS && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 100));
+    tree = await treeOf(pid);
+  }
+  assert.ok(tree.length >= MIN_TREE_PIDS,
+    `captured ${tree.length} pid(s), expected >= ${MIN_TREE_PIDS}: the tree assertion would be vacuous`);
+  tree.forEach(p => spawnedPids.add(p));
+  return tree;
+}
+
+/** Waits for a condition, failing with a named reason instead of a bare timeout. */
+async function waitFor(predicate, label, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
 }
 
 /** Waits for every pid to disappear. Returns the ones still alive at the deadline. */
@@ -113,16 +137,14 @@ describe('ExecManager', () => {
   });
 
   describe('fireExec - timeout', () => {
-    test('kills process on timeout (default 300s)', async () => {
-      const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"', { timeout: 1 });
-      await new Promise(r => setTimeout(r, 300));
-      const tree = await treeOf(pid);
-      assertTreeIsMeaningful(tree);
-      tree.forEach(p => spawnedPids.add(p));
+    // timeout: 5 rather than 1 so the capture has room before the kill fires. With 1s, a slow
+    // runner had not spawned the descendant yet by capture time.
+    test('kills process on timeout', async () => {
+      const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"', { timeout: 5 });
+      const tree = await captureTree(pid, 3000);
 
-      await new Promise(r => setTimeout(r, 1500));
+      await waitFor(() => manager.get(runId).status === 'killed', 'the timeout to fire');
       const run = manager.get(runId);
-      assert.equal(run.status, 'killed');
       assert.ok(run.logs.some(l => l.includes('timed out')));
       // The status field is set by the manager before anything dies, so assert the OS instead.
       assert.deepEqual(await waitAllGone(tree), [], 'timeout left processes running');
@@ -139,15 +161,11 @@ describe('ExecManager', () => {
     test('a target that ignores SIGTERM is still killed on timeout', async () => {
       const { runId, pid } = manager.fireExec(
         'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"',
-        { timeout: 1 }
+        { timeout: 5 }
       );
-      await new Promise(r => setTimeout(r, 300));
-      const tree = await treeOf(pid);
-      assertTreeIsMeaningful(tree);
-      tree.forEach(p => spawnedPids.add(p));
+      const tree = await captureTree(pid, 3000);
 
-      await new Promise(r => setTimeout(r, 1500));
-      assert.equal(manager.get(runId).status, 'killed');
+      await waitFor(() => manager.get(runId).status === 'killed', 'the timeout to fire');
       // The whole point of the test: a SIGTERM handler must not keep the process alive.
       assert.deepEqual(await waitAllGone(tree), [], 'SIGTERM-ignoring process survived');
     });
@@ -156,10 +174,7 @@ describe('ExecManager', () => {
   describe('kill() - manual termination', () => {
     test('kills a running process', async () => {
       const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
-      await new Promise(r => setTimeout(r, 300));
-      const tree = await treeOf(pid);
-      assertTreeIsMeaningful(tree);
-      tree.forEach(p => spawnedPids.add(p));
+      const tree = await captureTree(pid);
 
       assert.equal(manager.kill(runId), true);
 
@@ -184,10 +199,7 @@ describe('ExecManager', () => {
       const { runId, pid } = manager.fireExec(
         'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"'
       );
-      await new Promise(r => setTimeout(r, 300));
-      const tree = await treeOf(pid);
-      assertTreeIsMeaningful(tree);
-      tree.forEach(p => spawnedPids.add(p));
+      const tree = await captureTree(pid);
 
       manager.kill(runId);
 
@@ -200,10 +212,7 @@ describe('ExecManager', () => {
       const b = manager.fireExec(
         'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"'
       );
-      await new Promise(r => setTimeout(r, 300));
-      const tree = [...await treeOf(a.pid), ...await treeOf(b.pid)];
-      assertTreeIsMeaningful(tree);
-      tree.forEach(p => spawnedPids.add(p));
+      const tree = [...await captureTree(a.pid), ...await captureTree(b.pid)];
 
       await manager.stop();
 
