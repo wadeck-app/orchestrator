@@ -445,7 +445,11 @@ describe('sampleProcessTree', () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
     const scriptPath = path.join(dir, 'busy.js');
-    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 3000);');
+    // Deriving a CPU percentage needs two samples of the same pid, so the job has to outlive
+    // at least two 2s ticks. It runs 10s rather than 3s because pidusage shells out to WMI on
+    // Windows, and on a CI runner that is slow enough that a 3s job ended with a single
+    // usable sample -- peakCpuPct stayed 0 and was recorded as undefined.
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 10000);');
     registry.add({
       id: 'cpu-burner', type: 'startup', delaySeconds: 0,
       command: `"${process.execPath}" "${scriptPath}"`,
@@ -476,8 +480,11 @@ describe('sampleProcessTree', () => {
     // wrapper alone is what left Peak CPU empty and Peak RAM stuck at a constant.
     // The busy loop lives in a file: passing it via -e would expose `<` to cmd.exe,
     // which reads it as input redirection and kills the command.
+    // 20s, killed in the finally: the job only has to outlive the sampling, and pidusage goes
+    // through WMI on Windows. On a CI runner a 3s job had already exited by the time the
+    // wrapper baseline was read, which surfaced as an opaque ENOENT from gwmi.
     const scriptPath = path.join(os.tmpdir(), `orch-busy-${process.pid}-${Date.now()}.js`);
-    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 3000);');
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 20000);');
     const child = spawn(`"${process.execPath}" "${scriptPath}"`, { shell: true, windowsHide: true, stdio: 'ignore' });
     try {
       assert.ok(child.pid, 'expected the wrapper to have a pid');
@@ -486,7 +493,11 @@ describe('sampleProcessTree', () => {
       const tree = await sampleProcessTree(child.pid);
       assert.ok(tree !== null, 'expected the tree to be sampleable while the job runs');
 
-      const wrapperRamMb = (await pidusage(child.pid)).memory / 1024 / 1024;
+      // Read the wrapper on its own for the comparison. Surface a real message if it has gone:
+      // pidusage throws a bare ENOENT, which says nothing about the job having outrun the test.
+      const wrapper = await pidusage(child.pid).catch(() => null);
+      assert.ok(wrapper !== null, 'the wrapper exited before it could be sampled: job too short for this runner');
+      const wrapperRamMb = wrapper.memory / 1024 / 1024;
       // The busy node descendant dwarfs the wrapper, so the tree total must exceed it.
       assert.ok(tree.ramMb > wrapperRamMb,
         `tree RAM ${tree.ramMb.toFixed(1)}MB should exceed wrapper-only ${wrapperRamMb.toFixed(1)}MB`);
