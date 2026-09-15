@@ -51,11 +51,13 @@ describe('buildWindowsCommand', () => {
     assert.ok(hasLauncher || hasNode, `expected either orchestrator binary or node in command`);
   });
 
-  test('node fallback contains index.js when no launcher binary', () => {
-    // If the launcher exists this test is N/A -- still passes via the OR
+  test('uses the launcher binary when present, else node + the daemon entry', () => {
+    // Assert the contract, not a filename: build.sh emits orchestrator_windows_release.exe,
+    // while the platform package ships it as orchestrator.exe.
     const cmd = buildWindowsCommand(FAKE_DIR);
-    const hasLauncher = cmd.toLowerCase().includes('orchestrator.exe');
-    assert.ok(hasLauncher || cmd.includes('index.js'), `expected launcher or index.js`);
+    const hasLauncher = /orchestrator(_windows_release)?\.exe/i.test(cmd);
+    const hasNodeFallback = cmd.includes(process.execPath) && /orchestrator\.cjs|index\.js/.test(cmd);
+    assert.ok(hasLauncher || hasNodeFallback, `expected a launcher or a node+daemon-entry command, got: ${cmd}`);
   });
 });
 

@@ -3,43 +3,10 @@ import path from 'node:path';
 import fs   from 'node:fs';
 import os   from 'node:os';
 import type { StartupResult } from './types.js';
+import { findLauncherBinary, findDaemonEntry } from './platform-binary.js';
 
 const REG_KEY            = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
-
-// Mirrors `nodeScript` in ci/launcher.config.json, which is baked into the Go launcher.
-// At login the launcher is started bare: neither the registry value nor the launchd plist
-// can inject LAUNCHER_BUNDLE_OVERRIDE the way bin/orch.js does, so the launcher can only
-// find the daemon bundle relative to its own directory. The platform package holding the
-// launcher sits next to the main package under node_modules/@wadeck-app/.
-const LAUNCHER_NODE_SCRIPT = path.join('..', 'orchestrator-cli', 'dist', 'orchestrator.cjs');
-
-const _PLATFORM_PKG: Record<string, string> = {
-  'win32-x64':    '@wadeck-app/orchestrator-cli-win32-x64',
-  'darwin-arm64': '@wadeck-app/orchestrator-cli-darwin-arm64',
-  'darwin-x64':   '@wadeck-app/orchestrator-cli-darwin-x64',
-};
-const _platformArch = process.arch === 'arm64' ? 'arm64' : 'x64';
-const _platformKey  = `${process.platform}-${_platformArch}`;
-const _platformPkg  = _PLATFORM_PKG[_platformKey];
-const LAUNCHER_BINARY = process.platform === 'win32' ? 'orchestrator.exe' : 'orchestrator';
-
-function findLauncherBinary(): string | null {
-  // Try the platform package first (production install via optionalDependencies).
-  if (_platformPkg) {
-    try {
-      return require.resolve(`${_platformPkg}/${LAUNCHER_BINARY}`);
-    } catch {
-      // Platform package not installed - fall through to local paths (dev/CI builds).
-    }
-  }
-  // Fallback: local paths used during development or legacy installs.
-  const candidates = [
-    path.join(__dirname, LAUNCHER_BINARY),
-    path.join(__dirname, '..', 'launcher-go', 'dist', LAUNCHER_BINARY),
-  ];
-  return candidates.find((p) => fs.existsSync(p)) ?? null;
-}
 
 export function buildRegValueName(configDir: string): string {
   return `Orchestrator (${configDir})`;
@@ -49,14 +16,11 @@ function cmdQuote(s: string): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-/** Daemon entry next to this module: the published bundle, or the tsc output in dev. */
-function findDaemonEntry(): string | null {
-  const candidates = [
-    path.join(__dirname, 'orchestrator.cjs'),
-    path.join(__dirname, 'index.js'),
-  ];
-  return candidates.find((p) => fs.existsSync(p)) ?? null;
-}
+// Mirrors `nodeScript` in ci/launcher.config.json, which is baked into the Go launcher.
+// At login the launcher is started bare: neither the registry value nor the launchd plist
+// can inject LAUNCHER_BUNDLE_OVERRIDE the way the CLI does, so the launcher resolves the
+// bundle relative to its own directory. Keep both in sync.
+const LAUNCHER_NODE_SCRIPT = path.join('..', 'orchestrator-cli', 'dist', 'orchestrator.cjs');
 
 /** Absolute path the Go launcher will resolve for its bundle when started bare at login. */
 function launcherBundlePath(launcher: string): string {

@@ -72,6 +72,8 @@ Usage: orch <command> [options]
 
 Daemon lifecycle:
   orch start                   Start the daemon; tails logs in interactive TTY (Ctrl+C stops tail, daemon keeps running)
+                               --no-follow  Return as soon as the daemon is up, without tailing
+                               --follow,-f  Tail even when stdout is piped
   orch stop                    Stop the daemon
   orch restart                 Restart the daemon
   orch status [--json]         Show daemon pid, port, uptime
@@ -238,9 +240,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     case 'start': {
       startDaemon();
-      // In an interactive TTY, default to following logs so the user sees startup output.
-      // Pipe stdout (orch start | cat) or use orch start & to suppress.
-      const follow = has(rest, '--follow') || has(rest, '-f') || process.stdout.isTTY;
+      // In an interactive TTY, default to following logs so a manual `orch start` shows
+      // startup output. --no-follow opts out of that; --follow/-f forces it when piped.
+      const follow = has(rest, '--no-follow')
+        ? false
+        : has(rest, '--follow') || has(rest, '-f') || process.stdout.isTTY;
       if (follow) {
         const portFile = path.join(configDir, 'config.port');
         const deadline = Date.now() + 5000;
@@ -877,6 +881,24 @@ Use --wait to block until the command finishes.`);
 // Entry point (when invoked as a binary)
 // ---------------------------------------------------------------------------
 
+/**
+ * VBScript used to start the daemon hidden when the Go launcher is unavailable.
+ * Exported so it can be unit-tested: this ran for months with an odd number of quotes on
+ * the Run line, leaving the string literal unterminated. Being inline and effectively never
+ * exercised, nothing caught it until the launcher stopped resolving.
+ */
+export function buildStartVbs(execPath: string, daemonPath: string, configDir: string): string {
+  // VBScript escapes a quote by doubling it. The Run argument is a string literal holding a
+  // quoted command line, so the trailing `"""` is `""` (embedded quote) + `"` (end of literal).
+  const esc = (s: string): string => s.replace(/"/g, '""');
+  return [
+    'Dim oShell',
+    'Set oShell = CreateObject("WScript.Shell")',
+    `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
+    `oShell.Run """${esc(execPath)}"" ""${esc(daemonPath)}""", 0, False`,
+  ].join('\r\n');
+}
+
 export async function main(): Promise<void> {
   const fs = require('node:fs') as typeof import('node:fs');
   const { createDaemonClient } = require('@wadeck-app/singleton-daemon-kit') as typeof import('@wadeck-app/singleton-daemon-kit');
@@ -898,31 +920,40 @@ export async function main(): Promise<void> {
   const client = createDaemonClient({ configDir, commands });
 
   function startDaemon(): void {
-    const daemonPath = path.join(__dirname, 'index.js');
+    const { findLauncherBinary, findDaemonEntry } =
+      require('./platform-binary.js') as typeof import('./platform-binary.js');
+
+    const daemonPath = findDaemonEntry();
+    if (!daemonPath) {
+      console.error(`Cannot start: no daemon bundle found next to ${__dirname}.`);
+      console.error('Re-install with: npm install -g @wadeck-app/orchestrator-cli');
+      process.exit(1);
+    }
+
     if (process.platform === 'win32') {
-      // On Windows, any spawn() from MSYS2/Git Bash is tracked in the process group — the shell
+      // On Windows, any spawn() from MSYS2/Git Bash is tracked in the process group: the shell
       // waits for all descendants even with detached:true+unref(). The Go launcher binary
       // (orchestrator.exe) is designed to detach itself cleanly on Windows, so prefer it.
       // Fall back to wscript.exe SW_HIDE when the launcher is absent (dev / raw install).
-      const launcherPaths = [
-        path.join(__dirname, 'orchestrator.exe'),
-        // Platform package installed alongside the main package (global install)
-        path.join(__dirname, '..', '..', '..', '@wadeck-app', 'orchestrator-cli-win32-x64', 'orchestrator.exe'),
-        path.join(__dirname, '..', 'launcher-go', 'dist', 'orchestrator_windows_release.exe'),
-      ];
-      const launcherPath = launcherPaths.find(p => fs.existsSync(p));
+      const launcherPath = findLauncherBinary();
       if (launcherPath) {
-        const ws = spawn(launcherPath, [configDir], { stdio: 'ignore', detached: true, windowsHide: true });
+        // Hand the launcher an absolute bundle path. Its baked nodeScript is resolved
+        // relative to its own directory, which breaks as soon as npm nests the platform
+        // package instead of hoisting it next to the main package.
+        const ws = spawn(launcherPath, [configDir], {
+          stdio: 'ignore',
+          detached: true,
+          windowsHide: true,
+          env: { ...process.env, LAUNCHER_BUNDLE_OVERRIDE: daemonPath },
+        });
         ws.unref();
       } else {
-        const esc = (s: string): string => s.replace(/"/g, '""');
+        // No supervisor in this mode: nothing restarts the daemon after an update or a crash.
+        // Say so rather than degrade silently.
+        console.warn('Warning: Go launcher not found -- starting the daemon without its supervisor.');
+        console.warn('Auto-restart after update will not work. Re-install with: npm install -g @wadeck-app/orchestrator-cli');
         const vbsPath = path.join(configDir, 'orchestrator-start.vbs');
-        fs.writeFileSync(vbsPath, [
-          'Dim oShell',
-          'Set oShell = CreateObject("WScript.Shell")',
-          `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${esc(configDir)}"`,
-          `oShell.Run """${esc(process.execPath)}"" ""${esc(daemonPath)}"", 0, False`,
-        ].join('\r\n'), 'utf8');
+        fs.writeFileSync(vbsPath, buildStartVbs(process.execPath, daemonPath, configDir), 'utf8');
         const ws = spawn('cmd.exe', ['/c', 'start', '/b', '/min', 'wscript.exe', vbsPath], {
           stdio: 'ignore', detached: true, windowsHide: true,
         });

@@ -605,3 +605,41 @@ describe('orch list --verbose', () => {
     assert.ok(line.includes('exit=-'), `must show exit=- when no state, got: ${line}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildStartVbs -- regression guard for the unterminated VBScript string literal
+// ---------------------------------------------------------------------------
+
+describe('buildStartVbs', () => {
+  const { buildStartVbs } = require('../src/cli');
+  const NODE = 'C:\App\nodejs\node.exe';
+  const DAEMON = 'C:\App\nvm\node_modules\@wadeck-app\orchestrator-cli\dist\orchestrator.cjs';
+  const CFG = 'C:\Users\Test\.config\orchestrator';
+
+  test('every line has an even number of quotes (no unterminated literal)', () => {
+    for (const line of buildStartVbs(NODE, DAEMON, CFG).split('\r\n')) {
+      const quotes = (line.match(/"/g) ?? []).length;
+      assert.equal(quotes % 2, 0, `odd quote count (${quotes}) in: ${line}`);
+    }
+  });
+
+  test('Run line closes its literal with a triple quote', () => {
+    const runLine = buildStartVbs(NODE, DAEMON, CFG).split('\r\n').find(l => l.startsWith('oShell.Run'));
+    assert.ok(runLine.endsWith('""", 0, False'), `unexpected Run line: ${runLine}`);
+  });
+
+  test('carries the node path, the daemon path and the config dir', () => {
+    const vbs = buildStartVbs(NODE, DAEMON, CFG);
+    assert.ok(vbs.includes(NODE), 'missing node path');
+    assert.ok(vbs.includes(DAEMON), 'missing daemon path');
+    assert.ok(vbs.includes(CFG), 'missing config dir');
+  });
+
+  test('doubles quotes coming from the paths themselves', () => {
+    const vbs = buildStartVbs('C:\a"b\node.exe', DAEMON, CFG);
+    assert.ok(vbs.includes('C:\a""b\node.exe'), 'embedded quote not doubled');
+    for (const line of vbs.split('\r\n')) {
+      assert.equal((line.match(/"/g) ?? []).length % 2, 0, `odd quote count in: ${line}`);
+    }
+  });
+});
