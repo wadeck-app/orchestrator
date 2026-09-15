@@ -1,15 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, X, ArrowDown, Pause } from 'lucide-react';
 
 // Log viewer uses a fixed dark terminal palette separate from the app theme.
 // Semantic tokens (bg-surface, text-content) would make the terminal look like
 // the rest of the UI - wrong for a log tail component.
-// violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode
+// violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
-const LOG_HEADER_CLS = 'flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-t';
-const LOG_BODY_CLS   = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-sm p-4 rounded-b';
-const SEARCH_CLS     = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs w-40 focus:outline-none focus:border-gray-400 placeholder-gray-500';
+const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-t';
+const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-sm p-4 rounded-b';
+const SEARCH_CLS         = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs w-40 focus:outline-none focus:border-gray-400 placeholder-gray-500';
+const KILL_BTN_CLS       = 'flex items-center gap-1 px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors';
+const AUTO_SCROLL_ON_CLS = 'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors bg-green-700 hover:bg-green-800 text-white';
+const AUTO_SCROLL_OFF_CLS= 'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors bg-gray-700 hover:bg-gray-600 text-gray-300';
 // @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
 
@@ -96,6 +99,9 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   const [runs, setRuns] = useState<RunEntry[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedRun, setSelectedRun] = useState<string>(searchParams.get('run') ?? '');
+  const [isJobRunning, setIsJobRunning] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [justKilled, setJustKilled] = useState(false);
   const containerRef = useRef<HTMLPreElement>(null);
   const userScrolledUp = useRef(false);
 
@@ -114,6 +120,25 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
         if (data.length > 0 && !searchParams.get('run')) handleSelectRun(data[0]!.name);
       })
       .catch(() => {});
+  }, [jobId, apiBase]);
+
+  // Check if job is currently running
+  useEffect(() => {
+    const checkJobStatus = (): void => {
+      fetch(`${apiBase}/api/jobs/${jobId}`)
+        .then(r => r.ok ? r.json() as Promise<{ job: unknown; runHistory: Array<{ exitCode: number | null }> }> : null)
+        .then(data => {
+          if (data?.runHistory) {
+            const isRunning = data.runHistory[0]?.exitCode === null;
+            setIsJobRunning(isRunning);
+          }
+        })
+        .catch(() => {});
+    };
+
+    checkJobStatus();
+    const interval = setInterval(checkJobStatus, 2000);
+    return () => { clearInterval(interval); };
   }, [jobId, apiBase]);
 
   useEffect(() => {
@@ -137,9 +162,9 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || userScrolledUp.current) return;
+    if (!el || !autoScroll || userScrolledUp.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [lines]);
+  }, [lines, autoScroll]);
 
   const handleScroll = () => {
     const el = containerRef.current;
@@ -147,6 +172,32 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
     userScrolledUp.current = !atBottom;
     setPaused(!atBottom);
+  };
+
+  const handleKillJob = async (): Promise<void> => {
+    if (!confirm(`Kill running job "${jobId}"?`)) return;
+    try {
+      const res = await fetch(`${apiBase}/api/jobs/${jobId}/kill`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        alert(err.error ?? 'Failed to kill job');
+        return;
+      }
+      setJustKilled(true);
+      setIsJobRunning(false);
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleAutoScrollToggle = (): void => {
+    setAutoScroll(!autoScroll);
+    if (!autoScroll) {
+      // Re-enable auto-scroll: scroll to bottom immediately
+      userScrolledUp.current = false;
+      const el = containerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    }
   };
 
   const filtered = search
@@ -176,16 +227,32 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
             : 'Connecting...'}
         </span>
         {paused && <span className="text-yellow-400">Paused</span>}
-        <div className="flex items-center gap-1">
-          <Search size={10} className="text-gray-500" />
-          {/* violations-suppress: react/no-raw-input log search - FieldText requires light-mode classes incompatible with dark terminal */}
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className={SEARCH_CLS}
-          />
+        <div className="flex items-center gap-2">
+          {isJobRunning && !justKilled && (
+            <button onClick={handleKillJob} className={KILL_BTN_CLS} title="Kill running job">
+              <X size={12} />
+              Kill
+            </button>
+          )}
+          <button
+            onClick={handleAutoScrollToggle}
+            className={autoScroll ? AUTO_SCROLL_ON_CLS : AUTO_SCROLL_OFF_CLS}
+            title={autoScroll ? 'Disable auto-scroll' : 'Enable auto-scroll'}
+          >
+            {autoScroll ? <ArrowDown size={12} /> : <Pause size={12} />}
+            Auto
+          </button>
+          <div className="flex items-center gap-1">
+            <Search size={10} className="text-gray-500" />
+            {/* violations-suppress: react/no-raw-input log search - FieldText requires light-mode classes incompatible with dark terminal */}
+            <input
+              type="text"
+              placeholder="Search..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className={SEARCH_CLS}
+            />
+          </div>
         </div>
       </div>
       <pre ref={containerRef} onScroll={handleScroll} className={LOG_BODY_CLS}>

@@ -45,9 +45,10 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
+  const [justKilled, setJustKilled] = useState(false);
 
   const latestRun = runHistory?.[0] ?? null;
-  const isRunning = latestRun !== null && latestRun.exitCode === null;
+  const isRunning = latestRun !== null && latestRun.exitCode === null && !justKilled;
 
   useEffect(() => {
     if (!isRunning) return;
@@ -64,8 +65,23 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
     const pid = runHistory?.[0]?.pid;
     if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
     setKilling(true);
-    try { if (onKill) await (onKill as () => Promise<void>)(); else await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' }); }
-    finally { setKilling(false); }
+    try {
+      if (onKill) {
+        await (onKill as () => Promise<void>)();
+      } else {
+        const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json() as { error?: string };
+          alert(err.error ?? 'Failed to kill job');
+          return;
+        }
+      }
+      setJustKilled(true);
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setKilling(false);
+    }
   };
 
   const handleDelete = () => {
