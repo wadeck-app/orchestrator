@@ -881,23 +881,6 @@ Use --wait to block until the command finishes.`);
 // Entry point (when invoked as a binary)
 // ---------------------------------------------------------------------------
 
-/**
- * VBScript used to start the daemon hidden when the Go launcher is unavailable.
- * Exported so it can be unit-tested: this ran for months with an odd number of quotes on
- * the Run line, leaving the string literal unterminated. Being inline and effectively never
- * exercised, nothing caught it until the launcher stopped resolving.
- */
-export function buildStartVbs(execPath: string, daemonPath: string, configDir: string): string {
-  const { VbsLauncher, vbsEscape } =
-    require('./windows/VbsLauncher.js') as typeof import('./windows/VbsLauncher.js');
-  return [
-    'Dim oShell',
-    'Set oShell = CreateObject("WScript.Shell")',
-    `oShell.Environment("Process")("ORCH_CONFIG_DIR") = "${vbsEscape(configDir)}"`,
-    VbsLauncher.runLine(execPath, [daemonPath]),
-  ].join('\r\n');
-}
-
 export async function main(): Promise<void> {
   const fs = require('node:fs') as typeof import('node:fs');
   const { createDaemonClient } = require('@wadeck-app/singleton-daemon-kit') as typeof import('@wadeck-app/singleton-daemon-kit');
@@ -919,7 +902,7 @@ export async function main(): Promise<void> {
   const client = createDaemonClient({ configDir, commands });
 
   function startDaemon(): void {
-    const { findLauncherBinary, findDaemonEntry } =
+    const { findLauncherBinary, findDaemonEntry, platformPackage } =
       require('./platform-binary.js') as typeof import('./platform-binary.js');
 
     const daemonPath = findDaemonEntry();
@@ -929,43 +912,36 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
 
-    if (process.platform === 'win32') {
-      // On Windows, any spawn() from MSYS2/Git Bash is tracked in the process group: the shell
-      // waits for all descendants even with detached:true+unref(). The Go launcher binary
-      // (orchestrator.exe) is designed to detach itself cleanly on Windows, so prefer it.
-      // Fall back to wscript.exe SW_HIDE when the launcher is absent (dev / raw install).
-      const launcherPath = findLauncherBinary();
-      if (launcherPath) {
-        // Hand the launcher an absolute bundle path. Its baked nodeScript is resolved
-        // relative to its own directory, which breaks as soon as npm nests the platform
-        // package instead of hoisting it next to the main package.
-        const ws = spawn(launcherPath, [configDir], {
-          stdio: 'ignore',
-          detached: true,
-          windowsHide: true,
-          env: { ...process.env, LAUNCHER_BUNDLE_OVERRIDE: daemonPath },
-        });
-        ws.unref();
-      } else {
-        // No supervisor in this mode: nothing restarts the daemon after an update or a crash.
-        // Say so rather than degrade silently.
-        console.warn('Warning: Go launcher not found -- starting the daemon without its supervisor.');
-        console.warn('Auto-restart after update will not work. Re-install with: npm install -g @wadeck-app/orchestrator-cli');
-        const vbsPath = path.join(configDir, 'orchestrator-start.vbs');
-        fs.writeFileSync(vbsPath, buildStartVbs(process.execPath, daemonPath, configDir), 'utf8');
-        const ws = spawn('cmd.exe', ['/c', 'start', '/b', '/min', 'wscript.exe', vbsPath], {
-          stdio: 'ignore', detached: true, windowsHide: true,
-        });
-        ws.unref();
-      }
-    } else {
-      const child = spawn(process.execPath, [daemonPath], {
-        detached: true,
-        stdio: 'ignore',
-        env: { ...process.env, ORCH_CONFIG_DIR: configDir },
-      });
-      child.unref();
+    // The Go launcher is required, with no degraded mode behind it. It supervises the daemon,
+    // which is what makes auto-restart after an update work, and on Windows it is also the
+    // only thing that detaches cleanly: any spawn() from MSYS2/Git Bash is tracked in the
+    // process group, so the shell waits for all descendants even with detached+unref().
+    // Starting the daemon without it used to be a silent fallback through wscript.exe, which
+    // produced a daemon that looked fine and never restarted itself after an update.
+    const launcherPath = findLauncherBinary();
+    if (!launcherPath) {
+      const pkg = platformPackage();
+      console.error('Cannot start the daemon: the Go launcher binary was not found.');
+      console.error('It supervises the daemon and auto-restarts it after an update, so there is');
+      console.error('no degraded mode to fall back to.');
+      console.error(pkg
+        ? `  expected in ${pkg}, or in launcher-go/dist for a monorepo checkout`
+        : `  unsupported platform: ${process.platform}-${process.arch}`);
+      console.error('  installed:  npm install -g @wadeck-app/orchestrator-cli');
+      console.error('  checkout:   npm run build-launcher --workspace=packages/orchestrator-cli');
+      process.exit(1);
     }
+
+    // Hand the launcher an absolute bundle path: its baked nodeScript is resolved relative to
+    // its own directory, which breaks as soon as npm nests the platform package instead of
+    // hoisting it next to the main package.
+    const child = spawn(launcherPath, [configDir], {
+      stdio: 'ignore',
+      detached: true,
+      windowsHide: true,
+      env: { ...process.env, LAUNCHER_BUNDLE_OVERRIDE: daemonPath, ORCH_CONFIG_DIR: configDir },
+    });
+    child.unref();
     console.log('Orchestrator starting...');
   }
 
