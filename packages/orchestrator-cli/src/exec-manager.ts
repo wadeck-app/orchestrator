@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import { DailyLogger } from './logger.js';
 import { EventPublisher } from './event-publisher.js';
 import { ensureTmpDir } from './fsUtil.js';
+import { killTree } from './process-tree.js';
 
 export interface ExecRun {
   runId: string;
@@ -104,8 +105,8 @@ export class ExecManager {
       timeoutHandle = setTimeout(() => {
         if (run.status === 'running') {
           run.logs.push(`[warn] Exec ${runId} timed out after ${opts.timeout ?? 300}s - killing`);
-          child.kill('SIGTERM');
-          setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
+          run.status = 'killed';
+          void this._terminate(runId);
         }
       }, timeoutMs);
     }
@@ -135,13 +136,32 @@ export class ExecManager {
     const run = this._runs.get(runId);
     if (!run || run.status !== 'running') return false;
     run.status = 'killed';
-    const child = this._pids.get(runId);
-    if (child && !child.killed) {
-      child.kill('SIGTERM');
-      setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
-    }
+    void this._terminate(runId);
     return true;
   }
 
-  stop(): void { clearInterval(this._cleanupTimer); }
+  /**
+   * Kills the whole process tree behind a run. Commands go through a shell, so the tracked
+   * child is only the wrapper: signalling it left the real process running, which is what
+   * leaked a node process per killed run.
+   */
+  private async _terminate(runId: string): Promise<void> {
+    const child = this._pids.get(runId);
+    const pid = child?.pid;
+    if (pid === undefined) return;
+    await killTree(pid);
+  }
+
+  /**
+   * Stops the cleanup timer and kills anything still running. Returns once the trees are gone,
+   * so a caller that needs a clean slate (daemon shutdown, a test teardown) can await it;
+   * callers that do not care may ignore the promise.
+   */
+  async stop(): Promise<void> {
+    clearInterval(this._cleanupTimer);
+    const running = Array.from(this._runs.entries())
+      .filter(([, run]) => run.status === 'running')
+      .map(([runId]) => runId);
+    await Promise.all(running.map((runId) => this._terminate(runId)));
+  }
 }

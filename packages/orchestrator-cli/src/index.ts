@@ -172,7 +172,7 @@ async function main(): Promise<void> {
           void scheduler.stop();
           void trayManager.stop();
           void dashboardManager?.stop();
-          execManager.stop();
+          void execManager.stop();
         },
       },
     });

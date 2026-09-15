@@ -116,8 +116,11 @@ describe('SecretsManager', () => {
     });
 
     test('handles permission errors gracefully', function() {
-      // Skip on Windows where permission simulation is complex
-      if (process.platform === 'win32') this.skip();
+      // chmod is a no-op on Windows, so the unreadable-file scenario cannot be simulated.
+      // The `return` matters: this.skip() marks the test but does NOT stop the body, so
+      // without it the assertions below ran anyway and failed against a still-readable file,
+      // reporting "skipped 1 / fail 0" while marking the suite failed.
+      if (process.platform === 'win32') { this.skip(); return; }
 
       manager.set('secret', 'value');
       const secretFile = path.join(tmpDir, 'secrets.json');

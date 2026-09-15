@@ -70,8 +70,16 @@ jobs:
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
-            - name: Run tests (orch-server only - orchestrator-cli tests run locally)
-              run: npm test --workspace=packages/orch-server --if-present
+            - name: Run tests
+              run: |
+                  npm test --workspace=packages/orch-server --if-present
+                  npm test --workspace=packages/orchestrator-cli --if-present
+              # The orchestrator-cli suite was disabled here as "extremely slow (7+ min hang)".
+              # It was not slow: ExecManager.stop() never killed the process trees it started,
+              # so every run leaked a node fixture, some of which ignore SIGTERM by design, and
+              # the runner waited forever on children that could not exit. With the trees torn
+              # down the whole suite finishes in ~13s, so it belongs back in CI: several
+              # regressions shipped on 2026-09-15 would have been caught here.
               timeout-minutes: 5
 
     publish:

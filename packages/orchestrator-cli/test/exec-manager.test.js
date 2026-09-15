@@ -1,6 +1,6 @@
 'use strict';
 
-const { test, describe, beforeEach, afterEach } = require('node:test');
+const { test, describe, beforeEach, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const os = require('node:os');
@@ -8,6 +8,32 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const { ExecManager } = require('../src/exec-manager');
+const pidtree = require('pidtree');
+
+const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/**
+ * Pids of a run's whole tree. Commands go through a shell, so the pid the manager tracks is
+ * only the wrapper: asserting on it alone cannot tell a killed job from one whose real
+ * process is still running.
+ */
+async function treeOf(pid) {
+  try { return await pidtree(pid, { root: true }); } catch { return [pid]; }
+}
+
+/** Waits for every pid to disappear. Returns the ones still alive at the deadline. */
+async function waitAllGone(pids, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  let alive = pids.filter(isAlive);
+  while (alive.length > 0 && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 100));
+    alive = alive.filter(isAlive);
+  }
+  return alive;
+}
+
+// Every pid this file starts, so the suite fails loudly on a leak instead of hanging on it.
+const spawnedPids = new Set();
 
 describe('ExecManager', () => {
   let tmpDir;
@@ -19,9 +45,18 @@ describe('ExecManager', () => {
     manager = new ExecManager(tmpDir);
   });
 
-  afterEach(() => {
-    manager?.stop();
+  afterEach(async () => {
+    // Awaited: stop() now tears down the process trees, and not waiting for it was what left
+    // a node process per run alive, including fixtures that ignore SIGTERM on purpose. The
+    // runner then waited forever on children that would never exit, which is the "the
+    // orchestrator-cli suite hangs" that got it disabled in CI.
+    await manager?.stop();
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  after(async () => {
+    const leaked = await waitAllGone([...spawnedPids], 3000);
+    assert.deepEqual(leaked, [], `leaked process pids: ${leaked.join(', ')}`);
   });
 
   describe('fireExec - basic execution', () => {
@@ -58,12 +93,17 @@ describe('ExecManager', () => {
 
   describe('fireExec - timeout', () => {
     test('kills process on timeout (default 300s)', async () => {
-      const { runId } = manager.fireExec('node -e "setInterval(() => {}, 10000)"', { timeout: 1 });
-      // Wait for timeout to trigger (1s) + cleanup
+      const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"', { timeout: 1 });
+      await new Promise(r => setTimeout(r, 300));
+      const tree = await treeOf(pid);
+      tree.forEach(p => spawnedPids.add(p));
+
       await new Promise(r => setTimeout(r, 1500));
       const run = manager.get(runId);
       assert.equal(run.status, 'killed');
       assert.ok(run.logs.some(l => l.includes('timed out')));
+      // The status field is set by the manager before anything dies, so assert the OS instead.
+      assert.deepEqual(await waitAllGone(tree), [], 'timeout left processes running');
     });
 
     test('does not timeout if process finishes quickly', async () => {
@@ -74,30 +114,33 @@ describe('ExecManager', () => {
       assert.equal(run.exitCode, 0);
     });
 
-    test('SIGTERM → 2s pause → SIGKILL sequence', async () => {
-      // Start a process that ignores SIGTERM
-      const { runId } = manager.fireExec(
+    test('a target that ignores SIGTERM is still killed on timeout', async () => {
+      const { runId, pid } = manager.fireExec(
         'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"',
         { timeout: 1 }
       );
+      await new Promise(r => setTimeout(r, 300));
+      const tree = await treeOf(pid);
+      tree.forEach(p => spawnedPids.add(p));
+
       await new Promise(r => setTimeout(r, 1500));
-      const run = manager.get(runId);
-      // Process should be killed despite ignoring SIGTERM
-      assert.equal(run.status, 'killed');
+      assert.equal(manager.get(runId).status, 'killed');
+      // The whole point of the test: a SIGTERM handler must not keep the process alive.
+      assert.deepEqual(await waitAllGone(tree), [], 'SIGTERM-ignoring process survived');
     });
   });
 
   describe('kill() - manual termination', () => {
     test('kills a running process', async () => {
-      const { runId } = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
-      await new Promise(r => setTimeout(r, 100));
+      const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
+      await new Promise(r => setTimeout(r, 300));
+      const tree = await treeOf(pid);
+      tree.forEach(p => spawnedPids.add(p));
 
-      const result = manager.kill(runId);
-      assert.equal(result, true);
+      assert.equal(manager.kill(runId), true);
 
-      await new Promise(r => setTimeout(r, 500));
-      const run = manager.get(runId);
-      assert.equal(run.status, 'killed');
+      assert.equal(manager.get(runId).status, 'killed');
+      assert.deepEqual(await waitAllGone(tree), [], 'kill() left processes running');
     });
 
     test('returns false if process not running', async () => {
@@ -113,16 +156,32 @@ describe('ExecManager', () => {
       assert.equal(result, false);
     });
 
-    test('kill() uses SIGTERM → 2s → SIGKILL', async () => {
-      const { runId } = manager.fireExec(
+    test('kill() defeats a SIGTERM handler', async () => {
+      const { runId, pid } = manager.fireExec(
         'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"'
       );
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 300));
+      const tree = await treeOf(pid);
+      tree.forEach(p => spawnedPids.add(p));
 
       manager.kill(runId);
-      await new Promise(r => setTimeout(r, 2500));
-      const run = manager.get(runId);
-      assert.equal(run.status, 'killed');
+
+      assert.equal(manager.get(runId).status, 'killed');
+      assert.deepEqual(await waitAllGone(tree), [], 'SIGTERM-ignoring process survived kill()');
+    });
+
+    test('stop() kills anything still running', async () => {
+      const a = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
+      const b = manager.fireExec(
+        'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"'
+      );
+      await new Promise(r => setTimeout(r, 300));
+      const tree = [...await treeOf(a.pid), ...await treeOf(b.pid)];
+      tree.forEach(p => spawnedPids.add(p));
+
+      await manager.stop();
+
+      assert.deepEqual(await waitAllGone(tree), [], 'stop() left processes running');
     });
   });
 
