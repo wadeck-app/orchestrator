@@ -93,9 +93,15 @@ jobs:
               run: go test ./...
               working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
+            # orch-ui is built here but was never tested, so its 11 test files failed to even
+            # load, unnoticed, for as long as they existed: @testing-library/dom is a
+            # peerDependency of @testing-library/react v16 and was never declared, and vitest
+            # lacked the @dsl-ui alias that @wadeck-app/dsl-ui uses internally. Building a
+            # package is not the same as exercising it.
             - name: Run tests
               run: |
                   npm test --workspace=packages/orch-server --if-present
+                  npm test --workspace=packages/orch-ui --if-present
                   npm test --workspace=packages/orchestrator-cli --if-present
               # The orchestrator-cli suite was disabled here as "extremely slow (7+ min hang)".
               # It was not slow: ExecManager.stop() never killed the process trees it started,
