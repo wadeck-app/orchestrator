@@ -359,6 +359,16 @@ export class Scheduler extends EventEmitter {
           const overHard = hardThreshold !== null && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb);
           // Any sample back under the hard budget means the spike was transient.
           if (!overHard) hardBreaches = 0;
+          // Warn on the soft budget independently of the hard one. Gating this behind "not over
+          // hard" meant a job that jumped straight past the hard threshold was killed on the
+          // third sample having never emitted a warning -- and now that the kill is delayed on
+          // purpose, those first samples are exactly when the warning is worth something.
+          if (!softAlertSent && softThreshold && (cpuPct > softThreshold.cpuPct || ramMb > softThreshold.ramMb)) {
+            softAlertSent = true;
+            const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
+            try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
+            this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
+          }
           if (overHard) {
             hardBreaches++;
             const over = `CPU: ${cpuPct.toFixed(1)}% threshold: ${hardThreshold!.cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB threshold: ${hardThreshold!.ramMb.toFixed(0)}MB`;
@@ -372,11 +382,6 @@ export class Scheduler extends EventEmitter {
               clearInterval(resourceTimer!);
               this._killChild(child);
             }
-          } else if (!softAlertSent && softThreshold && (cpuPct > softThreshold.cpuPct || ramMb > softThreshold.ramMb)) {
-            softAlertSent = true;
-            const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
-            try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
-            this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
           }
         }).catch((err: unknown) => {
           // Sampling is best-effort telemetry: log and keep going. Clearing the timer here

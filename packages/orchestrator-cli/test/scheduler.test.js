@@ -409,6 +409,29 @@ describe('hard resource budget', () => {
       'no hard-limit kill should be emitted for a short burst');
   });
 
+  test('a job that jumps straight past the hard budget still warns before it is killed', async () => {
+    // The soft alert used to sit in an `else if` on the hard breach, so a job that went
+    // straight over the hard threshold was killed on the third sample having never warned.
+    // Delaying the kill is what makes those first samples worth reporting.
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    const events = [];
+    seedTinyBaseline(state, 'loud');
+    registry.add(busyJob(dir, 'loud', 20000));
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false,
+      eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
+    });
+    await sched.trigger('loud');
+    await sched.stop();
+
+    const soft = events.filter(e => e.topic === 'job.resource_soft_limit');
+    const hard = events.filter(e => e.topic === 'job.resource_hard_limit');
+    assert.equal(soft.length, 1, 'expected exactly one soft warning');
+    assert.equal(hard.length, 1, 'expected the kill to still happen');
+  });
+
   test('a sustained breach kills the job and reports the sample count', async () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
