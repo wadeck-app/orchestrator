@@ -282,41 +282,70 @@ describe('killJob', () => {
     child.stdout = null;
     child.stderr = null;
 
-    // On Windows, _killChild uses taskkill which won't find the fake PID.
-    // Mock execSync to verify taskkill is called, or skip this platform.
-    const originalExecSync = require('child_process').execSync;
-    let taskKillCalled = false;
-    if (process.platform === 'win32') {
-      require('child_process').execSync = () => { taskKillCalled = true; };
+    const sched = new Scheduler(registry, state, {
+      spawn: () => child,
+      liveness: async () => false,
+    });
+
+    // Trigger (fire-and-forget -- does not wait for child to close)
+    void sched.trigger('manual-a');
+    await new Promise(r => setImmediate(r));
+
+    const result = sched.killJob('manual-a');
+    assert.deepStrictEqual(result, { killed: true });
+
+    // The direct child is signalled on every platform. Whether the descendants died is a
+    // separate question, asserted against real pids in the next test -- spying on the
+    // syscall used to be the assertion here, and stayed green even when the kill failed.
+    assert.equal(killedWith, 'SIGTERM', 'the direct child should receive SIGTERM');
+
+    // Let child close
+    child.emit('close', 1);
+  });
+
+  test('killJob leaves no survivor in the process tree', async () => {
+    // The sibling test above asserts which syscall was emitted, which stays green even if
+    // the kill fails. This one spawns a real shell-wrapped job -- so child.pid is an idle
+    // wrapper and the work runs in a descendant -- and asserts every pid actually died.
+    const { isAlive } = require('../src/process-tree');
+    // pidtree is ESM-first: under require() the callable sits on .default.
+    const pidtreeMod = require('pidtree');
+    const pidtree = typeof pidtreeMod === 'function' ? pidtreeMod : pidtreeMod.default;
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    const scriptPath = path.join(dir, 'survivor.js');
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 30000);');
+    registry.add({
+      id: 'tree-a', type: 'startup', delaySeconds: 0,
+      command: `"${process.execPath}" "${scriptPath}"`,
+      enabled: true, triggerMode: 'fire-and-forget', liveness: null,
+    });
+
+    const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false });
+    void sched.trigger('tree-a');
+    // Give the shell time to start its descendant, otherwise there is no tree to kill.
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    const pid = state.get('tree-a').pid;
+    assert.ok(pid, 'expected a recorded pid');
+    const pids = await pidtree(pid, { root: true });
+    // cmd.exe always stays around as a parent, so Windows must show a real tree. POSIX
+    // shells often exec the command in place for a single command, collapsing the tree to
+    // one pid -- asserting 2 there would fail in CI for the wrong reason.
+    const minPids = process.platform === 'win32' ? 2 : 1;
+    assert.ok(pids.length >= minPids, `expected at least ${minPids} pid(s), got ${pids.length}`);
+
+    assert.deepStrictEqual(sched.killJob('tree-a'), { killed: true });
+
+    // POSIX escalates to SIGKILL after a delay, so allow a moment before asserting.
+    const deadline = Date.now() + 5000;
+    let survivors = pids.filter(isAlive);
+    while (survivors.length > 0 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      survivors = pids.filter(isAlive);
     }
-
-    try {
-      const sched = new Scheduler(registry, state, {
-        spawn: () => child,
-        liveness: async () => false,
-      });
-
-      // Trigger (fire-and-forget -- does not wait for child to close)
-      void sched.trigger('manual-a');
-      await new Promise(r => setImmediate(r));
-
-      const result = sched.killJob('manual-a');
-      assert.deepStrictEqual(result, { killed: true });
-
-      // Verify appropriate kill path was used
-      if (process.platform === 'win32') {
-        assert.equal(taskKillCalled, true, 'taskkill should be called on Windows');
-      } else {
-        assert.equal(killedWith, 'SIGTERM', 'SIGTERM should be sent on Unix');
-      }
-
-      // Let child close
-      child.emit('close', 1);
-    } finally {
-      if (process.platform === 'win32') {
-        require('child_process').execSync = originalExecSync;
-      }
-    }
+    assert.deepStrictEqual(survivors, [], `these pids survived killJob: ${survivors.join(', ')}`);
+    await sched.stop();
   });
 
   test('killJob returns killed:false when job is not running', () => {

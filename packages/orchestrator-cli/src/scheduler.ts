@@ -1,11 +1,12 @@
 import cron from 'node-cron';
-import { spawn as nodeSpawn, execSync, type ChildProcess } from 'node:child_process';
+import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
 import { ensureTmpDir, getErrorMessage }  from './fsUtil.js';
+import { killTreeSync } from './process-tree.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
@@ -229,12 +230,15 @@ export class Scheduler extends EventEmitter {
   }
 
   private _killChild(child: ChildProcess): void {
-    if (process.platform === 'win32' && child.pid) {
-      try { execSync(`taskkill /f /t /pid ${child.pid}`, { stdio: 'ignore' }); } catch { /* already dead */ }
-    } else {
-      child.kill('SIGTERM');
-      setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 2000);
-    }
+    // Tear the tree down FIRST. Order matters on Windows: taskkill /T enumerates descendants
+    // from a live root, so signalling the wrapper first kills cmd.exe, re-parents the real
+    // work, and leaves it running with no root left to walk from. killTreeSync also owns the
+    // SIGTERM-then-SIGKILL escalation, and stays inline on Windows so killJob still reports
+    // only once the tree is down.
+    if (child.pid !== undefined) killTreeSync(child.pid);
+    // Then the direct child: the graceful path for a non-shell child, and the only observable
+    // effect when the child is a test stub. A no-op if the tree kill already took it.
+    child.kill('SIGTERM');
   }
 
   killJob(id: string): { killed: boolean } {
