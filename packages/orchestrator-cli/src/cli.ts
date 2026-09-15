@@ -246,18 +246,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       // Readiness is confirmed on BOTH paths. Exiting 0 straight after spawning reported
       // success to scripts even when the launcher failed to bring the daemon up, so
       // `orch start --no-follow && orch trigger job` raced against startup.
-      const portFile = path.join(configDir, 'config.port');
-      const deadline = Date.now() + 5000;
-      const ready = await new Promise<boolean>((resolve) => {
-        const fsCheck = require('node:fs') as typeof import('node:fs');
-        const tick = (): void => {
-          if (fsCheck.existsSync(portFile)) { resolve(true); return; }
-          if (Date.now() >= deadline) { resolve(false); return; }
-          setTimeout(tick, 200);
-        };
-        tick();
-      });
-      if (!ready) {
+      if (!await waitForDaemonAlive(configDir, 5000)) {
         console.error('Daemon did not start within 5s. Check: orch logs');
         process.exit(2);
       }
@@ -918,6 +907,29 @@ Use --wait to block until the command finishes.`);
 // Entry point (when invoked as a binary)
 // ---------------------------------------------------------------------------
 
+/**
+ * Waits for the daemon to be genuinely reachable, not merely for its port file to exist.
+ *
+ * An unclean shutdown (SIGKILL, power loss) leaves a stale config.port behind, so testing
+ * existence alone answered "ready" on the first tick while nothing was running: `orch start`
+ * then printed "Daemon started." and exited 0 having started nothing. Reads the recorded pid
+ * and probes it, the same way the `--pid` branch does.
+ */
+async function waitForDaemonAlive(configDir: string, timeoutMs: number): Promise<boolean> {
+  const fsMod = require('node:fs') as typeof import('node:fs');
+  const portFile = path.join(configDir, 'config.port');
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const { pid } = JSON.parse(fsMod.readFileSync(portFile, 'utf8')) as { pid: number };
+      process.kill(pid, 0);
+      return true;
+    } catch { /* file absent, malformed, or the pid is gone */ }
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
 export async function main(): Promise<void> {
   const fs = require('node:fs') as typeof import('node:fs');
   const { createDaemonClient } = require('@wadeck-app/singleton-daemon-kit') as typeof import('@wadeck-app/singleton-daemon-kit');
@@ -991,18 +1003,8 @@ export async function main(): Promise<void> {
   }
 
   // Wait up to timeoutMs for the daemon port file to appear (async-friendly polling).
-  function waitForDaemon(timeoutMs: number): Promise<boolean> {
-    const portFile = path.join(configDir, 'config.port');
-    return new Promise((resolve) => {
-      const deadline = Date.now() + timeoutMs;
-      const tick = (): void => {
-        if (fs.existsSync(portFile)) { resolve(true); return; }
-        if (Date.now() >= deadline)  { resolve(false); return; }
-        setTimeout(tick, 100);
-      };
-      tick();
-    });
-  }
+  const waitForDaemon = (timeoutMs: number): Promise<boolean> =>
+    waitForDaemonAlive(configDir, timeoutMs);
 
   // ssh-agent pattern (D25): auto-start daemon on first command that needs it,
   // wait up to 3 s, retry once. --version / --pid bypass this via early returns in runCli.

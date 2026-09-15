@@ -34,6 +34,17 @@ if (isForced) {
   } catch { /* ignore -- config.yml missing or unreadable, runUpdater will handle */ }
 }
 
+/**
+ * Puts config.yml back the way the user left it. Idempotent, so it is safe on every exit path:
+ * under UPDATER_FORCE the autoUpdate:false line is commented out, and leaving it that way would
+ * silently re-enable auto-updating a user who explicitly turned it off.
+ */
+function restoreConfigYml(): void {
+  if (!_patchedConfigYml) return;
+  try { writeFileSync(_patchedConfigYml.path, _patchedConfigYml.original); } catch { /* ignore */ }
+  _patchedConfigYml = null;
+}
+
 // Compute the self-check command so shared-updater can verify the install and roll back.
 if (!process.env['UPDATER_SELF_CHECK_CMD']) {
   let npmRoot: string;
@@ -48,6 +59,11 @@ if (!process.env['UPDATER_SELF_CHECK_CMD']) {
       `${PKG_NAME} update aborted: cannot resolve 'npm root -g', so the post-install `
       + `self-check could not be armed and an unverified update would not be rollback-able. `
       + `Cause: ${e instanceof Error ? e.message : String(e)}`);
+    // Restore config.yml before leaving. Under UPDATER_FORCE the autoUpdate:false line was
+    // commented out above, and it is otherwise only restored once runUpdater completes. Exiting
+    // here would leave the user's explicit "do not auto-update" disabled for good, so failing
+    // closed on one axis would have silently opened another.
+    restoreConfigYml();
     process.exit(1);
   }
   // execSync runs this through a shell, so both paths must be quoted. A default Windows
@@ -153,9 +169,6 @@ runUpdater({
   },
 }).catch(err => {
   process.stderr.write(`[orchestrator-updater] fatal: ${err}\n`);
+  restoreConfigYml();
   process.exit(1);
-}).finally(() => {
-  if (_patchedConfigYml) {
-    try { writeFileSync(_patchedConfigYml.path, _patchedConfigYml.original); } catch { /* ignore */ }
-  }
-});
+}).finally(restoreConfigYml);

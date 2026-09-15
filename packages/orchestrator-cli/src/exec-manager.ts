@@ -6,7 +6,7 @@ import * as os from 'node:os';
 import { DailyLogger } from './logger.js';
 import { EventPublisher } from './event-publisher.js';
 import { ensureTmpDir } from './fsUtil.js';
-import { killTree } from './process-tree.js';
+import { killTree, killTreeSync } from './process-tree.js';
 
 export interface ExecRun {
   runId: string;
@@ -163,5 +163,22 @@ export class ExecManager {
       .filter(([, run]) => run.status === 'running')
       .map(([runId]) => runId);
     await Promise.all(running.map((runId) => this._terminate(runId)));
+  }
+
+  /**
+   * Teardown for callers that cannot await, such as a synchronous shutdown hook. Windows tears
+   * the trees down inline; on POSIX the kill is started and not awaited, which is all a sync
+   * caller can offer. Prefer stop() wherever a promise can be awaited.
+   *
+   * Without this, the daemon's shutdown hook dropped stop()'s promise and exited first, leaking
+   * the very trees this class was changed to reap.
+   */
+  stopSync(): void {
+    clearInterval(this._cleanupTimer);
+    for (const [runId, run] of this._runs) {
+      if (run.status !== 'running') continue;
+      const pid = this._pids.get(runId)?.pid;
+      if (pid !== undefined) killTreeSync(pid);
+    }
   }
 }

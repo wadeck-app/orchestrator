@@ -91,10 +91,12 @@ export async function runSelfCheck(quiet = false): Promise<void> {
             // No binaries are published for this target, so there is nothing to verify. Failing
             // here would make the updater roll back every upgrade on such a host, and CI runs
             // this suite on linux. Reported rather than passed over in silence.
+            // The reason goes in the NAME, not in `detail`: runSelfCheck only prints `detail`
+            // for a failure, so an ok result carrying its reason there would be an invisible
+            // skip -- the pattern these checks exist to eliminate.
             return {
-              name: 'native-binaries',
+              name: `native-binaries (skipped: ${process.platform}-${process.arch} is not a published target)`,
               ok: true,
-              detail: `skipped: ${process.platform}-${process.arch} is not a published target`,
             };
           }
           if (!findLauncherBinary()) throw new Error(`Go launcher not found; expected in ${pkg}`);
@@ -134,6 +136,12 @@ export async function runSelfCheck(quiet = false): Promise<void> {
       async () => {
         try {
           const root = path.join(__dirname, '..');
+          // Only meaningful for an installed package. In a checkout, `main` points at a bundle
+          // that only `npm run bundle` produces, and CI's build-and-test job deliberately does
+          // not bundle, so requiring it there would fail every leg and block publishing.
+          if (!root.split(path.sep).includes('node_modules')) {
+            return { name: 'entry-points (skipped: build tree, not an installed package)', ok: true };
+          }
           const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
             main?: string;
             bin?: string | Record<string, string>;
