@@ -96,12 +96,17 @@ export class State {
       ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
     };
     const existing = this._cache![id] ?? [];
-    // If the most-recent entry has the same startedAt, update it in-place rather than
-    // prepending a duplicate. This covers the start->finish pair the scheduler records:
-    // first call has exitCode=null (in-flight), second has the actual exit code.
-    const head = existing[0];
-    if (head && head.startedAt === normalized.startedAt) {
-      this._cache![id] = [normalized, ...existing.slice(1)];
+    // Update the matching entry in-place rather than prepending a duplicate. This covers
+    // the start->finish pair the scheduler records: first call has exitCode=null
+    // (in-flight), second has the actual exit code. Scanning the whole array (not just
+    // the head) matters when runs overlap: otherwise the older run's completion is
+    // prepended, leaving a finished entry at index 0 while a run is still in flight and
+    // stranding the original in-flight entry as a permanent exitCode:null orphan.
+    const idx = existing.findIndex(e => e.startedAt === normalized.startedAt);
+    if (idx !== -1) {
+      const next = [...existing];
+      next[idx] = normalized;
+      this._cache![id] = next;
     } else {
       this._cache![id] = [normalized, ...existing].slice(0, MAX_HISTORY);
     }

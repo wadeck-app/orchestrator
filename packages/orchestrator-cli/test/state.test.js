@@ -82,6 +82,24 @@ describe('record()', () => {
   });
 });
 
+describe('overlapping runs', () => {
+  test('completion of an older run updates it in place instead of prepending', () => {
+    const s = new State(tmpFile());
+    s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: null, pid: 1 });
+    s.record('job-a', { startedAt: '2026-08-22T08:00:30Z', exitCode: null, pid: 2 });
+    s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 1 });
+
+    const entries = s.getAll()['job-a'];
+    assert.equal(entries.length, 2);
+    // Newest run stays at index 0 and is still in flight.
+    assert.equal(entries[0].startedAt, '2026-08-22T08:00:30Z');
+    assert.equal(entries[0].exitCode, null);
+    // Older run carries its exit code, with no duplicate orphan left behind.
+    assert.equal(entries[1].exitCode, 0);
+    assert.equal(entries.filter(e => e.exitCode === null).length, 1);
+  });
+});
+
 describe('get()', () => {
   test('returns null for unknown id', () => {
     const s = new State(tmpFile());

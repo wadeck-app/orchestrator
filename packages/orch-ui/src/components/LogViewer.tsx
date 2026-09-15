@@ -1,12 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X, ArrowDown, Pause } from 'lucide-react';
+import { isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 
 // Log viewer uses a fixed dark terminal palette separate from the app theme.
 // Semantic tokens (bg-surface, text-content) would make the terminal look like
 // the rest of the UI - wrong for a log tail component.
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
+// min-h-0 lets the log pane shrink inside a flex parent; max-h bounds it when the host
+// page provides no height, without which overflow-auto never scrolls and follow-tail
+// would silently do nothing.
+const CONTAINER_CLS      = 'flex flex-col h-full min-h-0 max-h-[75vh]';
 const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-t';
 const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-sm p-4 rounded-b';
 const SEARCH_CLS         = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs w-40 focus:outline-none focus:border-gray-400 placeholder-gray-500';
@@ -101,7 +106,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   const [selectedRun, setSelectedRun] = useState<string>(searchParams.get('run') ?? '');
   const [isJobRunning, setIsJobRunning] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [justKilled, setJustKilled] = useState(false);
+  const [killing, setKilling] = useState(false);
   const containerRef = useRef<HTMLPreElement>(null);
   const userScrolledUp = useRef(false);
 
@@ -126,12 +131,9 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   useEffect(() => {
     const checkJobStatus = (): void => {
       fetch(`${apiBase}/api/jobs/${jobId}`)
-        .then(r => r.ok ? r.json() as Promise<{ job: unknown; runHistory: Array<{ exitCode: number | null }> }> : null)
+        .then(r => r.ok ? r.json() as Promise<{ job: unknown; runHistory: RuntimeEntry[] }> : null)
         .then(data => {
-          if (data?.runHistory) {
-            const isRunning = data.runHistory[0]?.exitCode === null;
-            setIsJobRunning(isRunning);
-          }
+          if (data?.runHistory) setIsJobRunning(isRunActive(latestRun(data.runHistory)));
         })
         .catch(() => {});
     };
@@ -176,17 +178,20 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
 
   const handleKillJob = async (): Promise<void> => {
     if (!confirm(`Kill running job "${jobId}"?`)) return;
+    setKilling(true);
     try {
       const res = await fetch(`${apiBase}/api/jobs/${jobId}/kill`, { method: 'POST' });
       if (!res.ok) {
-        const err = await res.json() as { error?: string };
-        alert(err.error ?? 'Failed to kill job');
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        alert(err.error ?? `Failed to kill job (HTTP ${res.status})`);
         return;
       }
-      setJustKilled(true);
+      // Hide the button right away; the status poll re-shows it if a new run starts.
       setIsJobRunning(false);
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(`Failed to kill job: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setKilling(false);
     }
   };
 
@@ -206,7 +211,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   const matchCount = search ? filtered.length : null;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={CONTAINER_CLS}>
       {/* violations-suppress-start: tailwind/no-raw-color-class terminal palette - intentional dark theme separate from app theme tokens */}
       <div className={LOG_HEADER_CLS}>
         {runs.length > 1 && (
@@ -228,10 +233,10 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
         </span>
         {paused && <span className="text-yellow-400">Paused</span>}
         <div className="flex items-center gap-2">
-          {isJobRunning && !justKilled && (
-            <button onClick={handleKillJob} className={KILL_BTN_CLS} title="Kill running job">
+          {isJobRunning && (
+            <button onClick={handleKillJob} disabled={killing} className={KILL_BTN_CLS} title="Kill running job">
               <X size={12} />
-              Kill
+              {killing ? 'Killing...' : 'Kill'}
             </button>
           )}
           <button

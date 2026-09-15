@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, Moon, Sun } from 'lucide-react';
 import { IconButton } from '@wadeck-app/dsl-ui';
+import { isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
@@ -26,11 +27,11 @@ export function NavBar(): React.ReactElement {
 
   useEffect(() => {
     const load = (): void => {
-      fetch('/api/jobs').then(r => r.json()).then((items: { job: { enabled: boolean }; runHistory: { exitCode: number | null }[] }[]) => {
+      fetch('/api/jobs').then(r => r.json()).then((items: { job: { enabled: boolean }; runHistory: RuntimeEntry[] }[]) => {
         const total   = items.length;
-        const running = items.filter(i => i.runHistory[0]?.exitCode === null && i.runHistory.length > 0).length;
+        const running = items.filter(i => isRunActive(latestRun(i.runHistory))).length;
         const failed  = items.filter(i => {
-          const e = i.runHistory[0]?.exitCode;
+          const e = latestRun(i.runHistory)?.exitCode;
           return e !== null && e !== undefined && e !== 0;
         }).length;
         setStats({ total, running, failed });

@@ -53,3 +53,17 @@ export interface RuntimeEntry {
   peakRamMb?: number;
   cancelledByUser?: boolean;
 }
+
+// Picks the run with the latest startedAt. Do not trust index 0: overlapping runs
+// could leave a finished entry at the head, and older histories still contain
+// exitCode:null orphans from runs whose completion was never recorded.
+export function latestRun(entries: RuntimeEntry[] | undefined): RuntimeEntry | null {
+  if (!entries || entries.length === 0) return null;
+  return entries.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
+}
+
+// A process killed by signal has no exit code, so a cancelled run is recorded with
+// exitCode:null just like an in-flight one. Only finishedAt separates the two.
+export function isRunActive(entry: RuntimeEntry | null): boolean {
+  return entry !== null && entry.finishedAt == null;
+}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Zap } from 'lucide-react';
-import type { Job, RuntimeEntry } from '../types.js';
+import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { Button } from './Button.js';
@@ -47,8 +47,11 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
   const [killing, setKilling] = useState(false);
   const [justKilled, setJustKilled] = useState(false);
 
-  const latestRun = runHistory?.[0] ?? null;
-  const isRunning = latestRun !== null && latestRun.exitCode === null && !justKilled;
+  const currentRun = latestRun(runHistory);
+  const isRunning = isRunActive(currentRun) && !justKilled;
+
+  // A new run must clear the optimistic hide, otherwise the banner stays hidden forever.
+  useEffect(() => { setJustKilled(false); }, [currentRun?.pid]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -62,7 +65,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
   };
 
   const handleKill = async () => {
-    const pid = runHistory?.[0]?.pid;
+    const pid = currentRun?.pid;
     if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
     setKilling(true);
     try {
@@ -96,18 +99,18 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
     <div>
       <Link to="/" className={BACK_LINK_CLS}><ArrowLeft size={14} />Back</Link>
 
-      {isRunning && latestRun && (
+      {isRunning && currentRun && (
         <div className={BANNER_CLS}>
           <span className="flex items-center gap-2 flex-1 min-w-0">
             {/* violations-suppress: tailwind/no-raw-color-class blue pulse dot for running state */}
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
             <span className="font-semibold text-content">Running</span>
             <span className="text-muted text-sm">&middot;</span>
-            <span className="text-sm text-content font-mono">{formatDuration(latestRun.startedAt)}</span>
-            {latestRun.pid != null && (
+            <span className="text-sm text-content font-mono">{formatDuration(currentRun.startedAt)}</span>
+            {currentRun.pid != null && (
               <>
                 <span className="text-muted text-sm">&middot;</span>
-                <span className="text-xs text-muted">PID {latestRun.pid}</span>
+                <span className="text-xs text-muted">PID {currentRun.pid}</span>
               </>
             )}
           </span>
