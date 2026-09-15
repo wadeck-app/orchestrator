@@ -5,7 +5,7 @@ import { TriggerButton } from './TriggerButton.js';
 import { RunHistory } from './RunHistory.js';
 import { ButtonCancel } from '@wadeck-app/dsl-ui';
 import { Button } from './Button.js';
-import type { JobWithHistory } from './JobListSection.js';
+import type { JobWithHistory } from '../job-with-history.js';
 import { getErrorMessage } from '../types.js';
 import { ArrowLeft } from 'lucide-react';
 

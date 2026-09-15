@@ -42,6 +42,9 @@ $brains:
 
 $type: PageContent
 sections:
+  - $type: BackLink
+    to: /
+    label: Back to jobs
   - $type: DesignSwitcher
     jobId: $route.id
     current: design-b

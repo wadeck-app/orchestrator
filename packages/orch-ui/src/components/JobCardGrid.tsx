@@ -138,10 +138,10 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
       {selected.size > 0 && (
         <div className={BULK_BAR_CLS}>
           <span className="text-sm text-muted">{selected.size} selected</span>
-          <ButtonAction label={`Enable (${selected.size})`} variant="secondary" onClick={handleBulkEnable} />
-          <ButtonAction label={`Disable (${selected.size})`} variant="secondary" onClick={handleBulkDisable} />
-          <ButtonAction label={`Run now (${selected.size})`} variant="primary" onClick={handleBulkTrigger} />
-          <ButtonAction label={`Delete (${selected.size})`} variant="danger" onClick={handleBulkDelete} />
+          <ButtonAction label="Enable" variant="secondary" onClick={handleBulkEnable} />
+          <ButtonAction label="Disable" variant="secondary" onClick={handleBulkDisable} />
+          <ButtonAction label="Run now" variant="primary" onClick={handleBulkTrigger} />
+          <ButtonAction label="Delete" variant="danger" onClick={handleBulkDelete} />
           {/* violations-suppress: react/no-raw-button bulk clear text-link - no Button variant for inline text-link */}
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs text-muted hover:text-content">Clear</button>
         </div>
@@ -165,8 +165,8 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
       ) : (
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="text-left text-muted border-b">
-              <th className="pb-2 pr-3 w-6">
+            <tr className="text-left text-muted border-b border-border">
+              <th className="pb-3 pt-2 pr-3 w-6">
                 {/* violations-suppress: react/no-raw-input select-all checkbox - no FieldText variant for boolean without label */}
                 <input type="checkbox"
                   checked={visible.length > 0 && visible.every(i => selected.has(i.job.id))}
@@ -179,31 +179,31 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
                   }}
                   className="w-4 h-4 cursor-pointer accent-primary" />
               </th>
-              <th className="pb-2 font-medium">Job</th>
-              <th className="pb-2 font-medium">Type</th>
-              <th className="pb-2 font-medium">Schedule</th>
-              <th className="pb-2 font-medium">Status</th>
-              <th className="pb-2 font-medium">Last run</th>
-              <th className="pb-2 font-medium">Actions</th>
+              <th className="pb-3 pt-2 font-medium">Job</th>
+              <th className="pb-3 pt-2 font-medium">Type</th>
+              <th className="pb-3 pt-2 font-medium">Schedule</th>
+              <th className="pb-3 pt-2 font-medium">Status</th>
+              <th className="pb-3 pt-2 font-medium">Last run</th>
+              <th className="pb-3 pt-2 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {visible.map(({ job, runHistory }) => {
               const last = latestRun(runHistory);
               return (
-                <tr key={job.id} className="border-b hover:bg-muted-bg cursor-pointer" onClick={() => onJobClick ? onJobClick(job.id) : navigate(`/jobs/${job.id}`)}>
-                  <td className="py-2 pr-3">
+                <tr key={job.id} className="border-b border-border hover:bg-muted-bg cursor-pointer transition-colors" onClick={() => onJobClick ? onJobClick(job.id) : navigate(`/jobs/${job.id}`)}>
+                  <td className="py-3 pr-3">
                     {/* violations-suppress: react/no-raw-input row selection checkbox - no FieldText variant for boolean without label */}
                     <input type="checkbox" checked={selected.has(job.id)} onChange={() => {}}
                       onClick={e => { e.stopPropagation(); toggleSelect(job.id); }}
                       className="w-4 h-4 cursor-pointer accent-primary" />
                   </td>
-                  <td className="py-2 pr-4 text-content font-medium">{job.label}</td>
-                  <td className="py-2 pr-4"><span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>{job.type}</span></td>
-                  <td className="py-2 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
-                  <td className="py-2 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} /></td>
-                  <td className="py-2 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
-                  <td className="py-2">
+                  <td className="py-3 pr-4 text-content font-medium">{job.label}</td>
+                  <td className="py-3 pr-4"><span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>{job.type}</span></td>
+                  <td className="py-3 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
+                  <td className="py-3 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} /></td>
+                  <td className="py-3 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
+                  <td className="py-3">
                     <div className="flex items-center gap-1">
                       <Link to={`/jobs/${job.id}/logs`} onClick={e => e.stopPropagation()}
                         className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">

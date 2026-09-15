@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Clock } from 'lucide-react';
+import { AlertTriangle, Clock } from 'lucide-react';
 import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
@@ -10,7 +10,6 @@ import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
 const LINK_BTN_CLS   = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
-const BACK_LINK_CLS  = 'inline-flex items-center gap-1 text-sm text-muted hover:text-content mb-4';
 // violations-suppress: tailwind/no-raw-color-class amber alert for running state -- no semantic token for warning/running state
 const ALERT_CARD_CLS = 'mb-4 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 overflow-hidden';
 // @formatter:on
@@ -101,8 +100,6 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
 
   return (
     <div>
-      <Link to="/" className={BACK_LINK_CLS}><ArrowLeft size={14} />Back</Link>
-
       <div className="flex items-center gap-3 mb-3 flex-wrap">
         <span className={typeBadgeCls}>{job.type}</span>
         <JobToggle job={job} />

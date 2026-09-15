@@ -5,12 +5,16 @@ import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
-import { ensureTmpDir }  from './fsUtil.js';
+import { ensureTmpDir, getErrorMessage }  from './fsUtil.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
 // pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
 import pidusage from 'pidusage';
+// pidtree: children of a PID. Jobs are spawned through a shell, so the direct child is
+// a wrapper (cmd.exe / sh) that stays idle: sampling it alone reports ~0% CPU and only
+// the wrapper's own few MB of RAM. The real work happens in its descendants.
+import pidtree from 'pidtree';
 import type { Job, TriggerSource } from './types.js';
 import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
@@ -28,6 +32,41 @@ interface SchedulerOptions {
   catchUpInitialDelayMs?: number;
   catchUpStaggerMs?:      number;
   hookDispatcher?:        HookDispatcher;
+}
+
+export interface TreeUsage {
+  cpuPct: number;
+  ramMb:  number;
+}
+
+/**
+ * Sums CPU and RAM over a process and all its descendants.
+ *
+ * Returns null when not a single pid could be sampled, which lets the caller tell
+ * "the job exited" apart from "the job is genuinely using 0%". Individual pids are
+ * sampled independently because a descendant can exit between the tree walk and the
+ * sample, and one dead pid must not discard the readings of its siblings.
+ */
+export async function sampleProcessTree(rootPid: number): Promise<TreeUsage | null> {
+  let pids: number[];
+  try {
+    pids = await pidtree(rootPid, { root: true });
+  } catch {
+    // The walk fails once the root is gone; still try the root, it may just have no children.
+    pids = [rootPid];
+  }
+  const samples = await Promise.allSettled(pids.map(p => pidusage(p)));
+  let cpuPct   = 0;
+  let ramBytes = 0;
+  let sampled  = 0;
+  for (const s of samples) {
+    if (s.status !== 'fulfilled') continue;
+    cpuPct   += s.value.cpu;
+    ramBytes += s.value.memory;
+    sampled++;
+  }
+  if (sampled === 0) return null;
+  return { cpuPct, ramMb: ramBytes / 1024 / 1024 };
 }
 
 export class Scheduler extends EventEmitter {
@@ -290,25 +329,42 @@ export class Scheduler extends EventEmitter {
     let peakCpuPct = 0;
     let peakRamMb  = 0;
     let softAlertSent = false;
+    // CPU% is spiky by nature, so the hard budget only kills once the breach is sustained
+    // over this many consecutive samples (2s apart). A single spike must never kill a job.
+    // 3 matches the consecutive-failure threshold used elsewhere (NOTIF-02).
+    let hardBreaches = 0;
+    const HARD_BREACHES_TO_KILL = 3;
     const baseline      = this._state.getResourceBaseline(job.id);
     const softThreshold = baseline ? { cpuPct: baseline.cpuPct * 1.2, ramMb: baseline.ramMb * 1.2 } : null;
     const hardThreshold = baseline ? { cpuPct: baseline.cpuPct * 2.0, ramMb: baseline.ramMb * 2.0 } : null;
     let resourceTimer: ReturnType<typeof setInterval> | null = null;
     if (pid) {
-      resourceTimer = setInterval(() => {
+      const sample = (): void => {
         if (child.killed) { clearInterval(resourceTimer!); return; }
-        pidusage(pid!).then(stats => {
-          const cpuPct = stats.cpu;
-          const ramMb  = stats.memory / 1024 / 1024;
+        sampleProcessTree(pid!).then(usage => {
+          // Every pid in the tree vanished between the walk and the sample: the job is
+          // finishing. Keep the timer -- the exit handler owns clearing it.
+          if (usage === null) return;
+          const cpuPct = usage.cpuPct;
+          const ramMb  = usage.ramMb;
           if (cpuPct > peakCpuPct) peakCpuPct = cpuPct;
           if (ramMb  > peakRamMb)  peakRamMb  = ramMb;
-          if (hardThreshold && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb)) {
-            // Hard budget exceeded: kill
-            const msg = `[warn] Hard resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% threshold: ${hardThreshold.cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB threshold: ${hardThreshold.ramMb.toFixed(0)}MB) - killing`;
-            try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
-            this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold });
-            clearInterval(resourceTimer!);
-            this._killChild(child);
+          const overHard = hardThreshold !== null && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb);
+          // Any sample back under the hard budget means the spike was transient.
+          if (!overHard) hardBreaches = 0;
+          if (overHard) {
+            hardBreaches++;
+            const over = `CPU: ${cpuPct.toFixed(1)}% threshold: ${hardThreshold!.cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB threshold: ${hardThreshold!.ramMb.toFixed(0)}MB`;
+            if (hardBreaches < HARD_BREACHES_TO_KILL) {
+              // Over budget but not yet sustained: record it and leave the job alone.
+              jobLogger.write(`[resource-monitor] Over hard budget ${hardBreaches}/${HARD_BREACHES_TO_KILL} (${over})`);
+            } else {
+              const msg = `[warn] Hard resource limit exceeded for ${hardBreaches} consecutive samples (${over}) - killing`;
+              try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
+              this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
+              clearInterval(resourceTimer!);
+              this._killChild(child);
+            }
           } else if (!softAlertSent && softThreshold && (cpuPct > softThreshold.cpuPct || ramMb > softThreshold.ramMb)) {
             softAlertSent = true;
             const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
@@ -316,11 +372,15 @@ export class Scheduler extends EventEmitter {
             this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
           }
         }).catch((err: unknown) => {
-          const reason = err instanceof Error ? err.message : String(err);
-          jobLogger.write(`[resource-monitor] Failed to get metrics: ${reason}`);
-          clearInterval(resourceTimer!);
+          // Sampling is best-effort telemetry: log and keep going. Clearing the timer here
+          // would let one transient failure silently disable monitoring for the whole run.
+          jobLogger.write(`[resource-monitor] Failed to get metrics: ${getErrorMessage(err)}`);
         });
-      }, 2000);
+      };
+      resourceTimer = setInterval(sample, 2000);
+      // Sample at once so sub-2s jobs are not left with an empty history. pidusage needs
+      // two samples of a pid to derive a CPU percentage, so this first one also primes it.
+      sample();
     }
     child.stdout?.on('data', (d: Buffer) => {
       jobLogger.write(d.toString().trimEnd());

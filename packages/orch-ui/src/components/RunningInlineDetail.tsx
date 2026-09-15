@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Square } from 'lucide-react';
+import { Square } from 'lucide-react';
 import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
@@ -8,12 +8,11 @@ import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
-const LINK_BTN_CLS    = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
-const BACK_LINK_CLS   = 'inline-flex items-center gap-1 text-sm text-muted hover:text-content mb-4';
+const LINK_BTN_CLS  = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
 // violations-suppress: tailwind/no-raw-color-class amber running badge -- no semantic token for running/info state
-const RUNNING_BADGE   = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+const RUNNING_BADGE = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
 // violations-suppress: tailwind/no-raw-color-class kill button uses danger color blend -- no semantic hover token
-const KILL_BTN_CLS    = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-danger/10 text-danger border border-danger/30 hover:bg-danger hover:text-white transition-colors';
+const KILL_BTN_CLS  = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-danger/10 text-danger border border-danger/30 hover:bg-danger hover:text-white transition-colors';
 // @formatter:on
 
 function formatDuration(startedAt: string): string {
@@ -95,7 +94,6 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
 
   return (
     <div>
-      <Link to="/" className={BACK_LINK_CLS}><ArrowLeft size={14} />Back</Link>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <span className={typeBadgeCls}>{job.type}</span>
         <JobToggle job={job} />

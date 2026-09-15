@@ -44,6 +44,6 @@ export type { JobFilterChipsProps, JobFilterType } from './components/JobFilterC
 export { useFailures } from './hooks/useFailures.js';
 export type { FailureEntry } from './hooks/useFailures.js';
 export { useHeartbeat } from './hooks/useHeartbeat.js';
-export type { JobWithHistory } from './components/JobListSection.js';
+export type { JobWithHistory } from './job-with-history.js';
 export type { Job, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';
 export { getErrorMessage } from './types.js';

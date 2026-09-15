@@ -333,3 +333,136 @@ describe('killJob', () => {
     assert.deepStrictEqual(result, { killed: false });
   });
 });
+
+describe('hard resource budget', () => {
+  // Seeds 3 successful runs with a negligible baseline so any real process is over the
+  // hard budget on every sample. That isolates the "how many breaches before killing"
+  // rule, which is the part that must never fire on a single spike.
+  function seedTinyBaseline(state, id) {
+    for (let i = 0; i < 3; i++) {
+      state.record(id, {
+        startedAt:  `2026-08-22T08:0${i}:00Z`,
+        finishedAt: `2026-08-22T08:0${i}:05Z`,
+        exitCode: 0, pid: 100 + i, peakCpuPct: 0.001, peakRamMb: 0.001,
+      });
+    }
+    assert.ok(state.getResourceBaseline(id) !== null, 'baseline should exist after 3 good runs');
+  }
+
+  function busyJob(dir, id, ms) {
+    const scriptPath = path.join(dir, `${id}.js`);
+    fs.writeFileSync(scriptPath, `const t = Date.now(); while (Date.now() - t < ${ms});`);
+    return {
+      id, type: 'startup', delaySeconds: 0,
+      command: `"${process.execPath}" "${scriptPath}"`,
+      enabled: true, triggerMode: 'wait', liveness: null,
+    };
+  }
+
+  test('a short over-budget burst does not kill the job', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    const events = [];
+    seedTinyBaseline(state, 'burst');
+    registry.add(busyJob(dir, 'burst', 2500));
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false,
+      eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
+    });
+    await sched.trigger('burst');
+    await sched.stop();
+
+    // Samples land at ~0s and ~2s: two breaches, below the 3 required to kill.
+    assert.equal(state.get('burst').exitCode, 0, 'job should have finished on its own');
+    assert.equal(events.filter(e => e.topic === 'job.resource_hard_limit').length, 0,
+      'no hard-limit kill should be emitted for a short burst');
+  });
+
+  test('a sustained breach kills the job and reports the sample count', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    const events = [];
+    seedTinyBaseline(state, 'sustained');
+    registry.add(busyJob(dir, 'sustained', 20000));
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false,
+      eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
+    });
+    const startedMs = Date.now();
+    await sched.trigger('sustained');
+    await sched.stop();
+    const elapsedMs = Date.now() - startedMs;
+
+    const hard = events.filter(e => e.topic === 'job.resource_hard_limit');
+    assert.equal(hard.length, 1, 'expected exactly one hard-limit event');
+    assert.ok(hard[0].payload.consecutiveSamples >= 3,
+      `expected >= 3 consecutive samples, got ${hard[0].payload.consecutiveSamples}`);
+    assert.ok(elapsedMs < 15000, `job should have been killed early, ran ${elapsedMs}ms`);
+  });
+});
+
+describe('sampleProcessTree', () => {
+  const { sampleProcessTree } = require('../src/scheduler');
+  const { spawn } = require('node:child_process');
+  const pidusage = require('pidusage');
+
+  test('a real run records a non-zero peakCpuPct in state', async () => {
+    // End-to-end through the production path: real shell spawn -> tree sampling ->
+    // state.record. Before the tree walk this always stored undefined, which is why the
+    // Peak CPU column rendered "-" for every run ever.
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    const scriptPath = path.join(dir, 'busy.js');
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 3000);');
+    registry.add({
+      id: 'cpu-burner', type: 'startup', delaySeconds: 0,
+      command: `"${process.execPath}" "${scriptPath}"`,
+      enabled: true, triggerMode: 'wait', liveness: null,
+    });
+
+    const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false });
+    await sched.trigger('cpu-burner');
+    await sched.stop();
+
+    const entry = state.get('cpu-burner');
+    assert.ok(entry !== null, 'expected a recorded run');
+    assert.equal(entry.exitCode, 0);
+    assert.ok(entry.peakCpuPct != null && entry.peakCpuPct > 0,
+      `expected a non-zero peakCpuPct, got ${String(entry.peakCpuPct)}`);
+    assert.ok(entry.peakRamMb != null && entry.peakRamMb > 0,
+      `expected a non-zero peakRamMb, got ${String(entry.peakRamMb)}`);
+  });
+
+  test('returns null when no pid in the tree can be sampled', async () => {
+    // A pid that cannot exist: nothing to sample, so the caller can tell "gone" apart
+    // from "genuinely using 0%".
+    assert.equal(await sampleProcessTree(2147483646), null);
+  });
+
+  test('counts descendants, not just the shell wrapper', async () => {
+    // Jobs run through a shell, so the direct child is an idle wrapper. Sampling that
+    // wrapper alone is what left Peak CPU empty and Peak RAM stuck at a constant.
+    // The busy loop lives in a file: passing it via -e would expose `<` to cmd.exe,
+    // which reads it as input redirection and kills the command.
+    const scriptPath = path.join(os.tmpdir(), `orch-busy-${process.pid}-${Date.now()}.js`);
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 3000);');
+    const child = spawn(`"${process.execPath}" "${scriptPath}"`, { shell: true, windowsHide: true, stdio: 'ignore' });
+    try {
+      assert.ok(child.pid, 'expected the wrapper to have a pid');
+      await new Promise(resolve => setTimeout(resolve, 700));
+
+      const tree = await sampleProcessTree(child.pid);
+      assert.ok(tree !== null, 'expected the tree to be sampleable while the job runs');
+
+      const wrapperRamMb = (await pidusage(child.pid)).memory / 1024 / 1024;
+      // The busy node descendant dwarfs the wrapper, so the tree total must exceed it.
+      assert.ok(tree.ramMb > wrapperRamMb,
+        `tree RAM ${tree.ramMb.toFixed(1)}MB should exceed wrapper-only ${wrapperRamMb.toFixed(1)}MB`);
+    } finally {
+      try { child.kill(); } catch { /* already gone */ }
+      try { fs.unlinkSync(scriptPath); } catch { /* best effort */ }
+    }
+  });
+});

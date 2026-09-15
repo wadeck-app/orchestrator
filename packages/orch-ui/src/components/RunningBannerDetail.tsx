@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { getErrorMessage, isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
@@ -9,10 +9,9 @@ import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
-const LINK_BTN_CLS   = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
-const BACK_LINK_CLS  = 'inline-flex items-center gap-1 text-sm text-muted hover:text-content mb-4';
+const LINK_BTN_CLS = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
 // violations-suppress: tailwind/no-raw-color-class blue running banner -- no semantic token for info/running state
-const BANNER_CLS     = 'mb-4 flex items-center gap-4 px-4 py-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950';
+const BANNER_CLS   = 'mb-4 flex items-center gap-4 px-4 py-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950';
 // @formatter:on
 
 function formatDuration(startedAt: string): string {
@@ -97,8 +96,6 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
 
   return (
     <div>
-      <Link to="/" className={BACK_LINK_CLS}><ArrowLeft size={14} />Back</Link>
-
       {isRunning && currentRun && (
         <div className={BANNER_CLS}>
           <span className="flex items-center gap-2 flex-1 min-w-0">

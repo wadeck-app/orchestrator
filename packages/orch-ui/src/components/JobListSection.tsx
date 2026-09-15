@@ -1,14 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isRunFailed, latestRun } from '../types.js';
+import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard } from './JobCard.js';
 import { ButtonAction, ChipButton } from '@wadeck-app/dsl-ui';
 import { JobSearchBar } from './JobSearchBar.js';
-
-export interface JobWithHistory {
-  job: Job;
-  runHistory: RuntimeEntry[];
-}
 
 type FilterType = 'all' | 'cron' | 'startup' | 'once' | 'failed';
 
