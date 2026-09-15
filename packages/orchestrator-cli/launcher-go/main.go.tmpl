@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	launcher "wadeck.ch/singleton-daemon-kit/go-launcher"
@@ -26,15 +25,14 @@ func configDirFromArgs(args []string) string {
 }
 
 func main() {
-	exe, _ := os.Executable()
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-	exeDir := filepath.Dir(exe)
-
 	launcher.Run(launcher.Config{
-		ConfigDir:  configDirFromArgs(os.Args[1:]),
-		NodeScript: filepath.Join(exeDir, "{{.NodeScript}}"),
+		ConfigDir: configDirFromArgs(os.Args[1:]),
+		// Passed through unresolved. The SDK resolves it as an npm package specifier by
+		// walking up node_modules, which is what lets this launcher -- published in its own
+		// platform package -- find the bundle in the main package whether npm hoisted the
+		// platform package next to it or nested it underneath. Joining it to the exe
+		// directory here would destroy the specifier and tie start-at-login to one layout.
+		NodeScript: "{{.NodeScript}}",
 		AppName:    "{{.AppName}}",
 		CLIFlags:   []string{
 			{{range .CLIFlags}}{{end}}

@@ -132,18 +132,3 @@ describe('enableStartup on unsupported platform', () => {
     assert.ok(result.error.includes(process.platform));
   });
 });
-
-describe('LAUNCHER_NODE_SCRIPT mirror', () => {
-  const fs = require('node:fs');
-  const { LAUNCHER_NODE_SCRIPT } = require('../src/startup');
-
-  // Windows start-at-login depends on the launcher resolving this exact relative path, which is
-  // baked into the Go binary from ci/launcher.config.json. Nothing else ties the two together,
-  // and ci/ is not published, so drift would only surface at someone's next login.
-  test('matches nodeScript in ci/launcher.config.json', () => {
-    const cfg = JSON.parse(fs.readFileSync(require('node:path').join(__dirname, '..', 'ci', 'launcher.config.json'), 'utf8'));
-    const norm = (s) => s.split('\\').join('/');
-    assert.equal(norm(LAUNCHER_NODE_SCRIPT), norm(cfg.nodeScript),
-      'startup.ts and ci/launcher.config.json disagree on the launcher bundle path');
-  });
-});

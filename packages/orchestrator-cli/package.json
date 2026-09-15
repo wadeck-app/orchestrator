@@ -46,9 +46,10 @@
     "@fastify/static": "^8.0.0",
     "@wadeck-app/shared-cli": "^2026.8.31-022-55ef14e0",
     "@wadeck-app/shared-updater": "^2026.9.1-014-558289d8",
-    "@wadeck-app/singleton-daemon-kit": "2026.9.8-088-fb2501fa",
+    "@wadeck-app/singleton-daemon-kit": "2026.9.15-089-6e871a0f",
     "fastify": "^5.0.0",
     "node-cron": "^4.6.0",
+    "pidtree": "^1.0.0",
     "pidusage": "^4.0.1",
     "semver": "^7.6.0"
   },

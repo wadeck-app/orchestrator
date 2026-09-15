@@ -16,26 +16,18 @@ function cmdQuote(s: string): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
-// Mirrors `nodeScript` in ci/launcher.config.json, which is baked into the Go launcher.
-// Windows only: a HKCU\...\Run value is a bare command line with no way to inject
-// LAUNCHER_BUNDLE_OVERRIDE, so there the launcher can only resolve the bundle relative to its
-// own directory. macOS does not need this -- buildMacPlist carries the override in
-// EnvironmentVariables. Keep in sync with ci/launcher.config.json.
-export const LAUNCHER_NODE_SCRIPT = path.join('..', 'orchestrator-cli', 'dist', 'orchestrator.cjs');
-
-/** Absolute path the Go launcher will resolve for its bundle when started bare at login. */
-function launcherBundlePath(launcher: string): string {
-  return path.resolve(path.dirname(launcher), LAUNCHER_NODE_SCRIPT);
-}
-
 /**
  * Verifies the entry we are about to register will actually resolve at login.
  * Returns an actionable error message, or null when the target is sound.
  * Without this a broken entry is written silently and only fails at the next login.
+ *
+ * The launcher finds its own bundle: `nodeScript` in ci/launcher.config.json is the package
+ * specifier @wadeck-app/orchestrator-cli/dist/orchestrator.cjs, which the SDK resolves by
+ * walking up node_modules. So there is nothing here that depends on whether npm hoisted or
+ * nested the platform package, and no relative path to keep in sync.
  */
 function validateStartupTarget(): string | null {
-  const launcher = findLauncherBinary();
-  if (!launcher) {
+  if (!findLauncherBinary()) {
     // Registering node + the bundle would start a daemon with no supervisor, so nothing
     // would restart it after an update. Refuse rather than register a crippled entry.
     return 'start-at-login cannot be registered: the Go launcher binary was not found, and it '
@@ -45,14 +37,6 @@ function validateStartupTarget(): string | null {
   if (!findDaemonEntry()) {
     return `start-at-login cannot be registered: no daemon bundle next to ${__dirname}. `
       + 'Re-install with: npm install -g @wadeck-app/orchestrator-cli';
-  }
-  // Only Windows depends on the launcher resolving the bundle by relative path.
-  if (process.platform === 'win32') {
-    const bundle = launcherBundlePath(launcher);
-    if (!fs.existsSync(bundle)) {
-      return `start-at-login would fail: launcher ${launcher} resolves its daemon bundle to `
-        + `${bundle}, which does not exist. Re-install with: npm install -g @wadeck-app/orchestrator-cli`;
-    }
   }
   return null;
 }
