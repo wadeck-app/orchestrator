@@ -11,7 +11,16 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 
-const DAEMON = path.join(__dirname, '..', 'dist', 'orchestrator.cjs');
+// Prefers the bundle, falls back to the tsc output. CI's build-and-test job compiles but
+// deliberately does not bundle, so requiring the bundle here failed all three legs -- the same
+// mistake I had already made with the entry-points self-check earlier today, in a fix whose own
+// comment states that build-and-test does not bundle. Both entries run the same argv resolution,
+// which is what these tests are about.
+const DAEMON_CANDIDATES = [
+  path.join(__dirname, '..', 'dist', 'orchestrator.cjs'),
+  path.join(__dirname, '..', 'dist', 'index.js'),
+];
+const DAEMON = DAEMON_CANDIDATES.find((p) => fs.existsSync(p));
 const tmpDirs = [];
 
 function tmpDir(label) {
@@ -67,9 +76,12 @@ async function daemonChose(dir, args, env = {}, timeoutMs = 8000) {
 }
 
 describe('daemon config dir resolution', () => {
-  if (!fs.existsSync(DAEMON)) {
-    // Not a skip: without the bundle this file would assert nothing while appearing to pass.
-    throw new Error(`${DAEMON} missing -- run: npm run bundle --workspace=packages/orchestrator-cli`);
+  if (DAEMON === undefined) {
+    // Not a skip: with no entry at all this file would assert nothing while appearing to pass.
+    throw new Error(
+      `no daemon entry found, looked for:\n  ${DAEMON_CANDIDATES.join('\n  ')}\n`
+      + 'run: npm run build --workspace=packages/orchestrator-cli',
+    );
   }
 
   test('--config-dir wins over ORCH_CONFIG_DIR instead of being ignored', async () => {
