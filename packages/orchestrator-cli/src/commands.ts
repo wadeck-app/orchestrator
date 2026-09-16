@@ -78,7 +78,9 @@ export function makeCommands(
       return scheduler.trigger(id, { kind: 'manual', ip, userAgent });
     },
 
-    'kill-job': (p: unknown) => {
+    // Awaited, not fired off: the reply's `killed` flag is what the CLI and the dashboard show,
+    // so returning before the tree is down would report a kill that had not happened.
+    'kill-job': async (p: unknown) => {
       const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
       const job = registry.get(id);
       audit?.log('job.killed_manual', { jobId: id, label: job?.label, ip, userAgent });

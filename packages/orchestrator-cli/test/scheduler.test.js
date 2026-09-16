@@ -291,7 +291,7 @@ describe('killJob', () => {
     void sched.trigger('manual-a');
     await new Promise(r => setImmediate(r));
 
-    const result = sched.killJob('manual-a');
+    const result = await sched.killJob('manual-a');
     assert.deepStrictEqual(result, { killed: true });
 
     // Deliberately no assertion on which signal or syscall was used. A stub cannot observe
@@ -336,20 +336,18 @@ describe('killJob', () => {
     const minPids = process.platform === 'win32' ? 2 : 1;
     assert.ok(pids.length >= minPids, `expected at least ${minPids} pid(s), got ${pids.length}`);
 
-    assert.deepStrictEqual(sched.killJob('tree-a'), { killed: true });
+    assert.deepStrictEqual(await sched.killJob('tree-a'), { killed: true });
 
-    // POSIX escalates to SIGKILL after a delay, so allow a moment before asserting.
-    const deadline = Date.now() + 5000;
-    let survivors = pids.filter(isAlive);
-    while (survivors.length > 0 && Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      survivors = pids.filter(isAlive);
-    }
+    // Asserted with no grace period on purpose. killJob must not resolve until the tree is down,
+    // because its `killed` flag is what the CLI and the dashboard report. Any wait here also
+    // absorbs a killJob that resolved early and left the kill in flight -- verified: with a 1s
+    // poll this test still passed when the await was dropped, so it was guarding nothing.
+    const survivors = pids.filter(isAlive);
     assert.deepStrictEqual(survivors, [], `these pids survived killJob: ${survivors.join(', ')}`);
     await sched.stop();
   });
 
-  test('killJob returns killed:false when job is not running', () => {
+  test('killJob returns killed:false when job is not running', async () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
     registry.add(JOB_MANUAL);
@@ -359,7 +357,7 @@ describe('killJob', () => {
       liveness: async () => false,
     });
 
-    const result = sched.killJob('manual-a');
+    const result = await sched.killJob('manual-a');
     assert.deepStrictEqual(result, { killed: false });
   });
 });

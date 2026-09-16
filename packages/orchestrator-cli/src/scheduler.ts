@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
 import { ensureTmpDir, getErrorMessage }  from './fsUtil.js';
-import { killTreeSync } from './process-tree.js';
+import { killTree, killTreeSync } from './process-tree.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
@@ -229,13 +229,18 @@ export class Scheduler extends EventEmitter {
     return this._fire(job, source);
   }
 
+  /**
+   * Fire-and-forget teardown, for callers that report to nobody: a timeout and a resource-limit
+   * breach are decided here, so there is no reply whose truth depends on the kill having landed.
+   *
+   * killTreeSync owns the whole job: the root pid AND its descendants, plus the
+   * SIGTERM-then-SIGKILL escalation. Signalling `child` ourselves in addition is not just
+   * redundant, it breaks the kill on both platforms by orphaning the descendants before
+   * they can be found: on Windows terminating cmd.exe leaves `taskkill /T` without a live
+   * root to enumerate, and on POSIX our synchronous signal lands before the asynchronous
+   * pidtree walk has even listed the tree. Either way the real work keeps running.
+   */
   private _killChild(child: ChildProcess): void {
-    // killTreeSync owns the whole job: the root pid AND its descendants, plus the
-    // SIGTERM-then-SIGKILL escalation. Signalling `child` ourselves in addition is not just
-    // redundant, it breaks the kill on both platforms by orphaning the descendants before
-    // they can be found: on Windows terminating cmd.exe leaves `taskkill /T` without a live
-    // root to enumerate, and on POSIX our synchronous signal lands before the asynchronous
-    // pidtree walk has even listed the tree. Either way the real work keeps running.
     if (child.pid !== undefined) {
       killTreeSync(child.pid);
       return;
@@ -244,11 +249,25 @@ export class Scheduler extends EventEmitter {
     child.kill('SIGTERM');
   }
 
-  killJob(id: string): { killed: boolean } {
+  /**
+   * Same teardown, but awaits it. Used where the outcome is reported back to a user, since
+   * killTreeSync only tears the tree down inline on Windows: on POSIX it starts the pidtree walk
+   * and returns, so killJob answered `killed: true` while every process was still running and the
+   * dashboard showed the job as killed on the strength of a promise nobody held.
+   */
+  private async _killChildAsync(child: ChildProcess): Promise<void> {
+    if (child.pid !== undefined) {
+      await killTree(child.pid);
+      return;
+    }
+    child.kill('SIGTERM');
+  }
+
+  async killJob(id: string): Promise<{ killed: boolean }> {
     const child = this._activeChildren.get(id);
     if (child && !child.killed) {
       this._killedByUser.add(id);
-      this._killChild(child);
+      await this._killChildAsync(child);
       return { killed: true };
     }
     // Stale state: no active child but state still shows running - clean it up.
