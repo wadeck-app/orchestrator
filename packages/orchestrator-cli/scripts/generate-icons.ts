@@ -60,6 +60,22 @@ function listClockSuccessSvg(color: string): string {
 </svg>`;
 }
 
+// Checking state: clock icon with a solid amber badge carrying three dots.
+// Amber rather than blue, green or red: those already mean "a job is running", "up to date" and
+// "something failed". An update check takes a few seconds, and reusing the running badge would
+// claim a job had started.
+function listClockCheckingSvg(color: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 12H3"/>
+  <path d="M16 6H3"/>
+  <path d="M10 18H3"/>
+  <circle cx="17" cy="17" r="5" fill="#F59E0B" stroke="#F59E0B"/>
+  <circle cx="14.9" cy="17" r="0.85" fill="white" stroke="none"/>
+  <circle cx="17" cy="17" r="0.85" fill="white" stroke="none"/>
+  <circle cx="19.1" cy="17" r="0.85" fill="white" stroke="none"/>
+</svg>`;
+}
+
 async function svgToPng(svg: string): Promise<Buffer> {
   return sharp(Buffer.from(svg)).resize(64, 64).png().toBuffer();
 }
@@ -68,9 +84,9 @@ async function main(): Promise<void> {
   const lines: string[] = [
     `// AUTO-GENERATED - do not edit manually.`,
     `// Re-run: npm run gen-icons -w packages/orchestrator`,
-    `// Lucide list-clock, 64x64 PNG base64 - ${COLORS.length} colors x 4 states`,
+    `// Lucide list-clock, 64x64 PNG base64 - ${COLORS.length} colors x 5 states`,
     ``,
-    `export type IconState = 'idle' | 'error' | 'running' | 'success';`,
+    `export type IconState = 'idle' | 'error' | 'running' | 'success' | 'checking';`,
     `export type IconSet = Record<IconState, string>;`,
     `export const DEFAULT_TRAY_COLOR = '${DEFAULT_COLOR}';`,
     `export const SUPPORTED_TRAY_COLORS = ${JSON.stringify(COLORS)} as const;`,
@@ -82,13 +98,15 @@ async function main(): Promise<void> {
     const idlePng    = await svgToPng(listClockSvg(color));
     const errorPng   = await svgToPng(listClockErrorSvg(color));
     const runningPng = await svgToPng(listClockRunningSvg(color));
-    const successPng = await svgToPng(listClockSuccessSvg(color));
+    const successPng  = await svgToPng(listClockSuccessSvg(color));
+    const checkingPng = await svgToPng(listClockCheckingSvg(color));
     lines.push(`  // ${color}`);
     lines.push(`  ${JSON.stringify(color)}: {`);
-    lines.push(`    idle:    '${idlePng.toString('base64')}',`);
-    lines.push(`    error:   '${errorPng.toString('base64')}',`);
-    lines.push(`    running: '${runningPng.toString('base64')}',`);
-    lines.push(`    success: '${successPng.toString('base64')}',`);
+    lines.push(`    idle:     '${idlePng.toString('base64')}',`);
+    lines.push(`    error:    '${errorPng.toString('base64')}',`);
+    lines.push(`    running:  '${runningPng.toString('base64')}',`);
+    lines.push(`    success:  '${successPng.toString('base64')}',`);
+    lines.push(`    checking: '${checkingPng.toString('base64')}',`);
     lines.push(`  },`);
   }
 

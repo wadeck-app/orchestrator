@@ -296,8 +296,14 @@ export class TrayManager extends EventEmitter {
     const hasRunning  = this._runningJobIds.size > 0;
     const icons   = getIcons(this._trayColor);
     const updateAvailable = this._updateStatus === 'available';
+    // Checking wins over everything below it. `npm view` takes a few seconds, and until this
+    // existed the icon did not move at all between the click and the answer: the menu said
+    // "Checking..." but the tray looked idle, so the click read as having done nothing.
+    // It does not outrank failures, which are about the jobs rather than about this check.
+    const busyChecking = this._updateStatus === 'checking' || this._updateStatus === 'updating';
     const icon =
       hasFailures       ? icons.error :
+      busyChecking      ? icons.checking :
       updateAvailable   ? icons.error :
       this._showSuccess ? icons.success :
       hasRunning        ? icons.running :
@@ -319,8 +325,14 @@ export class TrayManager extends EventEmitter {
       : ` [orch:${process.ppid} node:${process.pid}]`;
     items.push({ id: 'header',     type: 'normal', title: `Orchestrator${pidSuffix}`, enabled: false });
 
-    // Version item — clickable, doubles as the update-check trigger
-    const versionTitle = this._versionLabel ?? `v${this._version}`;
+    // Version item -- clickable, doubles as the update-check trigger.
+    // The hint is only added when clicking would actually start a check: during one the label is
+    // "Checking...", and once an update is found the install item above is the action, so
+    // "click for update" there would point at the wrong row.
+    const versionTitle = this._versionLabel
+      ?? (this._updateStatus === 'idle'
+        ? `v${this._version} (click for update)`
+        : `v${this._version}`);
     const versionEnabled = this._updateStatus !== 'checking' && this._updateStatus !== 'updating';
     items.push({ id: 'update-btn', type: 'normal', title: versionTitle, enabled: versionEnabled });
 

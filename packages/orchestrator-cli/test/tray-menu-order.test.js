@@ -57,3 +57,85 @@ describe('tray menu layout', () => {
     assert.deepEqual(ids, [...new Set(ids)], `duplicate menu ids: ${ids.join(' | ')}`);
   });
 });
+
+// The version row is the only affordance for checking for an update, and nothing said so.
+describe('version item', () => {
+  function versionItem(mgr) {
+    return mgr._buildMenu().items.find((i) => i.id === 'update-btn');
+  }
+
+  test('invites the click while idle', () => {
+    const item = versionItem(makeTrayManager());
+    assert.match(item.title, /^v1\.0\.0 \(click for update\)$/, `unexpected title: ${item.title}`);
+    assert.equal(item.enabled, true);
+  });
+
+  test('drops the invitation while the check is running', () => {
+    const mgr = makeTrayManager();
+    mgr._updateStatus = 'checking';
+    const item = versionItem(mgr);
+    assert.ok(!/click for update/.test(item.title), `still inviting a click: ${item.title}`);
+    // Clicking again mid-check would start a second npm view.
+    assert.equal(item.enabled, false);
+  });
+
+  test('drops the invitation once an update is found, since the install row is the action', () => {
+    const mgr = makeTrayManager();
+    mgr._updateStatus = 'available';
+    mgr._latestVersion = '9.9.9';
+    const item = versionItem(mgr);
+    assert.ok(!/click for update/.test(item.title),
+      `points at the wrong row when an update is available: ${item.title}`);
+    const install = mgr._buildMenu().items.find((i) => i.id === 'update-install');
+    assert.ok(install, 'no install row to point at');
+  });
+
+  test('a transient label still wins over the version string', () => {
+    const mgr = makeTrayManager();
+    mgr._versionLabel = 'Up to date';
+    assert.equal(versionItem(mgr).title, 'Up to date');
+  });
+});
+
+// Between the click and the answer the icon did not move at all: `npm view` takes seconds, the
+// menu said "Checking..." and the tray looked idle, so the click read as having done nothing.
+describe('tray icon during an update check', () => {
+  const { getIcons } = require('../src/tray-icons');
+  const icons = getIcons();
+
+  test('a distinct checking icon exists for every supported colour', () => {
+    const { SUPPORTED_TRAY_COLORS } = require('../src/tray-icons');
+    for (const colour of SUPPORTED_TRAY_COLORS) {
+      const set = getIcons(colour);
+      assert.ok(set.checking, `no checking icon for ${colour}`);
+      for (const other of ['idle', 'error', 'running', 'success']) {
+        assert.notEqual(set.checking, set[other],
+          `checking icon is identical to ${other} for ${colour}: the tray would not appear to react`);
+      }
+    }
+  });
+
+  test('shows the checking icon while checking', () => {
+    const mgr = makeTrayManager();
+    mgr._updateStatus = 'checking';
+    assert.equal(mgr._buildMenu().icon, icons.checking);
+  });
+
+  test('shows it while an update is installing too', () => {
+    const mgr = makeTrayManager();
+    mgr._updateStatus = 'updating';
+    assert.equal(mgr._buildMenu().icon, icons.checking);
+  });
+
+  test('is idle when nothing is happening', () => {
+    assert.equal(makeTrayManager()._buildMenu().icon, icons.idle);
+  });
+
+  // Failures are about the jobs, not about this check, and must stay visible.
+  test('a job failure still outranks the checking icon', () => {
+    const mgr = makeTrayManager();
+    mgr._updateStatus = 'checking';
+    mgr._failures = [{ jobId: 'j1', entry: { startedAt: 'x', exitCode: 1 } }];
+    assert.equal(mgr._buildMenu().icon, icons.error);
+  });
+});
