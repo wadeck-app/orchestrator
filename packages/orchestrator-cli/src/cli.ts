@@ -4,6 +4,16 @@ import path from 'node:path';
 import type { CliDeps, LivenessConfig } from './types.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
+import { classifyDashboard } from './dashboard-pidfile.js';
+
+/** Contents of the dashboard pid file, or null when it does not exist. */
+function readDashboardFile(filePath: string): string | null {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { logCliInvocation } = require('@wadeck-app/shared-cli/CliLogger') as typeof import('@wadeck-app/shared-cli/CliLogger');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -697,13 +707,19 @@ Use --wait to block until the command finishes.`);
           console.error(`Dashboard server not available: ${(e as Error).message}`);
           process.exit(1);
         }
-        // Check if already running
-        if (fs.existsSync(dashPortFile)) {
-          try {
-            const info = JSON.parse(fs.readFileSync(dashPortFile, 'utf8')) as { port: number; pid: number };
-            console.log(`Dashboard already running at http://localhost:${info.port}`);
-            process.exit(0);
-          } catch { /* stale file, continue */ }
+        // Check if already running. A leftover file whose pid is gone must not
+        // block the start, so the pid is probed rather than trusted.
+        const startState = classifyDashboard(readDashboardFile(dashPortFile));
+        if (startState.kind === 'running') {
+          console.log(`Dashboard already running at http://localhost:${startState.info.port}`);
+          process.exit(0);
+        }
+        if (startState.kind === 'stale' || startState.kind === 'corrupt') {
+          const detail = startState.kind === 'stale'
+            ? `pid=${startState.info.pid} is gone`
+            : 'file is unreadable';
+          console.log(`Removing stale dashboard state (${detail}).`);
+          try { fs.unlinkSync(dashPortFile); } catch { /* already gone */ }
         }
         // Auto-start daemon if not running
         const daemonPortFile = path.join(configDir, 'config.port');
@@ -754,26 +770,46 @@ Use --wait to block until the command finishes.`);
         child.unref();
         process.exit(0);
       } else if (sub === 'stop') {
-        if (!fs.existsSync(dashPortFile)) {
+        const stopState = classifyDashboard(readDashboardFile(dashPortFile));
+        if (stopState.kind === 'stopped') {
           console.log('Dashboard server is not running.');
           process.exit(0);
         }
-        const info = JSON.parse(fs.readFileSync(dashPortFile, 'utf8')) as { pid: number };
+        // A dead pid still leaves the file behind. Treat clearing it as success:
+        // "stop" previously failed with ESRCH here and left the file in place,
+        // which is exactly the state "status" tells the user to fix with "stop".
+        if (stopState.kind === 'stale' || stopState.kind === 'corrupt') {
+          const detail = stopState.kind === 'stale'
+            ? `pid=${stopState.info.pid} was already gone`
+            : 'state file was unreadable';
+          try { fs.unlinkSync(dashPortFile); } catch { /* already gone */ }
+          console.log(`Dashboard server was not running (${detail}); cleaned up stale state.`);
+          process.exit(0);
+        }
         try {
-          process.kill(info.pid, 'SIGTERM');
+          process.kill(stopState.info.pid, 'SIGTERM');
           fs.unlinkSync(dashPortFile);
           console.log('Dashboard server stopped.');
         } catch (e) {
-          console.error(`Failed to stop dashboard server: ${(e as Error).message}`);
+          console.error(`Failed to stop dashboard server (pid=${stopState.info.pid}): ${(e as Error).message}`);
           process.exit(1);
         }
         process.exit(0);
       } else if (sub === 'status') {
-        if (!fs.existsSync(dashPortFile)) {
+        const statusState = classifyDashboard(readDashboardFile(dashPortFile));
+        if (statusState.kind === 'stopped') {
           console.log('Dashboard server: stopped');
           process.exit(0);
         }
-        const info = JSON.parse(fs.readFileSync(dashPortFile, 'utf8')) as { port: number; pid: number; startedAt: string };
+        if (statusState.kind === 'corrupt') {
+          console.log(`Dashboard server: unreadable state file (${dashPortFile}) -- run "orch server stop" to clean up`);
+          process.exit(0);
+        }
+        if (statusState.kind === 'stale') {
+          console.log(`Dashboard server: stale (pid=${statusState.info.pid} is gone -- run "orch server stop" to clean up)`);
+          process.exit(0);
+        }
+        const info = statusState.info;
         const url = `http://localhost:${info.port}`;
         let alive = false;
         try {
@@ -783,7 +819,9 @@ Use --wait to block until the command finishes.`);
         if (alive) {
           console.log(`Dashboard server: running  pid=${info.pid}  url=${url}  started=${info.startedAt}`);
         } else {
-          console.log(`Dashboard server: stale (pid=${info.pid} not responding -- run "orch server stop" to clean up)`);
+          // Distinct from the 'stale' branch above: that pid is gone, this one is
+          // alive but not answering the heartbeat.
+          console.log(`Dashboard server: unresponsive (pid=${info.pid} is alive but did not answer ${url}/api/heartbeat within 2s -- run "orch server stop" then "orch server start")`);
         }
         process.exit(0);
       } else {
