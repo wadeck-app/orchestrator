@@ -8,7 +8,9 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "deploy": "node scripts/deploy-dev.mjs"
+    "deploy": "node scripts/deploy-dev.mjs",
+    "dev": "node scripts/deploy-dev.mjs && node scripts/dev-server.mjs",
+    "dev:stop": "node scripts/dev-server.mjs --stop"
   },
   "dependencies": {
     "@wadeck-app/dsl-renderer": "^2026.9.12-062-00d7925d",

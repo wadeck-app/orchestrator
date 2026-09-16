@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Config dir for scripts/dev-server.mjs: its own state.json, audit log and job
+# logs, so a dev build never writes into ~/.config/orchestrator.
+.dev-config/
 dist-bundle/
 .env.local
 *.log
