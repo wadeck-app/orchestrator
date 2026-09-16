@@ -117,4 +117,100 @@ describe('LogViewer', () => {
     act(() => { es.onerror!(); });
     expect(screen.getByText('Connecting...')).toBeInTheDocument();
   });
+
+  // Reported as "I have to click twice". Following the tail was held in three places -- the Auto
+  // button's flag, a `paused` badge derived from the scroll position, and a ref that silently
+  // vetoed the flag -- so scrolling up changed the badge and the veto while the button still
+  // claimed following was on. The first click then only cleared that contradiction.
+  describe('follow-tail toggle', () => {
+    // jsdom gives every element zero height, so scroll position has to be imposed directly.
+    function scrollPaneTo(atBottom: boolean): HTMLElement {
+      const pane = document.querySelector('pre')!;
+      Object.defineProperty(pane, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(pane, 'clientHeight', { value: 200, configurable: true });
+      // 800 is exactly the bottom; 100 is well above it.
+      pane.scrollTop = atBottom ? 800 : 100;
+      act(() => { pane.dispatchEvent(new Event('scroll')); });
+      return pane;
+    }
+
+    function autoButton(): HTMLElement {
+      return screen.getByRole('button', { name: /Auto/ });
+    }
+
+    it('follows by default, with no Paused badge', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      expect(screen.queryByText('Paused')).toBeNull();
+      expect(autoButton().getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('scrolling up pauses, and the button agrees rather than still claiming to follow', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      scrollPaneTo(false);
+
+      expect(screen.getByText('Paused')).toBeInTheDocument();
+      // The whole defect: this used to still read "true" while the badge said Paused.
+      expect(autoButton().getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('resumes on the FIRST click after scrolling up', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      const pane = scrollPaneTo(false);
+      expect(screen.getByText('Paused')).toBeInTheDocument();
+
+      act(() => { autoButton().click(); });
+
+      expect(screen.queryByText('Paused')).toBeNull();
+      expect(autoButton().getAttribute('aria-pressed')).toBe('true');
+      // And it actually jumped to the tail, rather than only flipping a flag.
+      expect(pane.scrollTop).toBe(pane.scrollHeight);
+    });
+
+    it('scrolling back to the bottom resumes on its own', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      scrollPaneTo(false);
+      expect(screen.getByText('Paused')).toBeInTheDocument();
+
+      scrollPaneTo(true);
+      expect(screen.queryByText('Paused')).toBeNull();
+      expect(autoButton().getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('one click pauses from the following state', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      act(() => { autoButton().click(); });
+
+      expect(screen.getByText('Paused')).toBeInTheDocument();
+      expect(autoButton().getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('badge and button never disagree across a sequence of interactions', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      const check = (label: string): void => {
+        const paused = screen.queryByText('Paused') !== null;
+        const pressed = autoButton().getAttribute('aria-pressed') === 'true';
+        expect(paused, `${label}: badge says paused=${paused} while button says following=${pressed}`)
+          .toBe(!pressed);
+      };
+
+      check('initial');
+      act(() => { autoButton().click(); });   check('after click 1');
+      scrollPaneTo(false);                    check('after scrolling up');
+      act(() => { autoButton().click(); });   check('after click 2');
+      scrollPaneTo(true);                     check('after scrolling to bottom');
+      act(() => { autoButton().click(); });   check('after click 3');
+    });
+  });
 });

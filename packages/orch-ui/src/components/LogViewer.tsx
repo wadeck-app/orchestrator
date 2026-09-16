@@ -16,6 +16,9 @@ import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../t
 // inherited rather than set on the pane alone, because the whole widget stays
 // dark in the light theme - where an inherited light scheme yields a white
 // scrollbar over a near-black pane.
+// How far from the bottom still counts as "at the tail". Sub-pixel scroll heights and the browser
+// clamping scrollTop mean an exact comparison flickers between following and paused.
+const BOTTOM_SLACK_PX = 20;
 const CONTAINER_BASE_CLS = 'flex flex-col min-h-0 [color-scheme:dark]';
 // Fallback for hosts that give the widget no height: h-full would resolve to
 // auto, so the pane would never overflow and follow-tail would silently do
@@ -116,16 +119,20 @@ export interface LogViewerProps {
 export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps): React.ReactElement {
   const [lines, setLines] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [search, setSearch] = useState('');
   const [runs, setRuns] = useState<RunEntry[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedRun, setSelectedRun] = useState<string>(searchParams.get('run') ?? '');
   const [isJobRunning, setIsJobRunning] = useState(false);
+  // Single source of truth for following the tail. It used to be three: this flag, a `paused`
+  // state derived from the scroll position, and a `userScrolledUp` ref that silently vetoed the
+  // flag. Scrolling up set the veto and the label without touching the flag, so the button still
+  // claimed auto-scroll was on; the first click then merely turned the flag off and a second was
+  // needed to actually resume. That is the "I have to click twice" -- the button and the behaviour
+  // were reading different variables.
   const [autoScroll, setAutoScroll] = useState(true);
   const [killing, setKilling] = useState(false);
   const containerRef = useRef<HTMLPreElement>(null);
-  const userScrolledUp = useRef(false);
 
   const handleSelectRun = (name: string): void => {
     setSelectedRun(name);
@@ -163,8 +170,8 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   useEffect(() => {
     setLines([]);
     setConnected(false);
-    setPaused(false);
-    userScrolledUp.current = false;
+    // A new run starts at the tail again.
+    setAutoScroll(true);
 
     const url = selectedRun
       ? `${apiBase}/api/logs/${jobId}/stream?run=${encodeURIComponent(selectedRun)}`
@@ -181,16 +188,18 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !autoScroll || userScrolledUp.current) return;
+    if (!el || !autoScroll) return;
     el.scrollTop = el.scrollHeight;
   }, [lines, autoScroll]);
 
-  const handleScroll = () => {
+  const handleScroll = (): void => {
     const el = containerRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
-    userScrolledUp.current = !atBottom;
-    setPaused(!atBottom);
+    // Scrolling away from the tail IS switching following off, and scrolling back to it switches
+    // following on. Expressing it as the one flag is what keeps the button honest: it can no
+    // longer show a state that the scroll handler has quietly overridden.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_SLACK_PX;
+    setAutoScroll(atBottom);
   };
 
   const handleKillJob = async (): Promise<void> => {
@@ -213,10 +222,12 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   };
 
   const handleAutoScrollToggle = (): void => {
-    setAutoScroll(!autoScroll);
-    if (!autoScroll) {
-      // Re-enable auto-scroll: scroll to bottom immediately
-      userScrolledUp.current = false;
+    // The next value is computed once and used for both the state and the scroll. Branching on
+    // `autoScroll` after calling the setter read the value from before the click, so resuming
+    // skipped the jump to the tail and only the second click ever scrolled.
+    const next = !autoScroll;
+    setAutoScroll(next);
+    if (next) {
       const el = containerRef.current;
       if (el) el.scrollTop = el.scrollHeight;
     }
@@ -248,7 +259,9 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
             ? matchCount !== null ? `${matchCount} / ${lines.length} lines` : `${lines.length} lines`
             : 'Connecting...'}
         </span>
-        {paused && <span className="text-yellow-400">Paused</span>}
+        {/* Derived, not stored: a second variable for the same fact is what let the badge and the
+            button disagree. */}
+        {!autoScroll && <span className="text-yellow-400">Paused</span>}
         <div className="flex items-center gap-2">
           {isJobRunning && (
             <button onClick={handleKillJob} disabled={killing} className={KILL_BTN_CLS} title="Kill running job">
@@ -256,8 +269,12 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
               {killing ? 'Killing...' : 'Kill'}
             </button>
           )}
+          {/* aria-pressed makes the toggle's state readable rather than only visible in the icon
+              and the colour. It is also the only thing a test can hold the button to, which is
+              how the badge and the button were able to disagree unnoticed. */}
           <button
             onClick={handleAutoScrollToggle}
+            aria-pressed={autoScroll}
             className={autoScroll ? AUTO_SCROLL_ON_CLS : AUTO_SCROLL_OFF_CLS}
             title={autoScroll ? 'Disable auto-scroll' : 'Enable auto-scroll'}
           >
