@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
+import { isAllowedOrigin } from './cors.js';
 import { DaemonProxy } from './daemon-proxy.js';
 import { IdleTimer } from './idle-timer.js';
 import { findFreePort, writeDashboardPort, deleteDashboardPort } from './port.js';
@@ -51,13 +52,16 @@ const idleTimer = new IdleTimer(timeoutMs, onIdle);
 
 const server = Fastify({ logger: false });
 
-// CORS -- allow same-origin localhost requests
+// CORS -- allow same-origin and loopback requests (localhost, 127.0.0.1, [::1])
 await server.register(fastifyCors, {
   origin: (origin, cb) => {
-    if (!origin || origin.startsWith('http://localhost')) {
+    if (isAllowedOrigin(origin)) {
       cb(null, true);
     } else {
-      cb(new Error('Not allowed by CORS'), false);
+      // Name the rejected origin: the browser only reports an opaque 500, and
+      // index.html loads its bundle with `crossorigin`, so a rejected origin
+      // shows up as a blank page with no clue in the console.
+      cb(new Error(`Origin not allowed by CORS: ${origin} (dashboard accepts loopback origins only)`), false);
     }
   },
 });
