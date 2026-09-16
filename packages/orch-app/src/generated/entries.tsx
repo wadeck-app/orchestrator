@@ -120,15 +120,17 @@ import { TriggerButton } from '../../../orch-ui/src/components/TriggerButton.js'
 export const ButtonActionEntry: ComponentRegistryEntry = {
 	name: 'ButtonAction', category: 'atomic', tags: ["button","action"],
 	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['label']
 		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['variant']
+		const icon = node['icon'] as unknown[] | undefined
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['size']
 		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['onClick']
 		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['disabled']
 		const disabledReason = resolveExpressionValue(node['disabledReason'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['disabledReason']
 		const loading = resolveExpressionValue(node['loading'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['loading']
 		const type = resolveExpressionValue(node['type'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ButtonAction.js').ButtonActionProps['type']
-		return <ButtonAction label={label} variant={variant} onClick={onClick} disabled={disabled} disabledReason={disabledReason} loading={loading} type={type} />
+		return <ButtonAction label={label} variant={variant} icon={icon ? renderChildren(icon, registry, ctx) : null} size={size} onClick={onClick} disabled={disabled} disabledReason={disabledReason} loading={loading} type={type} />
 	},
 }
 
@@ -762,12 +764,14 @@ export const FieldSelectEntry: ComponentRegistryEntry = {
 		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['description']
 		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['options']
 		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['placeholder']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldSelect.js').FieldSelectProps['error']
 		function FieldSelectWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
 			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
 			return (
-				<FieldSelect label={label} description={description} options={options} placeholder={placeholder} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+				<FieldSelect label={label} description={description} options={options} placeholder={placeholder} required={required} error={error} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
 			)
 		}
 		return <FieldSelectWithContext />

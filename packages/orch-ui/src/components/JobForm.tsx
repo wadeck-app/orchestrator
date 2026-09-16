@@ -160,9 +160,11 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
       setSubmitError(null);
       await onSubmit(data);
     } catch (err) {
-      // There was no catch here, so a rejected save became an unhandled promise rejection: the
-      // spinner stopped and the form looked untouched, which reads as a button that does nothing.
-      // The cause is shown rather than a generic apology, because the reader cannot see the logs.
+      // For a caller that awaits the save itself. It is NOT what fixed the reported "Save does
+      // nothing": under the DSL the brain owns the HTTP call, so this onSubmit never rejects and
+      // this branch never runs. That failure is swallowed in dsl-renderer's useBrains, where the
+      // only call site of runBrain ends in `.catch(console.error)` with no channel back to the page.
+      // Kept because a direct consumer passing a rejecting onSubmit deserves to see why.
       setSubmitError(getErrorMessage(err));
     } finally {
       setLoading(false);

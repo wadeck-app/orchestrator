@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle, Loader2, Play, XCircle } from 'lucide-react';
+import { CheckCircle, Play, XCircle } from 'lucide-react';
+import { ButtonAction } from '@wadeck-app/dsl-ui';
 import { getErrorMessage } from '../types.js';
 
 export interface TriggerButtonProps {
@@ -12,13 +13,23 @@ type Status = 'idle' | 'loading' | 'success' | 'error';
 
 const FEEDBACK_DURATION_MS = 3_000;
 
-// @formatter:off
-const BTN_BASE    = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-all duration-150 disabled:cursor-not-allowed';
-const BTN_IDLE    = `${BTN_BASE} bg-primary text-on-primary hover:bg-primary-hover`;
-const BTN_LOADING = `${BTN_BASE} bg-primary text-on-primary opacity-70`;
-const BTN_SUCCESS = `${BTN_BASE} bg-success text-on-primary`;
-const BTN_ERROR   = `${BTN_BASE} bg-danger text-on-primary`;
-// @formatter:on
+// Only the colour changes with status. Padding, font size and the spinner come from the
+// design system button: this used to hand-roll px-3 py-1.5 text-xs, which made it 8px
+// shorter than the ButtonAction buttons it sits beside in every job card and detail view.
+const VARIANT_BY_STATUS = {
+  idle:    'primary',
+  loading: 'primary',
+  success: 'success',
+  error:   'danger',
+} as const satisfies Record<Status, 'primary' | 'success' | 'danger'>;
+
+// ButtonAction drops the icon while loading, where the spinner takes that slot.
+const CONTENT_BY_STATUS: Record<Status, { icon?: React.ReactNode; label: string }> = {
+  idle:    { icon: <Play size={14} />,        label: 'Run now' },
+  loading: {                                  label: 'Running...' },
+  success: { icon: <CheckCircle size={14} />, label: 'Triggered' },
+  error:   { icon: <XCircle size={14} />,     label: 'Error' },
+};
 
 /**
  * @registryCategory atomic
@@ -34,13 +45,18 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
   // lands after jsdom is torn down and surfaces as "window is not defined" from inside React, which
   // is what reddened CI on one platform while passing on the others.
   useEffect(() => () => {
-    if (resetTimer.current) clearTimeout(resetTimer.current);
+    if (resetTimer.current) {
+      clearTimeout(resetTimer.current);
+    }
   }, []);
 
-  const handleClick = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (status === 'loading') return;
-    if (resetTimer.current) clearTimeout(resetTimer.current);
+  const handleClick = useCallback(async () => {
+    if (status === 'loading') {
+      return;
+    }
+    if (resetTimer.current) {
+      clearTimeout(resetTimer.current);
+    }
     setStatus('loading');
     setErrorMsg(null);
     try {
@@ -60,23 +76,21 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
     }
   }, [jobId, onTrigger, status]);
 
-  const cls =
-    status === 'loading' ? BTN_LOADING :
-    status === 'success' ? BTN_SUCCESS :
-    status === 'error'   ? BTN_ERROR :
-    BTN_IDLE;
+  const { icon, label } = CONTENT_BY_STATUS[status];
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={status === 'loading'}
-      className={cls}
-      title={status === 'error' && errorMsg ? errorMsg : undefined}
-    >
-      {status === 'idle'    && <><Play    size={12} />Run now</>}
-      {status === 'loading' && <><Loader2 size={12} className="animate-spin" />Running...</>}
-      {status === 'success' && <><CheckCircle size={12} />Triggered</>}
-      {status === 'error'   && <><XCircle size={12} />{errorMsg ?? 'Error'}</>}
-    </button>
+    // The span carries stopPropagation, not the button: this sits inside a clickable job
+    // card, and ButtonAction's onClick takes no event to stop the bubble with.
+    <span onClick={e => e.stopPropagation()}>
+      <ButtonAction
+        onClick={handleClick}
+        variant={VARIANT_BY_STATUS[status]}
+        icon={icon}
+        // Renders the spinner and disables, so no hand-rolled Loader2 or opacity is needed.
+        loading={status === 'loading'}
+        // The error text is the label in that state, so it needs no separate tooltip.
+        label={status === 'error' ? (errorMsg ?? 'Error') : label}
+      />
+    </span>
   );
 }

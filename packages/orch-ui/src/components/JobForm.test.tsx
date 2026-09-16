@@ -4,10 +4,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { JobForm } from './JobForm.js';
 
-// Reported: saving an edited job did nothing -- no change and no feedback. Two causes were on the
-// server and daemon side; this is the third. handleSubmit wrapped onSubmit in try/finally with no
-// catch, so a rejected save became an unhandled promise rejection: the spinner stopped and the form
-// sat there looking idle, which is indistinguishable from a button that is not wired up.
+// Covers JobForm's own contract: a caller that awaits the save and rejects must see why.
+//
+// Not the fix for the reported "Save does nothing" -- I first believed it was, wrongly. Under the
+// DSL the brain owns the HTTP call, so the onSubmit JobForm receives never rejects and none of this
+// runs. That failure is lost in dsl-renderer's useBrains, whose sole call site of runBrain ends in
+// `.catch(console.error)` with no way for the page to observe it. These tests still earn their place:
+// without them a direct consumer's rejected save leaves the form silent.
 function renderForm(onSubmit: (data: unknown) => Promise<void>) {
   return render(
     <MemoryRouter>
