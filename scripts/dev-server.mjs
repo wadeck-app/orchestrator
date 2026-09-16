@@ -21,7 +21,7 @@
  * state, so it must be asked for explicitly.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -96,6 +96,33 @@ if (STOP) {
   }
   process.exit(0);
 }
+
+/**
+ * Reports a dev daemon left over from an earlier run.
+ *
+ * It is spawned detached, so it outlives the shell that started it and keeps a pink tray icon in
+ * the tray with nothing on screen explaining where it came from. Reusing it is correct -- that is
+ * how a daemon works -- but doing so in silence is how one sits there for hours.
+ */
+function reportExistingDaemon() {
+  const portFile = join(configDir, 'config.port');
+  let info;
+  try {
+    info = JSON.parse(readFileSync(portFile, 'utf8'));
+  } catch {
+    return;   // absent or malformed: nothing was left behind
+  }
+  try {
+    process.kill(info.pid, 0);
+  } catch {
+    console.log(`  (stale ${portFile}: pid ${info.pid} is gone)`);
+    return;
+  }
+  console.log(`! Reusing the dev daemon already running (pid ${info.pid}, port ${info.port}).`);
+  console.log('  It survived the shell that started it. Stop it with: node scripts/dev-server.mjs --stop');
+}
+
+reportExistingDaemon();
 
 // Stop first so a rebuilt bundle is actually picked up: the running server keeps
 // serving the assets it started with.
