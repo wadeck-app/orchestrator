@@ -69,7 +69,9 @@ export async function jobsRoutes(
   fastify.put('/api/jobs/:id', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };
-      const result = await proxy.send('edit-job', { id, ...(req.body as object) });
+      // `updates`, not spread: edit-job reads payload.updates. Flattening left it undefined, the
+      // daemon threw on Object.keys(undefined), and Save in the web UI did nothing at all.
+      const result = await proxy.send('edit-job', { id, updates: req.body as object });
       return reply.send(result);
     });
   });

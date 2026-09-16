@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
-import type { Job, MissedFiring, LivenessConfig, LivenessStrategy } from '../types.js';
-import { ButtonCancel } from '@wadeck-app/dsl-ui';
-import { Button } from './Button.js';
+import { getErrorMessage, type Job, type MissedFiring, type LivenessConfig, type LivenessStrategy } from '../types.js';
+import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
 import { FieldText } from './FieldText.js';
 import { FieldNumber } from './FieldNumber.js';
 import { CronBuilder } from './CronBuilder.js';
@@ -62,6 +61,9 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
   const [showBuilder, setShowBuilder] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>();
+  // Kept apart from `errors`, which is per-field validation. A rejected save is about the request,
+  // so it belongs to the form as a whole and must survive until the next attempt.
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Liveness
   const initLiveness = initial?.liveness;
@@ -146,7 +148,13 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
       if (slaWindowMinutes > 0) data.slaWindowMinutes = slaWindowMinutes;
       if (dryRunSupported) data.dryRunSupported = true;
 
+      setSubmitError(null);
       await onSubmit(data);
+    } catch (err) {
+      // There was no catch here, so a rejected save became an unhandled promise rejection: the
+      // spinner stopped and the form looked untouched, which reads as a button that does nothing.
+      // The cause is shown rather than a generic apology, because the reader cannot see the logs.
+      setSubmitError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -344,9 +352,17 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
         </div>
       )}
 
+      {/* Directly above the button that failed, so the cause is where the eye already is.
+          role="alert" so it is announced rather than only drawn. */}
+      {submitError !== null && (
+        <div role="alert" className="rounded border border-red-500 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          Could not save: {submitError}
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 pt-2">
         <ButtonCancel onCancel={onCancel} />
-        <Button label="Save" variant="primary" type="submit" loading={loading} />
+        <ButtonAction label="Save" variant="primary" type="submit" loading={loading} />
       </div>
     </form>
   );

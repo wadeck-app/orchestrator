@@ -162,6 +162,32 @@ describe('Jobs API Routes', () => {
       const body = JSON.parse(res.body);
       expect(body.id).toBe('job1');
     });
+
+    // The route flattened the body into the payload, so the daemon's edit-job -- which reads
+    // { id, updates } -- got updates: undefined and threw "Cannot convert undefined or null to
+    // object". Saving from the web UI did nothing at all. The test above passed throughout, because
+    // the mock answers whatever it is sent: it exercised the route, never the contract.
+    it('sends the body as `updates`, the shape the daemon actually reads', async () => {
+      let sent: Record<string, unknown> | undefined;
+      (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
+        if (cmd === 'edit-job') sent = payload as Record<string, unknown>;
+        return { id: 'job1', command: 'updated' };
+      };
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/jobs/job1',
+        payload: { command: 'updated', label: 'Renamed' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(sent).toBeDefined();
+      expect(sent!.id).toBe('job1');
+      expect(sent!.updates).toEqual({ command: 'updated', label: 'Renamed' });
+      // Flattened fields would leave `updates` undefined, which is exactly the bug.
+      expect(sent!.command).toBeUndefined();
+      expect(sent!.label).toBeUndefined();
+    });
   });
 
   describe('DELETE /api/jobs/:id', () => {

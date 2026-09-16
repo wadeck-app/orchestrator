@@ -64,6 +64,19 @@ export function makeCommands(
 
     'edit-job':    (p) => {
       const { id, updates } = p as { id: string; updates: Partial<Job> };
+      // Validated before anything is written. orch-server used to flatten the body into the payload,
+      // so `updates` was undefined: registry.edit spread nothing and wrote the job back unchanged,
+      // then Object.keys(undefined) threw "Cannot convert undefined or null to object". A caller got
+      // a TypeError naming nothing, after a pointless write. Both halves are worth refusing.
+      if (typeof id !== 'string' || id === '') {
+        throw new Error('edit-job requires a string `id`');
+      }
+      if (updates === null || typeof updates !== 'object' || Array.isArray(updates)) {
+        throw new Error(
+          'edit-job requires an `updates` object, e.g. { id, updates: { label: "New name" } }; '
+          + `got ${updates === undefined ? 'nothing' : JSON.stringify(updates)}`,
+        );
+      }
       registry.edit(id, updates);
       const updatedJob = registry.get(id);
       audit?.log('job.edited', { jobId: id, label: updatedJob?.label, changes: Object.keys(updates) });
