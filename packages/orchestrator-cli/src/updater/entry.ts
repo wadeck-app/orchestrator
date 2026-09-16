@@ -162,6 +162,17 @@ runUpdater({
       return { defer: true, retryIn: 24 * 60 * 60 * 1000 }; // retry in 24h
     }
 
+    // A person clicked "update and restart" in the tray, or ran `orch cli update`. Waiting for a
+    // quiet moment is right for the background timer and wrong here: they are watching, and the
+    // answer they got instead was "deferred", repeated every attempt. UPDATER_FORCE already carries
+    // "the user asked for this" -- it just was not consulted past the autoUpdate:false check.
+    if (isForced) {
+      appendLog(configDir, 'info',
+        `${PKG_NAME} applying update to ${newVersion} now: explicitly requested, so the `
+        + `active-jobs deferral is skipped`);
+      return 'apply-now';
+    }
+
     try {
       const portJson = readFileSync(join(configDir, 'config.port'), 'utf8');
       const { port } = JSON.parse(portJson) as { port: number };
@@ -172,7 +183,10 @@ runUpdater({
         (health !== null && typeof health['running'] === 'number' && health['running']) ||
         0;
       if (activeJobs > 0) {
-        // Critical jobs are running - defer the update to avoid disruption.
+        // Jobs are running: hold off rather than restarting the daemon under them. Logged, because
+        // a silent deferral is indistinguishable from an update that simply never happened.
+        appendLog(configDir, 'info',
+          `${PKG_NAME} deferring update to ${newVersion} for 60s: ${activeJobs} job(s) still running`);
         return { defer: true, retryIn: 60_000 };
       }
     } catch {

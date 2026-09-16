@@ -82,6 +82,32 @@ export class State {
     }, this._flushIntervalMs);
   }
 
+  /**
+   * Closes runs left open by a daemon that is no longer alive, and returns how many.
+   *
+   * Called once at startup. A run with no finishedAt was in flight when its daemon stopped, and no
+   * later event can ever close it: the child is gone with the process that spawned it. Left alone
+   * they accumulate and count as active forever, which is what made GET /health report running jobs
+   * on an idle machine and made the updater defer every attempt.
+   *
+   * exitCode stays null so the run reads as interrupted rather than as a clean exit or a failure,
+   * and `orphaned` records why finishedAt appeared without anyone observing the process end.
+   */
+  closeOrphanedRuns(now: Date = new Date()): number {
+    this._ensure();
+    let closed = 0;
+    for (const [id, entries] of Object.entries(this._cache!)) {
+      const next = entries.map(e => {
+        if (e.finishedAt != null) return e;
+        closed++;
+        return { ...e, finishedAt: now.toISOString(), orphaned: true };
+      });
+      if (closed > 0) this._cache![id] = next;
+    }
+    if (closed > 0) this._scheduledFlush();
+    return closed;
+  }
+
   record(id: string, entry: RuntimeEntry): void {
     this._ensure();
     const normalized: RuntimeEntry = {
@@ -94,6 +120,7 @@ export class State {
       ...(entry.peakCpuPct      !== undefined && { peakCpuPct:      entry.peakCpuPct      }),
       ...(entry.peakRamMb       !== undefined && { peakRamMb:       entry.peakRamMb       }),
       ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
+      ...(entry.orphaned        !== undefined && { orphaned:        entry.orphaned        }),
     };
     const existing = this._cache![id] ?? [];
     // Update the matching entry in-place rather than prepending a duplicate. This covers

@@ -66,6 +66,12 @@ export interface RuntimeEntry {
   peakRamMb?: number;
   cancelledByUser?: boolean;
   retryAttempt?: number;
+  /**
+   * Set when the daemon closed this run at startup because it had no finishedAt: the daemon that
+   * spawned it is gone, so nothing could ever have observed the process end. Distinguishes an
+   * interrupted run from one whose exit was actually seen.
+   */
+  orphaned?: boolean;
 }
 
 export interface RegistryData {

@@ -18,6 +18,7 @@ import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
 import { refreshStartupEntry } from './startup.js';
+import { countActiveJobs } from './active-jobs.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 
 import type { OrchestratorCommands } from './types.js';
@@ -169,6 +170,15 @@ async function main(): Promise<void> {
       hookDispatcher,
     });
 
+    // Before anything reads the state: runs left open by a previous daemon can never be closed by
+    // an event, so they would count as active for good. One such entry from two weeks earlier was
+    // enough to make every update defer.
+    const orphaned = state.closeOrphanedRuns();
+    if (orphaned > 0) {
+      daemonLog.write(`closed ${orphaned} run(s) left in flight by a previous daemon`);
+      audit.log('runs.orphaned_closed', { count: orphaned });
+    }
+
     audit.log('daemon.start', { pid: process.pid, version });
     events.publish('daemon.started', { pid: process.pid, version });
 
@@ -216,10 +226,11 @@ async function main(): Promise<void> {
         port:   activePort,
         uptime: Math.floor(process.uptime()),
       }),
-      // Expose active job count in GET /health so the updater can defer during active jobs
+      // Expose active job count in GET /health so the updater can defer during active jobs.
+      // The rule lives in countActiveJobs, where a test can hold it to account.
       health: () => ({
         status: 'ok' as const,
-        active_jobs: Object.values(state.getAll()).filter(entries => entries.some(e => e.exitCode === null)).length,
+        active_jobs: countActiveJobs(state.getAll()),
       }),
       hooks: {
         onStart: (port: number) => {
