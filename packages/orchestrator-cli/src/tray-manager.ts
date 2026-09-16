@@ -353,13 +353,16 @@ export class TrayManager extends EventEmitter {
       items.push({ id: 'status', type: 'normal', title: 'All jobs OK', enabled: false });
     }
 
-    items.push({ id: 'sep3',             type: 'separator', title: '',               enabled: false });
-    items.push({ id: 'open-dashboard',   type: 'normal',    title: 'Open Dashboard', enabled: this._dashboardManager != null });
-    items.push({ id: 'open-logs',        type: 'normal',    title: 'Open logs',      enabled: true });
+    items.push({ id: 'sep3',           type: 'separator', title: '',               enabled: false });
+    items.push({ id: 'open-dashboard', type: 'normal',    title: 'Open Dashboard', enabled: this._dashboardManager != null });
+    items.push({ id: 'open-logs',      type: 'normal',    title: 'Open logs',      enabled: true });
+    // Separator opens the system group, matching wdrive: the divider belongs above the group,
+    // not inside it, so Start at login sits directly on top of Restart instead of being cut off
+    // from the actions it belongs with.
+    items.push({ id: 'sep4',           type: 'separator', title: '',               enabled: false });
     items.push({ id: 'startup-toggle', type: 'normal',    title: 'Start at login', enabled: true, checked: this._startupEnabled });
-    items.push({ id: 'sep4',           type: 'separator', title: '',             enabled: false });
-    items.push({ id: 'restart',        type: 'normal',    title: 'Restart',      enabled: true });
-    items.push({ id: 'quit',           type: 'normal',    title: 'Quit',         enabled: true });
+    items.push({ id: 'restart',        type: 'normal',    title: 'Restart',        enabled: true });
+    items.push({ id: 'quit',           type: 'normal',    title: 'Quit',           enabled: true });
 
     return { icon, isTemplateIcon: false, tooltip, items };
   }
