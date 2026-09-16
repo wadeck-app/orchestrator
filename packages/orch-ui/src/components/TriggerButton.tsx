@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle, Loader2, Play, XCircle } from 'lucide-react';
 import { getErrorMessage } from '../types.js';
 
@@ -28,6 +28,14 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The feedback timer was only cleared on the next click, never on unmount, so a click followed by
+  // navigating away left it running and it called setStatus on a gone component. In a test that
+  // lands after jsdom is torn down and surfaces as "window is not defined" from inside React, which
+  // is what reddened CI on one platform while passing on the others.
+  useEffect(() => () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+  }, []);
 
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
