@@ -10,6 +10,7 @@ import { runUpdater, execNpm, appendLog } from '@wadeck-app/shared-updater';
 import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { resolveSelfCheckTarget } from './self-check-target.js';
 import * as http from 'node:http';
 import semver from 'semver';
 
@@ -66,11 +67,21 @@ if (!process.env['UPDATER_SELF_CHECK_CMD']) {
     restoreConfigYml();
     process.exit(1);
   }
+  const resolved = resolveSelfCheckTarget(npmRoot, PKG_NAME);
+  if (!resolved.ok) {
+    // Arming a command whose target is absent is what caused the permanent rollback loop
+    // described on resolveSelfCheckTarget. Refusing to update is recoverable; looping is not.
+    appendLog(configDir, 'error',
+      `${PKG_NAME} update aborted: ${resolved.reason}. Without a usable entry point the `
+      + `post-install self-check cannot be armed, and an unverified update would not be `
+      + `rollback-able. Repair with: npm install -g ${PKG_NAME}@latest`);
+    restoreConfigYml();
+    process.exit(1);
+  }
   // execSync runs this through a shell, so both paths must be quoted. A default Windows
   // install puts node under "C:\Program Files\nodejs\", and an unquoted path is split at the
   // space: the self-check then always fails and every update gets rolled back.
-  const cliBundle = join(npmRoot, PKG_NAME, 'dist', 'orchestrator-cli.cjs');
-  process.env['UPDATER_SELF_CHECK_CMD'] = `"${process.execPath}" "${cliBundle}" cli self-check`;
+  process.env['UPDATER_SELF_CHECK_CMD'] = `"${process.execPath}" "${resolved.target}" cli self-check`;
 }
 
 /**
