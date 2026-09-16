@@ -25,8 +25,54 @@ import type { OrchestratorCommands } from './types.js';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { version } = require('../package.json') as { version: string };
 
-const CONFIG_DIR: string =
-  process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator');
+/**
+ * Reads `--config-dir <path>` or `--config-dir=<path>` from argv.
+ *
+ * The daemon used to accept only ORCH_CONFIG_DIR and ignore the flag in silence, while
+ * dashboard-manager passes exactly this flag to orch-server -- so the same option worked for one
+ * process and was dropped by the other. Anyone starting the daemon against a throwaway directory
+ * therefore got the real one: it is how this session overwrote the user's live registry and state
+ * while believing it was running in a temp dir.
+ */
+function configDirFromArgv(argv: string[]): string | null {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === '--config-dir') {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith('-')) {
+        // Silently falling back to the default here would be the original bug in a new costume.
+        throw new Error('--config-dir requires a path, e.g. --config-dir /tmp/orch-test');
+      }
+      return value;
+    }
+    if (arg.startsWith('--config-dir=')) {
+      const value = arg.slice('--config-dir='.length);
+      if (value === '') throw new Error('--config-dir= requires a path after the equals sign');
+      return value;
+    }
+  }
+  return null;
+}
+
+// argv wins over the environment: it is the more explicit of the two, and a caller passing the flag
+// has clearly chosen a target. The env var stays supported because start-at-login relies on it --
+// the Windows Run key cannot inject variables, so the launcher plist and registry entry set it.
+function resolveConfigDir(): string {
+  try {
+    return (
+      configDirFromArgv(process.argv.slice(2))
+      ?? process.env['ORCH_CONFIG_DIR']
+      ?? path.join(os.homedir(), '.config', 'orchestrator')
+    );
+  } catch (e) {
+    // Reported as a usage error rather than a crash: this runs before the log directory is known,
+    // so there is nowhere to write it but stderr, and a stack trace would bury the one useful line.
+    process.stderr.write(`[orchestrator] ${getErrorMessage(e)}\n`);
+    process.exit(1);
+  }
+}
+
+const CONFIG_DIR: string = resolveConfigDir();
 
 // Suppress EPIPE errors on stdout/stderr globally.
 // When the launcher runs as a hidden window process, its stdout/stderr pipes can close

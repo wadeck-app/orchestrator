@@ -7,18 +7,47 @@ const { runSelfCheck: sharedRunSelfCheck } = require('@wadeck-app/shared-cli') a
 
 import { Registry }  from './registry.js';
 import { State }     from './state.js';
-import { Scheduler } from './scheduler.js';
 
 export async function runSelfCheck(quiet = false): Promise<void> {
   await sharedRunSelfCheck(
     [
-      // Check: registry-class -- verify Registry class is loaded
+      // registry-class and state-class used to sit here, each asserting only that a class was a
+      // function. Both are subsumed by registry-load and state-load below, which construct the
+      // class and use it -- a missing or broken class cannot survive those. Keeping them inflated
+      // the check count without adding a way to fail, which is worse than having fewer checks:
+      // the updater's rollback gate is only as good as the weakest thing it accepts.
+      //
+      // Check: schedule-computation -- the cron maths behind `orch schedule`, the dashboard's next
+      // firing column and the scheduler's own timers. scheduler-class, which this replaces, would
+      // have passed with a cron library that returned nothing, a broken bundle, or a parse
+      // regression; none of those are theoretical, since the whole daemon is a cron runner.
       async () => {
         try {
-          if (typeof Registry !== 'function') throw new Error('Registry class not loaded');
-          return { name: 'registry-class', ok: true };
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { getNextFirings } = require('./cronNext.js') as typeof import('./cronNext.js');
+          // A weekly expression on purpose: a scan horizon too short to reach next week is how this
+          // silently returned an empty list, leaving `orch schedule` and the dashboard blank for
+          // every job sparser than daily. A frequent expression would pass with that bug present.
+          const from = new Date('2026-01-01T00:00:00.000Z');
+          const firings = getNextFirings('0 9 * * 1', 3, from);
+          if (firings.length !== 3) {
+            throw new Error(
+              `expected 3 firings for the weekly "0 9 * * 1", got ${firings.length}: `
+              + 'the scan horizon is too short to reach a sparse schedule',
+            );
+          }
+          for (let i = 0; i < firings.length; i++) {
+            if (Number.isNaN(firings[i]!.getTime())) throw new Error(`firing ${i} is not a valid date`);
+            if (firings[i]!.getTime() <= from.getTime()) {
+              throw new Error(`firing ${i} (${firings[i]!.toISOString()}) is not after ${from.toISOString()}`);
+            }
+            if (i > 0 && firings[i]!.getTime() <= firings[i - 1]!.getTime()) {
+              throw new Error('firings are not strictly increasing, so the schedule would stall or repeat');
+            }
+          }
+          return { name: 'schedule-computation', ok: true };
         } catch (err) {
-          return { name: 'registry-class', ok: false, detail: (err as Error).message };
+          return { name: 'schedule-computation', ok: false, detail: (err as Error).message };
         }
       },
       // Check: registry-load -- create a temp registry and verify load() returns valid data
@@ -34,15 +63,6 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           return { name: 'registry-load', ok: false, detail: (err as Error).message };
         }
       },
-      // Check: state-class -- verify State class is loaded
-      async () => {
-        try {
-          if (typeof State !== 'function') throw new Error('State class not loaded');
-          return { name: 'state-class', ok: true };
-        } catch (err) {
-          return { name: 'state-class', ok: false, detail: (err as Error).message };
-        }
-      },
       // Check: state-load -- create a temp state and verify getAll() returns an object
       async () => {
         try {
@@ -54,15 +74,6 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           return { name: 'state-load', ok: true };
         } catch (err) {
           return { name: 'state-load', ok: false, detail: (err as Error).message };
-        }
-      },
-      // Check: scheduler-class -- verify Scheduler class is loaded
-      async () => {
-        try {
-          if (typeof Scheduler !== 'function') throw new Error('Scheduler class not loaded');
-          return { name: 'scheduler-class', ok: true };
-        } catch (err) {
-          return { name: 'scheduler-class', ok: false, detail: (err as Error).message };
         }
       },
       // Check: server-binary -- verify orch-server is bundled inside this package
