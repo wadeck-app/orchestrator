@@ -180,7 +180,19 @@ async function main(): Promise<void> {
       // orch-server not built yet -- dashboard unavailable
     }
 
-    const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, version, undefined, dashboardManager);
+    // A dev instance runs the checkout's own build against its own config dir, so it looks exactly
+    // like the installed one in the tray: same white icon, and a version of 0.2.0 because that is
+    // the placeholder CI overwrites at publish. Two identical icons for two different builds is how
+    // you end up reading the wrong daemon's logs. The signal is an explicit env var set by
+    // scripts/dev-server.mjs rather than a guess from the config path.
+    const isDevInstance = process.env['ORCH_DEV_INSTANCE'] === '1';
+    const displayVersion = isDevInstance ? `${version}-local-dev` : version;
+    // Pink, and only used here: it is unmistakable next to the default white, and the update-check
+    // badge already claimed amber. The suffix is stripped before any version comparison, so a dev
+    // tray does not permanently claim an update is available.
+    const trayColor = isDevInstance ? '#F9A8D4' : undefined;
+    if (isDevInstance) daemonLog.write(`dev instance: tray tinted ${trayColor}, version shown as ${displayVersion}`);
+    const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, displayVersion, trayColor, dashboardManager);
     const execManager = new ExecManager(CONFIG_DIR, events);
 
     // Audit job events
@@ -193,7 +205,10 @@ async function main(): Promise<void> {
 
     await createDaemon<OrchestratorCommands>({
       configDir:   CONFIG_DIR,
-      appVersion:  version,
+      // Not `version`: the kit writes its own `version` field after spreading versionExtra, so
+      // appVersion is the only way to make `orch status` name the build. Verified in
+      // health-server.js, where `version: appVersion ?? PACKAGE_VERSION` comes last.
+      appVersion:  displayVersion,
       port:        47900,
       commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events, execManager),
       // Expose port + uptime in GET /version response for `orch status`

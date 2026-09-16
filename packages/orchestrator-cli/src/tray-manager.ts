@@ -264,8 +264,11 @@ export class TrayManager extends EventEmitter {
           });
       });
       this._latestVersion = latest;
-      // Strip optional trailing git-hash suffix (e.g. "2026.9.5-153-f4a6e93" -> "2026.9.5-153")
-      const normalize = (v: string) => v.replace(/-[0-9a-f]{6,8}$/, '');
+      // Strip the display-only suffixes before comparing: the trailing git hash
+      // ("2026.9.5-153-f4a6e93" -> "2026.9.5-153"), and the -local-dev marker a dev instance adds
+      // to name itself in the tray. Without the second one a dev build would report an update
+      // available forever, since its version can never equal what npm publishes.
+      const normalize = (v: string) => v.replace(/-local-dev$/, '').replace(/-[0-9a-f]{6,8}$/, '');
       this._updateStatus = normalize(latest) !== normalize(this._version) ? 'available' : 'up-to-date';
       this._logAction(`[tray] check-update: latest=${latest} current=${this._version} status=${this._updateStatus}`);
       if (this._updateStatus === 'available') {

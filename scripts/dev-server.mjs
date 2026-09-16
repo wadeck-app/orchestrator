@@ -70,7 +70,10 @@ if (SEED && !USE_PROD_CONFIG) {
   }
 }
 
-const env = { ...process.env, ORCH_CONFIG_DIR: configDir };
+// ORCH_DEV_INSTANCE tints the tray pink and suffixes the version with -local-dev, so a dev daemon
+// is not mistaken for the installed one. Explicit rather than inferred from the config path: the
+// daemon should not have to guess what started it.
+const env = { ...process.env, ORCH_CONFIG_DIR: configDir, ORCH_DEV_INSTANCE: '1' };
 
 function cli(subcommand) {
   return execFileSync(process.execPath, [CLI, ...subcommand], {
