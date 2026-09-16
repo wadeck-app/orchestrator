@@ -4,6 +4,9 @@ dist/
 # logs, so a dev build never writes into ~/.config/orchestrator.
 .dev-config/
 dist-bundle/
+# tsc's incremental build cache. It was tracked, so it showed as modified after every
+# build and sat in every diff and every commit's file list.
+*.tsbuildinfo
 .env.local
 *.log
 .idea/
