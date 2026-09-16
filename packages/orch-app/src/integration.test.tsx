@@ -109,9 +109,10 @@ $brains:
 
 $type: PageContent
 sections:
-  - $type: JobSearchBar
+  - $type: SearchBar
     $id: jobSearchBar
     value: $vars.search
+    placeholder: Search jobs...
     $outputs:
       onChange: [value]
   - $type: JobFilterChips
@@ -135,6 +136,11 @@ $sources:
 
 $type: PageContent
 sections:
+  # Mirrors pages/job-detail.yaml. The back link used to come from JobDetailActions,
+  # which no page ever rendered, so this test was asserting on dead code.
+  - $type: BackLink
+    to: /
+    label: Back to jobs
   - $type: PageHeader
     title: $sources.jobData.job.label
   - $type: JobConfigDisplay
@@ -144,7 +150,7 @@ sections:
     items:
       - $type: RunHistory
         entries: $sources.jobData.runHistory
-  - $type: JobDetailActions
+  - $type: RunningBannerDetail
     jobId: $route.id
     job: $sources.jobData.job
     runHistory: $sources.jobData.runHistory

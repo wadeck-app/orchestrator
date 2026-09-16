@@ -35,6 +35,7 @@ import { Spinner } from '@wadeck-app/dsl-ui/dist/components/display/Spinner.js'
 import { Tag } from '@wadeck-app/dsl-ui/dist/components/display/Tag.js'
 import { ButtonCancel } from '@wadeck-app/dsl-ui/dist/components/form/ButtonCancel.js'
 import { ButtonSave } from '@wadeck-app/dsl-ui/dist/components/form/ButtonSave.js'
+import { CronBuilder } from '@wadeck-app/dsl-ui/dist/components/form/CronBuilder.js'
 import { DatePicker } from '@wadeck-app/dsl-ui/dist/components/form/DatePicker.js'
 import { DateRangePicker } from '@wadeck-app/dsl-ui/dist/components/form/DateRangePicker.js'
 import { FieldAsyncSelect } from '@wadeck-app/dsl-ui/dist/components/form/FieldAsyncSelect.js'
@@ -67,6 +68,7 @@ import { Section } from '@wadeck-app/dsl-ui/dist/components/layout/Section.js'
 import { StatTile } from '@wadeck-app/dsl-ui/dist/components/layout/StatTile.js'
 import { TableRowActions } from '@wadeck-app/dsl-ui/dist/components/layout/TableRowActions.js'
 import { VerticalStack } from '@wadeck-app/dsl-ui/dist/components/layout/VerticalStack.js'
+import { BackLink } from '@wadeck-app/dsl-ui/dist/components/navigation/BackLink.js'
 import { Breadcrumb } from '@wadeck-app/dsl-ui/dist/components/navigation/Breadcrumb.js'
 import { Link } from '@wadeck-app/dsl-ui/dist/components/navigation/Link.js'
 import { PageTabs } from '@wadeck-app/dsl-ui/dist/components/navigation/PageTabs.js'
@@ -94,25 +96,18 @@ import { StatusFilter } from '@wadeck-app/dsl-ui/dist/components/table/StatusFil
 import { AuditEntryIcon } from '../../../orch-ui/src/components/AuditEntryIcon.js'
 import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
 import { AuditList } from '../../../orch-ui/src/components/AuditList.js'
-import { BackLink } from '../../../orch-ui/src/components/BackLink.js'
-import { Button } from '../../../orch-ui/src/components/Button.js'
 import { DesignSwitcher } from '../../../orch-ui/src/components/DesignSwitcher.js'
 import { EnableToggle } from '../../../orch-ui/src/components/EnableToggle.js'
 import { JobCard } from '../../../orch-ui/src/components/JobCard.js'
 import { JobCardGrid } from '../../../orch-ui/src/components/JobCardGrid.js'
 import { JobConfigDisplay } from '../../../orch-ui/src/components/JobConfigDisplay.js'
-import { JobDetailActions } from '../../../orch-ui/src/components/JobDetailActions.js'
-import { JobDetailSection } from '../../../orch-ui/src/components/JobDetailSection.js'
 import { JobFilterChips } from '../../../orch-ui/src/components/JobFilterChips.js'
 import { JobForm } from '../../../orch-ui/src/components/JobForm.js'
 import { JobFormSection } from '../../../orch-ui/src/components/JobFormSection.js'
-import { JobListSection } from '../../../orch-ui/src/components/JobListSection.js'
-import { JobSearchBar } from '../../../orch-ui/src/components/JobSearchBar.js'
 import { JobStatusBadge } from '../../../orch-ui/src/components/JobStatusBadge.js'
 import { JobToggle } from '../../../orch-ui/src/components/JobToggle.js'
 import { LogPageBreadcrumb } from '../../../orch-ui/src/components/LogPageBreadcrumb.js'
 import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
-import { LogViewerSection } from '../../../orch-ui/src/components/LogViewerSection.js'
 import { NextFireCountdown } from '../../../orch-ui/src/components/NextFireCountdown.js'
 import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
 import { RunningAlertDetail } from '../../../orch-ui/src/components/RunningAlertDetail.js'
@@ -532,6 +527,17 @@ export const ButtonSaveEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const CronBuilderEntry: ComponentRegistryEntry = {
+	name: 'CronBuilder', category: 'composite', tags: ["cron","schedule","form"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/CronBuilder.js').CronBuilderProps['value']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/CronBuilder.js').CronBuilderProps['onChange']
+		const onClose = resolveExpressionValue(node['onClose'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/CronBuilder.js').CronBuilderProps['onClose']
+		return <CronBuilder value={value} onChange={onChange} onClose={onClose} />
+	},
+}
+
 export const DatePickerEntry: ComponentRegistryEntry = {
 	name: 'DatePicker', category: 'atomic', tags: ["field","date","calendar"],
 	nodeSchema: null as never,
@@ -717,6 +723,8 @@ export const FieldNumberEntry: ComponentRegistryEntry = {
 		const max = resolveExpressionValue(node['max'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['max']
 		const suffix = resolveExpressionValue(node['suffix'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['suffix']
 		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['disabled']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['error']
 		const unlimited = resolveExpressionValue(node['unlimited'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['unlimited']
 		const unlimitedValue = resolveExpressionValue(node['unlimitedValue'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['unlimitedValue']
 		const onUnlimitedChange = resolveExpressionValue(node['onUnlimitedChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js').FieldNumberProps['onUnlimitedChange']
@@ -725,7 +733,7 @@ export const FieldNumberEntry: ComponentRegistryEntry = {
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
 			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
 			return (
-				<FieldNumber label={label} description={description} min={min} max={max} suffix={suffix} disabled={disabled} unlimited={unlimited} unlimitedValue={unlimitedValue} onUnlimitedChange={onUnlimitedChange} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+				<FieldNumber label={label} description={description} min={min} max={max} suffix={suffix} disabled={disabled} required={required} error={error} unlimited={unlimited} unlimitedValue={unlimitedValue} onUnlimitedChange={onUnlimitedChange} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
 			)
 		}
 		return <FieldNumberWithContext />
@@ -800,12 +808,14 @@ export const FieldTextEntry: ComponentRegistryEntry = {
 		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['label']
 		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['description']
 		const readOnly = resolveExpressionValue(node['readOnly'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['readOnly']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldText.js').FieldTextProps['error']
 		function FieldTextWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
 			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
 			return (
-				<FieldText label={label} description={description} readOnly={readOnly} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+				<FieldText label={label} description={description} readOnly={readOnly} required={required} error={error} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
 			)
 		}
 		return <FieldTextWithContext />
@@ -858,15 +868,13 @@ export const FieldTimeEntry: ComponentRegistryEntry = {
 export const FieldWrapperEntry: ComponentRegistryEntry = {
 	name: 'FieldWrapper', category: 'disposition', tags: ["field","wrapper"],
 	nodeSchema: null as never,
-	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const items = node['items'] as unknown[] | undefined
+	render: ({ node, ctx }: RegistryRenderProps) => {
 		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['label']
 		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['description']
-		return (
-			<FieldWrapper label={label} description={description}>
-				{items ? renderChildren(items, registry, ctx) : null}
-			</FieldWrapper>
-		)
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['error']
+		const children = resolveExpressionValue(node['children'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldWrapper.js').FieldWrapperProps['children']
+		return <FieldWrapper label={label} description={description} required={required} error={error} children={children} />
 	},
 }
 
@@ -1103,6 +1111,16 @@ export const VerticalStackEntry: ComponentRegistryEntry = {
 				{items ? renderChildren(items, registry, ctx) : null}
 			</VerticalStack>
 		)
+	},
+}
+
+export const BackLinkEntry: ComponentRegistryEntry = {
+	name: 'BackLink', category: 'atomic', tags: ["back","navigation","link"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const to = resolveExpressionValue(node['to'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/BackLink.js').BackLinkProps['to']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/BackLink.js').BackLinkProps['label']
+		return <BackLink to={to} label={label} />
 	},
 }
 
@@ -1383,7 +1401,8 @@ export const FilterChipsEntry: ComponentRegistryEntry = {
 		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['options']
 		const value = resolveExpressionValue(node['value'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['value']
 		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['onChange']
-		return <FilterChips bind={bind} options={options} value={value} onChange={onChange} />
+		const mode = resolveExpressionValue(node['mode'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/FilterChips.js').FilterChipsProps['mode']
+		return <FilterChips bind={bind} options={options} value={value} onChange={onChange} mode={mode} />
 	},
 }
 
@@ -1477,30 +1496,6 @@ export const AuditListEntry: ComponentRegistryEntry = {
 	},
 }
 
-export const BackLinkEntry: ComponentRegistryEntry = {
-	name: 'BackLink', category: 'atomic', tags: ["back","navigation","link"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const to = resolveExpressionValue(node['to'], ctx) as import('../../../orch-ui/src/components/BackLink.js').BackLinkProps['to']
-		const label = resolveExpressionValue(node['label'], ctx) as import('../../../orch-ui/src/components/BackLink.js').BackLinkProps['label']
-		return <BackLink to={to} label={label} />
-	},
-}
-
-export const ButtonEntry: ComponentRegistryEntry = {
-	name: 'Button', category: 'atomic', tags: ["button","action"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const label = resolveExpressionValue(node['label'], ctx) as import('../../../orch-ui/src/components/Button.js').ButtonProps['label']
-		const variant = resolveExpressionValue(node['variant'], ctx) as import('../../../orch-ui/src/components/Button.js').ButtonProps['variant']
-		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../orch-ui/src/components/Button.js').ButtonProps['onClick']
-		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('../../../orch-ui/src/components/Button.js').ButtonProps['disabled']
-		const loading = resolveExpressionValue(node['loading'], ctx) as import('../../../orch-ui/src/components/Button.js').ButtonProps['loading']
-		const type = resolveExpressionValue(node['type'], ctx) as import('../../../orch-ui/src/components/Button.js').ButtonProps['type']
-		return <Button label={label} variant={variant} onClick={onClick} disabled={disabled} loading={loading} type={type} />
-	},
-}
-
 export const DesignSwitcherEntry: ComponentRegistryEntry = {
 	name: 'DesignSwitcher', category: 'atomic', tags: ["design","switcher","navigation","compare"],
 	nodeSchema: null as never,
@@ -1569,33 +1564,6 @@ export const JobConfigDisplayEntry: ComponentRegistryEntry = {
 	},
 }
 
-export const JobDetailActionsEntry: ComponentRegistryEntry = {
-	name: 'JobDetailActions', category: 'composite', tags: ["job","actions","detail"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['job']
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['jobId']
-		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['runHistory']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onTrigger']
-		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDelete']
-		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onDryRun']
-		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onViewLogs']
-		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onEdit']
-		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/JobDetailActions.js').JobDetailActionsProps['onKill']
-		return <JobDetailActions job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
-	},
-}
-
-export const JobDetailSectionEntry: ComponentRegistryEntry = {
-	name: 'JobDetailSection', category: 'composite', tags: ["job","detail","view"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const data = resolveExpressionValue(node['data'], ctx) as import('../../../orch-ui/src/components/JobDetailSection.js').JobDetailSectionProps['data']
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobDetailSection.js').JobDetailSectionProps['jobId']
-		return <JobDetailSection data={data} jobId={jobId} />
-	},
-}
-
 export const JobFilterChipsEntry: ComponentRegistryEntry = {
 	name: 'JobFilterChips', category: 'atomic', tags: ["filter","chips","jobs","type"],
 	nodeSchema: null as never,
@@ -1626,26 +1594,6 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSubmit']
 		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onCancel']
 		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onCancel={onCancel} />
-	},
-}
-
-export const JobListSectionEntry: ComponentRegistryEntry = {
-	name: 'JobListSection', category: 'composite', tags: ["jobs","list","grid"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobs = resolveExpressionValue(node['jobs'], ctx) as import('../../../orch-ui/src/components/JobListSection.js').JobListSectionProps['jobs']
-		return <JobListSection jobs={jobs} />
-	},
-}
-
-export const JobSearchBarEntry: ComponentRegistryEntry = {
-	name: 'JobSearchBar', category: 'atomic', tags: ["search","jobs","filter","input"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const value = resolveExpressionValue(node['value'], ctx) as import('../../../orch-ui/src/components/JobSearchBar.js').JobSearchBarProps['value']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('../../../orch-ui/src/components/JobSearchBar.js').JobSearchBarProps['onChange']
-		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('../../../orch-ui/src/components/JobSearchBar.js').JobSearchBarProps['placeholder']
-		return <JobSearchBar value={value} onChange={onChange} placeholder={placeholder} />
 	},
 }
 
@@ -1687,15 +1635,6 @@ export const LogViewerEntry: ComponentRegistryEntry = {
 		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['apiBase']
 		const fill = resolveExpressionValue(node['fill'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['fill']
 		return <LogViewer jobId={jobId} apiBase={apiBase} fill={fill} />
-	},
-}
-
-export const LogViewerSectionEntry: ComponentRegistryEntry = {
-	name: 'LogViewerSection', category: 'composite', tags: ["log","viewer","streaming"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/LogViewerSection.js').LogViewerSectionProps['jobId']
-		return <LogViewerSection jobId={jobId} />
 	},
 }
 
@@ -1831,6 +1770,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	TagEntry,
 	ButtonCancelEntry,
 	ButtonSaveEntry,
+	CronBuilderEntry,
 	DatePickerEntry,
 	DateRangePickerEntry,
 	FieldAsyncSelectEntry,
@@ -1863,6 +1803,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	StatTileEntry,
 	TableRowActionsEntry,
 	VerticalStackEntry,
+	BackLinkEntry,
 	BreadcrumbEntry,
 	LinkEntry,
 	PageTabsEntry,
@@ -1890,25 +1831,18 @@ export const allEntries: ComponentRegistryEntry[] = [
 	AuditEntryIconEntry,
 	AuditEntryRowEntry,
 	AuditListEntry,
-	BackLinkEntry,
-	ButtonEntry,
 	DesignSwitcherEntry,
 	EnableToggleEntry,
 	JobCardEntry,
 	JobCardGridEntry,
 	JobConfigDisplayEntry,
-	JobDetailActionsEntry,
-	JobDetailSectionEntry,
 	JobFilterChipsEntry,
 	JobFormEntry,
 	JobFormSectionEntry,
-	JobListSectionEntry,
-	JobSearchBarEntry,
 	JobStatusBadgeEntry,
 	JobToggleEntry,
 	LogPageBreadcrumbEntry,
 	LogViewerEntry,
-	LogViewerSectionEntry,
 	NextFireCountdownEntry,
 	RunHistoryEntry,
 	RunningAlertDetailEntry,

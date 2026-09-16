@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { BACK_ROW_CLS, BACK_LINK_CLS } from './BackLink.js';
+import { BACK_ROW_CLS, BACK_LINK_CLS } from '@wadeck-app/dsl-ui';
 
 // One row: back link, job name, page kind. Replaces a stacked back link, a
 // text-2xl page title and a "Logs" subtitle, which together pushed the first log

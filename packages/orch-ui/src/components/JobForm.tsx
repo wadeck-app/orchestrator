@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { getErrorMessage, type Job, type MissedFiring, type LivenessConfig, type LivenessStrategy } from '../types.js';
-import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
-import { FieldText } from './FieldText.js';
-import { FieldNumber } from './FieldNumber.js';
-import { CronBuilder } from './CronBuilder.js';
+import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldText } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
@@ -34,6 +31,18 @@ interface FormErrors {
   label?: string;
   command?: string;
   schedule?: string;
+}
+
+/**
+ * Adapts dsl-ui's FieldNumber, whose onChange carries `string | number` so the field can
+ * report an emptied input, to a numeric state setter. Empty becomes 0 rather than NaN,
+ * which would otherwise reach the daemon as a null timeout.
+ */
+function numericSetter(set: (n: number) => void): (v: string | number) => void {
+  return v => {
+    const n = typeof v === 'number' ? v : Number(v);
+    set(Number.isFinite(n) ? n : 0);
+  };
 }
 
 function parseCron(expr: string): string | null {
@@ -234,7 +243,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
       )}
 
       {type === 'startup' && (
-        <FieldNumber label="Delay (seconds)" value={delaySeconds} onChange={setDelaySeconds} min={0} />
+        <FieldNumber label="Delay (seconds)" value={delaySeconds} onChange={numericSetter(setDelaySeconds)} min={0} />
       )}
 
       <div>
@@ -250,7 +259,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
           <FieldNumber
             label="Timeout (seconds)"
             value={timeoutSeconds}
-            onChange={setTimeoutSeconds}
+            onChange={numericSetter(setTimeoutSeconds)}
             min={0}
           />
           {/* Missed firing */}
@@ -340,7 +349,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
           </div>
 
           {/* SLA window */}
-          <FieldNumber label="SLA window (minutes, 0 = disabled)" value={slaWindowMinutes} onChange={setSlaWindowMinutes} min={0} />
+          <FieldNumber label="SLA window (minutes, 0 = disabled)" value={slaWindowMinutes} onChange={numericSetter(setSlaWindowMinutes)} min={0} />
 
           {/* Dry run */}
           <div className="flex items-center gap-2">
@@ -355,7 +364,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
       {/* Directly above the button that failed, so the cause is where the eye already is.
           role="alert" so it is announced rather than only drawn. */}
       {submitError !== null && (
-        <div role="alert" className="rounded border border-red-500 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+        <div role="alert" className="rounded border border-danger bg-danger-subtle px-3 py-2 text-sm text-danger">
           Could not save: {submitError}
         </div>
       )}

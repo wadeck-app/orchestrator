@@ -89,8 +89,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
     jfs.render = withOutputCallbacks(jfs.render, ['onSubmit', 'onSuccess', 'onCancel']);
   }
 
-  // JobSearchBar: expose onChange as DSL $output (wires $vars.search updates)
-  const jsb = registry['JobSearchBar'];
+  // SearchBar: expose onChange as DSL $output (wires $vars.search updates).
+  // dsl-ui's component, replacing a hand-rolled JobSearchBar that wrapped a raw input.
+  const jsb = registry['SearchBar'];
   if (jsb) {
     jsb.render = withOutputCallbacks(jsb.render, ['onChange']);
   }

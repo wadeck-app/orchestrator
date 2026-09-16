@@ -32,7 +32,7 @@ describe('LogPageBreadcrumb', () => {
   });
 
   // The name comes from visible text, not an aria-label. It must match
-  // JobDetailSection's wording, which BackLink.test.tsx pins to "Back".
+  // the design system's BackLink default, which its own tests pin to "Back".
   it('exposes an accessible back link pointing at the job', () => {
     renderCrumb({ jobId: 'j1', jobLabel: 'WhatsApp scraper' });
 
@@ -78,7 +78,9 @@ describe('LogPageBreadcrumb', () => {
   // The log page grew its own back link with different padding, which put its arrow 9px above
   // every other page's. Sharing BackLink's classes is what keeps the headers on one baseline.
   it('reuses BackLink spacing rather than restating it', async () => {
-    const { BACK_ROW_CLS, BACK_LINK_CLS } = await import('./BackLink.js');
+    // BackLink now lives in the design system; sharing its classes is what keeps this
+    // header on the same baseline as every other page's.
+    const { BACK_ROW_CLS, BACK_LINK_CLS } = await import('@wadeck-app/dsl-ui');
     renderCrumb({ jobId: 'j1', jobLabel: 'x' });
 
     const row = screen.getByTestId('log-breadcrumb').parentElement!;

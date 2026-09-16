@@ -1,8 +1,8 @@
-export { Button } from './components/Button.js';
+// Only orchestrator-domain components live here. Anything generic - buttons, fields,
+// search, filter chips, the back link, the cron wizard - now comes from
+// @wadeck-app/dsl-ui, so pages import one design system instead of two half-systems.
 export { DesignSwitcher } from './components/DesignSwitcher.js';
 export type { DesignSwitcherProps } from './components/DesignSwitcher.js';
-export { FieldText } from './components/FieldText.js';
-export { FieldNumber } from './components/FieldNumber.js';
 export { JobStatusBadge } from './components/JobStatusBadge.js';
 export { TriggerBadge } from './components/TriggerBadge.js';
 export { NextFireCountdown } from './components/NextFireCountdown.js';
@@ -13,17 +13,12 @@ export { JobCard } from './components/JobCard.js';
 export { JobForm } from './components/JobForm.js';
 export { LogViewer } from './components/LogViewer.js';
 export { LogPageBreadcrumb } from './components/LogPageBreadcrumb.js';
-export { JobListSection } from './components/JobListSection.js';
-export { JobDetailSection } from './components/JobDetailSection.js';
 export { JobFormSection } from './components/JobFormSection.js';
-export { LogViewerSection } from './components/LogViewerSection.js';
 export { JobCardGrid } from './components/JobCardGrid.js';
-export { BackLink } from './components/BackLink.js';
 export { FailureBanner } from './components/FailureBanner.js';
 export type { FailureEntry as FailureBannerEntry } from './components/FailureBanner.js';
 export { JobConfigDisplay } from './components/JobConfigDisplay.js';
 export { JobToggle } from './components/JobToggle.js';
-export { JobDetailActions } from './components/JobDetailActions.js';
 export { RunningBannerDetail } from './components/RunningBannerDetail.js';
 export type { RunningBannerDetailProps } from './components/RunningBannerDetail.js';
 export { RunningAlertDetail } from './components/RunningAlertDetail.js';
@@ -38,8 +33,6 @@ export { AuditList } from './components/AuditList.js';
 export type { AuditListProps } from './components/AuditList.js';
 export { ScheduleTimeline } from './components/ScheduleTimeline.js';
 export { NavBar } from './components/NavBar.js';
-export { JobSearchBar } from './components/JobSearchBar.js';
-export type { JobSearchBarProps } from './components/JobSearchBar.js';
 export { JobFilterChips } from './components/JobFilterChips.js';
 export type { JobFilterChipsProps, JobFilterType } from './components/JobFilterChips.js';
 export { useFailures } from './hooks/useFailures.js';
