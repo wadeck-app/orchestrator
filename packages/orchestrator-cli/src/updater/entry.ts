@@ -11,6 +11,7 @@ import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolveSelfCheckTarget } from './self-check-target.js';
+import { getErrorMessage } from '../fsUtil.js';
 import * as http from 'node:http';
 import semver from 'semver';
 
@@ -59,7 +60,7 @@ if (!process.env['UPDATER_SELF_CHECK_CMD']) {
     appendLog(configDir, 'error',
       `${PKG_NAME} update aborted: cannot resolve 'npm root -g', so the post-install `
       + `self-check could not be armed and an unverified update would not be rollback-able. `
-      + `Cause: ${e instanceof Error ? e.message : String(e)}`);
+      + `Cause: ${getErrorMessage(e)}`);
     // Restore config.yml before leaving. Under UPDATER_FORCE the autoUpdate:false line was
     // commented out above, and it is otherwise only restored once runUpdater completes. Exiting
     // here would leave the user's explicit "do not auto-update" disabled for good, so failing
@@ -79,6 +80,7 @@ if (!process.env['UPDATER_SELF_CHECK_CMD']) {
     process.exit(1);
   }
   // execSync runs this through a shell, so both paths must be quoted. A default Windows
+  // violations-suppress: shared/no-out-of-repo-path prose naming the case this guards, not a path the code uses
   // install puts node under "C:\Program Files\nodejs\", and an unquoted path is split at the
   // space: the self-check then always fails and every update gets rolled back.
   process.env['UPDATER_SELF_CHECK_CMD'] = `"${process.execPath}" "${resolved.target}" cli self-check`;

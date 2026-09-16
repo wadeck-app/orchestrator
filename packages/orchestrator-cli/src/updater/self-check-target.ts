@@ -2,6 +2,7 @@
 // imported, so a test importing it would launch a real upgrade. This one is pure.
 import { join } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
+import { getErrorMessage } from '../fsUtil.js';
 
 /**
  * Locates the CLI entry point that the post-install self-check will run.
@@ -32,7 +33,7 @@ export function resolveSelfCheckTarget(
   } catch (e) {
     return {
       ok: false,
-      reason: `cannot read ${manifestPath}: ${e instanceof Error ? e.message : String(e)}`,
+      reason: `cannot read ${manifestPath}: ${getErrorMessage(e)}`,
     };
   }
   if (binRel === undefined) {
