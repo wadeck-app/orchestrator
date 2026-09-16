@@ -7,6 +7,12 @@ dist-bundle/
 # tsc's incremental build cache. It was tracked, so it showed as modified after every
 # build and sat in every diff and every commit's file list.
 *.tsbuildinfo
+# Output of orch-server/scripts/copy-app.mjs, which deletes and rewrites the whole
+# directory on every build. The sibling destination orch-server/public was already
+# ignored, so the same generated files were tracked in one place and not the other.
+# It stays in the published package: `files` in package.json wins over .gitignore,
+# verified with npm pack.
+packages/orchestrator-cli/server/public/
 .env.local
 *.log
 .idea/
