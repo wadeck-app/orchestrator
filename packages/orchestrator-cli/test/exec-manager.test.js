@@ -67,8 +67,16 @@ async function captureTree(pid, timeoutMs = 5000) {
  */
 function selfAnnouncing(dir, name, body) {
   const readyFile = path.join(dir, `${name}.ready`);
-  const js = `require('node:fs').writeFileSync(${JSON.stringify(readyFile)}, '1'); ${body}`;
-  return { readyFile, command: `node -e "${js.replace(/"/g, '\\"')}"` };
+  const scriptFile = path.join(dir, `${name}.fixture.js`);
+  // Written to a file rather than passed to `node -e`. The inline form needs the embedded quotes
+  // escaped, and cmd.exe does not treat \" inside a quoted argument the way a POSIX shell does:
+  // it held locally and misbehaved on the Windows runner, where the run then sat until the
+  // manager's default 300s timeout -- which is the 5m12s the failing step took.
+  fs.writeFileSync(
+    scriptFile,
+    `require('node:fs').writeFileSync(${JSON.stringify(readyFile)}, '1');\n${body}\n`,
+  );
+  return { readyFile, command: `node "${scriptFile}"` };
 }
 
 /** Waits for a self-announcing command to have really started. */
@@ -117,6 +125,13 @@ async function waitAllGone(pids, timeoutMs = 8000) {
 
 // Every pid this file starts, so the suite fails loudly on a leak instead of hanging on it.
 const spawnedPids = new Set();
+
+// The kill tests need the run alive until they kill it, so they cannot pass a short timeout, but
+// they were passing none at all -- which means the manager's 300s default. A fixture that fails to
+// start then parks the step for five minutes before anything reports, which is how one broken
+// command turned into a CI step that looked hung rather than failed. Long enough to be killed
+// deliberately, short enough that a broken fixture surfaces as a failure.
+const KILL_TEST_OPTS = { timeout: 30 };
 
 describe('ExecManager', () => {
   let tmpDir;
@@ -209,7 +224,7 @@ describe('ExecManager', () => {
   describe('kill() - manual termination', () => {
     test('kills a running process', async () => {
       const { readyFile, command } = selfAnnouncing(tmpDir, 'kill', 'setInterval(() => {}, 10000);');
-      const { runId, pid } = manager.fireExec(command);
+      const { runId, pid } = manager.fireExec(command, KILL_TEST_OPTS);
       await waitForReady(readyFile);
       const tree = await captureTree(pid);
 
@@ -237,7 +252,7 @@ describe('ExecManager', () => {
         tmpDir, 'kill-sigterm',
         "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
-      const { runId, pid } = manager.fireExec(command);
+      const { runId, pid } = manager.fireExec(command, KILL_TEST_OPTS);
       await waitForReady(readyFile);
       const tree = await captureTree(pid);
 
@@ -253,8 +268,8 @@ describe('ExecManager', () => {
         tmpDir, 'stop-b',
         "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
-      const a = manager.fireExec(first.command);
-      const b = manager.fireExec(second.command);
+      const a = manager.fireExec(first.command, KILL_TEST_OPTS);
+      const b = manager.fireExec(second.command, KILL_TEST_OPTS);
       await waitForReady(first.readyFile);
       await waitForReady(second.readyFile);
       const tree = [...await captureTree(a.pid), ...await captureTree(b.pid)];
