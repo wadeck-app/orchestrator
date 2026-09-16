@@ -69,6 +69,11 @@ export interface RuntimeEntry {
 }
 
 export interface RegistryData {
+  /**
+   * Notice aimed at whoever opens registry.json expecting to edit it, agents included. Written by
+   * Registry on every save; see REGISTRY_NOTICE in registry.ts for why it has to be there.
+   */
+  _README?: string;
   version: number;
   jobs: Job[];
 }
