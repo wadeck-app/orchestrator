@@ -72,17 +72,32 @@ function selfAnnouncing(dir, name, body) {
   // escaped, and cmd.exe does not treat \" inside a quoted argument the way a POSIX shell does:
   // it held locally and misbehaved on the Windows runner, where the run then sat until the
   // manager's default 300s timeout -- which is the 5m12s the failing step took.
+  // The fixture reports its own pid, not just its existence. Enumerating the tree with pidtree is
+  // the expensive part -- it shells out on Windows -- and doing it against a run that is about to
+  // time out is what made the capture race the teardown. A pid the child states about itself needs
+  // no enumeration and cannot be raced.
+  // The announcement comes last, after the body's setup has run. That is what lets a test rely on
+  // a fixture's SIGTERM handler being installed by the time it sees the pid: announcing first would
+  // let the timeout fire against a process that had not yet guarded itself, and the test would pass
+  // without exercising the thing it names.
   fs.writeFileSync(
     scriptFile,
-    `require('node:fs').writeFileSync(${JSON.stringify(readyFile)}, '1');\n${body}\n`,
+    `${body}\nrequire('node:fs').writeFileSync(${JSON.stringify(readyFile)}, String(process.pid));\n`,
   );
   return { readyFile, command: `node "${scriptFile}"` };
 }
 
-/** Waits for a self-announcing command to have really started. */
+/** Waits for a self-announcing command to have really started, and returns the pid it reported. */
 async function waitForReady(readyFile, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
-  while (!fs.existsSync(readyFile)) {
+  for (;;) {
+    try {
+      const reported = Number(fs.readFileSync(readyFile, 'utf8'));
+      if (Number.isInteger(reported) && reported > 0) {
+        spawnedPids.add(reported);
+        return reported;
+      }
+    } catch { /* not written yet, or caught mid-write */ }
     if (Date.now() >= deadline) {
       assert.fail(`the spawned process never announced itself at ${readyFile}`);
     }
@@ -132,6 +147,11 @@ const spawnedPids = new Set();
 // command turned into a CI step that looked hung rather than failed. Long enough to be killed
 // deliberately, short enough that a broken fixture surfaces as a failure.
 const KILL_TEST_OPTS = { timeout: 30 };
+
+// Short on purpose. The timeout tests below assert against the pid the fixture reported, so they
+// never enumerate a tree while the run is being torn down: widening this to fit an enumeration is
+// what turned two tests into 40s of waiting.
+const TIMEOUT_SECONDS = 5;
 
 describe('ExecManager', () => {
   let tmpDir;
@@ -188,15 +208,16 @@ describe('ExecManager', () => {
   describe('fireExec - timeout', () => {
     test('kills process on timeout', async () => {
       const { readyFile, command } = selfAnnouncing(tmpDir, 'timeout', 'setInterval(() => {}, 10000);');
-      const { runId, pid } = manager.fireExec(command, { timeout: 5 });
-      await waitForReady(readyFile);
-      const tree = await captureTree(pid);
+      const { runId, pid } = manager.fireExec(command, { timeout: TIMEOUT_SECONDS });
+      // The pid the fixture reported is the real work, not the shell wrapper the manager tracks,
+      // so asserting it died is what makes this test about the job rather than about its parent.
+      const childPid = await waitForReady(readyFile);
 
       await waitFor(() => manager.get(runId).status === 'killed', 'the timeout to fire');
       const run = manager.get(runId);
       assert.ok(run.logs.some(l => l.includes('timed out')));
       // The status field is set by the manager before anything dies, so assert the OS instead.
-      assert.deepEqual(await waitAllGone(tree), [], 'timeout left processes running');
+      assert.deepEqual(await waitAllGone([pid, childPid]), [], 'timeout left processes running');
     });
 
     test('does not timeout if process finishes quickly', async () => {
@@ -211,13 +232,14 @@ describe('ExecManager', () => {
         tmpDir, 'sigterm-timeout',
         "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
-      const { runId, pid } = manager.fireExec(command, { timeout: 5 });
-      await waitForReady(readyFile);
-      const tree = await captureTree(pid);
+      const { runId, pid } = manager.fireExec(command, { timeout: TIMEOUT_SECONDS });
+      // Reported by the fixture after its handler is installed, so the handler is provably in place
+      // before the timeout fires -- otherwise the test could pass by killing an unguarded process.
+      const childPid = await waitForReady(readyFile);
 
       await waitFor(() => manager.get(runId).status === 'killed', 'the timeout to fire');
       // The whole point of the test: a SIGTERM handler must not keep the process alive.
-      assert.deepEqual(await waitAllGone(tree), [], 'SIGTERM-ignoring process survived');
+      assert.deepEqual(await waitAllGone([pid, childPid]), [], 'SIGTERM-ignoring process survived');
     });
   });
 
