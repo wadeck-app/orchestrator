@@ -328,10 +328,10 @@ export class TrayManager extends EventEmitter {
     // Version item -- clickable, doubles as the update-check trigger.
     // The hint is only added when clicking would actually start a check: during one the label is
     // "Checking...", and once an update is found the install item above is the action, so
-    // "click for update" there would point at the wrong row.
+    // "click to check" there would point at the wrong row.
     const versionTitle = this._versionLabel
       ?? (this._updateStatus === 'idle'
-        ? `v${this._version} (click for update)`
+        ? `v${this._version} (click to check)`
         : `v${this._version}`);
     const versionEnabled = this._updateStatus !== 'checking' && this._updateStatus !== 'updating';
     items.push({ id: 'update-btn', type: 'normal', title: versionTitle, enabled: versionEnabled });

@@ -66,7 +66,7 @@ describe('version item', () => {
 
   test('invites the click while idle', () => {
     const item = versionItem(makeTrayManager());
-    assert.match(item.title, /^v1\.0\.0 \(click for update\)$/, `unexpected title: ${item.title}`);
+    assert.match(item.title, /^v1\.0\.0 \(click to check\)$/, `unexpected title: ${item.title}`);
     assert.equal(item.enabled, true);
   });
 
@@ -74,7 +74,7 @@ describe('version item', () => {
     const mgr = makeTrayManager();
     mgr._updateStatus = 'checking';
     const item = versionItem(mgr);
-    assert.ok(!/click for update/.test(item.title), `still inviting a click: ${item.title}`);
+    assert.ok(!/click to check/.test(item.title), `still inviting a click: ${item.title}`);
     // Clicking again mid-check would start a second npm view.
     assert.equal(item.enabled, false);
   });
@@ -84,7 +84,7 @@ describe('version item', () => {
     mgr._updateStatus = 'available';
     mgr._latestVersion = '9.9.9';
     const item = versionItem(mgr);
-    assert.ok(!/click for update/.test(item.title),
+    assert.ok(!/click to check/.test(item.title),
       `points at the wrong row when an update is available: ${item.title}`);
     const install = mgr._buildMenu().items.find((i) => i.id === 'update-install');
     assert.ok(install, 'no install row to point at');
