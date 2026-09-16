@@ -127,13 +127,23 @@ async function waitFor(predicate, label, timeoutMs = 20000) {
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
 }
 
-/** Waits for every pid to disappear. Returns the ones still alive at the deadline. */
+/**
+ * Waits for every pid to disappear. Returns the ones still alive at the deadline.
+ *
+ * Confirmed-dead pids are dropped from the leak set. Windows reuses pids aggressively, so a pid
+ * that died in its own test can belong to an unrelated process by the time the final sweep runs,
+ * and `isAlive` cannot tell the difference -- it reported one such pid as a leak on the windows
+ * runner. Only pids whose death was never established stay in the set.
+ */
 async function waitAllGone(pids, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
   let alive = pids.filter(isAlive);
   while (alive.length > 0 && Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 100));
     alive = alive.filter(isAlive);
+  }
+  for (const pid of pids) {
+    if (!alive.includes(pid)) spawnedPids.delete(pid);
   }
   return alive;
 }
