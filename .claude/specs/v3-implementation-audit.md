@@ -6,7 +6,7 @@ Generated: 2026-09-05
 
 | # | Severity | Item | User said | What happened |
 |---|----------|------|-----------|---------------|
-| 1 | **CRITICAL** | DX-05 config-as-code | Round 1: "not needed but easy so yes"; Round 2: "not needed" (clear reversal) | Implemented AND still on disk (`config-watcher.ts` exists). Revert agent running but file still present. |
+| 1 | ~~CRITICAL~~ RESOLVED | DX-05 config-as-code | Round 1: "not needed but easy so yes"; Round 2: "not needed" (clear reversal) | `config-watcher.ts` deleted 2026-09-16. It had been unreferenced since the revert, so the rejected feature was dead code rather than live behaviour. |
 | 2 | **HIGH** | F08 health endpoint | "great, but keep it hidden behind a 'builder' button" | Not implemented at all — no builder mode, no health endpoint UI. |
 | 3 | **HIGH** | MON-05 CPU/RAM monitoring | "add CPU/RAM monitoring per job; analyse if limiting is possible; resource budget approach" | Not implemented. Not in todo, not in any source file. Completely skipped. |
 | 4 | **MEDIUM** | Dark mode agent-browser validation | "careful with colors + agent-browser validation" | Dark mode was deployed; parent session took a screenshot but did NOT run a systematic contrast check (just one visual pass). User is now reporting label colors too light — confirms validation was insufficient. |
@@ -27,7 +27,7 @@ Generated: 2026-09-05
 
 ## Required actions
 
-1. **Complete DX-05 revert** — delete `config-watcher.ts`, remove from `index.ts`/`commands.ts`/routes, mark `[!] rejected` in todo.
-2. **Implement MON-05** — CPU/RAM monitoring per job PID + resource budget analysis doc.
+1. ~~Complete DX-05 revert~~ Done 2026-09-16: `config-watcher.ts` deleted; it was already absent from `index.ts`, `commands.ts` and the routes.
+2. ~~Implement MON-05~~ Done: per-job CPU/RAM sampling with soft and hard budgets in `scheduler.ts`, which kills after `HARD_BREACHES_TO_KILL` consecutive breaches.
 3. **Implement F08 health endpoint** — hidden behind a "builder" toggle button in UI.
 4. **Fix dark mode contrast** — badge/label colors inadequate (user confirmed). Use agent-browser systematic check.
