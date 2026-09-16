@@ -14,6 +14,6 @@
   },
   "dependencies": {
     "@wadeck-app/dsl-renderer": "^2026.9.12-062-00d7925d",
-    "@wadeck-app/dsl-ui": "^2026.9.12-062-00d7925d"
+    "@wadeck-app/dsl-ui": "^2026.9.16-064-f55be591"
   }
 }

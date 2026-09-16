@@ -83,7 +83,11 @@ if (SYNC_GLOBAL) {
   // Said out loud on purpose. The install is no longer what npm shipped, uncommitted work included.
   // Two sessions each treated it as evidence about the published package, and one nearly reported a
   // packaging regression that was only a local build.
-  const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  const dirty = execFileSync('git', ['status', '--porcelain'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim();
   console.log('\n! The global install is now your working tree, not the npm package.');
   if (dirty) {
     console.log(`  ${dirty.split('\n').length} uncommitted file(s) are live in it, so \`orch\` runs code that is not in git.`);

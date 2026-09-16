@@ -15,7 +15,9 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
  * attacker-controlled domain that can resolve to the loopback interface.
  */
 export function isAllowedOrigin(origin: string | undefined): boolean {
-  if (!origin) return true;
+  if (!origin) {
+    return true;
+  }
   let url: URL;
   try {
     url = new URL(origin);

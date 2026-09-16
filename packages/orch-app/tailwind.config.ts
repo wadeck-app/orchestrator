@@ -1,31 +1,37 @@
 import type { Config } from 'tailwindcss';
+// @ts-expect-error - plain JS preset shipped by dsl-ui, no type declarations
+import dslUiPreset, { dslUiContent } from '@wadeck-app/dsl-ui/tailwind-preset';
 
+/**
+ * The preset owns the generic colour mapping (primary, bg, surface, border,
+ * content, muted, success, danger, warning, ...) and the dark-mode selector.
+ * Restating any of that here is what let this app drift from the design system, so
+ * only orchestrator-specific colours are extended below.
+ */
 export default {
+  presets: [dslUiPreset],
   content: [
     './index.html',
     './src/**/*.{ts,tsx}',
     '../orch-ui/src/**/*.{ts,tsx}',
-    '../../node_modules/@wadeck-app/dsl-ui/src/**/*.{ts,tsx}',
+    // Required, not optional: Tailwind reads `content` from the top-level config
+    // only, so the preset cannot contribute scan paths. Without this the build
+    // still succeeds and every dsl-ui component renders unstyled.
+    ...(dslUiContent as string[]),
   ],
-  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        primary:        'var(--color-primary)',
-        'primary-hover':'var(--color-primary-hover)',
-        'on-primary':   'var(--color-on-primary)',
-        bg:             'var(--color-bg)',
-        surface:        'var(--color-surface)',
-        border:         'var(--color-border)',
-        content:        'var(--color-text)',
-        muted:          'var(--color-text-muted)',    // text-muted = #6b7280
-        'muted-bg':     'var(--color-muted-bg)',       // bg-muted-bg = #f3f4f6 (light bg)
-        success:        'var(--color-success)',
+        // Not part of dsl-ui: this app's primary buttons take their base from
+        // --color-primary, so they need their own hover and foreground tokens.
+        'primary-hover': 'var(--color-primary-hover)',
+        'on-primary':    'var(--color-on-primary)',
+        // Aliases onto dsl-ui's *-bg tokens, kept because the components already
+        // spell them this way.
         'success-subtle': 'var(--color-success-bg)',
-        danger:         'var(--color-danger)',
-        'danger-subtle':'var(--color-danger-bg)',
-        warning:        'var(--color-warning)',
-        'warning-subtle':'var(--color-warning-bg)',
+        'danger-subtle':  'var(--color-danger-bg)',
+        'warning-subtle': 'var(--color-warning-bg)',
+        // Job-domain colours: orchestrator vocabulary, not design-system vocabulary.
         'tag-1': 'var(--color-tag-1)',
         'tag-2': 'var(--color-tag-2)',
         'tag-3': 'var(--color-tag-3)',
@@ -42,7 +48,7 @@ export default {
     },
   },
   safelist: [
-    // JobStatusBadge fixed palette — light + dark variants
+    // JobStatusBadge fixed palette - light + dark variants
     'bg-yellow-100', 'text-yellow-800', 'dark:bg-yellow-900', 'dark:text-yellow-200',
     'bg-green-100',  'text-green-800',  'dark:bg-green-900',  'dark:text-green-200',
     'bg-red-100',    'text-red-800',    'dark:bg-red-900',    'dark:text-red-200',

@@ -32,7 +32,9 @@ export function classifyDashboard(
   raw: string | null,
   isPidAlive: (pid: number) => boolean = isAlive,
 ): DashboardState {
-  if (raw === null) return { kind: 'stopped' };
+  if (raw === null) {
+    return { kind: 'stopped' };
+  }
 
   let parsed: unknown;
   try {
@@ -40,7 +42,9 @@ export function classifyDashboard(
   } catch {
     return { kind: 'corrupt' };
   }
-  if (!isDashboardInfo(parsed)) return { kind: 'corrupt' };
+  if (!isDashboardInfo(parsed)) {
+    return { kind: 'corrupt' };
+  }
 
   const info: DashboardInfo = {
     port: parsed.port,
@@ -52,7 +56,9 @@ export function classifyDashboard(
 
 /** Narrows parsed JSON to the two fields the CLI needs to act on. */
 function isDashboardInfo(value: unknown): value is DashboardInfo & { startedAt?: unknown } {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
   return 'port' in value && typeof value.port === 'number'
     && 'pid' in value && typeof value.pid === 'number';
 }

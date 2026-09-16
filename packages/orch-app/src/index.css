@@ -1,28 +1,23 @@
+/* The shared palette (including color-scheme per theme) is imported from
+   @wadeck-app/dsl-ui/theme.css by main.tsx, not here: Vite resolves bare package
+   specifiers in CSS with a resolver that ignores the package exports map. This
+   app used to declare its own copy of that palette, which had drifted to a
+   different primary, a different dark surface, and --color-text where dsl-ui
+   says --color-content. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Only tokens dsl-ui does not own belong here: the orchestrator's own job-domain
+   colours, plus the two button tokens the design system has no equivalent for.
+   Everything generic (primary, bg, surface, border, content, muted, success,
+   danger, warning) now comes from theme.css. */
 :root {
-  /* Tells the UA which palette to paint scrollbars and native form controls
-     with. Without it the UA assumes light and the dark theme gets a white
-     scrollbar over a near-black page. Inherited, so declaring it here covers
-     every descendant. */
-  color-scheme: light;
-  --color-primary:        #2563eb;
-  --color-primary-hover:  #1d4ed8;
+  /* Hover for the primary button. dsl-ui exposes primary-solid-hover for its own
+     solid buttons; this app's buttons use --color-primary as their base, so the
+     hover has to be a step down from that rather than from the solid token. */
+  --color-primary-hover:  #2563eb;
   --color-on-primary:     #ffffff;
-  --color-bg:             #f9fafb;
-  --color-surface:        #ffffff;
-  --color-border:         #e5e7eb;
-  --color-text:           #111827;
-  --color-text-muted:     #6b7280;
-  --color-muted-bg:       #f3f4f6;
-  --color-success:        #16a34a;
-  --color-success-bg:     #dcfce7;
-  --color-danger:         #dc2626;
-  --color-danger-bg:      #fee2e2;
-  --color-warning:        #d97706;
-  --color-warning-bg:     #fef3c7;
   /* Tag palette - deterministic color by hash */
   --color-tag-1: #6366f1;
   --color-tag-2: #0ea5e9;
@@ -40,22 +35,9 @@
 }
 
 [data-theme="dark"] {
-  color-scheme: dark;
-  --color-primary:        #818cf8;
-  --color-primary-hover:  #6366f1;
-  --color-on-primary:     #ffffff;
-  --color-bg:             #0f1117;
-  --color-surface:        #1a1d2e;
-  --color-border:         #2d3148;
-  --color-text:           #e2e8f0;
-  --color-text-muted:     #8892b0;
-  --color-muted-bg:       #252840;
-  --color-success:        #34d399;
-  --color-success-bg:     #0f2a1e;
-  --color-danger:         #f87171;
-  --color-danger-bg:      #2d1515;
-  --color-warning:        #fbbf24;
-  --color-warning-bg:     #2d2000;
+  /* Lighter than the base in dark mode, where a darker hover reads as disabled. */
+  --color-primary-hover:  #93c5fd;
+  --color-on-primary:     #0f172a;
   /* Tag palette - slightly lighter in dark mode */
   --color-tag-1: #818cf8;
   --color-tag-2: #38bdf8;
