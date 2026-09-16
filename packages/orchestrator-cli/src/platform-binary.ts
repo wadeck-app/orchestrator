@@ -83,14 +83,27 @@ export function findTrayBinary(): string | null {
  * it does not care where npm put the platform package.
  */
 export function findDaemonEntry(): string | null {
-  // Published packages ship only the bundle. A dev checkout can hold both, and then the
-  // newest wins: picking the bundle unconditionally would silently run stale code after a
-  // `npm run build` that was not followed by `npm run bundle`.
-  const present = [
-    path.join(__dirname, 'orchestrator.cjs'),
-    path.join(__dirname, 'index.js'),
-  ].filter((p) => fs.existsSync(p));
-  if (present.length === 0) return null;
-  return present.reduce((newest, p) =>
-    fs.statSync(p).mtimeMs > fs.statSync(newest).mtimeMs ? p : newest);
+  // Published packages ship only the bundle; a dev checkout can hold both. The bundle always
+  // wins, so which code runs never depends on build order or on mtimes that `git checkout`
+  // rewrites. Newest-wins was tried and is worse than it looks: it silently swapped the daemon
+  // between bundled and tsc output, so the same command ran different code on two machines with
+  // no way to tell from the outside.
+  const bundle = path.join(__dirname, 'orchestrator.cjs');
+  const tscOut = path.join(__dirname, 'index.js');
+  const hasBundle = fs.existsSync(bundle);
+  const hasTscOut = fs.existsSync(tscOut);
+  if (!hasBundle) return hasTscOut ? tscOut : null;
+  // A stale bundle is reported instead of being worked around. Silently preferring the fresher
+  // tsc output would hide the fact that `npm run bundle` was never run, and silently running the
+  // stale bundle would hide it just as well -- so say it, and name the command that fixes it.
+  if (hasTscOut && fs.statSync(tscOut).mtimeMs > fs.statSync(bundle).mtimeMs) {
+    try {
+      process.stderr.write(
+        `[orchestrator] warning: ${tscOut} is newer than ${bundle}, so the bundle is stale and `
+        + `the daemon below is running pre-build code. Refresh it with: `
+        + `npm run bundle --workspace=packages/orchestrator-cli\n`,
+      );
+    } catch { /* EPIPE: launcher pipe closed */ }
+  }
+  return bundle;
 }

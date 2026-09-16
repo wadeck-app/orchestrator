@@ -78,12 +78,61 @@ describe('findDaemonEntry', () => {
     assert.ok(['orchestrator.cjs', 'index.js'].includes(path.basename(p)), `unexpected entry: ${p}`);
   });
 
-  test('prefers the newest when both the bundle and the tsc output exist', () => {
+  // Every layout is asserted rather than skipped. The previous version returned early when only
+  // one entry was present, which is the layout CI's build-and-test actually has -- so the whole
+  // test was a no-op exactly where it ran.
+  test('the bundle wins over the tsc output whatever the mtimes say', () => {
     const dir = path.dirname(findDaemonEntry());
     const bundle = path.join(dir, 'orchestrator.cjs');
     const tsc    = path.join(dir, 'index.js');
-    if (!fs.existsSync(bundle) || !fs.existsSync(tsc)) return; // only one layout present
-    const newest = fs.statSync(bundle).mtimeMs >= fs.statSync(tsc).mtimeMs ? bundle : tsc;
-    assert.equal(findDaemonEntry(), newest, 'stale entry selected: a build without a re-bundle would run old code');
+    const hasBundle = fs.existsSync(bundle);
+    const hasTsc    = fs.existsSync(tsc);
+    assert.ok(hasBundle || hasTsc, 'neither entry exists: run npm run build');
+
+    if (!hasBundle) {
+      assert.equal(findDaemonEntry(), tsc, 'tsc-only layout must resolve to the tsc output');
+      return;
+    }
+    if (!hasTsc) {
+      assert.equal(findDaemonEntry(), bundle, 'bundle-only layout must resolve to the bundle');
+      return;
+    }
+    // Both present: the selection must not move when the tsc output is made the newer file.
+    const original = fs.statSync(tsc);
+    try {
+      const future = new Date(fs.statSync(bundle).mtimeMs + 60_000);
+      fs.utimesSync(tsc, future, future);
+      assert.equal(findDaemonEntry(), bundle,
+        'a fresher tsc output changed the daemon entry: which code runs must not depend on build order');
+    } finally {
+      fs.utimesSync(tsc, original.atime, original.mtime);
+    }
+  });
+
+  test('warns on stderr when the bundle is stale instead of switching silently', () => {
+    const dir = path.dirname(findDaemonEntry());
+    const bundle = path.join(dir, 'orchestrator.cjs');
+    const tsc    = path.join(dir, 'index.js');
+    if (!fs.existsSync(bundle) || !fs.existsSync(tsc)) {
+      // Not a skip: with one entry there is no staleness to report, and the assertion above
+      // already pinned the resolved path for that layout.
+      assert.equal(typeof findDaemonEntry(), 'string');
+      return;
+    }
+    const original = fs.statSync(tsc);
+    const written = [];
+    const realWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (chunk) => { written.push(String(chunk)); return true; };
+    try {
+      const future = new Date(fs.statSync(bundle).mtimeMs + 60_000);
+      fs.utimesSync(tsc, future, future);
+      findDaemonEntry();
+    } finally {
+      process.stderr.write = realWrite;
+      fs.utimesSync(tsc, original.atime, original.mtime);
+    }
+    const msg = written.join('');
+    assert.match(msg, /bundle is stale/, `expected a staleness warning, got: ${msg || '(nothing)'}`);
+    assert.match(msg, /npm run bundle/, 'the warning must name the command that fixes it');
   });
 });
