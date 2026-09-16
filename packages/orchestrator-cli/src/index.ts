@@ -219,6 +219,11 @@ async function main(): Promise<void> {
           void trayManager.stop();
           void dashboardManager?.stop();
           execManager.stopSync();
+          // State batches writes on a 500ms timer and shutdown() is its only synchronous flush.
+          // Nothing called it, so a stop or restart dropped up to half a second of records: a job
+          // that had just finished, or the resource peaks of one still running. Last, so anything
+          // the calls above record still lands.
+          state.shutdown();
         },
       },
     });

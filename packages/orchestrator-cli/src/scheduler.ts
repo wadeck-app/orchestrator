@@ -33,6 +33,8 @@ interface SchedulerOptions {
   catchUpInitialDelayMs?: number;
   catchUpStaggerMs?:      number;
   hookDispatcher?:        HookDispatcher;
+  /** How often a running job's resource peaks are written to state. Lowered in tests. */
+  peakFlushMs?:           number;
 }
 
 export interface TreeUsage {
@@ -88,6 +90,7 @@ export class Scheduler extends EventEmitter {
   private readonly _catchUpInitialDelayMs: number;
   private readonly _catchUpStaggerMs:      number;
   private readonly _hookDispatcher:  HookDispatcher | null;
+  private readonly _peakFlushMs:     number;
   private readonly _retryTimers    = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly _retryCounters  = new Map<string, number>();
 
@@ -111,6 +114,7 @@ export class Scheduler extends EventEmitter {
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
     this._hookDispatcher        = options.hookDispatcher        ?? null;
+    this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
     // Ensure root tmp dir exists (will create per-job subdirs as needed).
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
@@ -363,6 +367,32 @@ export class Scheduler extends EventEmitter {
     const baseline      = this._state.getResourceBaseline(job.id);
     const softThreshold = baseline ? { cpuPct: baseline.cpuPct * 1.2, ramMb: baseline.ramMb * 1.2 } : null;
     const hardThreshold = baseline ? { cpuPct: baseline.cpuPct * 2.0, ramMb: baseline.ramMb * 2.0 } : null;
+    /**
+     * Writes the peaks measured so far onto the in-flight entry.
+     *
+     * The close handler used to be the only writer, so any run the daemon did not see finish left
+     * no numbers at all: a stop, a restart, a crash, a machine reboot. Those are precisely the runs
+     * whose resource use is worth knowing, since a job heavy enough to take the daemon down is the
+     * one you want the figures for.
+     *
+     * record() replaces the entry at the matching startedAt rather than merging into it, so every
+     * field of the in-flight entry has to be repeated here. getResourceBaseline only reads entries
+     * with a non-null exitCode, so writing peaks mid-run cannot skew the auto-budget thresholds.
+     */
+    let peakDirty    = false;
+    let peakFlushedAt = Date.now();
+    const flushPeaks = (): void => {
+      if (!peakDirty) return;
+      peakDirty     = false;
+      peakFlushedAt = Date.now();
+      this._state.record(job.id, {
+        startedAt, exitCode: null, pid, triggeredBy: trigger,
+        retryAttempt: trigger.kind === 'retry' ? trigger.attempt : undefined,
+        peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
+        peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
+      });
+    };
+
     let resourceTimer: ReturnType<typeof setInterval> | null = null;
     if (pid) {
       const sample = (): void => {
@@ -373,8 +403,11 @@ export class Scheduler extends EventEmitter {
           if (usage === null) return;
           const cpuPct = usage.cpuPct;
           const ramMb  = usage.ramMb;
-          if (cpuPct > peakCpuPct) peakCpuPct = cpuPct;
-          if (ramMb  > peakRamMb)  peakRamMb  = ramMb;
+          if (cpuPct > peakCpuPct) { peakCpuPct = cpuPct; peakDirty = true; }
+          if (ramMb  > peakRamMb)  { peakRamMb  = ramMb;  peakDirty = true; }
+          // Throttled here rather than inside flushPeaks, so the kill paths below can force a
+          // write. Peaks only ever climb, so a settled job stops writing on its own.
+          if (peakDirty && Date.now() - peakFlushedAt >= this._peakFlushMs) flushPeaks();
           const overHard = hardThreshold !== null && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb);
           // Any sample back under the hard budget means the spike was transient.
           if (!overHard) hardBreaches = 0;
@@ -399,6 +432,9 @@ export class Scheduler extends EventEmitter {
               try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
               this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
               clearInterval(resourceTimer!);
+              // Forced before the kill: the numbers that justified killing this job are the ones
+              // most worth keeping, and clearing the timer above means no later sample will write.
+              flushPeaks();
               this._killChild(child);
             }
           }
@@ -429,6 +465,8 @@ export class Scheduler extends EventEmitter {
       timeoutHandle = setTimeout(() => {
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
         this._events.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
+        // A timed-out job is one whose resource use is worth a look, so persist before killing.
+        flushPeaks();
         this._killChild(child);
       }, timeoutMs);
     }
