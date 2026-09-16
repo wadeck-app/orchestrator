@@ -58,18 +58,35 @@ describe('LogPageBreadcrumb', () => {
     expect(screen.getByTestId('log-breadcrumb')).toHaveTextContent('j1');
   });
 
-  // The separators are decorative; screen readers would otherwise announce them between the
-  // crumbs. Selected by content rather than by position: the arrow is aria-hidden too, and a
-  // querySelector for the first hidden node silently started matching the icon instead.
-  it('hides every separator from assistive technology', () => {
+  // Colour and spacing separate the crumbs. A middle dot was tried and rejected: punctuation
+  // dropped between words to imply structure is decoration, and it has to stay out of the UI.
+  it('uses no separator glyph between the crumbs', () => {
+    renderCrumb({ jobId: 'j1', jobLabel: 'WhatsApp scraper' });
+
+    const text = screen.getByTestId('log-breadcrumb').textContent ?? '';
+    // Codepoints, never literals: several of these are themselves shared/no-em-dash violations, so
+    // spelling them out would make this test fail its own project rules. The number also says
+    // exactly which character is meant, where the glyphs are easy to confuse on screen.
+    const forbidden = [0x00b7, 0x2022, 0x2023, 0x203a, 0x00bb, 0x2014, 0x2013, 0x007c];
+    for (const cp of forbidden) {
+      const label = `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`;
+      expect(text, `separator ${label} is back in the breadcrumb`)
+        .not.toContain(String.fromCharCode(cp));
+    }
+  });
+
+  // The log page grew its own back link with different padding, which put its arrow 9px above
+  // every other page's. Sharing BackLink's classes is what keeps the headers on one baseline.
+  it('reuses BackLink spacing rather than restating it', async () => {
+    const { BACK_ROW_CLS, BACK_LINK_CLS } = await import('./BackLink.js');
     renderCrumb({ jobId: 'j1', jobLabel: 'x' });
 
-    const hidden = [...screen.getByTestId('log-breadcrumb').querySelectorAll('[aria-hidden="true"]')];
-    const separators = hidden.filter(el => el.textContent === '·');
-    expect(separators.length).toBe(2);
-    // Nothing carrying the middot may be left announced.
-    const announced = [...screen.getByTestId('log-breadcrumb').querySelectorAll('span')]
-      .filter(el => el.textContent === '·' && el.getAttribute('aria-hidden') !== 'true');
-    expect(announced).toEqual([]);
+    const row = screen.getByTestId('log-breadcrumb').parentElement!;
+    expect(row.className).toBe(BACK_ROW_CLS);
+
+    const back = screen.getByRole('link', { name: 'Back' });
+    for (const cls of BACK_LINK_CLS.split(' ')) {
+      expect(back.className, `back link is missing ${cls}`).toContain(cls);
+    }
   });
 });
