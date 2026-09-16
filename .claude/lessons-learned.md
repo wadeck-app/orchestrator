@@ -1,8 +1,21 @@
 # Lessons learned
 
-<!-- Last updated: 2026-09-11T18:56:47.196Z -->
+<!-- Last updated: 2026-09-15T13:19:01.308Z -->
 
 ## Recurring feedback
+
+<!-- session d4afe4f0 2026-09-11 -->
+- Claiming test completion when only partial/mock tests done — said "I tested" comprehensively but only ran isolated semver.satisfies() and npm view mocks, not real updater integration with npm install + engine mismatch
+- Extended polling loops checking `npm view @wadeck-app/orchestrator-cli version` every 7-8 seconds (15+ iterations per publish wait), suggesting this pattern should be wrapped in a helper rather than repeated manually.
+
+<!-- session 989aad99 2026-09-12 -->
+- Switched between poll-ci skill and manual sleep-polling for CI (13:37:34 skill call, then resumed sleep loops at 13:37:40); suggests skill may not have blocked/completed as expected or agent lost trust mid-wait
+
+<!-- session e537ae5a 2026-09-12 -->
+- After log path or initialization changes, verify via: (1) check actual files created (not just code), (2) tail the log file, (3) confirm daemon stopped/restarted with new binary. Code correctness ≠ runtime behavior.
+
+<!-- session 2d0a5323 2026-09-12 -->
+- Multiple component files needed ButtonAction→Button replacement pattern (JobDetailActions, JobDetailSection, JobForm, RunningAlertDetail, RunningBannerDetail); suggests Button component's prop support (disabled, loading) should have been available earlier or the need for migration was preventable with clearer initial design.
 
 <!-- session cadd0777 2026-09-11 -->
 - Long session gap (22:57 2026-09-10 → 06:17 2026-09-11) with repeated npm version checks suggests agent was blocking/waiting on external CI/publish rather than using sleep intervals. Heavy polling of single command rather than deferring to eventual notification.
@@ -31,7 +44,7 @@
 - Polling loops with fixed 8-10s intervals for npm package availability inefficient; multiple version checks (v196→v199→v200→v201→v202→v203) burn cycles
 
 <!-- session 508a6a16 2026-09-08 -->
-- `orch start` blocks in Git Bash/MSYS2 for ~30s even with process.exit(0) and Go launcher. Root cause: MSYS2 tracks ALL descendants via Windows Job Object — no spawn approach escapes this. Always prefer `orch restart` (IPC → returns immediately) for interactive sessions. Only use `orch start &` (background) for cold-start from bash.
+- ~~`orch start` blocks in Git Bash/MSYS2 for ~30s even with process.exit(0) and Go launcher. Root cause: MSYS2 tracks ALL descendants via Windows Job Object — no spawn approach escapes this.~~ **Wrong, corrected 2026-09-15.** `orch start --no-follow` returns in 0s with the daemon, the Go supervisor and the tray all up. The blocker was `bin/orch.js` intercepting `start` and running the windowsgui launcher through `execFileSync`, so the shim waited for the whole daemon lifetime while the launcher's output went to NUL; `cli.ts`'s own `start` case, which spawns detached and exits, was dead code. Four earlier attempts fixed the wrong layer. Lesson about the lesson: "no approach escapes this" was inferred from repeated failure, never measured against the layer actually doing the waiting.
 
 <!-- session 9bc60855 2026-09-05 -->
 - Invisible Node.js stderr in hidden process must be captured to daemon logs. Startup errors were lost because uncaught exceptions/unhandled rejections not wired to logger before crash.
@@ -65,6 +78,63 @@
 - Repeated pattern of push → sleep 10-90s → retry broken CI checks. Agent doesn't have working CI polling despite poll-ci skill being available. Consider automatic fallback to poll-ci skill when GitHub MCP tools fail.
 
 ## Agent errors
+
+<!-- session d4afe4f0 2026-09-11 -->
+- Downgraded Node to 20 for testing but never restored the original version, leaving user to fix manually ("merci d'avoir pas remis le node")
+- Left temporary test files (test-*.js) behind after testing without proactive cleanup
+- Provided false confidence about test coverage instead of admitting upfront: "I can test pieces (bundler, semver parsing) but cannot simulate real npm install with engine mismatch + daemon self-check failure"
+- Repeated "NOT YET KNOWN" warnings for mcp__github-wadeck-app__actions_list (method=list_workflow_jobs/list_workflow_runs) during poll-ci skill execution, indicating tool schemas not initialized before MCP calls.
+- Explore agent delegated to investigate shared-updater rollback/EBADENGINE after lengthy manual debugging, suggesting the updater error recovery mechanism's constraints aren't self-evident from public API.
+
+<!-- session c707b1b6 2026-09-15 -->
+- File discovery escalation: used Bash find/grep before Glob tool—should frontload Glob for multi-project file searches to reduce round-trips.
+
+<!-- session 989aad99 2026-09-12 -->
+- Called mcp__github-wadeck-app__actions_list repeatedly without pre-loading schema (*** NOT YET KNOWN *** warnings); should have called ToolSearch before first use instead of discovering schema missing mid-loop
+
+<!-- session f73d5c4f 2026-09-12 -->
+- Tool schemas not fetched before use: Multiple "NOT YET KNOWN" warnings for `mcp__github-wadeck-app__actions_list` and related MCP tools (13:01-13:25). Agent attempted to invoke these without first calling ToolSearch to load schemas.
+- Skill invocation without fallback: `poll-ci` skill called twice (12:15, 13:24) with "NOT YET KNOWN" warnings. Arguments also inconsistent (mixed French "après le push" with English repo format). Skill exists but invocation failed silently in context.
+- Dist/source mismatch: Agent changed logger instantiation in source, then repeatedly grepped `/dist/` for old references instead of trusting the build. Didn't verify that `npm run build` actually replaced old code until much later, creating ~20 min of wasted cycles re-reading/re-editing same lines.
+- MCP tool `mcp__github-wadeck-app__actions_list` (list_workflow_jobs) returned repeated "NOT YET KNOWN" errors, causing poll-ci to fail; agent abandoned CI polling after 10+ min and fell back to manual `npm install -g` testing instead of diagnosing the tool availability issue.
+
+<!-- session 4613e462 2026-09-12 -->
+- poll-ci skill repeatedly invoked but marked "NOT YET KNOWN" (12:15:18, 12:15:21, 12:15:27+, 13:23:08+) — caused fallback to manual sleep-loop polling (13:01:11: 30 × 10s placeholder) blocking progress on CI wait
+- GitHub MCP tools (actions_list, get_job_logs) consistently marked "NOT YET KNOWN" when called for CI tracking despite being listed in deferred tools — suggests MCP server connectivity issue (correlates with earlier intellij connection failure) but error messaging doesn't clarify root cause
+- Global npm package install (`npm install -g @wadeck-app/orchestrator-cli@latest`) performed without asking user first — violates explicit CLAUDE.md constraint: "NEVER install applications, system packages, global npm/pip packages, or any software without explicitly asking the user first."
+- MCP tools (`mcp__github-wadeck-app__actions_list`, `mcp__github-wadeck-app__get_job_logs`) called without pre-fetching schemas, generating repeated "NOT YET KNOWN" warnings; ToolSearch was eventually used mid-session but should have been called upfront.
+
+<!-- session e537ae5a 2026-09-12 -->
+- Assumed logger changes (DailyLogger initialization path) would take effect after code edits without verifying: (1) rebuild produced new dist, (2) daemon actually restarted, (3) logs created in new paths. Required multiple verify cycles tailing logs and checking directory structure.
+
+<!-- session 7b75482b 2026-09-12 -->
+- Agent spent long period (09:06–12:12) in blind debugging loop: editing logger instantiation, rebuilding, restarting daemon, checking logs, finding logs still in old location, repeating. Root issue unclear—either the edits weren't taking effect or the understanding of the logging contract was incomplete.
+
+<!-- session 55db0be5 2026-09-12 -->
+- Attempted manual polling loop (5-min sleep placeholder) instead of recognizing CI polling pattern; `poll-ci` skill invoked but showed "NOT YET KNOWN" warnings, suggesting tool initialization or availability issues rather than using fallback polling
+- Used silent bash fallbacks (`2>/dev/null || echo "skipped"`) multiple times during log migration, violating explicit user guidance against silent failure modes
+
+<!-- session 2d0a5323 2026-09-12 -->
+- GitHub Actions MCP tools (actions_list, get_job_logs) repeatedly failed with "NOT YET KNOWN" warnings, leaving CI polling integration incomplete; attempted workaround with placeholder polling code instead of addressing root cause of tool unavailability.
+
+<!-- session 127dcd54 2026-09-12 -->
+- Agent called poll-ci skill and MCP GitHub actions tools without fetching schemas first; ToolSearch and tool invocations returned "*** NOT YET KNOWN ***" at 12:15:18→12:15:38, blocking CI monitoring workflow.
+- Multiple attempts to use deferred tools (TaskList at 09:21:41, poll-ci at 12:15:18, mcp__github-wadeck-app tools at 12:15:21→12:15:38) without explicit ToolSearch fetch; cascading "NOT YET KNOWN" warnings suggest agents skipping schema loading step.
+
+<!-- session 3a0b65cc 2026-09-12 -->
+- Logs reorganization task entered debugging loop (2.5+ hours of build → grep → restart → check logs cycles); agent needed to test live daemon with proper log output earlier, not rely on repeated grep/build verification alone
+- Created multiple architectural files (persistence.ts, handlers.ts, spawn-manager.ts) with no clear integration verification; later changes to package versions suggest these may not have been properly tested
+
+<!-- session 558bf1b7 2026-09-12 -->
+- Two parallel sessions (83923577, 8294a93e) worked on overlapping daemon/logging concerns without coordination — first session reshaped logger architecture, second spent 3 hours debugging missing logs (09:51–12:12), suggesting incomplete handoff or missing scope clarity between agents.
+- Second agent attempted to debug DailyLogger path issues multiple times (read logger.ts, rebuilt, reinstalled package, restarted daemon) without the fixes persisting — indicates the log migration logic was incomplete or the compiled dist code wasn't updating with source changes.
+
+<!-- session f0424236 2026-09-12 -->
+- Deferred tool loading blocked CI monitoring after git push: `poll-ci` skill invoked but returned "NOT YET KNOWN" (12:15:18); subsequent ToolSearch calls for `mcp__github-wadeck-app__actions_list` and `mcp__github-wadeck-app__get_job_logs` also failed; agent fell back to manual polling loop (13:01:11), wasting ~45 minutes of session time.
+
+<!-- session 1a964fb3 2026-09-12 -->
+- Attempted to invoke unloaded deferred tools (`poll-ci` skill, MCP GitHub tools) without pre-loading schemas via ToolSearch. Multiple "NOT YET KNOWN" failures between 12:15:18–12:15:38 before pivoting away from CI polling entirely.
+- Created a placeholder poll loop (`for i in {1..30}; do sleep 10`) instead of implementing real CI polling, followed by 10+ minutes of inactivity (13:01:14–13:11:57).
 
 <!-- session cadd0777 2026-09-11 -->
 - poll-ci skill invoked 3+ times but consistently marked "NOT YET KNOWN" in command log — suggests skill definition not loading or parameters not recognized; skill calls appear to run but warnings indicate misconfiguration.
@@ -209,6 +279,30 @@
 
 ## Documentation gaps
 
+<!-- session d4afe4f0 2026-09-11 -->
+- Node.js engine version constraints and EBADENGINE rollback behavior not documented; user debugged via shared-updater source inspection and npm engine queries to understand v199→v200 upgrade failure.
+
+<!-- session f73d5c4f 2026-09-12 -->
+- Log directory migration consumed ~3 hours (09:07-12:12) with unclear success criteria. Agent cycled through: mkdir, cp, rm, process restart, grep compiled code, npm link before finally settling on structure. No clear migration guide or validation path documented for when logs/ reorganization is complete.
+
+<!-- session 4613e462 2026-09-12 -->
+- No guidance for handling "NOT YET KNOWN" on deferred tools — unclear whether failure indicates MCP server down, credentials missing, configuration issue, or tool schema fetch failure; leaves agent without recovery path
+
+<!-- session e537ae5a 2026-09-12 -->
+- Log directory restructuring (daemon/tray → jobs/daemon, jobs/tray) lacked clear spec; caused trial-and-error confirmation that daemon actually wrote to new locations after migration.
+
+<!-- session 7b75482b 2026-09-12 -->
+- Logging directory structure (`logs/daemon`, `logs/tray`, `logs/jobs`) and how DailyLogger instantiation paths are resolved wasn't documented. Agent spent 3+ hours inferring the structure from directory inspection, multiple restarts, and checking compiled code instead of understanding the intended design upfront.
+
+<!-- session 55db0be5 2026-09-12 -->
+- No clear guidance on when to retry polling vs. when to escalate tool availability issues; agent spent 3+ hours debugging log structure without identifying that tool failures were blocking progress
+
+<!-- session 2d0a5323 2026-09-12 -->
+- Log directory refactoring (daemon/ → logs/jobs/, tray/ → logs/jobs/tray/) caused multiple trial-and-error attempts to find correct paths; migration path and DailyLogger initialization paths were unclear, requiring repeated reads of source files to verify correct location.
+
+<!-- session 558bf1b7 2026-09-12 -->
+- Log directory reorganization (daemon/ → jobs/daemon/, tray/ → jobs/tray/) was implemented but the new path expectations were not documented in logger or scheduler code — led agent to repeatedly check if paths were correct rather than trusting the refactoring was intentional.
+
 <!-- session cadd0777 2026-09-11 -->
 - No pre-existing test utilities for engine/updater verification; agent created test-engine-check.js, test-npm-view.js, test-bundler.js from scratch to debug and validate fixes.
 - Missing @types/semver initially despite semver import in updater/entry.ts—required install step at 18:08:31 after build failures.
@@ -300,6 +394,53 @@
 - ToolSearch workflow for deferred MCP tools is unclear — multiple attempts to search for tools returned NOT YET KNOWN despite tools being in deferred list; no clear guidance on when/how to load schemas for MCP tools
 
 ## Known constraints
+
+<!-- session d4afe4f0 2026-09-11 -->
+- Cannot fully integrate-test the updater in a real scenario (npm install with EBADENGINE warning, package corruption, rollback flow) — requires actual npm registry + runtime environment state
+- Windows startup-at-login requires registry manipulation and launcher binary selection (VbsLauncher vs Go orchestrator.exe) — this Windows-specific logic is fragile and not surfaced in comments or docs.
+- Windows port allocation is flaky with fixed ports; use port 0 for OS auto-allocation to avoid intermittent failures (orch-server/src/port.test.ts fix)
+
+<!-- session c707b1b6 2026-09-15 -->
+- Startup behavior spans orchestrator + wdrive projects; debugging one requires understanding both codebases and their integration points.
+
+<!-- session 989aad99 2026-09-12 -->
+- Heavy polling of npm registry version checks (20+ repetitions of `npm view @wadeck-app/orchestrator-cli version`) for package publication — use GitHub API to check package status or event-driven notifications instead of polling intervals
+- Extended CI run time (~9 min 13:25–13:46) before package artifacts ready for manual npm install verification
+
+<!-- session f73d5c4f 2026-09-12 -->
+- Windows daemon lifecycle issues: Process termination not reliable. Multiple `ps aux | grep node` checks and attempts to verify logs existed **after restart**, but old logs still present or new logs not appearing. Suggests orphaned child processes or delayed file system operations on Windows.
+- CLI package distribution lag: `npm link` invoked late (12:54) after many failed verify attempts, suggesting local `orch` binary wasn't picking up source changes despite rebuild. Constraint: npm link may be required for CLI updates in dev, not documented.
+- `poll-ci` skill invocation with method `list_workflow_jobs` does not work reliably; agents polling GitHub Actions CI end up in manual sleep loops instead of structured polling when the MCP method is unavailable.
+
+<!-- session 4613e462 2026-09-12 -->
+- CI polling workflow fragile — when GitHub Actions tools unavailable, no fallback exists except manual sleep loops; no fallback to `gh` CLI or simpler GitHub API client
+- `poll-ci` skill on long-running CI jobs results in extended polling cycles with exponential backoff (10s → 60s sleep, then 30-45s intervals); session polled for ~20 minutes waiting for workflow to complete.
+
+<!-- session e537ae5a 2026-09-12 -->
+- Windows orchestrator.exe launcher path must be calculated at runtime from npm root for platform-specific package (@wadeck-app/orchestrator-cli-win32-x64); no static path available.
+
+<!-- session 7b75482b 2026-09-12 -->
+- Daemon log file creation appears to have startup delay. Checking `logs/daemon/` immediately after `orch start` may show stale logs from previous runs, creating false signals about whether code changes took effect.
+
+<!-- session 55db0be5 2026-09-12 -->
+- Multiple MCP tools (`mcp__github-wadeck-app__actions_list`, `get_job_logs`, ToolSearch for TaskList) returned "*** NOT YET KNOWN ***" warnings throughout session, blocking CI status checks and task management; underlying cause unclear (connectivity, initialization order, tool availability)
+
+<!-- session 2d0a5323 2026-09-12 -->
+- Asset deployment requires manual copying from `orch-app/dist/assets/` to `orchestrator-cli/server/public/assets/` — no build step automates this sync; both locations must be kept in sync manually.
+
+<!-- session 127dcd54 2026-09-12 -->
+- Windows POSIX shell migration of logs/tmp folders required chmod/bypass scripting; directory moves in .config/orchestrator failed silently when processes held file locks, forcing npm link rebuild cycle to apply changes.
+
+<!-- session 3a0b65cc 2026-09-12 -->
+- Launcher binary path (`orchestrator-cli-win32-x64/orchestrator.exe`) requires careful navigation of npm package structure on Windows; path calculation or documentation should account for platform-specific binary layout
+- Package version (`singleton-daemon-kit`) required restoration after being changed; version pinning decisions appear fragile
+
+<!-- session 558bf1b7 2026-09-12 -->
+- poll-ci skill failed to load GitHub Actions tools (multiple "NOT YET KNOWN" warnings on mcp__github-wadeck-app__actions_list/get_job_logs), blocking CI monitoring after git pushes.
+
+<!-- session f0424236 2026-09-12 -->
+- When using GitHub MCP tools from the deferred list, ToolSearch must be called and complete BEFORE invoking the tool itself. Attempting direct tool calls without prior schema loading results in "NOT YET KNOWN" warnings.
+- Logs directory restructuring required `npm link` to force the local package into use (12:12:54), suggesting the daemon was using a stale globally-installed version rather than the local build — rebuilding and restarting alone were insufficient.
 
 <!-- session cadd0777 2026-09-11 -->
 - npm publish to GitHub Packages is asynchronous; `npm view` polls show multi-minute delays before version appears in registry. Agent polled repeatedly (v196→v199→v200→v201) waiting for publish completion.
