@@ -110,6 +110,7 @@ import { JobListSection } from '../../../orch-ui/src/components/JobListSection.j
 import { JobSearchBar } from '../../../orch-ui/src/components/JobSearchBar.js'
 import { JobStatusBadge } from '../../../orch-ui/src/components/JobStatusBadge.js'
 import { JobToggle } from '../../../orch-ui/src/components/JobToggle.js'
+import { LogPageBreadcrumb } from '../../../orch-ui/src/components/LogPageBreadcrumb.js'
 import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
 import { LogViewerSection } from '../../../orch-ui/src/components/LogViewerSection.js'
 import { NextFireCountdown } from '../../../orch-ui/src/components/NextFireCountdown.js'
@@ -1668,13 +1669,24 @@ export const JobToggleEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const LogPageBreadcrumbEntry: ComponentRegistryEntry = {
+	name: 'LogPageBreadcrumb', category: 'composite', tags: ["header","navigation","log"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/LogPageBreadcrumb.js').LogPageBreadcrumbProps['jobId']
+		const jobLabel = resolveExpressionValue(node['jobLabel'], ctx) as import('../../../orch-ui/src/components/LogPageBreadcrumb.js').LogPageBreadcrumbProps['jobLabel']
+		return <LogPageBreadcrumb jobId={jobId} jobLabel={jobLabel} />
+	},
+}
+
 export const LogViewerEntry: ComponentRegistryEntry = {
 	name: 'LogViewer', category: 'composite', tags: ["log","viewer","streaming","sse"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['jobId']
 		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['apiBase']
-		return <LogViewer jobId={jobId} apiBase={apiBase} />
+		const fill = resolveExpressionValue(node['fill'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['fill']
+		return <LogViewer jobId={jobId} apiBase={apiBase} fill={fill} />
 	},
 }
 
@@ -1894,6 +1906,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	JobSearchBarEntry,
 	JobStatusBadgeEntry,
 	JobToggleEntry,
+	LogPageBreadcrumbEntry,
 	LogViewerEntry,
 	LogViewerSectionEntry,
 	NextFireCountdownEntry,

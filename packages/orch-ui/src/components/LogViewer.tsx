@@ -11,7 +11,21 @@ import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../t
 // min-h-0 lets the log pane shrink inside a flex parent; max-h bounds it when the host
 // page provides no height, without which overflow-auto never scrolls and follow-tail
 // would silently do nothing.
-const CONTAINER_CLS      = 'flex flex-col h-full min-h-0 max-h-[75vh]';
+// [color-scheme:dark] makes the UA paint this widget's scrollbar, and the native
+// select/input chrome in the toolbar, with its dark palette. It is set here and
+// inherited rather than set on the pane alone, because the whole widget stays
+// dark in the light theme - where an inherited light scheme yields a white
+// scrollbar over a near-black pane.
+const CONTAINER_BASE_CLS = 'flex flex-col min-h-0 [color-scheme:dark]';
+// Fallback for hosts that give the widget no height: h-full would resolve to
+// auto, so the pane would never overflow and follow-tail would silently do
+// nothing. 75vh keeps it scrollable without the host's help.
+const CONTAINER_CAPPED_CLS = `${CONTAINER_BASE_CLS} h-full max-h-[75vh]`;
+// Claims the viewport minus the log page's chrome: NavBar (2.5rem) + PageContent's
+// top and bottom p-4 (2rem) + the LogPageBreadcrumb row and the space-y-4 gap above
+// it (2.25rem). DSL sections stack in a plain space-y container rather than a flex
+// column, so flex-1 would collapse to nothing here.
+const CONTAINER_FILL_CLS = `${CONTAINER_BASE_CLS} h-[calc(100vh-6.75rem)]`;
 const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-t';
 const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-sm p-4 rounded-b';
 const SEARCH_CLS         = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs w-40 focus:outline-none focus:border-gray-400 placeholder-gray-500';
@@ -91,13 +105,15 @@ function fmtRunName(name: string, index: number, total: number): string {
 export interface LogViewerProps {
   jobId: string;
   apiBase?: string;
+  /** Grow to the host's height instead of stopping at the 75vh fallback cap. */
+  fill?: boolean;
 }
 
 /**
  * @registryCategory composite
  * @registryTags log viewer streaming sse
  */
-export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactElement {
+export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps): React.ReactElement {
   const [lines, setLines] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -212,7 +228,7 @@ export function LogViewer({ jobId, apiBase = '' }: LogViewerProps): React.ReactE
   const matchCount = search ? filtered.length : null;
 
   return (
-    <div className={CONTAINER_CLS}>
+    <div className={fill ? CONTAINER_FILL_CLS : CONTAINER_CAPPED_CLS}>
       {/* violations-suppress-start: tailwind/no-raw-color-class terminal palette - intentional dark theme separate from app theme tokens */}
       <div className={LOG_HEADER_CLS}>
         {runs.length > 1 && (

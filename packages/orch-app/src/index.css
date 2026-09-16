@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root {
+  /* Tells the UA which palette to paint scrollbars and native form controls
+     with. Without it the UA assumes light and the dark theme gets a white
+     scrollbar over a near-black page. Inherited, so declaring it here covers
+     every descendant. */
+  color-scheme: light;
   --color-primary:        #2563eb;
   --color-primary-hover:  #1d4ed8;
   --color-on-primary:     #ffffff;
@@ -35,6 +40,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --color-primary:        #818cf8;
   --color-primary-hover:  #6366f1;
   --color-on-primary:     #ffffff;

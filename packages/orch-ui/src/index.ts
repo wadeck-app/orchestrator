@@ -12,6 +12,7 @@ export { RunHistory } from './components/RunHistory.js';
 export { JobCard } from './components/JobCard.js';
 export { JobForm } from './components/JobForm.js';
 export { LogViewer } from './components/LogViewer.js';
+export { LogPageBreadcrumb } from './components/LogPageBreadcrumb.js';
 export { JobListSection } from './components/JobListSection.js';
 export { JobDetailSection } from './components/JobDetailSection.js';
 export { JobFormSection } from './components/JobFormSection.js';

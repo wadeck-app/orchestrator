@@ -33,6 +33,52 @@ describe('LogViewer', () => {
     expect(pre?.textContent?.trim()).toBe('');
   });
 
+  // The widget keeps its dark terminal palette in both app themes, so it must
+  // not inherit the app's color-scheme: in light theme that paints a white
+  // scrollbar over the near-black pane. It pins the dark scheme on the root and
+  // lets the scroll pane and the toolbar's native controls inherit it.
+  //
+  // Asserted on the class name, not getComputedStyle: Tailwind never runs in the
+  // test pipeline, so jsdom resolves no stylesheet and a computed-style check
+  // would pass against an empty cascade. Real rendering is verified in-browser.
+  it('pins a dark color-scheme covering the scroll pane and toolbar controls', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    const { container } = renderInRouter(<LogViewer jobId="j1" />);
+
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toMatch(/\[color-scheme:dark\]/);
+
+    // The scroll container must sit inside that subtree for inheritance to reach it.
+    const pre = root.querySelector('pre');
+    expect(pre).not.toBeNull();
+    expect(pre!.className).toMatch(/overflow-auto/);
+  });
+
+  // The 75vh cap is a fallback for hosts that give the widget no height: without
+  // it `h-full` resolves to auto, the pane never overflows and follow-tail
+  // silently does nothing. A host that does manage the height must be able to
+  // drop the cap, otherwise the pane cannot use the space the host reserved.
+  it('caps its height at 75vh by default', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    const { container } = renderInRouter(<LogViewer jobId="j1" />);
+
+    expect((container.firstElementChild as HTMLElement).className).toMatch(/max-h-\[75vh\]/);
+  });
+
+  // DSL pages stack sections in a plain space-y container, not a flex column, so
+  // flex-1 would collapse. fill claims the viewport height minus the page chrome
+  // instead, which is what lets the pane use the space a compact header frees up.
+  it('claims the viewport height instead of the 75vh cap when fill is set', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    const { container } = renderInRouter(<LogViewer jobId="j1" fill />);
+
+    const cls = (container.firstElementChild as HTMLElement).className;
+    expect(cls).not.toMatch(/max-h-\[75vh\]/);
+    expect(cls).toMatch(/h-\[calc\(100vh-/);
+    // min-h-0 is what lets the pane shrink and scroll rather than grow forever.
+    expect(cls).toMatch(/min-h-0/);
+  });
+
   it('shows "N lines" in header and log content after lines arrive', () => {
     vi.stubGlobal('EventSource', MockEventSource);
     renderInRouter(<LogViewer jobId="j1" />);

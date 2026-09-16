@@ -8,10 +8,12 @@ $sources:
 
 $type: PageContent
 sections:
-  - $type: BackLink
-    label: Back to job
-  - $type: PageHeader
-    title: $sources.jobData.job.label
-    subtitle: Logs
+  # One compact row instead of a BackLink, a text-2xl PageHeader and a redundant
+  # "Logs" subtitle stacked over each other: those pushed the first log line to
+  # y=243 on a 900px viewport. `fill` hands the reclaimed height to the log pane.
+  - $type: LogPageBreadcrumb
+    jobId: $route.id
+    jobLabel: $sources.jobData.job.label
   - $type: LogViewer
     jobId: $route.id
+    fill: true
