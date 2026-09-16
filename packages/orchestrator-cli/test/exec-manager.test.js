@@ -56,6 +56,44 @@ async function captureTree(pid, timeoutMs = 5000) {
   return tree;
 }
 
+/**
+ * A command that reports when it is actually running, plus the file it reports through.
+ *
+ * Polling pidtree until a second pid appears is a race against cmd.exe: on a loaded CI runner it
+ * had still not spawned node when the budget expired, and the run's own timeout then tore the
+ * tree down, so the capture came back with one pid and failed the meaningfulness check. Waiting
+ * longer only widens the race. Having the child announce itself removes it: once the file exists,
+ * the descendant is running, so the tree is guaranteed to have the wrapper and it.
+ */
+function selfAnnouncing(dir, name, body) {
+  const readyFile = path.join(dir, `${name}.ready`);
+  const js = `require('node:fs').writeFileSync(${JSON.stringify(readyFile)}, '1'); ${body}`;
+  return { readyFile, command: `node -e "${js.replace(/"/g, '\\"')}"` };
+}
+
+/** Waits for a self-announcing command to have really started. */
+async function waitForReady(readyFile, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!fs.existsSync(readyFile)) {
+    if (Date.now() >= deadline) {
+      assert.fail(`the spawned process never announced itself at ${readyFile}`);
+    }
+    await new Promise(r => setTimeout(r, 25));
+  }
+}
+
+/**
+ * Waits for a run to reach a terminal state.
+ *
+ * Replaces a fixed 500ms sleep before asserting the final status. That constant held locally and
+ * failed on a Windows runner where cmd.exe needed longer, which says nothing about the code under
+ * test: the assertion is about the end state, so the wait belongs to the condition, not the clock.
+ */
+async function waitForFinished(manager, runId) {
+  await waitFor(() => manager.get(runId)?.finishedAt != null, `run ${runId} to finish`);
+  return manager.get(runId);
+}
+
 /** Waits for a condition, failing with a named reason instead of a bare timeout. */
 async function waitFor(predicate, label, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
@@ -111,9 +149,7 @@ describe('ExecManager', () => {
       assert.ok(typeof pid === 'number' || pid === null);
       assert.ok(runId.startsWith('exec-'));
 
-      // Wait for completion
-      await new Promise(r => setTimeout(r, 500));
-      const run = manager.get(runId);
+      const run = await waitForFinished(manager, runId);
       assert.ok(run);
       assert.equal(run.status, 'done');
       assert.equal(run.exitCode, 0);
@@ -122,26 +158,24 @@ describe('ExecManager', () => {
 
     test('captures command failure exit codes', async () => {
       const { runId } = manager.fireExec('node -e "process.exit(42)"');
-      await new Promise(r => setTimeout(r, 500));
-      const run = manager.get(runId);
+      const run = await waitForFinished(manager, runId);
       assert.equal(run.status, 'failed');
       assert.equal(run.exitCode, 42);
     });
 
     test('captures stderr output', async () => {
       const { runId } = manager.fireExec('node -e "console.error(\'error msg\')"');
-      await new Promise(r => setTimeout(r, 500));
-      const run = manager.get(runId);
+      const run = await waitForFinished(manager, runId);
       assert.ok(run.logs.some(l => l.includes('error msg')));
     });
   });
 
   describe('fireExec - timeout', () => {
-    // timeout: 5 rather than 1 so the capture has room before the kill fires. With 1s, a slow
-    // runner had not spawned the descendant yet by capture time.
     test('kills process on timeout', async () => {
-      const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"', { timeout: 5 });
-      const tree = await captureTree(pid, 3000);
+      const { readyFile, command } = selfAnnouncing(tmpDir, 'timeout', 'setInterval(() => {}, 10000);');
+      const { runId, pid } = manager.fireExec(command, { timeout: 5 });
+      await waitForReady(readyFile);
+      const tree = await captureTree(pid);
 
       await waitFor(() => manager.get(runId).status === 'killed', 'the timeout to fire');
       const run = manager.get(runId);
@@ -152,18 +186,19 @@ describe('ExecManager', () => {
 
     test('does not timeout if process finishes quickly', async () => {
       const { runId } = manager.fireExec('echo fast', { timeout: 10 });
-      await new Promise(r => setTimeout(r, 500));
-      const run = manager.get(runId);
+      const run = await waitForFinished(manager, runId);
       assert.equal(run.status, 'done');
       assert.equal(run.exitCode, 0);
     });
 
     test('a target that ignores SIGTERM is still killed on timeout', async () => {
-      const { runId, pid } = manager.fireExec(
-        'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"',
-        { timeout: 5 }
+      const { readyFile, command } = selfAnnouncing(
+        tmpDir, 'sigterm-timeout',
+        "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
-      const tree = await captureTree(pid, 3000);
+      const { runId, pid } = manager.fireExec(command, { timeout: 5 });
+      await waitForReady(readyFile);
+      const tree = await captureTree(pid);
 
       await waitFor(() => manager.get(runId).status === 'killed', 'the timeout to fire');
       // The whole point of the test: a SIGTERM handler must not keep the process alive.
@@ -173,7 +208,9 @@ describe('ExecManager', () => {
 
   describe('kill() - manual termination', () => {
     test('kills a running process', async () => {
-      const { runId, pid } = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
+      const { readyFile, command } = selfAnnouncing(tmpDir, 'kill', 'setInterval(() => {}, 10000);');
+      const { runId, pid } = manager.fireExec(command);
+      await waitForReady(readyFile);
       const tree = await captureTree(pid);
 
       assert.equal(manager.kill(runId), true);
@@ -184,7 +221,7 @@ describe('ExecManager', () => {
 
     test('returns false if process not running', async () => {
       const { runId } = manager.fireExec('echo done');
-      await new Promise(r => setTimeout(r, 500));
+      await waitForFinished(manager, runId);
 
       const result = manager.kill(runId);
       assert.equal(result, false);
@@ -196,9 +233,12 @@ describe('ExecManager', () => {
     });
 
     test('kill() defeats a SIGTERM handler', async () => {
-      const { runId, pid } = manager.fireExec(
-        'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"'
+      const { readyFile, command } = selfAnnouncing(
+        tmpDir, 'kill-sigterm',
+        "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
+      const { runId, pid } = manager.fireExec(command);
+      await waitForReady(readyFile);
       const tree = await captureTree(pid);
 
       manager.kill(runId);
@@ -208,10 +248,15 @@ describe('ExecManager', () => {
     });
 
     test('stop() kills anything still running', async () => {
-      const a = manager.fireExec('node -e "setInterval(() => {}, 10000)"');
-      const b = manager.fireExec(
-        'node -e "process.on(\'SIGTERM\', () => {/* ignore */}); setInterval(() => {}, 10000)"'
+      const first  = selfAnnouncing(tmpDir, 'stop-a', 'setInterval(() => {}, 10000);');
+      const second = selfAnnouncing(
+        tmpDir, 'stop-b',
+        "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
+      const a = manager.fireExec(first.command);
+      const b = manager.fireExec(second.command);
+      await waitForReady(first.readyFile);
+      await waitForReady(second.readyFile);
       const tree = [...await captureTree(a.pid), ...await captureTree(b.pid)];
 
       await manager.stop();
@@ -224,7 +269,7 @@ describe('ExecManager', () => {
     test('tracks startedAt, finishedAt timestamps', async () => {
       const before = new Date();
       const { runId } = manager.fireExec('echo test');
-      await new Promise(r => setTimeout(r, 500));
+      await waitForFinished(manager, runId);
       const after = new Date();
 
       const run = manager.get(runId);
@@ -237,9 +282,8 @@ describe('ExecManager', () => {
 
     test('stores runId, command, label', async () => {
       const { runId } = manager.fireExec('echo test', { label: 'my-exec' });
-      await new Promise(r => setTimeout(r, 500));
+      const run = await waitForFinished(manager, runId);
 
-      const run = manager.get(runId);
       assert.equal(run.runId, runId);
       assert.equal(run.command, 'echo test');
       assert.equal(run.label, 'my-exec');
@@ -249,9 +293,8 @@ describe('ExecManager', () => {
       const { runId } = manager.fireExec(
         'node -e "for (let i = 0; i < 1500; i++) console.log(\'line\', i)"'
       );
-      await new Promise(r => setTimeout(r, 1000));
+      const run = await waitForFinished(manager, runId);
 
-      const run = manager.get(runId);
       assert.ok(run.logs.length <= 1000, `logs.length = ${run.logs.length}, expected <= 1000`);
     });
   });
@@ -260,27 +303,38 @@ describe('ExecManager', () => {
     test('list() returns all runs', async () => {
       const { runId: id1 } = manager.fireExec('echo 1');
       const { runId: id2 } = manager.fireExec('echo 2');
-      await new Promise(r => setTimeout(r, 500));
+      await Promise.all([waitForFinished(manager, id1), waitForFinished(manager, id2)]);
 
       const all = manager.list();
       assert.ok(all.some(r => r.runId === id1));
       assert.ok(all.some(r => r.runId === id2));
     });
 
+    // Previously ended by fetching the run into an unused variable under a comment about being
+    // timing-sensitive, so it asserted nothing at all and passed whatever cleanup did.
     test('cleanup timer removes old runs after TTL', async () => {
       const { runId } = manager.fireExec('echo test', { timeout: 0 });
-      await new Promise(r => setTimeout(r, 500));
+      const run = await waitForFinished(manager, runId);
 
-      const run = manager.get(runId);
-      // Fake finishedAt to be older than TTL (3600000ms = 1h)
-      run.finishedAt = new Date(Date.now() - 4000000).toISOString();
+      // Age the run past its TTL rather than waiting an hour for it.
+      run.finishedAt = new Date(Date.now() - (run.ttlMs + 60_000)).toISOString();
+      assert.ok(manager.get(runId), 'precondition: the run is still tracked before cleanup');
 
-      // Trigger cleanup (runs every 60s, so we simulate it)
-      await new Promise(r => setTimeout(r, 100));
-      manager._cleanupTimer?._onTimeout?.();
+      // Fire the interval callback directly: it is unref'd and only runs once a minute.
+      const fire = manager._cleanupTimer?._onTimeout;
+      assert.equal(typeof fire, 'function', 'no cleanup callback to fire: the timer contract changed');
+      fire();
 
-      const found = manager.get(runId);
-      // Note: This test is timing-sensitive; in real usage cleanup runs every 60s
+      assert.equal(manager.get(runId), undefined, 'an expired run survived cleanup');
+    });
+
+    test('cleanup keeps runs that are still within their TTL', async () => {
+      const { runId } = manager.fireExec('echo test', { timeout: 0 });
+      await waitForFinished(manager, runId);
+
+      manager._cleanupTimer._onTimeout();
+
+      assert.ok(manager.get(runId), 'a fresh run was evicted: cleanup is not honouring the TTL');
     });
   });
 
@@ -290,9 +344,8 @@ describe('ExecManager', () => {
       fs.mkdirSync(testDir, { recursive: true });
 
       const { runId } = manager.fireExec('pwd', { cwd: testDir });
-      await new Promise(r => setTimeout(r, 500));
+      const run = await waitForFinished(manager, runId);
 
-      const run = manager.get(runId);
       // pwd output varies by OS, just check it ran
       assert.equal(run.status, 'done');
     });
@@ -302,9 +355,8 @@ describe('ExecManager', () => {
         'node -e "console.log(process.env.TEST_VAR)"',
         { env: { TEST_VAR: 'hello-from-test' } }
       );
-      await new Promise(r => setTimeout(r, 500));
+      const run = await waitForFinished(manager, runId);
 
-      const run = manager.get(runId);
       assert.ok(run.logs.some(l => l.includes('hello-from-test')));
     });
   });
