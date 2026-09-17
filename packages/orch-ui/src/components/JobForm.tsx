@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { getErrorMessage, type Job, type MissedFiring, type LivenessConfig, type LivenessStrategy } from '../types.js';
+import { describeCron } from '../cron-describe.js';
 import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldText, IconButton } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
@@ -170,19 +171,10 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
     }
   };
 
+  // Shared with the dashboard rather than reimplemented. This version covered two shapes and
+  // rendered a list of hours as `Daily at 10,19:00`, which is not a time.
   const cronHint = type === 'cron' && schedule.trim() && !errors?.schedule
-    ? (() => {
-        const p = schedule.trim().split(/\s+/);
-        if (p.length >= 5) {
-          const [min, hour, dom, mon, dow] = p;
-          if (min === '*' && hour === '*') return 'Every minute';
-          if (dom === '*' && mon === '*' && dow === '*') {
-            if (min !== '*' && hour !== '*') return `Daily at ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
-          }
-          return null;
-        }
-        return null;
-      })()
+    ? describeCron(schedule)
     : null;
 
   const selectClass = 'w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
