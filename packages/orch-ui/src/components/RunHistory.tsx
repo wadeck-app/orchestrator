@@ -1,6 +1,7 @@
 import React from 'react';
 import { isRunActive, isRunCancelled, type RuntimeEntry } from '../types.js';
-import { JobStatusBadge, JobStatusPill } from './JobStatusBadge.js';
+import { JobStatusBadge } from './JobStatusBadge.js';
+import { JobStatusPill } from './JobStatusPill.js';
 import { TriggerBadge } from './TriggerBadge.js';
 
 export interface RunHistoryProps {

@@ -2,7 +2,7 @@ import React from 'react';
 import { Flame, AlertTriangle, FileText } from 'lucide-react';
 import { ButtonLink } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
-import { JobStatusPill } from './JobStatusBadge.js';
+import { JobStatusPill } from './JobStatusPill.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
 import { EnableToggle } from './EnableToggle.js';

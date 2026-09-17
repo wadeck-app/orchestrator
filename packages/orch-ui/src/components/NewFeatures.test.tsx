@@ -93,10 +93,10 @@ describe('EnableToggle design (Feature: correct visual on logs page)', () => {
     expect(track).toBeTruthy();
   });
 
-  // These two used to assert the hand-rolled mechanism: a `peer-checked:bg-blue-600` track
-  // and an `after:absolute` pseudo-element thumb. The toggle is dsl-ui's Radix Switch now,
-  // so neither class exists - and neither was ever the thing worth protecting. What matters
-  // is that the control reports its state and can be operated.
+  // These two used to assert the hand-rolled mechanism: a peer-modifier track colour and an
+  // after-pseudo-element thumb. The toggle is dsl-ui's Radix Switch now, so neither class
+  // exists - and neither was ever the thing worth protecting. What matters is that the
+  // control reports its state and can be operated.
   it('toggle reports the enabled state to assistive technology', () => {
     render(
       <MemoryRouter>

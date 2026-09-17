@@ -4,6 +4,7 @@
 export { DesignSwitcher } from './components/DesignSwitcher.js';
 export type { DesignSwitcherProps } from './components/DesignSwitcher.js';
 export { JobStatusBadge } from './components/JobStatusBadge.js';
+export { JobStatusPill } from './components/JobStatusPill.js';
 export { TriggerBadge } from './components/TriggerBadge.js';
 export { NextFireCountdown } from './components/NextFireCountdown.js';
 export { TriggerButton } from './components/TriggerButton.js';
