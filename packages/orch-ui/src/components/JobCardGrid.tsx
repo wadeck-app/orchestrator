@@ -39,9 +39,21 @@ function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
 
 export interface JobCardGridProps {
   items?: JobWithUptime[];
-  // Filter props -- driven by DSL $vars (JobSearchBar + JobFilterChips)
+  // Filter props -- driven by DSL $vars (SearchBar + JobFilterChips)
   search?: string;
   filter?: string;
+  /**
+   * The filter controls, rendered on the left of this component's own toolbar.
+   *
+   * Same arrangement as dsl-ui's DataTable, which takes its filters as a slot for the same
+   * reason: the toolbar has to hold the filters and the actions, and only this component can
+   * host the view toggle, whose state and persistence live here. Without the slot the page
+   * stacked its filters above, leaving the toolbar alone on a row that used 7% of the page
+   * width for an 85px button.
+   *
+   * @slot tag:filter, tag:atomic, tag:composite, tag:layout
+   */
+  filters?: React.ReactNode;
   uptimeMap?: Record<string, number | null>;
   // DSL $outputs callbacks -- injected via registry-overrides when $id is declared
   onTrigger?: (id: string) => void;
@@ -60,7 +72,7 @@ export interface JobCardGridProps {
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onExport, onImport, onTrigger, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onTrigger, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete }: JobCardGridProps): React.ReactElement {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -133,12 +145,16 @@ export function JobCardGrid({ items, search = '', filter = 'all', uptimeMap, onE
 
   return (
     <div>
-      {/* Toolbar: Add job + view toggle (search/filter come from DSL $vars via JobSearchBar/JobFilterChips) */}
-      <div className="flex items-center justify-end gap-2 mb-4">
-        {onExport && <ButtonAction variant="secondary" label="Export" onClick={onExport} />}
-        {onImport && <ButtonAction variant="secondary" label="Import" onClick={onImport} />}
-        <ButtonAction label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
-        <IconButton icon={viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} onClick={toggleView} variant="ghost" />
+      {/* One toolbar: filters left, actions right. The filters arrive as a slot so they share
+          this row instead of stacking above it - the actions alone used 85px of a 1152px row. */}
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">{filters}</div>
+        <div className="flex items-center gap-2">
+          {onExport && <ButtonAction variant="secondary" label="Export" onClick={onExport} />}
+          {onImport && <ButtonAction variant="secondary" label="Import" onClick={onImport} />}
+          <ButtonAction label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
+          <IconButton icon={viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} onClick={toggleView} variant="ghost" />
+        </div>
       </div>
 
       {selected.size > 0 && (

@@ -1555,10 +1555,11 @@ export const JobCardEntry: ComponentRegistryEntry = {
 export const JobCardGridEntry: ComponentRegistryEntry = {
 	name: 'JobCardGrid', category: 'composite', tags: ["job","grid","cards","list"],
 	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = resolveExpressionValue(node['items'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['items']
 		const search = resolveExpressionValue(node['search'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['search']
 		const filter = resolveExpressionValue(node['filter'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['filter']
+		const filters = node['filters'] as unknown[] | undefined
 		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onTrigger']
 		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onToggle']
@@ -1570,7 +1571,7 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const onBulkDelete = resolveExpressionValue(node['onBulkDelete'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
 		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} search={search} filter={filter} uptimeMap={uptimeMap} onTrigger={onTrigger} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onTrigger={onTrigger} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onExport={onExport} onImport={onImport} />
 	},
 }
 
@@ -1910,3 +1911,4 @@ TooltipEntry.allowedChildren = {"children":["atomic","composite"]};
 DataTableEntry.allowedChildren = {"filtersTop":["filter"],"filters":["filter"]};
 DataTableEntry.providesContext = ["DataTableSelectionCtx","DataTableFilterCtx"];
 DataTableEntry.requiresContext = ["RouterContext"];
+JobCardGridEntry.allowedChildren = {"filters":["filter","atomic","composite","layout"]};

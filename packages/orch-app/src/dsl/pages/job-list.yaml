@@ -52,14 +52,15 @@ $type: PageContent
 sections:
   - $type: PageHeader
     title: Orchestrator Dashboard
-  # Search and filters on one row. They were two stacked sections, each using under a third
-  # of the page width, which put 46px of empty band between them for no reason - and split
-  # two controls that are read together.
-  - $type: HorizontalStack
-    gap: gap-4
-    align: items-center
-    # The slot is `items`, not `children`: the registry entry reads node['items'].
-    items:
+  - $type: JobCardGrid
+    $id: jobGrid
+    items: $sources.jobs
+    search: $vars.search
+    filter: $vars.filter
+    # Filters go in the grid's own toolbar, beside its actions, rather than stacking above
+    # it. As three separate sections these used 18%, 30% and 7% of the row width and cost
+    # 46px of empty band; on one row the first card rises from y=254 to y=160.
+    filters:
       # dsl-ui's own search input: adds a search icon, a clear button and role=search that
       # the hand-rolled wrapper this replaced had none of. debounceMs 0 keeps the current
       # filter-per-keystroke behaviour instead of dsl-ui's 300ms default.
@@ -75,11 +76,6 @@ sections:
         selected: $vars.filter
         $outputs:
           onChange: [selected]
-  - $type: JobCardGrid
-    $id: jobGrid
-    items: $sources.jobs
-    search: $vars.search
-    filter: $vars.filter
     $outputs:
       onTrigger: [id]
       onToggle: [id, action]
