@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { Square } from 'lucide-react';
 import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
-import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
-const LINK_BTN_CLS  = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
 // violations-suppress: tailwind/no-raw-color-class amber running badge -- no semantic token for running/info state
 const RUNNING_BADGE = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
 // violations-suppress: tailwind/no-raw-color-class kill button uses danger color blend -- no semantic hover token
@@ -117,10 +115,10 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
         <span className="w-px h-5 bg-border mx-1" />
         {onViewLogs
           ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
-          : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
+          : <ButtonLink to={`/jobs/${jobId}/logs`} label="View logs" variant="neutral" />}
         {onEdit
           ? <ButtonAction label="Edit" variant="secondary" onClick={onEdit} />
-          : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
+          : <ButtonLink to={`/jobs/${jobId}/edit`} label="Edit" variant="neutral" />}
         {!confirmDelete
           ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">

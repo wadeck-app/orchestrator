@@ -70,6 +70,7 @@ import { TableRowActions } from '@wadeck-app/dsl-ui/dist/components/layout/Table
 import { VerticalStack } from '@wadeck-app/dsl-ui/dist/components/layout/VerticalStack.js'
 import { BackLink } from '@wadeck-app/dsl-ui/dist/components/navigation/BackLink.js'
 import { Breadcrumb } from '@wadeck-app/dsl-ui/dist/components/navigation/Breadcrumb.js'
+import { ButtonLink } from '@wadeck-app/dsl-ui/dist/components/navigation/ButtonLink.js'
 import { Link } from '@wadeck-app/dsl-ui/dist/components/navigation/Link.js'
 import { PageTabs } from '@wadeck-app/dsl-ui/dist/components/navigation/PageTabs.js'
 import { RouterProvider } from '@wadeck-app/dsl-ui/dist/components/navigation/RouterProvider.js'
@@ -1138,6 +1139,19 @@ export const BreadcrumbEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const ButtonLinkEntry: ComponentRegistryEntry = {
+	name: 'ButtonLink', category: 'atomic', tags: ["link","navigation","button"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const to = resolveExpressionValue(node['to'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/ButtonLink.js').ButtonLinkProps['to']
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/ButtonLink.js').ButtonLinkProps['label']
+		const icon = node['icon'] as unknown[] | undefined
+		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/ButtonLink.js').ButtonLinkProps['variant']
+		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/navigation/ButtonLink.js').ButtonLinkProps['size']
+		return <ButtonLink to={to} label={label} icon={icon ? renderChildren(icon, registry, ctx) : null} variant={variant} size={size} />
+	},
+}
+
 export const LinkEntry: ComponentRegistryEntry = {
 	name: 'Link', category: 'atomic', tags: ["link","anchor","navigation"],
 	nodeSchema: null as never,
@@ -1737,7 +1751,8 @@ export const TriggerButtonEntry: ComponentRegistryEntry = {
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['jobId']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['onTrigger']
 		const feedbackDurationMs = resolveExpressionValue(node['feedbackDurationMs'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['feedbackDurationMs']
-		return <TriggerButton jobId={jobId} onTrigger={onTrigger} feedbackDurationMs={feedbackDurationMs} />
+		const size = resolveExpressionValue(node['size'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['size']
+		return <TriggerButton jobId={jobId} onTrigger={onTrigger} feedbackDurationMs={feedbackDurationMs} size={size} />
 	},
 }
 // ─── All entries ──────────────────────────────────────────────────────────────
@@ -1809,6 +1824,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	VerticalStackEntry,
 	BackLinkEntry,
 	BreadcrumbEntry,
+	ButtonLinkEntry,
 	LinkEntry,
 	PageTabsEntry,
 	RouterProviderEntry,

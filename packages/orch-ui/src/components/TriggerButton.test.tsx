@@ -107,3 +107,22 @@ describe('TriggerButton geometry comes from the design system', () => {
     expect(cls).toContain('text-sm');
   });
 });
+
+// A card footer is a compact context; a detail page's action row is not. Aligning this
+// button to `md` fixed the action row and then left it 12px taller than the "Logs" link
+// beside it in every job card. Size is the host's call, not this component's.
+describe('TriggerButton size', () => {
+  it('defaults to md, matching a detail page action row', () => {
+    render(<TriggerButton jobId="j1" onTrigger={async () => {}} />);
+
+    expect(screen.getByRole('button').className).toContain('px-4');
+  });
+
+  it('accepts sm for compact hosts like a card footer', () => {
+    render(<TriggerButton jobId="j1" onTrigger={async () => {}} size="sm" />);
+
+    const cls = screen.getByRole('button').className;
+    expect(cls).toContain('px-3');
+    expect(cls).toContain('text-xs');
+  });
+});

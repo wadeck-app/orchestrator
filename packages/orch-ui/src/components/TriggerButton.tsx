@@ -7,6 +7,11 @@ export interface TriggerButtonProps {
   jobId: string;
   onTrigger: (id: string) => Promise<void>;
   feedbackDurationMs?: number;
+  /**
+   * Compact hosts pass 'sm'. A card footer sits beside a small link, a detail page's action
+   * row beside md buttons, and this button has to match whichever it is standing in.
+   */
+  size?: 'sm' | 'md';
 }
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
@@ -35,7 +40,7 @@ const CONTENT_BY_STATUS: Record<Status, { icon?: React.ReactNode; label: string 
  * @registryCategory atomic
  * @registryTags button trigger run
  */
-export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_DURATION_MS }: TriggerButtonProps): React.ReactElement {
+export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_DURATION_MS, size = 'md' }: TriggerButtonProps): React.ReactElement {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,6 +90,7 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
       <ButtonAction
         onClick={handleClick}
         variant={VARIANT_BY_STATUS[status]}
+        size={size}
         icon={icon}
         // Renders the spinner and disables, so no hand-rolled Loader2 or opacity is needed.
         loading={status === 'loading'}

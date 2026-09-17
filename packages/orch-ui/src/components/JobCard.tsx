@@ -1,6 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { Flame, AlertTriangle, FileText } from 'lucide-react';
+import { ButtonLink } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { BADGE_CANCELLED, BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
@@ -163,12 +163,20 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
         )}
       </div>
 
+      {/* Both controls at sm: a card footer is a compact context, and the two have to agree.
+          They used to be a hand-rolled 26px link beside a 38px button. The span carries
+          stopPropagation because the whole card is clickable. */}
       <div className="flex justify-end items-center gap-2">
-        <Link to={`/jobs/${job.id}/logs`} onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">
-          <FileText size={11} />Logs
-        </Link>
-        <TriggerButton jobId={job.id} onTrigger={onTrigger} />
+        <span onClick={(e) => e.stopPropagation()}>
+          <ButtonLink
+            to={`/jobs/${job.id}/logs`}
+            label="Logs"
+            icon={<FileText size={12} />}
+            variant="secondary"
+            size="sm"
+          />
+        </span>
+        <TriggerButton jobId={job.id} onTrigger={onTrigger} size="sm" />
       </div>
     </div>
   );

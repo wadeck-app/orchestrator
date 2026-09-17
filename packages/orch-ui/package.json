@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wadeck-app/dsl-ui": "^2026.9.16-066-78983b03",
+    "@wadeck-app/dsl-ui": "^2026.9.17-067-6d556e43",
     "lucide-react": "^0.400.0"
   },
   "peerDependencies": {

@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { getErrorMessage, type Job, type MissedFiring, type LivenessConfig, type LivenessStrategy } from '../types.js';
-import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldText } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldText, IconButton } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
 const MONO_INPUT     = 'w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono';
-const WAND_BTN_CLS   = 'mb-1 p-2 rounded border border-border text-muted hover:text-content hover:bg-muted-bg transition-colors';
 const FULL_INPUT    = 'w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
 
 const CRON_TEMPLATES = [
@@ -221,11 +220,16 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
             <div className="flex-1">
               <FieldText label="Schedule (cron expression)" value={schedule} onChange={setSchedule} placeholder="*/5 * * * *" error={errors?.schedule} />
             </div>
-            {/* violations-suppress: react/no-raw-button cron builder toggle - compact icon button, no Button variant fits */}
-            <button type="button" onClick={() => setShowBuilder(v => !v)} title="Open cron builder"
-              className={WAND_BTN_CLS}>
-              <Wand2 size={14} />
-            </button>
+            {/* The row is items-end, so the button's bottom lines up with the input's. The
+                hand-rolled version was a p-2 box nudged by mb-1, which left it 6px shorter
+                than the field and off by 2px at the top and 4px at the bottom. */}
+            <IconButton
+              type="button"
+              onClick={() => setShowBuilder(v => !v)}
+              aria-label="Open cron builder"
+              icon={<Wand2 size={14} />}
+              variant="secondary"
+            />
           </div>
           {cronHint && <p className="mt-1 text-xs text-primary">{cronHint}</p>}
           {showBuilder && (

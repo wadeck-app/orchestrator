@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
-import { ButtonAction, ButtonCancel } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 
 // @formatter:off
-const LINK_BTN_CLS   = 'px-3 py-2 text-sm bg-muted-bg hover:opacity-80 rounded-md text-content border border-border';
 // violations-suppress: tailwind/no-raw-color-class amber alert for running state -- no semantic token for warning/running state
 const ALERT_CARD_CLS = 'mb-4 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 overflow-hidden';
 // @formatter:on
@@ -132,10 +130,10 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
       <div className="flex gap-3 flex-wrap mb-4">
         {onViewLogs
           ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
-          : <Link to={`/jobs/${jobId}/logs`} className={LINK_BTN_CLS}>View logs</Link>}
+          : <ButtonLink to={`/jobs/${jobId}/logs`} label="View logs" variant="neutral" />}
         {onEdit
           ? <ButtonAction label="Edit" variant="secondary" onClick={onEdit} />
-          : <Link to={`/jobs/${jobId}/edit`} className={LINK_BTN_CLS}>Edit</Link>}
+          : <ButtonLink to={`/jobs/${jobId}/edit`} label="Edit" variant="neutral" />}
         {!confirmDelete
           ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">
