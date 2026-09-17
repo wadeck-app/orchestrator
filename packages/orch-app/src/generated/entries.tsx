@@ -364,8 +364,9 @@ export const BadgeEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['label']
 		const variant = resolveExpressionValue(node['variant'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['variant']
+		const tone = resolveExpressionValue(node['tone'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['tone']
 		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Badge.js').BadgeProps['size']
-		return <Badge label={label} variant={variant} size={size} />
+		return <Badge label={label} variant={variant} tone={tone} size={size} />
 	},
 }
 

@@ -11,27 +11,27 @@ const JOB_OFF: Job = { id: 'j1', type: 'cron', label: 'T', command: 'e', enabled
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('JobToggle', () => {
-  it('renders checkbox checked when job.enabled=true', () => {
+  it('renders switch checked when job.enabled=true', () => {
     render(<JobToggle job={JOB_ON} />);
-    expect(screen.getByRole('checkbox')).toBeChecked();
+    expect(screen.getByRole('switch')).toBeChecked();
   });
 
-  it('renders checkbox unchecked when job.enabled=false', () => {
+  it('renders switch unchecked when job.enabled=false', () => {
     render(<JobToggle job={JOB_OFF} />);
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByRole('switch')).not.toBeChecked();
   });
 
   it('calls /api/jobs/j1/disable when enabled job is toggled off', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
     render(<JobToggle job={JOB_ON} />);
-    await userEvent.click(screen.getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('switch'));
     expect(fetch).toHaveBeenCalledWith('/api/jobs/j1/disable', { method: 'POST' });
   });
 
   it('calls /api/jobs/j1/enable when disabled job is toggled on', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
     render(<JobToggle job={JOB_OFF} />);
-    await userEvent.click(screen.getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('switch'));
     expect(fetch).toHaveBeenCalledWith('/api/jobs/j1/enable', { method: 'POST' });
   });
 });

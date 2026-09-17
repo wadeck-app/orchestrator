@@ -1,9 +1,16 @@
 import React, { useState } from 'react';
+import { Switch, Tooltip } from '@wadeck-app/dsl-ui';
 import type { Job } from '../types.js';
 
 export interface JobToggleProps { job: Job; }
 
 /**
+ * Enable/disable switch that calls the daemon itself.
+ *
+ * Differs from EnableToggle only in owning the request rather than taking an onToggle. The
+ * switch is dsl-ui's; both files used to carry the same 190-character peer-modifier class
+ * string, copied verbatim.
+ *
  * @registryCategory composite
  * @registryTags toggle enable disable job
  */
@@ -11,9 +18,7 @@ export function JobToggle({ job }: JobToggleProps): React.ReactElement {
   const [loading, setLoading] = useState(false);
   const [optimistic, setOptimistic] = useState(job.enabled);
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation();
-    const next = e.target.checked;
+  const handleChange = async (next: boolean) => {
     setOptimistic(next);
     setLoading(true);
     try {
@@ -25,13 +30,14 @@ export function JobToggle({ job }: JobToggleProps): React.ReactElement {
     }
   };
 
+  const hint = optimistic ? 'Enabled - click to disable' : 'Disabled - click to enable';
+
   return (
-    <label className="relative inline-flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}
-      title={optimistic ? 'Enabled - click to disable' : 'Disabled - click to enable'}>
-      <input type="checkbox" className="sr-only peer" checked={optimistic} onChange={handleChange} disabled={loading} />
-      {/* violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname peer-modifier classes require raw colors - semantic tokens incompatible with peer-checked: compound syntax */}
-      <div className="w-9 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-600 peer-disabled:opacity-50 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4" />
-      {/* violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname */}
-    </label>
+    // The span carries stopPropagation: this can sit inside a clickable job card.
+    <span onClick={e => e.stopPropagation()}>
+      <Tooltip content={hint}>
+        <Switch checked={optimistic} onChange={handleChange} disabled={loading} size="sm" />
+      </Tooltip>
+    </span>
   );
 }

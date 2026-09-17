@@ -93,27 +93,27 @@ describe('EnableToggle design (Feature: correct visual on logs page)', () => {
     expect(track).toBeTruthy();
   });
 
-  it('toggle uses peer-checked color class for the checked state', () => {
+  // These two used to assert the hand-rolled mechanism: a `peer-checked:bg-blue-600` track
+  // and an `after:absolute` pseudo-element thumb. The toggle is dsl-ui's Radix Switch now,
+  // so neither class exists - and neither was ever the thing worth protecting. What matters
+  // is that the control reports its state and can be operated.
+  it('toggle reports the enabled state to assistive technology', () => {
     render(
       <MemoryRouter>
         <EnableToggle job={BASE_JOB} onToggle={vi.fn()} />
       </MemoryRouter>
     );
-    // The track uses peer-checked compound class (raw color required for peer syntax - covered by suppress zone)
-    // violations-suppress: tailwind/no-raw-color-class peer-checked compound class - semantic tokens incompatible with peer-checked: syntax
-    const PEER_CHECKED_CLASS = 'peer-checked:bg-blue-600';
-    const track = document.querySelector(`[class*="${PEER_CHECKED_CLASS}"]`);
-    expect(track).toBeTruthy();
+
+    expect(screen.getByRole('switch')).toBeChecked();
   });
 
-  it('toggle thumb uses after:content pseudo-element for positioning', () => {
+  it('toggle reports the disabled state', () => {
     render(
       <MemoryRouter>
-        <EnableToggle job={BASE_JOB} onToggle={vi.fn()} />
+        <EnableToggle job={{ ...BASE_JOB, enabled: false }} onToggle={vi.fn()} />
       </MemoryRouter>
     );
-    // Must have after: pseudo-classes for the thumb
-    const track = document.querySelector('[class*="after:absolute"]');
-    expect(track).toBeTruthy();
+
+    expect(screen.getByRole('switch')).not.toBeChecked();
   });
 });

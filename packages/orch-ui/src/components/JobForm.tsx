@@ -228,6 +228,7 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
               onClick={() => setShowBuilder(v => !v)}
               aria-label="Open cron builder"
               icon={<Wand2 size={14} />}
+              size="icon-field"
               variant="secondary"
             />
           </div>

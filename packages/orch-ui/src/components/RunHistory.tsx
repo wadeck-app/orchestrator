@@ -1,6 +1,6 @@
 import React from 'react';
 import { isRunActive, isRunCancelled, type RuntimeEntry } from '../types.js';
-import { JobStatusBadge, BADGE_CANCELLED } from './JobStatusBadge.js';
+import { JobStatusBadge, JobStatusPill } from './JobStatusBadge.js';
 import { TriggerBadge } from './TriggerBadge.js';
 
 export interface RunHistoryProps {
@@ -57,7 +57,7 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
               <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
               <td className="py-1 pr-4">
                 {isRunCancelled(entry)
-                  ? <span className={BADGE_CANCELLED}>Cancelled</span>
+                  ? <JobStatusPill kind="cancelled" label="Cancelled" />
                   : <JobStatusBadge exitCode={entry.exitCode} running={isRunActive(entry)} />}
               </td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>

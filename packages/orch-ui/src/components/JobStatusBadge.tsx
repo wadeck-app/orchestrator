@@ -1,4 +1,5 @@
 import React from 'react';
+import { Badge } from '@wadeck-app/dsl-ui';
 
 export interface JobStatusBadgeProps {
   exitCode: number | null;
@@ -6,29 +7,50 @@ export interface JobStatusBadgeProps {
   cancelled?: boolean;
 }
 
-// Status badges use fixed traffic-light colors (not theme tokens): no bg-success/bg-warning/bg-error
-// semantic tokens exist in the design system at this granularity, so raw Tailwind palette is required.
-// violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname no status-semantic tokens (success/warning/error) in design system; raw palette required for traffic-light status colors
-// @formatter:off
-const BADGE_BASE = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium';
-export const BADGE_RUNNING = `${BADGE_BASE} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-export const BADGE_OK      = `${BADGE_BASE} bg-green-100  text-green-800  dark:bg-green-900  dark:text-green-200`;
-export const BADGE_FAILED  = `${BADGE_BASE} bg-red-100    text-red-800    dark:bg-red-900    dark:text-red-200`;
-export const BADGE_NEVER      = `${BADGE_BASE} bg-gray-100   text-gray-600   dark:bg-gray-800   dark:text-gray-300`;
-export const BADGE_CANCELLED  = `${BADGE_BASE} bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200`;
-// @formatter:on
-// violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
+/** The five run outcomes this app shows, and the design-system variant each maps to. */
+export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'never';
+
+/**
+ * Every status renders at the same visual weight (`tone="subtle"`), so a column of them
+ * reads as one set. This file used to export five raw class strings built on
+ * `bg-yellow-100 text-yellow-800 dark:...`, which JobCard and RunHistory pasted onto their
+ * own spans - a badge geometry maintained in three places.
+ *
+ * "Running" is info rather than warning: warning is spent on Cancelled, and a run in flight
+ * is not a problem. Cancelled keeps amber because it is the one outcome asking for attention
+ * without being a failure.
+ */
+export const JOB_STATUS_VARIANT: Record<JobStatusKind, 'success' | 'danger' | 'warning' | 'info' | 'default'> = {
+  running:   'info',
+  ok:        'success',
+  failed:    'danger',
+  cancelled: 'warning',
+  never:     'default',
+};
+
+/** Badge for one run outcome, at the shared status weight. */
+export function JobStatusPill({ kind, label }: { kind: JobStatusKind; label: string }): React.ReactElement {
+  return <Badge variant={JOB_STATUS_VARIANT[kind]} tone="subtle" label={label} />;
+}
 
 /**
  * @registryCategory atomic
  * @registryTags badge status job
  */
 export function JobStatusBadge({ exitCode, running, cancelled }: JobStatusBadgeProps): React.ReactElement {
-  if (running) return <span className={BADGE_RUNNING}>Running</span>;
+  if (running) {
+    return <JobStatusPill kind="running" label="Running" />;
+  }
   // Must come before the exitCode checks: a killed run has no exit code and would
   // otherwise fall through to "Never run".
-  if (cancelled) return <span className={BADGE_CANCELLED}>Cancelled</span>;
-  if (exitCode === 0) return <span className={BADGE_OK}>OK</span>;
-  if (exitCode !== null) return <span className={BADGE_FAILED}>Failed - exit {exitCode}</span>;
-  return <span className={BADGE_NEVER}>Never run</span>;
+  if (cancelled) {
+    return <JobStatusPill kind="cancelled" label="Cancelled" />;
+  }
+  if (exitCode === 0) {
+    return <JobStatusPill kind="ok" label="OK" />;
+  }
+  if (exitCode !== null) {
+    return <JobStatusPill kind="failed" label={`Failed - exit ${exitCode}`} />;
+  }
+  return <JobStatusPill kind="never" label="Never run" />;
 }

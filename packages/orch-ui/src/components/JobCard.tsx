@@ -2,7 +2,7 @@ import React from 'react';
 import { Flame, AlertTriangle, FileText } from 'lucide-react';
 import { ButtonLink } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
-import { BADGE_CANCELLED, BADGE_FAILED, BADGE_NEVER, BADGE_OK, BADGE_RUNNING } from './JobStatusBadge.js';
+import { JobStatusPill } from './JobStatusBadge.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
 import { EnableToggle } from './EnableToggle.js';
@@ -55,14 +55,24 @@ export function relativeTime(isoDate: string): string {
   return `${d}d ago`;
 }
 
+// Differs from JobStatusBadge only in the failed label, which counts failures across the
+// history rather than naming one exit code.
 function jobListBadge(runHistory: RuntimeEntry[]): React.ReactElement {
-  if (runHistory.length === 0) return <span className={BADGE_NEVER}>Never run</span>;
+  if (runHistory.length === 0) {
+    return <JobStatusPill kind="never" label="Never run" />;
+  }
   const last = latestRun(runHistory);
-  if (isRunActive(last)) return <span className={BADGE_RUNNING}>Running</span>;
-  if (isRunCancelled(last)) return <span className={BADGE_CANCELLED}>Cancelled</span>;
-  if (last!.exitCode === 0) return <span className={BADGE_OK}>OK</span>;
+  if (isRunActive(last)) {
+    return <JobStatusPill kind="running" label="Running" />;
+  }
+  if (isRunCancelled(last)) {
+    return <JobStatusPill kind="cancelled" label="Cancelled" />;
+  }
+  if (last!.exitCode === 0) {
+    return <JobStatusPill kind="ok" label="OK" />;
+  }
   const failCount = runHistory.filter(isRunFailed).length;
-  return <span className={BADGE_FAILED}>{failCount}x failed</span>;
+  return <JobStatusPill kind="failed" label={`${failCount}x failed`} />;
 }
 
 function successStreak(runHistory: RuntimeEntry[]): number {

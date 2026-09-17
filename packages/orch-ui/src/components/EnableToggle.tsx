@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Switch, Tooltip } from '@wadeck-app/dsl-ui';
 import type { Job } from '../types.js';
 
 export interface EnableToggleProps {
@@ -7,6 +8,14 @@ export interface EnableToggleProps {
 }
 
 /**
+ * Enable/disable switch for a job, with optimistic state and rollback.
+ *
+ * The switch itself is dsl-ui's. This used to hand-roll it as an sr-only checkbox plus a
+ * 190-character peer-modifier class string, duplicated verbatim in JobToggle. Switch's `sm`
+ * size is the same w-9 h-5 geometry, is Radix-backed so it is keyboard operable and focus
+ * visible, and reports role="switch" rather than role="checkbox" - the correct role for an
+ * on/off control.
+ *
  * @registryCategory composite
  * @registryTags toggle enable disable
  */
@@ -14,9 +23,7 @@ export function EnableToggle({ job, onToggle }: EnableToggleProps): React.ReactE
   const [loading, setLoading] = useState(false);
   const [optimisticEnabled, setOptimisticEnabled] = useState(job.enabled);
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation();
-    const next = e.target.checked;
+  const handleChange = async (next: boolean) => {
     setOptimisticEnabled(next);
     setLoading(true);
     try {
@@ -28,27 +35,20 @@ export function EnableToggle({ job, onToggle }: EnableToggleProps): React.ReactE
     }
   };
 
+  const hint = optimisticEnabled ? 'Enabled - click to disable' : 'Disabled - click to enable';
+
   return (
-    <label
-      className="relative inline-flex items-center cursor-pointer"
-      onClick={(e) => e.stopPropagation()}
-      title={optimisticEnabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
-    >
-      <input
-        type="checkbox"
-        className="sr-only peer"
-        checked={optimisticEnabled}
-        onChange={handleChange}
-        disabled={loading}
-      />
-      {/*
-        peer-checked:bg-* and after:bg-white are compound Tailwind peer modifiers.
-        Tailwind's JIT generates these as single atomic classes - they cannot be split
-        into semantic tokens without losing the peer modifier mechanism.
-      */}
-      {/* violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname peer-modifier classes require raw colors - semantic tokens incompatible with peer-checked: compound syntax */}
-      <div className="w-9 h-5 bg-gray-300 rounded-full peer peer-checked:bg-blue-600 peer-disabled:opacity-50 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4" />
-      {/* violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname */}
-    </label>
+    // The span carries stopPropagation: this sits inside a clickable job card, and neither
+    // Switch nor Tooltip takes an event handler to stop the bubble with.
+    <span onClick={e => e.stopPropagation()}>
+      <Tooltip content={hint}>
+        <Switch
+          checked={optimisticEnabled}
+          onChange={handleChange}
+          disabled={loading}
+          size="sm"
+        />
+      </Tooltip>
+    </span>
   );
 }
