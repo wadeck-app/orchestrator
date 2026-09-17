@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
-import { ButtonAction, IconButton } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonLink, IconButton } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type RuntimeEntry } from '../types.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -226,16 +226,26 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
                   <td className="py-3 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} /></td>
                   <td className="py-3 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
                   <td className="py-3">
-                    <div className="flex items-center gap-1">
-                      <Link to={`/jobs/${job.id}/logs`} onClick={e => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors">
-                        <FileText size={11} />Logs
-                      </Link>
-                      {/* violations-suppress: react/no-raw-button inline table run button - no compact Button variant for table cells */}
-                      <button className="text-xs px-2 py-1 bg-primary text-on-primary rounded hover:bg-primary-hover"
-                        onClick={e => { e.stopPropagation(); void handleTrigger(job.id); }}>
-                        Run now
-                      </button>
+                    {/* Same pair as the card footer, at the same size. Both were hand-rolled
+                        here: a 143-character link class duplicated from JobCard, and a raw
+                        button on a third padding scale. The span stops the row's click. */}
+                    <div className="flex items-center gap-2">
+                      <span onClick={e => e.stopPropagation()}>
+                        <ButtonLink
+                          to={`/jobs/${job.id}/logs`}
+                          label="Logs"
+                          icon={<FileText size={12} />}
+                          variant="secondary"
+                          size="sm"
+                        />
+                      </span>
+                      <span onClick={e => e.stopPropagation()}>
+                        <ButtonAction
+                          label="Run now"
+                          size="sm"
+                          onClick={() => { void handleTrigger(job.id); }}
+                        />
+                      </span>
                     </div>
                   </td>
                 </tr>
