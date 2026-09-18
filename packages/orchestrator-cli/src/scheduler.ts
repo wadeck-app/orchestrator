@@ -22,6 +22,7 @@ import type { Registry } from './registry.js';
 import type { State } from './state.js';
 import { isFailure } from './state.js';
 import { systemTime, type TimeService, type Timer } from './time-service.js';
+import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
@@ -121,6 +122,9 @@ export class Scheduler extends EventEmitter {
   private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
   private readonly _sampleIntervalMs: number;
   private readonly _retryTimers    = new Map<string, Timer>();
+  /** Timers that close an active window, kept apart from _timeouts so a pending start and a pending
+   *  end can both be armed for the same job without one cancelling the other. */
+  private readonly _windowTimers   = new Map<string, Timer>();
   private readonly _retryCounters  = new Map<string, number>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
@@ -178,8 +182,13 @@ export class Scheduler extends EventEmitter {
       if (!job.enabled) continue;
 
       if (job.type === 'cron') {
-        this._scheduleCron(job);
-        if (job.missedFiring === 'catch-up' && job.schedule) {
+        // Through scheduleJob, not _scheduleCron: that is where the active window is honoured, so a
+        // job whose window has not opened waits and one whose window closed while the daemon was down
+        // is disabled at startup rather than resuming.
+        this.scheduleJob(job);
+        // Catch-up only inside the window. Replaying a missed firing for a job that has expired, or
+        // has not started yet, would run work the window exists to prevent.
+        if (job.missedFiring === 'catch-up' && job.schedule && windowStateAt(job, this._time.now()) === 'active') {
           const lastFiring = getLastFiring(job.schedule, this._now());
           if (lastFiring) {
             const last = this._state.get(job.id);
@@ -284,7 +293,45 @@ export class Scheduler extends EventEmitter {
       return;
     }
     if (job.type === 'cron') {
+      /*
+       * A cron job can carry an active window: "active for three weeks", or a period that has not
+       * opened yet.
+       *
+       * Three outcomes, and `pending` is why this is not a boolean. A job whose window opens later is
+       * enabled and working as configured - it just waits, with a timer that arms the cron task when
+       * the window opens. Expired means the window closed, and the job is DISABLED rather than
+       * deleted: its definition, history and logs stay, and turning it back on is the user's decision.
+       */
+      const state = windowStateAt(job, this._time.now());
+      if (state === 'expired') {
+        this._expireJob(job);
+        return;
+      }
+      if (state === 'pending') {
+        const until = msUntilStart(job, this._time.now())!;
+        this._timeouts.set(job.id, this._time.after(until, () => {
+          this._timeouts.delete(job.id);
+          // Re-read: the job may have been edited or disabled while it waited.
+          const current = this._registry.get(job.id);
+          if (current) {
+            this.scheduleJob(current);
+          }
+        }));
+        return;
+      }
       this._scheduleCron(job);
+      // Arms the end of the window too, so a job expires on time rather than at its next firing -
+      // which for a weekly job could be six days late, and for a job that never fires again, never.
+      const remaining = msUntilEnd(job, this._time.now());
+      if (remaining !== null) {
+        this._windowTimers.set(job.id, this._time.after(remaining, () => {
+          this._windowTimers.delete(job.id);
+          const current = this._registry.get(job.id);
+          if (current) {
+            this._expireJob(current);
+          }
+        }));
+      }
       return;
     }
     if (job.type === 'once') {
@@ -293,6 +340,18 @@ export class Scheduler extends EventEmitter {
     }
     // `startup` means "when the daemon starts". A startup job added while it is already running has
     // nothing to schedule now, and firing it here would contradict the type's own meaning.
+  }
+
+  /**
+   * Where a job stands relative to its active window: pending, active or expired.
+   *
+   * Null for an unknown id. Exposed because "enabled" cannot answer it - a job waiting for its window
+   * to open is enabled and not running, and a caller that can only see the boolean has to guess which
+   * of the two it is looking at.
+   */
+  windowStateOf(id: string): WindowState | null {
+    const job = this._registry.get(id);
+    return job ? windowStateAt(job, this._time.now()) : null;
   }
 
   /** Cancels a job's pending cron task or timer. Safe for an id that has neither. */
@@ -307,6 +366,44 @@ export class Scheduler extends EventEmitter {
       handle.cancel();
       this._timeouts.delete(id);
     }
+    const windowTimer = this._windowTimers.get(id);
+    if (windowTimer) {
+      windowTimer.cancel();
+      this._windowTimers.delete(id);
+    }
+  }
+
+  /**
+   * Ends a job's active window: disabled, not deleted.
+   *
+   * Persisted, so it survives a restart and the user sees a job that is off rather than one that
+   * quietly stopped working. Announced, because a job going quiet on its own is otherwise
+   * indistinguishable from a job that is broken.
+   */
+  /**
+   * Reacts to a firing that arrived outside the window: expire it, or leave it waiting.
+   *
+   * Only reached when a timer did not do its job - a suspended machine, or a clock that moved - so it
+   * corrects the state rather than merely declining to run.
+   */
+  private _expireOrWait(job: Job): void {
+    if (windowStateAt(job, this._time.now()) === 'expired') {
+      this._expireJob(job);
+      return;
+    }
+    // Pending: the window opens later, so re-arm rather than disable.
+    this.scheduleJob(job);
+  }
+
+  private _expireJob(job: Job): void {
+    this.unscheduleJob(job.id);
+    if (!job.enabled) {
+      return;
+    }
+    this._registry.disable(job.id);
+    this._events.publish('job.window_expired', {
+      jobId: job.id, label: job.label, activeUntil: job.activeUntil,
+    });
   }
 
   async stop(): Promise<void> {
@@ -457,6 +554,21 @@ export class Scheduler extends EventEmitter {
    * explicitly should not be second-guessed.
    */
   private async _maybeSpawn(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<void> {
+    /*
+     * The window, checked again at the moment of firing.
+     *
+     * scheduleJob arms a timer to expire the job on time, so this should never be the thing that
+     * stops it - but a timer is a promise about a machine that might sleep, hibernate or have its
+     * clock moved, and none of those retract a cron task. This is the check that cannot be skipped by
+     * time not passing the way the process expected.
+     *
+     * A manual trigger is exempt: asking for a run explicitly is not the schedule firing, and
+     * refusing it would be answering a different question than the user asked.
+     */
+    if (trigger.kind !== 'manual' && windowStateAt(job, this._time.now()) !== 'active') {
+      this._expireOrWait(job);
+      return;
+    }
     if (await this._liveness(job)) {
       this._recordSkip(job, 'liveness');
       return;

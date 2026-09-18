@@ -5,6 +5,7 @@ import type { Job, RegistryData } from './types.js';
 import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES,
          UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
+import { activeWindowError } from './active-window.js';
 
 /*
  * The shape a cron expression must have: five space-separated fields.
@@ -45,6 +46,12 @@ function validateJob(job: Partial<Job>): void {
      * Delegating to the same validator the scheduler uses is what makes the two agree: whatever is
      * accepted here can actually run.
      */
+    // A window that can never fire is refused here rather than stored as a job that looks configured
+    // and is silently inert - the same class of defect as an out-of-range cron field.
+    const windowErr = activeWindowError(job);
+    if (windowErr !== null) {
+      throw new Error(windowErr);
+    }
     if (!cron.validate(schedule)) {
       throw new Error(`Invalid cron schedule: "${job.schedule}" - a field is out of range (minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7)`);
     }

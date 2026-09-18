@@ -6,6 +6,7 @@ import { UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
+import { parseActiveFor } from './active-window.js';
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
 function readDashboardFile(filePath: string): string | null {
@@ -39,6 +40,48 @@ function flag(argv: string[], name: string): string | undefined {
 
 function has(argv: string[], name: string): boolean {
   return argv.includes(name);
+}
+
+/**
+ * Reads `--active-from`, `--active-until` and `--active-for` into the job's window fields.
+ *
+ * `--active-for` is the form the feature is actually wanted in - "active for three weeks" - and is
+ * measured from `--active-from` when one is given, so a window can be both future and bounded:
+ * `--active-from 2026-03-01 --active-for 3w`.
+ *
+ * Giving both `--active-for` and `--active-until` is refused rather than silently preferring one.
+ * They are two ways of saying the same thing, and picking a winner would mean the job ends at a time
+ * the user did not ask for.
+ */
+function activeWindowFlags(argv: string[]): Record<string, string> {
+  const from  = flag(argv, '--active-from');
+  const until = flag(argv, '--active-until');
+  const forStr = flag(argv, '--active-for');
+
+  if (forStr !== undefined && until !== undefined) {
+    throw new Error('Use either --active-for or --active-until, not both: they set the same field.');
+  }
+
+  const out: Record<string, string> = {};
+  let fromMs = Date.now();
+  if (from !== undefined) {
+    fromMs = new Date(from).getTime();
+    if (!Number.isFinite(fromMs)) {
+      throw new Error(`Invalid --active-from: "${from}". Expected a date, e.g. 2026-03-01 or 2026-03-01T09:00:00Z`);
+    }
+    out['activeFrom'] = new Date(fromMs).toISOString();
+  }
+  if (until !== undefined) {
+    const untilMs = new Date(until).getTime();
+    if (!Number.isFinite(untilMs)) {
+      throw new Error(`Invalid --active-until: "${until}". Expected a date, e.g. 2026-03-22 or 2026-03-22T18:00:00Z`);
+    }
+    out['activeUntil'] = new Date(untilMs).toISOString();
+  }
+  if (forStr !== undefined) {
+    out['activeUntil'] = new Date(fromMs + parseActiveFor(forStr)).toISOString();
+  }
+  return out;
 }
 
 /**
@@ -149,6 +192,9 @@ Job mutation:
                                [--liveness-strategy none|portFile|pidFile|command] (default: none)
                                [--liveness-port-file <p>] [--liveness-command <c>]
                                [--disabled]
+                               [--active-for <3w|21d|48h>]   Run only for this long, then disable
+                               [--active-from <date>]        Start firing at this date (may be future)
+                               [--active-until <date>]       Stop firing at this date, then disable
   orch add startup <id> --command <cmd> [--delay <seconds>] [--cwd <p>] [--label <t>]
   orch add --once <id> --delay <duration> --command <cmd> [--cwd <p>] [--label <t>]
                                Fire once after <duration> (e.g. 30s, 2m, 1h, 1d), then self-delete
@@ -507,6 +553,14 @@ Full usage: orch add cron <id> --schedule "<expr>" --command "..."`, 4);
         if (delay !== undefined) body['delaySeconds'] = parseInt(delay, 10);
       }
 
+      if (type === 'cron') {
+        try {
+          Object.assign(body, activeWindowFlags(addRest));
+        } catch (e) {
+          errorExit((e as Error).message, 4);
+        }
+      }
+
       if (type === 'once') {
         const delayStr = flag(addRest, '--delay');
         if (!delayStr) {
@@ -580,6 +634,13 @@ Examples:
       }
       const delay = flag(editRest, '--delay');
       if (delay !== undefined) updates['delaySeconds'] = parseInt(delay, 10);
+      // Same flags as `add`, so extending or shortening a window is the same vocabulary as setting
+      // one. `--unset activeUntil` removes the end and leaves the job running indefinitely.
+      try {
+        Object.assign(updates, activeWindowFlags(editRest));
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
       const livenessStrategy = flag(editRest, '--liveness-strategy');
       if (livenessStrategy) updates['liveness'] = buildLiveness(editRest);
       try {

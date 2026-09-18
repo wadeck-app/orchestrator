@@ -27,6 +27,19 @@ export interface Job {
   cwd?: string | null;
   command: string;
   enabled: boolean;
+  /**
+   * The window a cron job is allowed to fire in. Both ISO timestamps, both optional.
+   *
+   * `activeFrom` may be in the FUTURE: a job can be configured now to start firing later, which is a
+   * third state rather than a flavour of disabled. Enabled-but-not-yet-started is the job working as
+   * configured; disabled is someone having turned it off.
+   *
+   * At `activeUntil` the job is DISABLED, not deleted - its definition, history and logs stay, and
+   * re-enabling it is a decision the user makes rather than a recovery from deletion. "Active for
+   * three weeks" is activeFrom now, activeUntil now + 3 weeks.
+   */
+  activeFrom?: string;
+  activeUntil?: string;
   triggerMode: TriggerMode;
   missedFiring?: MissedFiring;
   /**
