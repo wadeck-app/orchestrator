@@ -121,7 +121,7 @@ export class TrayManager extends EventEmitter {
       this._runningJobIds.add(ev.id);
       this._refresh();
     });
-    this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job }) => {
+    this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job; skipped?: boolean }) => {
       this._runningJobIds.delete(ev.id);
       this._onJobFinished(ev);
     });
@@ -203,7 +203,9 @@ export class TrayManager extends EventEmitter {
     this._log.close();
   }
 
-  private _onJobFinished({ id, exitCode, job }: { id: string; exitCode: number; job: Job }): void {
+  private _onJobFinished({ id, exitCode, job, skipped }: { id: string; exitCode: number; job: Job; skipped?: boolean }): void {
+    // A skipped run is neither a failure to badge nor a success to flash green: it did no work.
+    if (skipped) return;
     if (exitCode !== 0) {
       const now  = new Date();
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;

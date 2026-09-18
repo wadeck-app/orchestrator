@@ -14,6 +14,12 @@ function entry(exitCode: number | null, pid = 1): RuntimeEntry {
   return { startedAt: '2026-09-02T10:00:00Z', exitCode, pid };
 }
 
+// Per the daemon contract a skipped run always has finishedAt, and its exitCode is either the
+// child's own code or null when nothing was spawned.
+function skipped(exitCode: number | null = 2): RuntimeEntry {
+  return { startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:00:01Z', exitCode, pid: null, skipped: true };
+}
+
 function renderCard(runHistory: RuntimeEntry[]) {
   return render(
     <MemoryRouter>
@@ -68,6 +74,22 @@ describe('runDotState', () => {
     expect(runDotState(entry(0))).toBe('ok');
     expect(runDotState(entry(1))).toBe('failed');
   });
+
+  // The false alarm being removed: the exit code the daemon was told to forgive used to paint
+  // the dot red, and a skipped run with no exit code painted it amber for "cancelled".
+  it('gives a skipped run its own state, whatever the exit code says', () => {
+    expect(runDotState(skipped(2))).toBe('skipped');
+    expect(runDotState(skipped(null))).toBe('skipped');
+  });
+
+  it('draws the skipped dot muted - never red, never green', () => {
+    const { container } = renderCard([skipped(2)]);
+
+    const dot = container.querySelector('[data-run-state="skipped"]')!;
+    expect(dot.getAttribute('class')).toContain('bg-muted');
+    expect(dot.getAttribute('class')).not.toContain('red');
+    expect(dot.getAttribute('class')).not.toContain('green');
+  });
 });
 
 describe('JobCard status badge on the list page', () => {
@@ -101,5 +123,35 @@ describe('JobCard status badge on the list page', () => {
   it('shows "OK" when latest run succeeded even if prior runs failed', () => {
     renderCard([entry(0), entry(1), entry(1)]);
     expect(screen.getByText('OK')).toBeInTheDocument();
+  });
+
+  it('labels a skipped last run "Skipped" rather than failed or cancelled', () => {
+    renderCard([skipped(2)]);
+    expect(screen.getByText('Skipped')).toBeInTheDocument();
+    expect(screen.queryByText(/failed/i)).toBeNull();
+    expect(screen.queryByText('Cancelled')).toBeNull();
+  });
+
+  it('keeps skipped runs out of the failure count', () => {
+    renderCard([entry(1), skipped(2), entry(1)]);
+    expect(screen.getByText('2x failed')).toBeInTheDocument();
+  });
+});
+
+// Transparent means exactly that: neither an extra success nor a break.
+describe('JobCard success streak', () => {
+  it('is not broken by a skipped run in the middle', () => {
+    renderCard([entry(0), skipped(2), entry(0)]);
+    expect(screen.getByText('2 streak')).toBeInTheDocument();
+  });
+
+  it('does not count the skipped run as a success', () => {
+    renderCard([entry(0), skipped(2), entry(0), skipped(null)]);
+    expect(screen.getByText('2 streak')).toBeInTheDocument();
+  });
+
+  it('still ends the streak on the first real failure', () => {
+    renderCard([entry(0), skipped(2), entry(0), entry(1), entry(0)]);
+    expect(screen.getByText('2 streak')).toBeInTheDocument();
   });
 });

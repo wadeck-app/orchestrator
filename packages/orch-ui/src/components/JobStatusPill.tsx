@@ -1,21 +1,23 @@
 import React from 'react';
 import { Badge } from '@wadeck-app/dsl-ui';
 
-/** The five run outcomes this app shows. */
-export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'never';
+/** The six run outcomes this app shows. */
+export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never';
 
 /**
  * Which design-system variant each outcome maps to.
  *
  * Running is info rather than warning: warning is spent on Cancelled, and a run in flight is
  * not a problem. Cancelled keeps amber, being the one outcome that asks for attention
- * without being a failure.
+ * without being a failure. Skipped is neutral by design: the run asks for nothing, so it must
+ * not borrow danger's red nor success's green.
  */
 export const JOB_STATUS_VARIANT: Record<JobStatusKind, 'success' | 'danger' | 'warning' | 'info' | 'default'> = {
   running:   'info',
   ok:        'success',
   failed:    'danger',
   cancelled: 'warning',
+  skipped:   'default',
   never:     'default',
 };
 

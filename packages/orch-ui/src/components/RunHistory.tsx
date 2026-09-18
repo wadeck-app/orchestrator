@@ -1,7 +1,6 @@
 import React from 'react';
-import { isRunActive, isRunCancelled, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunSkipped, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
-import { JobStatusPill } from './JobStatusPill.js';
 import { TriggerBadge } from './TriggerBadge.js';
 
 export interface RunHistoryProps {
@@ -57,9 +56,13 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
               <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
               <td className="py-1 pr-4">
-                {isRunCancelled(entry)
-                  ? <JobStatusPill kind="cancelled" label="Cancelled" />
-                  : <JobStatusBadge exitCode={entry.exitCode} running={isRunActive(entry)} />}
+                {/* The badge owns the whole outcome-to-pill mapping; this cell only classifies. */}
+                <JobStatusBadge
+                  exitCode={entry.exitCode}
+                  running={isRunActive(entry)}
+                  cancelled={isRunCancelled(entry)}
+                  skipped={isRunSkipped(entry)}
+                />
               </td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
               <td className="py-1 text-muted">{entry.pid ?? '-'}</td>

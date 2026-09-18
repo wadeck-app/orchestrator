@@ -5,6 +5,7 @@ export interface JobStatusBadgeProps {
   exitCode: number | null;
   running?: boolean;
   cancelled?: boolean;
+  skipped?: boolean;
 }
 
 /**
@@ -17,9 +18,14 @@ export interface JobStatusBadgeProps {
  * @registryCategory atomic
  * @registryTags badge status job
  */
-export function JobStatusBadge({ exitCode, running, cancelled }: JobStatusBadgeProps): React.ReactElement {
+export function JobStatusBadge({ exitCode, running, cancelled, skipped }: JobStatusBadgeProps): React.ReactElement {
   if (running) {
     return <JobStatusPill kind="running" label="Running" />;
+  }
+  // Ahead of both the cancelled branch and the exitCode checks: a skipped run carries the
+  // child's real exit code, or none at all, and either would be reported as an alarm.
+  if (skipped) {
+    return <JobStatusPill kind="skipped" label="Skipped" />;
   }
   // Must come before the exitCode checks: a killed run has no exit code and would
   // otherwise fall through to "Never run".

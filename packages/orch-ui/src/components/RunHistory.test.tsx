@@ -28,4 +28,19 @@ describe('RunHistory - exit code display in detail page', () => {
     render(<RunHistory entries={entries} />);
     expect(screen.getByText('OK')).toBeInTheDocument();
   });
+
+  // A scraper exiting 2 because a sibling holds its lock: the exit code is real, the failure is not.
+  it('shows "Skipped" rather than the exit code for a skipped run', () => {
+    const entries = [{ startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:00:01Z', exitCode: 2, pid: 7, skipped: true }];
+    render(<RunHistory entries={entries} />);
+    expect(screen.getByText('Skipped')).toBeInTheDocument();
+    expect(screen.queryByText(/exit 2/i)).toBeNull();
+  });
+
+  it('shows "Skipped", not "Cancelled", when the daemon never spawned anything', () => {
+    const entries = [{ startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:00:01Z', exitCode: null, pid: null, skipped: true }];
+    render(<RunHistory entries={entries} />);
+    expect(screen.getByText('Skipped')).toBeInTheDocument();
+    expect(screen.queryByText('Cancelled')).toBeNull();
+  });
 });

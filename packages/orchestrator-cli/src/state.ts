@@ -4,6 +4,17 @@ import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 
 const MAX_HISTORY = 20;
 
+/**
+ * Whether a finished run counts against the job's health.
+ *
+ * One definition for every reader, because the answer used to be spelled out at each call site and a
+ * skipped run then had to be excluded in each of them separately -- miss one and the job still shows
+ * up red there. A null exitCode is a cancelled or orphaned run, which is not a fault of the job.
+ */
+export function isFailure(entry: RuntimeEntry): boolean {
+  return !entry.skipped && entry.exitCode !== null && entry.exitCode !== 0;
+}
+
 export class State {
   private readonly _file: string;
   private _cache: Record<string, RuntimeEntry[]> | null = null;
@@ -121,6 +132,7 @@ export class State {
       ...(entry.peakRamMb       !== undefined && { peakRamMb:       entry.peakRamMb       }),
       ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
       ...(entry.orphaned        !== undefined && { orphaned:        entry.orphaned        }),
+      ...(entry.skipped         !== undefined && { skipped:         entry.skipped         }),
     };
     const existing = this._cache![id] ?? [];
     // Update the matching entry in-place rather than prepending a duplicate. This covers
@@ -175,7 +187,7 @@ export class State {
     for (const [jobId, entries] of Object.entries(this._cache!)) {
       if (!entries || entries.length === 0) continue;
       const latest = this._latest(entries)!;
-      if (latest.exitCode !== null && latest.exitCode !== 0 && !latest.acknowledgedAt) {
+      if (isFailure(latest) && !latest.acknowledgedAt) {
         result.push({ jobId, entry: { ...latest } });
       }
     }
@@ -189,7 +201,7 @@ export class State {
     for (const entries of Object.values(this._cache!)) {
       if (!entries || entries.length === 0) continue;
       const latest = this._latest(entries)!;
-      if (latest.exitCode !== null && latest.exitCode !== 0 && !latest.acknowledgedAt) {
+      if (isFailure(latest) && !latest.acknowledgedAt) {
         latest.acknowledgedAt = now;
         changed = true;
       }
@@ -213,7 +225,10 @@ export class State {
   getUptimePercent(id: string, windowDays = 30): number | null {
     this._ensure();
     const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-    const entries = (this._cache![id] ?? []).filter(e => e.startedAt >= cutoff && e.exitCode !== null);
+    // Skipped runs leave the sample entirely: counting them as downtime punishes a job for correctly
+    // declining to run, and counting them as uptime would invent availability nothing demonstrated.
+    const entries = (this._cache![id] ?? [])
+      .filter(e => e.startedAt >= cutoff && e.exitCode !== null && !e.skipped);
     if (entries.length < 3) return null;
     const successes = entries.filter(e => e.exitCode === 0).length;
     return (successes / entries.length) * 100;
@@ -236,7 +251,10 @@ export class State {
     const entries = this._cache![id] ?? [];
     let count = 0;
     for (const e of entries) {
-      if (e.exitCode !== null && e.exitCode !== 0) count++;
+      // Transparent, not neutral: a skip must not add to the streak, and must not end it either.
+      // Ending it would let a job alternating "fail, skip, fail" escape the consecutive-failure alert.
+      if (e.skipped) continue;
+      if (isFailure(e)) count++;
       else break;
     }
     return count;

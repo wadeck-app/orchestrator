@@ -11,6 +11,7 @@ import { Scheduler }   from './scheduler.js';
 import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
 import { AuditLogger } from './audit.js';
+import { wireAuditEvents } from './audit-wiring.js';
 import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
@@ -206,9 +207,7 @@ async function main(): Promise<void> {
     const execManager = new ExecManager(CONFIG_DIR, events);
 
     // Audit job events
-    scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: { label: string } }) => {
-      audit.log('job.completed', { jobId: ev.id, label: ev.job.label, exitCode: ev.exitCode });
-    });
+    wireAuditEvents(scheduler, audit);
 
     // Captured in onStart so versionExtra can reference it without a circular dep
     let activePort = 0;

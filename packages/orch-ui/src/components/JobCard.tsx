@@ -1,7 +1,7 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { JobStatusPill } from './JobStatusPill.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
@@ -48,7 +48,7 @@ function uptimeVariant(percent: number): 'success' | 'default' | 'danger' {
  * Pulled out of the JSX so each state can be asserted directly, rather than inferred from a class
  * name buried in a map callback.
  */
-export type RunDotState = 'running' | 'cancelled' | 'ok' | 'failed' | 'empty';
+export type RunDotState = 'running' | 'cancelled' | 'skipped' | 'ok' | 'failed' | 'empty';
 
 export function runDotState(entry: RuntimeEntry | undefined): RunDotState {
   if (!entry) {
@@ -56,6 +56,11 @@ export function runDotState(entry: RuntimeEntry | undefined): RunDotState {
   }
   if (isRunActive(entry)) {
     return 'running';
+  }
+  // Before the cancelled and exitCode branches: a skipped run's exit code is the child's own,
+  // so the fallthrough would paint it red.
+  if (isRunSkipped(entry)) {
+    return 'skipped';
   }
   if (isRunCancelled(entry)) {
     return 'cancelled';
@@ -97,6 +102,10 @@ function jobListBadge(runHistory: RuntimeEntry[]): React.ReactElement {
   if (isRunActive(last)) {
     return <JobStatusPill kind="running" label="Running" />;
   }
+  // Ahead of the exitCode test so a skipped last run cannot be counted into "0x failed".
+  if (isRunSkipped(last)) {
+    return <JobStatusPill kind="skipped" label="Skipped" />;
+  }
   if (isRunCancelled(last)) {
     return <JobStatusPill kind="cancelled" label="Cancelled" />;
   }
@@ -107,9 +116,12 @@ function jobListBadge(runHistory: RuntimeEntry[]): React.ReactElement {
   return <JobStatusPill kind="failed" label={`${failCount}x failed`} />;
 }
 
+// Skipped runs are transparent: they neither extend the streak nor end it, so a scraper that
+// no-ops every second hour still reads as healthy.
 function successStreak(runHistory: RuntimeEntry[]): number {
   let streak = 0;
   for (const e of runHistory) {
+    if (isRunSkipped(e)) continue;
     if (e.exitCode === 0) streak++;
     else break;
   }
@@ -200,6 +212,9 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               // violations-suppress-start: tailwind/no-raw-color-class pass/fail dot colors have no semantic-token equivalents in design system
               const CLS: Record<Exclude<RunDotState, 'running'>, string> = {
                 cancelled: 'bg-orange-400',
+                // Muted on purpose: a skipped run reports nothing, so it must not read as an
+                // outcome. Darker than the empty slot so it is still visibly a recorded run.
+                skipped:   'bg-muted',
                 ok:        'bg-green-500',
                 failed:    'bg-red-500',
                 empty:     'bg-border',

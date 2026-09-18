@@ -20,6 +20,7 @@ import type { Job, TriggerSource } from './types.js';
 import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
+import { isFailure } from './state.js';
 
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
@@ -154,9 +155,9 @@ export class Scheduler extends EventEmitter {
               const delayMs = catchUpStaggerMs;
               catchUpStaggerMs += this._catchUpStaggerMs;
               if (delayMs === 0) {
-                void this._fire(job, { kind: 'cron' });
+                void this._maybeSpawn(job);
               } else {
-                setTimeout(() => { void this._fire(job, { kind: 'cron' }); }, delayMs);
+                setTimeout(() => { void this._maybeSpawn(job); }, delayMs);
               }
             }
           }
@@ -179,13 +180,15 @@ export class Scheduler extends EventEmitter {
       if (job.type === 'once') {
         const elapsed   = this._now().getTime() - new Date(job.scheduledAt!).getTime();
         const remaining = job.delayMs! - elapsed;
+        // Removed either way: a once job is spent when its moment passes. If the liveness check
+        // skipped it, the thing it was meant to bring up is already up, so its purpose is served.
         if (remaining <= 0) {
-          await this._fire(job);
+          await this._maybeSpawn(job);
           this._registry.remove(job.id);
         } else {
           const handle = setTimeout(async () => {
             this._timeouts.delete(job.id);
-            await this._fire(job);
+            await this._maybeSpawn(job);
             this._registry.remove(job.id);
           }, remaining);
           this._timeouts.set(job.id, handle);
@@ -193,10 +196,17 @@ export class Scheduler extends EventEmitter {
       }
     }
 
-    // Clean up stale "running" entries from previous sessions whose process is no longer alive
+    // Clean up stale "running" entries from previous sessions whose process is no longer alive.
+    //
+    // `finishedAt == null` is what makes a run open. exitCode alone does not: a null exit code is
+    // also how a finished run says nobody observed the process end -- cancelled by the user, closed
+    // as orphaned by State.closeOrphanedRuns, or a firing skipped because the target was already
+    // alive. All three carry finishedAt, and all three used to be rewritten here into "failed,
+    // exit 1" on the next daemon start, which even contradicted closeOrphanedRuns' own promise that
+    // an interrupted run does not read as a failure.
     for (const job of this._registry.list()) {
       const entry = this._state.get(job.id);
-      if (entry && entry.exitCode === null) {
+      if (entry && entry.exitCode === null && entry.finishedAt == null) {
         let alive = false;
         if (entry.pid) {
           try { process.kill(entry.pid, 0); alive = true; } catch { /* dead */ }
@@ -227,10 +237,18 @@ export class Scheduler extends EventEmitter {
     return this._fire(dryJob, { kind: 'manual' });
   }
 
-  async trigger(id: string, source: TriggerSource = { kind: 'manual' }): Promise<{ pid: number | null } | { exitCode: number | null }> {
+  /**
+   * Runs a job now, on request.
+   *
+   * `wait` belongs to this one call, not to the job: the job's own triggerMode governs its scheduled
+   * firings. Without this, `orch trigger --wait` only waited on jobs already configured to be waited
+   * on -- the ones that did not need the flag -- and returned immediately on every other job while
+   * printing that it had finished.
+   */
+  async trigger(id: string, source: TriggerSource = { kind: 'manual' }, wait = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const job = this._registry.get(id);
     if (!job) throw new Error(`Job not found: "${id}"`);
-    return this._fire(job, source);
+    return this._fire(job, source, wait);
   }
 
   /**
@@ -306,7 +324,7 @@ export class Scheduler extends EventEmitter {
         return; // occurrence was pre-empted by trigger-early
       }
       const scheduledAt = this._now().toISOString();
-      void this._fire(job);
+      void this._maybeSpawn(job);
       // SLA window check: alert if job hasn't succeeded within slaWindowMinutes
       if (job.slaWindowMinutes && job.slaWindowMinutes > 0) {
         setTimeout(() => {
@@ -325,12 +343,49 @@ export class Scheduler extends EventEmitter {
     this._cronTasks.set(job.id, task);
   }
 
-  private async _maybeSpawn(job: Job): Promise<void> {
-    if (await this._liveness(job)) return;
-    void this._fire(job);
+  /**
+   * Fires unless the job's liveness check says the target is already up.
+   *
+   * Every scheduled path goes through here -- cron, catch-up, startup and once. It used to be
+   * reachable from startup jobs only, so `--liveness-strategy` on a cron job was accepted by the CLI
+   * and then ignored, which is the whole reason "this scraper is already running" surfaced as a
+   * failed run instead of a skipped one.
+   *
+   * A manual `orch trigger` deliberately does not come through here: someone asking for a run
+   * explicitly should not be second-guessed.
+   */
+  private async _maybeSpawn(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<void> {
+    if (await this._liveness(job)) {
+      this._recordSkip(job, 'liveness');
+      return;
+    }
+    void this._fire(job, trigger);
   }
 
-  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<{ pid: number | null } | { exitCode: number | null }> {
+  /**
+   * Leaves a trace for a firing that never spawned anything.
+   *
+   * This was a bare `return`: no log line, no event, no history. "The job did not run and nothing
+   * says why" is no better than a false failure, so the skip is recorded like any other outcome --
+   * with exitCode null, because no process ran, and finishedAt set, so it does not read as a run
+   * still in flight.
+   */
+  private _recordSkip(job: Job, reason: 'liveness'): void {
+    const at = this._now().toISOString();
+    this._state.record(job.id, {
+      startedAt: at, finishedAt: at, exitCode: null, pid: null, skipped: true,
+    });
+    // Same per-run log file layout as a real run, so the skip shows up in `orch logs --job <id>`
+    // right where the run would have been.
+    const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, at);
+    jobLogger.write(`[job:skipped] reason=${reason} -- target already alive, nothing was done`);
+    jobLogger.close();
+    this._events.publish('job.skipped', {
+      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason,
+    });
+  }
+
+  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
     const jobEnv = (job.env || job.secrets?.length)
@@ -483,22 +538,37 @@ export class Scheduler extends EventEmitter {
         // exitCode=null + finishedAt = "Cancelled" in RunHistory
         const exitCode = cancelledByUser ? null : rawExitCode;
 
+        // Declared by the job as "nothing was done", so it is neither a success nor a failure. The
+        // real exit code is still recorded: a lock left stuck stays diagnosable.
+        const skipped = !cancelledByUser && exitCode !== null
+          && (job.skipExitCodes?.includes(exitCode) ?? false);
+
         // Recovery detection: was previous run a failure?
         const prev = this._state.get(job.id);
-        const wasFailure = prev !== null && prev.exitCode !== null && prev.exitCode !== 0;
+        const wasFailure = prev !== null && isFailure(prev);
 
         this._state.record(job.id, {
           startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
           peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
           peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
           cancelledByUser: cancelledByUser || undefined,
+          skipped: skipped || undefined,
         });
-        jobLogger.write(`[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s`);
+        jobLogger.write(skipped
+          ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
+          : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s`);
         jobLogger.close();
-        this.emit('job-finished', { id: job.id, exitCode, job });
+        // `skipped` travels with the event because the systray classifies on this alone.
+        this.emit('job-finished', { id: job.id, exitCode, job, skipped });
 
         if (cancelledByUser) {
           this._events.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
+        } else if (skipped) {
+          // No dependents and no retry: both would act on work that never happened. The retry
+          // counter is left alone, since a skip says nothing about whether the last attempt failed.
+          this._events.publish('job.skipped', {
+            jobId: job.id, label: job.label, exitCode, durationMs, reason: 'exitCode',
+          });
         } else if (exitCode === 0) {
           this._retryCounters.delete(job.id);
           this._events.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
@@ -556,7 +626,8 @@ export class Scheduler extends EventEmitter {
       });
     });
 
-    if (job.triggerMode !== 'wait') {
+    // An explicit wait from the caller overrides the job's scheduling mode for this run only.
+    if (!waitForExit && job.triggerMode !== 'wait') {
       done.catch((err: unknown) => {
         const reason = err instanceof Error ? err.message : String(err);
         jobLogger.write(`[error] Job promise rejected (fire-and-forget): ${reason}`);

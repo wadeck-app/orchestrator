@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, ButtonLink, IconButton } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunFailed, latestRun, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type RuntimeEntry } from '../types.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
@@ -28,10 +28,20 @@ function readViewMode(): ViewMode {
 const BULK_BAR_CLS  = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 bg-surface rounded-lg border border-border shadow-lg flex-wrap max-w-2xl';
 // @formatter:on
 
-function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
+/**
+ * Failures at the head of the history, which is what drives the "N fails" alert on a card.
+ *
+ * Skipped runs are transparent, exactly as in JobCard's success streak: they must not inflate
+ * the count, and they must not silently clear a genuine failure run either.
+ *
+ * Exported for its own test: the value only ever reaches the DOM as part of an alert that is
+ * itself threshold-gated, so asserting it through the rendered card proves very little.
+ */
+export function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
   let count = 0;
   for (const e of runHistory) {
-    if (e.exitCode !== null && e.exitCode !== 0) count++;
+    if (isRunSkipped(e)) continue;
+    if (isRunFailed(e)) count++;
     else break;
   }
   return count;
@@ -223,7 +233,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
                   <td className="py-3 pr-4 text-content font-medium">{job.label}</td>
                   <td className="py-3 pr-4"><span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>{job.type}</span></td>
                   <td className="py-3 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
-                  <td className="py-3 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} /></td>
+                  <td className="py-3 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} skipped={isRunSkipped(last)} /></td>
                   <td className="py-3 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
                   <td className="py-3">
                     {/* Same pair as the card footer, at the same size. Both were hand-rolled

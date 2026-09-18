@@ -30,6 +30,10 @@ All runtime communication is via HTTP (daemon RPC). The dependency graph is one-
 
 `/^[a-z0-9-]+$/i` — reject anything else with 400. This is the log path traversal guard. Do not relax this regex without a full security review.
 
+## P-8: orch classifies a job from the outside and takes the program at its word
+
+orch observes a job's exit code and process lifetime; it never models what the job did. `skipExitCodes` declares how to classify a code, not a guarantee that nothing happened: a program that does work before checking its own lock exits "skipped" having changed state anyway. Not hypothetical — `whatsapp-scraper --clear-session` deleted its session directory before `lock.acquire()` until that was reordered (2026-09-18), and orch could not have told the difference either way. A classification is therefore never treated as evidence: the real exit code and the child's stderr always stay in the run history and the per-run log, which is where the truth about a run lives. Reject any feature that requires orch to understand what happens inside a job.
+
 ## From lessons learned
 
 - Read the spec (`specs/`) FIRST before proposing any alternative approach — the DSL + capability-framework pattern was in the spec and prior work but ignored repeatedly until the user reminded explicitly (session 508a6a16).
