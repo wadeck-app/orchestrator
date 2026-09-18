@@ -284,9 +284,6 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
             ? matchCount !== null ? `${matchCount} / ${lines.length} lines` : `${lines.length} lines`
             : 'Connecting...'}
         </span>
-        {/* Derived, not stored: a second variable for the same fact is what let the badge and the
-            button disagree. */}
-        {!autoScroll && <span className="text-yellow-400">Paused</span>}
         <div className="flex items-center gap-2">
           {isJobRunning && (
             <ButtonAction
@@ -299,17 +296,35 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
               loading={killing}
             />
           )}
-          {/* ChipButton carries aria-pressed itself, which is what makes the toggle's state
-              readable rather than only visible in the icon and the colour - and the only thing a
-              test can hold it to, which is how the badge and the button once disagreed unnoticed. */}
+          {/* One control, and it IS the state indicator: green "Live" while following the tail, amber
+              "Paused" when not. There used to be a separate amber badge beside it saying Paused while
+              the button still read "Auto", which is how the two came to disagree - the badge and the
+              button were reading different variables. Saying it once means they cannot.
+
+              "Live" rather than "Auto" because it names what the reader sees - the pane is showing the
+              log as it arrives - where "Auto" named the mechanism.
+
+              The colour comes from ChipButton's own palettes, which resolve hue tokens, so it is
+              correct inside the terminal's ThemeScope rather than a hard-coded yellow.
+
+              ChipButton carries aria-pressed itself, which keeps the state readable rather than only
+              visible, and is the only thing a test can hold it to. */}
           <ChipButton
-            active={autoScroll}
+            // Always `active`, because both states are a filled chip - a chip's inactive palette is
+            // the muted grey one, so `active={autoScroll}` would drop the amber and leave Paused
+            // looking switched off rather than paused. The colour carries the state.
+            active
+            color={autoScroll ? 'green' : 'yellow'}
+            // The real toggle state, overriding the one ChipButton derives from `active`. Without this
+            // the control would report itself as permanently pressed, which is the accessibility half
+            // of the bug where the badge and the button disagreed.
+            aria-pressed={autoScroll}
             shape="square"
             onClick={handleAutoScrollToggle}
-            title={autoScroll ? 'Disable auto-scroll' : 'Enable auto-scroll'}
+            title={autoScroll ? 'Following the log - click to pause' : 'Paused - click to follow the log'}
           >
             {autoScroll ? <ArrowDown size={12} /> : <Pause size={12} />}
-            Auto
+            {autoScroll ? 'Live' : 'Paused'}
           </ChipButton>
           {/* The same SearchBar the job list uses. It brings its own search icon, clear button
               and role=search, and the scoped tokens make it terminal-dark. debounceMs 0 keeps

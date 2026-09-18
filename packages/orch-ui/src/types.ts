@@ -26,6 +26,15 @@ export interface Job {
   command: string;
   cwd?: string | null;
   enabled: boolean;
+  /**
+   * The window a cron job may fire in, both ISO timestamps and both optional.
+   *
+   * `activeFrom` may be in the FUTURE, which is a third state rather than a flavour of disabled: a
+   * job waiting for its window to open is enabled and working as configured. At `activeUntil` the
+   * daemon disables the job rather than deleting it.
+   */
+  activeFrom?: string;
+  activeUntil?: string;
   triggerMode: 'fire-and-forget' | 'wait';
   missedFiring?: MissedFiring;
   liveness?: LivenessConfig | null;
@@ -50,7 +59,10 @@ export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
   | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
-  | 'label' | 'triggerMode';
+  | 'label' | 'triggerMode'
+  // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it
+  // active now. Both are ordinary edits, so both must be clearable rather than only replaceable.
+  | 'activeFrom' | 'activeUntil';
 
 /**
  * What a job form submits. An edit is a PATCH, so an omitted key means "leave it alone" and there is

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { getErrorMessage, type Job, type JobFormPayload, type MissedFiring, type LivenessConfig, type LivenessStrategy, type UnsettableJobField } from '../types.js';
 import { describeCron } from '../cron-describe.js';
-import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldSelect, FieldText, IconButton, type FieldSelectOption } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldNumber, FieldSelect, FieldText, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
@@ -37,6 +37,19 @@ const LIVENESS_OPTIONS: FieldSelectOption[] = [
   { value: 'command',  label: 'Command' },
 ];
 
+/*
+ * "Active for three weeks" as one click. Days rather than a duration string, because the form deals
+ * in dates and the daemon takes timestamps - parsing "3w" here would only reintroduce a unit to get
+ * wrong.
+ */
+const ACTIVE_PERIOD_PRESETS = [
+  { label: '1 week',   days: 7   },
+  { label: '2 weeks',  days: 14  },
+  { label: '3 weeks',  days: 21  },
+  { label: '1 month',  days: 30  },
+  { label: '3 months', days: 90  },
+] as const;
+
 const CRON_TEMPLATES = [
   { label: 'Every 5 min',   value: '*/5 * * * *'  },
   { label: 'Every hour',    value: '0 * * * *'    },
@@ -70,6 +83,7 @@ interface FormErrors {
   command?: string;
   schedule?: string;
   onceDelay?: string;
+  activePeriod?: string;
 }
 
 // registry.ts validateJob() enforces this. Checked here too, so the field that is wrong gets named
@@ -98,6 +112,26 @@ function wasConfigured(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === 'object') return Object.keys(value).length > 0;
   return true;
+}
+
+/**
+ * A period of `days`, measured from `from` when one is already chosen and from today otherwise.
+ *
+ * Measuring from the existing start is what makes "active from 1 March" + "3 weeks" mean the three
+ * weeks after 1 March rather than the three weeks after today.
+ */
+function periodFromNow(days: number, from: Date | null): DateRange {
+  const start = from ?? new Date();
+  const end = new Date(start.getTime() + days * 86_400_000);
+  return { from: start, to: end };
+}
+
+/** The window as the daemon wants it: ISO strings, or absent. */
+function periodToPayload(period: DateRange): { activeFrom?: string; activeUntil?: string } {
+  return {
+    ...(period.from ? { activeFrom: period.from.toISOString() } : {}),
+    ...(period.to ? { activeUntil: period.to.toISOString() } : {}),
+  };
 }
 
 function parseCron(expr: string): string | null {
@@ -131,6 +165,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
   );
   const [missedFiring, setMissedFiring] = useState<MissedFiring>(initial?.missedFiring ?? 'skip');
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(initial?.timeoutSeconds ?? 300);
+  // Seeded from the job so editing shows the window it already has, rather than an empty field that
+  // would clear it on save.
+  const [activePeriod, setActivePeriod] = useState<DateRange>({
+    from: initial?.activeFrom ? new Date(initial.activeFrom) : null,
+    to: initial?.activeUntil ? new Date(initial.activeUntil) : null,
+  });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -177,6 +217,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     if (type === 'once' && !(onceDelaySeconds >= 1)) {
       e.onceDelay = 'Delay must be at least 1 second';
     }
+    // The daemon refuses a window that can never fire. Named here so the message points at the field
+    // rather than arriving as a 500 from the registry.
+    if (type === 'cron' && activePeriod.from && activePeriod.to
+        && activePeriod.to.getTime() <= activePeriod.from.getTime()) {
+      e.activePeriod = 'The end of the period must be after its start';
+    }
     if (!label.trim()) e.label = 'Label is required';
     if (!command.trim()) e.command = 'Command is required';
     if (type === 'cron') {
@@ -217,6 +263,23 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       if (cwd.trim()) data.cwd = cwd.trim();
       else clearIfWasConfigured('cwd', initial?.cwd);
       if (type === 'cron' && schedule.trim()) data.schedule = schedule.trim();
+      if (type === 'cron') {
+        const period = periodToPayload(activePeriod);
+        Object.assign(data, period);
+        // An edit is a PATCH, so an omitted key means "leave it alone". Clearing the period has to
+        // travel as an unset or the job keeps the window the user just removed.
+        if (period.activeFrom === undefined) {
+          clearIfWasConfigured('activeFrom', initial?.activeFrom);
+        }
+        if (period.activeUntil === undefined) {
+          clearIfWasConfigured('activeUntil', initial?.activeUntil);
+        }
+      } else {
+        // Switching away from cron takes the field off the form, so the window must go with it rather
+        // than linger on a job whose type has no use for it.
+        clearIfWasConfigured('activeFrom', initial?.activeFrom);
+        clearIfWasConfigured('activeUntil', initial?.activeUntil);
+      }
       if (type === 'startup') data.delaySeconds = delaySeconds;
       // Switching the type takes this field off the form. Without this the patch keeps a delay that
       // now belongs to no type, and `orch show` still reports it.
@@ -368,6 +431,38 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
                 {t.label}
               </button>
             ))}
+          </div>
+
+          {/* The active period. dsl-ui's own range field rather than two date inputs: a period IS a
+              range, and FieldDateRange already exists for exactly this.
+              The presets are what "active for three weeks" looks like as one click - the same shape as
+              the cron templates above, because it is the same kind of choice. */}
+          <div className="mt-4">
+            <FieldDateRange
+              label="Active period (optional)"
+              description="Leave empty to run indefinitely. A start in the future is allowed - the job waits. At the end the job is disabled, not deleted."
+              value={activePeriod}
+              onChange={setActivePeriod}
+            />
+            {errors?.activePeriod && <p className="mt-1 text-xs text-danger">{errors.activePeriod}</p>}
+            <div className="flex flex-wrap gap-1 mt-2">
+              {ACTIVE_PERIOD_PRESETS.map(p => (
+                // violations-suppress: react/no-raw-button period preset chip - same compact chip pattern as the cron templates above
+                <button key={p.label} type="button"
+                  onClick={() => setActivePeriod(periodFromNow(p.days, activePeriod.from))}
+                  className={CHIP_BTN_CLS}>
+                  {p.label}
+                </button>
+              ))}
+              {(activePeriod.from !== null || activePeriod.to !== null) && (
+                // violations-suppress: react/no-raw-button clear chip - same compact chip pattern
+                <button type="button"
+                  onClick={() => setActivePeriod({ from: null, to: null })}
+                  className={CHIP_BTN_CLS}>
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

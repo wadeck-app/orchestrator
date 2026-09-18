@@ -141,16 +141,46 @@ describe('LogViewer', () => {
       return pane;
     }
 
+    /*
+     * One control, which is also the state indicator: it reads "Live" in green while following and
+     * "Paused" in amber when not. It used to read "Auto" always, with a separate amber badge beside it
+     * saying Paused - which is how the two came to disagree, since they read different variables.
+     *
+     * Matched on either label, so the helper finds the button in both states.
+     */
     function autoButton(): HTMLElement {
-      return screen.getByRole('button', { name: /Auto/ });
+      return screen.getByRole('button', { name: /Live|Paused/ });
     }
 
-    it('follows by default, with no Paused badge', () => {
+    it('follows by default, reading Live and pressed', () => {
       vi.stubGlobal('EventSource', MockEventSource);
       renderInRouter(<LogViewer jobId="j1" />);
 
+      expect(screen.getByText('Live')).toBeInTheDocument();
       expect(screen.queryByText('Paused')).toBeNull();
       expect(autoButton().getAttribute('aria-pressed')).toBe('true');
+    });
+
+    // Both states are coloured. The paused one used to be the chip's muted inactive grey, which reads
+    // as switched off rather than paused.
+    it('is green while live and amber while paused, never grey', () => {
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      /*
+       * A BACKGROUND in the hue, which only the chip's active palette sets - its inactive palette
+       * mentions the hue on hover only. Matched on the hue rather than a token name because dsl-ui
+       * spells it `bg-green-100` in one version and `bg-hue-green-bg` in the next, and the assertion is
+       * about the colour the reader sees either way.
+       *
+       * Not asserted by the absence of `text-muted`: that comes from the ghost button underneath and
+       * is present in both states.
+       */
+      expect(autoButton().className).toMatch(/bg-\S*green/);
+
+      scrollPaneTo(false);
+
+      expect(autoButton().className).toMatch(/bg-\S*yellow/);
     });
 
     it('scrolling up pauses, and the button agrees rather than still claiming to follow', () => {

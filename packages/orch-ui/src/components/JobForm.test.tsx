@@ -177,6 +177,110 @@ describe('JobForm sends what the daemon requires', () => {
     expect(sent.delayMs).toBeGreaterThan(0);
   });
 
+  /*
+   * The active period: "active for three weeks", or one that starts later. The daemon disables the
+   * job at the end rather than deleting it.
+   *
+   * The field only exists for cron jobs, so the whole feature was unreachable from the dashboard until
+   * it was added here - the daemon accepted activeFrom/activeUntil and nothing could send them.
+   */
+  it('offers an active period for a cron job', () => {
+    renderNewForm(vi.fn().mockResolvedValue(undefined));
+    expect(screen.getByText(/Active period/)).toBeInTheDocument();
+  });
+
+  it('offers a preset for three weeks, which is the case asked for', () => {
+    renderNewForm(vi.fn().mockResolvedValue(undefined));
+    expect(screen.getByRole('button', { name: '3 weeks' })).toBeInTheDocument();
+  });
+
+  it('sends the period as ISO timestamps when a preset is used', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderNewForm(onSubmit);
+
+    fill(/^Id/, 'windowed');
+    fill(/^Label/, 'Windowed');
+    fill(/^Command/, 'node --version');
+    fill(/^Schedule/, '0 9 * * *');
+    fireEvent.click(screen.getByRole('button', { name: '3 weeks' }));
+    // Waited on, not just clicked: React batches per event, so submitting in the same synchronous
+    // block would close over the state from before the preset was applied. The Clear chip only exists
+    // once a period is set, so its appearance is the state having landed.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument());
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = onSubmit.mock.calls[0]![0] as { activeFrom?: string; activeUntil?: string };
+    expect(typeof sent.activeFrom).toBe('string');
+    expect(typeof sent.activeUntil).toBe('string');
+    const days = (new Date(sent.activeUntil!).getTime() - new Date(sent.activeFrom!).getTime()) / 86_400_000;
+    expect(Math.round(days)).toBe(21);
+  });
+
+  it('sends no period when none is chosen, so the job runs indefinitely', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderNewForm(onSubmit);
+
+    fill(/^Id/, 'unbounded');
+    fill(/^Label/, 'Unbounded');
+    fill(/^Command/, 'node --version');
+    fill(/^Schedule/, '0 9 * * *');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sent.activeFrom).toBeUndefined();
+    expect(sent.activeUntil).toBeUndefined();
+  });
+
+  // An edit showing an empty field would clear the window the job already has.
+  it('shows the period a job already has when editing', () => {
+    const from = '2026-03-01T00:00:00.000Z';
+    const until = '2026-03-22T00:00:00.000Z';
+    render(
+      <MemoryRouter>
+        <JobForm
+          onSubmit={vi.fn().mockResolvedValue(undefined)}
+          onCancel={() => {}}
+          initial={{
+            id: 'w', type: 'cron', command: 'node -v', label: 'W', schedule: '0 9 * * *',
+            activeFrom: from, activeUntil: until,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    // A Clear chip only appears once a period is set, so its presence is the period being shown.
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  // An edit is a PATCH, so an omitted key means "leave it alone" - clearing has to travel as an unset.
+  it('unsets the period when it is cleared on an edit', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MemoryRouter>
+        <JobForm
+          onSubmit={onSubmit}
+          onCancel={() => {}}
+          initial={{
+            id: 'w', type: 'cron', command: 'node -v', label: 'W', schedule: '0 9 * * *',
+            activeFrom: '2026-03-01T00:00:00.000Z', activeUntil: '2026-03-22T00:00:00.000Z',
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    // The chip disappears once the period is empty, which is the state change flushing.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull());
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = onSubmit.mock.calls[0]![0] as { unset?: string[] };
+    expect(sent.unset).toContain('activeFrom');
+    expect(sent.unset).toContain('activeUntil');
+  });
+
   // The id is the registry key and the route parameter, so editing it would address a different
   // job. The PUT route takes it from the URL and ignores the body.
   it('does not offer to change the id when editing', () => {
