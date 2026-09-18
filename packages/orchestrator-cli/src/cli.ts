@@ -53,6 +53,157 @@ function has(argv: string[], name: string): boolean {
  * They are two ways of saying the same thing, and picking a winner would mean the job ends at a time
  * the user did not ask for.
  */
+/**
+ * Every job field settable by a plain flag, in one place.
+ *
+ * `add` and `edit` both read this, because the two lists used to be maintained by hand and drifted:
+ * nine fields of Job -- timeoutSeconds, env, tags, onExitCode, alertAfterFailures, dependsOn,
+ * slaWindowMinutes, secrets, dryRunSupported -- had no flag at all, so `orch edit j --timeout 600`
+ * reported success and changed nothing. It also feeds the unknown-flag check, so adding a field here
+ * is the single edit needed to make it settable, documented as accepted, and spelled correctly.
+ *
+ * The composite flags stay out: `--liveness-*` build one nested object, and `--active-*` cross-check
+ * each other. `--delay` too, since it means delaySeconds on a startup job and delayMs on a once job.
+ */
+interface FieldFlag {
+  flag:  string;
+  field: string;
+  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence';
+}
+
+const JOB_FIELD_FLAGS: FieldFlag[] = [
+  { flag: '--command',              field: 'command',            kind: 'string'      },
+  { flag: '--label',                field: 'label',              kind: 'string'      },
+  { flag: '--cwd',                  field: 'cwd',                kind: 'string'      },
+  { flag: '--schedule',             field: 'schedule',           kind: 'string'      },
+  { flag: '--trigger-mode',         field: 'triggerMode',        kind: 'string'      },
+  { flag: '--missed-firing',        field: 'missedFiring',       kind: 'string'      },
+  { flag: '--depends-on',           field: 'dependsOn',          kind: 'string'      },
+  { flag: '--timeout',              field: 'timeoutSeconds',     kind: 'int'         },
+  { flag: '--alert-after-failures', field: 'alertAfterFailures', kind: 'int'         },
+  { flag: '--sla-window',           field: 'slaWindowMinutes',   kind: 'int'         },
+  { flag: '--tags',                 field: 'tags',               kind: 'stringList'  },
+  { flag: '--secrets',              field: 'secrets',            kind: 'stringList'  },
+  { flag: '--retry-on-exit-codes',  field: 'retryOnExitCodes',   kind: 'numberList'  },
+  { flag: '--retry-delays',         field: 'retryDelays',        kind: 'numberList'  },
+  { flag: '--skip-exit-codes',      field: 'skipExitCodes',      kind: 'numberList'  },
+  { flag: '--env',                  field: 'env',                kind: 'map'         },
+  { flag: '--on-exit-code',         field: 'onExitCode',         kind: 'map'         },
+  { flag: '--dry-run-supported',    field: 'dryRunSupported',    kind: 'presence'    },
+];
+
+/** Flags accepted alongside the field flags, so the unknown-flag check does not reject them. */
+const EXTRA_ADD_FLAGS  = ['--once', '--disabled', '--delay', '--json',
+                          '--liveness-strategy', '--liveness-port-file', '--liveness-command',
+                          '--active-from', '--active-until', '--active-for'];
+const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json',
+                          '--liveness-strategy', '--liveness-port-file', '--liveness-command',
+                          '--active-from', '--active-until', '--active-for'];
+
+/** Flags that consume the next argument; the rest are presence-only. */
+function takesValue(flagName: string): boolean {
+  const known = JOB_FIELD_FLAGS.find(f => f.flag === flagName);
+  if (known) return known.kind !== 'presence';
+  return !['--once', '--disabled', '--json'].includes(flagName);
+}
+
+/** All occurrences of a repeatable flag, values untouched -- no splitting on ',' or anything else. */
+function rawOccurrences(argv: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== name) continue;
+    const raw = argv[i + 1];
+    if (raw === undefined) throw new Error(`${name} needs a value, but was followed by nothing.`);
+    out.push(raw);
+    i++;
+  }
+  return out;
+}
+
+/**
+ * KEY=VALUE pairs for --env and --on-exit-code.
+ *
+ * Splits on the FIRST '=' only and never on commas: a token, a URL or a message routinely contains
+ * both, and splitting them would corrupt the value rather than fail.
+ */
+function mapFlag(argv: string[], name: string): Record<string, string> | undefined {
+  const raws = rawOccurrences(argv, name);
+  if (raws.length === 0) return undefined;
+  const out: Record<string, string> = {};
+  for (const raw of raws) {
+    const eq = raw.indexOf('=');
+    if (eq <= 0) {
+      throw new Error(`${name} expects KEY=VALUE, but got "${raw}".\n\n`
+        + `Example: orch edit my-job ${name} ${name === '--env' ? 'TOKEN=abc' : '2=already running'}`);
+    }
+    out[raw.slice(0, eq)] = raw.slice(eq + 1);
+  }
+  return out;
+}
+
+/**
+ * Reads every field flag present in argv into a payload.
+ *
+ * Throws on a malformed value, so the caller can report it as a validation error before the daemon is
+ * contacted. An absent flag writes nothing, which is what makes `edit` a patch.
+ */
+function collectFieldFlags(argv: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const { flag: name, field, kind } of JOB_FIELD_FLAGS) {
+    if (kind === 'presence') {
+      if (has(argv, name)) out[field] = true;
+      continue;
+    }
+    if (kind === 'map') {
+      const map = mapFlag(argv, name);
+      if (map !== undefined) out[field] = map;
+      continue;
+    }
+    if (kind === 'numberList') {
+      const list = numberListFlag(argv, name);
+      if (list !== undefined) out[field] = list;
+      continue;
+    }
+    const raw = flag(argv, name);
+    if (raw === undefined) continue;
+    if (kind === 'string') {
+      out[field] = raw;
+    } else if (kind === 'int') {
+      const n = Number(raw);
+      if (!Number.isInteger(n)) {
+        throw new Error(`${name} expects a whole number of ${name === '--sla-window' ? 'minutes' : 'seconds'}, but got "${raw}".`);
+      }
+      out[field] = n;
+    } else {
+      const items = raw.split(',').map(v => v.trim()).filter(v => v !== '');
+      if (items.length > 0) out[field] = items;
+    }
+  }
+  return out;
+}
+
+/**
+ * Refuses a flag nobody reads, instead of ignoring it.
+ *
+ * The whole reason `--timeout` appeared to do nothing: an unrecognised flag was dropped without a
+ * word, and the command still reported success. shared-cli's warnUnknownArgs cannot be used here --
+ * it inspects every argument, so it would flag the VALUES of legitimate flags as unknown.
+ */
+function rejectUnknownFlags(argv: string[], extra: string[], cmdName: string): void {
+  const known = new Set([...JOB_FIELD_FLAGS.map(f => f.flag), ...extra]);
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (!arg.startsWith('--')) continue;
+    if (known.has(arg)) {
+      // Skip the value, which may itself start with -- (`--command "--version"`).
+      if (takesValue(arg)) i++;
+      continue;
+    }
+    errorExit(`${cmdName}: unknown flag "${arg}".\n\nAccepted flags: `
+      + `${[...known].sort().join(', ')}`, 4);
+  }
+}
+
 function activeWindowFlags(argv: string[]): Record<string, string> {
   const from  = flag(argv, '--active-from');
   const until = flag(argv, '--active-until');
@@ -108,6 +259,18 @@ function multiFlag(argv: string[], name: string): string[] {
 
 function buildLiveness(argv: string[]): LivenessConfig | null {
   const strategy = flag(argv, '--liveness-strategy');
+  // These two are only ever read through a strategy, so on their own they would be accepted and then
+  // do nothing -- which is how `--liveness-port-file` used to write a junk `livenessPortFile` field.
+  if (!strategy) {
+    for (const orphan of ['--liveness-port-file', '--liveness-command']) {
+      if (has(argv, orphan)) {
+        errorExit(`${orphan} needs --liveness-strategy, otherwise there is no check to attach it to.`
+          + `\n\nExample: orch edit my-job --liveness-strategy `
+          + `${orphan === '--liveness-port-file' ? 'portFile --liveness-port-file <path>' : 'command --liveness-command "<cmd>"'}`
+          + `\n\nStrategies: none, portFile, pidFile, command`, 4);
+      }
+    }
+  }
   if (!strategy || strategy === 'none') return null;
   const liveness: LivenessConfig = { strategy: strategy as LivenessConfig['strategy'] };
   if (strategy === 'portFile') liveness.portFile = flag(argv, '--liveness-port-file');
@@ -195,6 +358,26 @@ Job mutation:
                                [--active-for <3w|21d|48h>]   Run only for this long, then disable
                                [--active-from <date>]        Start firing at this date (may be future)
                                [--active-until <date>]       Stop firing at this date, then disable
+
+  Accepted by both add and edit, from the same table, so nothing is settable by one only:
+  --command <cmd>              What to run
+  --label <text>               Display name (defaults to the id)
+  --cwd <path>                 Working directory
+  --schedule <expr>            Cron expression (cron jobs)
+  --trigger-mode <mode>        fire-and-forget | wait
+  --missed-firing <mode>       catch-up | skip
+  --timeout <seconds>          Kill the run after this long (default: 300)
+  --tags <a,b>                 Comma-separated tags
+  --depends-on <job-id>        Fire this job after <job-id> succeeds
+  --alert-after-failures <n>   Alert after n consecutive failures (default: 3)
+  --sla-window <minutes>       Alert if no success within the window
+  --secrets <A,B>              Secret names to inject as env vars
+  --env KEY=VALUE              Repeatable. Split on the first '=' only
+  --on-exit-code CODE=MESSAGE  Repeatable. Systray message for an exit code
+  --dry-run-supported          Command accepts --dry-run (clear it with --unset)
+  --retry-on-exit-codes, --retry-delays, --skip-exit-codes   See the sections below
+
+  An unrecognised flag is refused, not ignored: --timeout used to be silently dropped.
   orch add startup <id> --command <cmd> [--delay <seconds>] [--cwd <p>] [--label <t>]
   orch add --once <id> --delay <duration> --command <cmd> [--cwd <p>] [--label <t>]
                                Fire once after <duration> (e.g. 30s, 2m, 1h, 1d), then self-delete
@@ -507,6 +690,7 @@ Examples:
   orch add startup check-health --command "curl http://localhost:8080/health"
   orch add --once report --delay 1h --command "node scripts/report.js"`, 4);
       }
+      rejectUnknownFlags(addRest, EXTRA_ADD_FLAGS, 'orch add');
       const command = flag(addRest, '--command');
       if (!command) {
         errorExit(`--command is required for all job types.
@@ -518,15 +702,15 @@ Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4
         id, type, command, enabled: !has(addRest, '--disabled'),
       };
 
-      const label       = flag(addRest, '--label');
-      const cwd         = flag(addRest, '--cwd');
-      const triggerMode = flag(addRest, '--trigger-mode');
-      const liveness    = buildLiveness(addRest);
-
-      if (label)       body['label']       = label;
-      if (cwd)         body['cwd']         = cwd;
-      if (triggerMode) body['triggerMode'] = triggerMode;
-      if (liveness)    body['liveness']    = liveness;
+      // Same table as `edit`, so a field cannot be settable at creation and not afterwards, or the
+      // reverse. `command` is already in `body` above and collecting it again is harmless.
+      try {
+        Object.assign(body, collectFieldFlags(addRest));
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
+      const liveness = buildLiveness(addRest);
+      if (liveness) body['liveness'] = liveness;
 
       if (type === 'cron') {
         const schedule = flag(addRest, '--schedule');
@@ -623,14 +807,14 @@ Examples:
     case 'edit': {
       const [id, ...editRest] = rest;
       const updates: Record<string, unknown> = {};
-      const fields = ['--schedule', '--command', '--cwd', '--label', '--trigger-mode', '--missed-firing',
-                      '--liveness-port-file', '--liveness-command'];
-      for (const f of fields) {
-        const val = flag(editRest, f);
-        if (val !== undefined) {
-          const key = f.slice(2).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-          updates[key] = val;
-        }
+      rejectUnknownFlags(editRest, EXTRA_EDIT_FLAGS, 'orch edit');
+      // The hand-written list this replaces also mapped --liveness-port-file to a `livenessPortFile`
+      // key, which is not a field of Job: the daemon reads liveness.portFile. Used without
+      // --liveness-strategy it wrote a junk key and changed no liveness check at all.
+      try {
+        Object.assign(updates, collectFieldFlags(editRest));
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
       }
       const delay = flag(editRest, '--delay');
       if (delay !== undefined) updates['delaySeconds'] = parseInt(delay, 10);
@@ -641,19 +825,11 @@ Examples:
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
       }
-      const livenessStrategy = flag(editRest, '--liveness-strategy');
-      if (livenessStrategy) updates['liveness'] = buildLiveness(editRest);
-      try {
-        const editRetryOnExitCodes = numberListFlag(editRest, '--retry-on-exit-codes');
-        const editRetryDelays      = numberListFlag(editRest, '--retry-delays');
-        const editSkipExitCodes    = numberListFlag(editRest, '--skip-exit-codes');
-        if (editRetryOnExitCodes) updates['retryOnExitCodes'] = editRetryOnExitCodes;
-        if (editRetryDelays)      updates['retryDelays']      = editRetryDelays;
-        if (editSkipExitCodes)    updates['skipExitCodes']    = editSkipExitCodes;
-      } catch (e) {
-        errorExit(getErrorMessage(e), 4);
-      }
-
+      // Called even with no strategy, for its own validation: it is what refuses a lone
+      // --liveness-port-file. Only ASSIGNED when a strategy was given, since liveness: null would
+      // clear the job's existing check on every unrelated edit.
+      const liveness = buildLiveness(editRest);
+      if (flag(editRest, '--liveness-strategy')) updates['liveness'] = liveness;
       // An edit is a patch, so an omitted flag means "leave this alone" -- there is no value that
       // means "remove this option". --unset is how you say it. Names are checked here so a typo
       // costs no daemon round-trip and reports as a validation error.
