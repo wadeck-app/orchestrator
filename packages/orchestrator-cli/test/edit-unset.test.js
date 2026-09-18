@@ -21,7 +21,12 @@ function makeEnv(job) {
   const registry = new Registry(path.join(dir, 'registry.json'));
   const state = new State(path.join(dir, 'state.json'));
   registry.add(job);
-  const scheduler = { killJob: async () => ({ killed: false }), skipNextFiring: () => {} };
+  // scheduleJob/unscheduleJob are part of the interface now: every job mutation hands the change to
+  // the running scheduler, or nothing a caller does takes effect until the next daemon restart.
+  const scheduler = {
+    killJob: async () => ({ killed: false }), skipNextFiring: () => {},
+    scheduleJob: () => {}, unscheduleJob: () => {},
+  };
   return { commands: makeCommands(registry, state, scheduler, dir), registry, dir };
 }
 

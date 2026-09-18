@@ -197,21 +197,7 @@ export class Scheduler extends EventEmitter {
       }
 
       if (job.type === 'once') {
-        const elapsed   = this._now().getTime() - new Date(job.scheduledAt!).getTime();
-        const remaining = job.delayMs! - elapsed;
-        // Removed either way: a once job is spent when its moment passes. If the liveness check
-        // skipped it, the thing it was meant to bring up is already up, so its purpose is served.
-        if (remaining <= 0) {
-          await this._maybeSpawn(job);
-          this._registry.remove(job.id);
-        } else {
-          const handle = setTimeout(async () => {
-            this._timeouts.delete(job.id);
-            await this._maybeSpawn(job);
-            this._registry.remove(job.id);
-          }, remaining);
-          this._timeouts.set(job.id, handle);
-        }
+        await this._scheduleOnce(job);
       }
     }
 
@@ -235,6 +221,76 @@ export class Scheduler extends EventEmitter {
           this._state.record(job.id, { ...entry, exitCode: 1, finishedAt });
         }
       }
+    }
+  }
+
+  /**
+   * Sets a once job's timer, or runs it now if its moment has already passed.
+   *
+   * Resolves once the job has actually been dealt with, so start() still waits for an overdue one
+   * before moving on; when a timer is set there is nothing to wait for and it resolves immediately.
+   */
+  private async _scheduleOnce(job: Job): Promise<void> {
+    const elapsed   = this._now().getTime() - new Date(job.scheduledAt!).getTime();
+    const remaining = job.delayMs! - elapsed;
+    // Removed either way: a once job is spent when its moment passes. If the liveness check
+    // skipped it, the thing it was meant to bring up is already up, so its purpose is served.
+    if (remaining <= 0) {
+      await this._maybeSpawn(job);
+      this._registry.remove(job.id);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      this._timeouts.delete(job.id);
+      await this._maybeSpawn(job);
+      this._registry.remove(job.id);
+    }, remaining);
+    this._timeouts.set(job.id, handle);
+  }
+
+  /**
+   * Schedules one job, for a job that appeared or changed after the daemon was already running.
+   *
+   * Nothing used to call this, because nothing existed: `add-job` wrote the registry and logged to
+   * the audit, and the scheduler only ever read the registry in start(). So a job added through the
+   * CLI or the dashboard was invisible to the running daemon until the next restart.
+   *
+   * For a cron job that was merely late - the next restart picked it up and it fired on schedule
+   * thereafter, so nobody noticed. For a `once` job it was fatal: its single moment passed with the
+   * daemon oblivious, and the job sat in the registry having never run. Reproduced with a 15s delay:
+   * due at 20:37:09, still unfired and still listed at 20:37:32.
+   *
+   * Idempotent - any existing timer or cron task for the id is cleared first, so it doubles as
+   * "reschedule after an edit".
+   */
+  scheduleJob(job: Job): void {
+    this.unscheduleJob(job.id);
+    if (!job.enabled) {
+      return;
+    }
+    if (job.type === 'cron') {
+      this._scheduleCron(job);
+      return;
+    }
+    if (job.type === 'once') {
+      void this._scheduleOnce(job);
+      return;
+    }
+    // `startup` means "when the daemon starts". A startup job added while it is already running has
+    // nothing to schedule now, and firing it here would contradict the type's own meaning.
+  }
+
+  /** Cancels a job's pending cron task or timer. Safe for an id that has neither. */
+  unscheduleJob(id: string): void {
+    const task = this._cronTasks.get(id);
+    if (task) {
+      task.stop();
+      this._cronTasks.delete(id);
+    }
+    const handle = this._timeouts.get(id);
+    if (handle) {
+      clearTimeout(handle);
+      this._timeouts.delete(id);
     }
   }
 

@@ -31,7 +31,13 @@ async function makeTestDaemon(dir, { withScheduler = false } = {}) {
   const state     = new State(path.join(dir, 'state.json'));
   const scheduler = withScheduler
     ? new Scheduler(registry, state, { configDir: dir })
-    : { trigger: async (id) => { throw new Error(`Job not found: "${id}"`); }, start: async () => {}, stop: async () => {} };
+    // scheduleJob/unscheduleJob included because every job mutation now hands the change to the
+    // running scheduler - without them a job added at runtime never gets on the clock.
+    : {
+      trigger: async (id) => { throw new Error(`Job not found: "${id}"`); },
+      start: async () => {}, stop: async () => {},
+      scheduleJob: () => {}, unscheduleJob: () => {},
+    };
   registry.load();
 
   const handle = await createTestDaemon({ commands: makeCommands(registry, state, scheduler, dir) });

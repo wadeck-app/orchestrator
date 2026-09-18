@@ -35,23 +35,43 @@ export function makeCommands(
 
     'get-job':     (p) => registry.get((p as { id: string }).id),
 
+    /*
+     * Every one of these hands the change to the scheduler.
+     *
+     * They used to write the registry and log to the audit, and stop. The scheduler only read the
+     * registry in start(), so a job added, removed, enabled, disabled or edited while the daemon was
+     * running had no effect on what the daemon would actually do until the next restart.
+     *
+     * For a cron job that was merely late. For a `once` job it meant never: its single moment passed
+     * with the daemon oblivious, and the job sat in the registry unfired. Reproduced with a 15s
+     * delay - due at 20:37:09, still listed and still unrun at 20:37:32.
+     */
     'add-job':     (p) => {
-      const job = registry.add(p as Partial<Job>);
-      audit?.log('job.added', { jobId: (p as { id: string }).id, label: (p as { label?: string }).label });
-      return registry.get((p as { id: string }).id)!;
+      registry.add(p as Partial<Job>);
+      const added = registry.get((p as { id: string }).id)!;
+      scheduler.scheduleJob(added);
+      audit?.log('job.added', { jobId: added.id, label: added.label, type: added.type });
+      return added;
     },
 
     'remove-job':  (p) => {
       const id = (p as { id: string }).id;
       const job = registry.get(id);
       registry.remove(id);
-      audit?.log('job.deleted', { jobId: id, label: job?.label });
+      // Before the registry write would be wrong too: an unscheduled-then-failed-removal leaves a
+      // job that exists and never fires.
+      scheduler.unscheduleJob(id);
+      audit?.log('job.deleted', { jobId: id, label: job?.label, type: job?.type });
     },
 
     'enable-job':  (p) => {
       const id = (p as { id: string }).id;
-      const job = registry.get(id);
       registry.enable(id);
+      const job = registry.get(id);
+      // Re-enabling has to put the job back on the clock, or it stays enabled and idle.
+      if (job) {
+        scheduler.scheduleJob(job);
+      }
       audit?.log('job.enabled', { jobId: id, label: job?.label });
     },
 
@@ -59,6 +79,8 @@ export function makeCommands(
       const id = (p as { id: string }).id;
       const job = registry.get(id);
       registry.disable(id);
+      // Otherwise a disabled cron job keeps firing until the next restart.
+      scheduler.unscheduleJob(id);
       audit?.log('job.disabled', { jobId: id, label: job?.label });
     },
 
@@ -87,6 +109,11 @@ export function makeCommands(
       }
       registry.edit(id, fields, unset ?? []);
       const updatedJob = registry.get(id);
+      // An edited schedule has to replace the running one. scheduleJob clears the old timer or cron
+      // task first, so editing a job does not leave two.
+      if (updatedJob) {
+        scheduler.scheduleJob(updatedJob);
+      }
       audit?.log('job.edited', {
         jobId: id, label: updatedJob?.label,
         changes: Object.keys(fields), ...(unset?.length ? { unset } : {}),

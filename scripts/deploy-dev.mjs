@@ -122,8 +122,16 @@ console.log('✓ synced orch-server dist');
 // 4. Copy orch-app dist to both server public dirs
 run(node, ['packages/orch-server/scripts/copy-app.mjs']);
 
-// 5. Build orchestrator-cli
+// 5. Build orchestrator-cli, then BUNDLE it.
+//
+// The bundle is the part that actually runs. `build` is tsc, which emits dist/*.js per file, while
+// dev-server.mjs launches dist/orchestrator-cli.cjs and the daemon entry is dist/orchestrator.cjs -
+// both produced only by `bundle`. Without this step the dev daemon ran whatever bundle happened to
+// be on disk: measured four hours stale, so a whole afternoon of daemon-side fixes were absent from
+// the thing being tested while tsc reported success. Exactly the orch-app staleness again, one
+// package over.
 run(npm, ['run', 'build', '-w', '@wadeck-app/orchestrator-cli']);
+run(npm, ['run', 'bundle', '-w', '@wadeck-app/orchestrator-cli']);
 
 // 6. Report where the build went, and where it did NOT go. There is no step 7: see the banner.
 console.log('\n✓ Built into this checkout. The global install was NOT touched, and cannot be.');
