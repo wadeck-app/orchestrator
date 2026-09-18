@@ -493,16 +493,27 @@ export class Scheduler extends EventEmitter {
        * Seen on a loaded CI runner as two job.resource_hard_limit events where the test expected
        * one. It reproduced nowhere else, which is exactly what a load-dependent race looks like.
        */
-      let sampling = false;
+      let samplingSince: number | null = null;
       let killing = false;
+      /*
+       * How long an outstanding walk may block the next one.
+       *
+       * Skipping while a walk is in flight is what keeps "consecutive samples" honest, but skipping
+       * UNCONDITIONALLY means one call that never settles kills monitoring for the whole run - and
+       * pidtree/pidusage on a loaded Windows runner is exactly where that happens. CI caught it: the
+       * peaks test timed out waiting for readings that were never going to come.
+       *
+       * So the skip is bounded. Past this, a new walk starts anyway; overlap is the lesser evil, and
+       * the kill path is separately guarded against firing twice.
+       */
+      const samplingStallMs = this._sampleIntervalMs * 3;
       const sample = (): void => {
         if (child.killed) { clearInterval(resourceTimer!); return; }
-        if (sampling) {
-          // The previous walk has not come back yet. Skipping keeps "consecutive samples" honest.
+        if (samplingSince !== null && Date.now() - samplingSince < samplingStallMs) {
           return;
         }
-        sampling = true;
-        this._sampleUsage(pid!).finally(() => { sampling = false; }).then(usage => {
+        samplingSince = Date.now();
+        this._sampleUsage(pid!).finally(() => { samplingSince = null; }).then(usage => {
           // Every pid in the tree vanished between the walk and the sample: the job is
           // finishing. Keep the timer -- the exit handler owns clearing it.
           if (usage === null) return;

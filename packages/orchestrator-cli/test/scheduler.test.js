@@ -474,6 +474,38 @@ describe('hard resource budget', () => {
     assert.ok(calls > 1, 'the sampler should have been called more than once');
   });
 
+  /*
+   * The escape hatch on that guard.
+   *
+   * Skipping while a walk is outstanding is right, but skipping unconditionally means one call that
+   * never settles stops monitoring for the rest of the run - no peaks, no budget enforcement, in
+   * silence. CI found it: the peaks test timed out waiting for readings that could never arrive,
+   * because pidtree on a loaded Windows runner had hung and nothing would ever start another walk.
+   */
+  test('a hung sample does not disable monitoring for the whole run', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    seedTinyBaseline(state, 'hung');
+    registry.add(busyJob(dir, 'hung', 3000));
+
+    let started = 0;
+    const sampleUsage = () => {
+      started++;
+      // The first walk never settles. Every later one answers at once.
+      return started === 1
+        ? new Promise(() => {})
+        : Promise.resolve({ cpuPct: 0.001, ramMb: 0.001 });
+    };
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50,
+    });
+    await sched.trigger('hung');
+    await sched.stop();
+
+    assert.ok(started > 1, `monitoring must recover from a hung walk, only ${started} started`);
+  });
+
   // The counter has to mean consecutive samples, not concurrent ones, or a job is killed early.
   test('a sample is skipped while the previous one is still in flight', async () => {
     const dir = tmpDir();
@@ -481,13 +513,18 @@ describe('hard resource budget', () => {
     seedTinyBaseline(state, 'inflight');
     registry.add(busyJob(dir, 'inflight', 3000));
 
-    // Slower than the interval on purpose, so overlap is possible if nothing prevents it.
+    /*
+     * 100ms on a 50ms tick: slower than the interval, so ticks arrive while a walk is outstanding
+     * and overlap happens unless something prevents it - but well inside the stall window
+     * (3 intervals = 150ms), so the escape hatch for a hung walk is not what is being measured here.
+     * At 250ms it would trip that escape and overlap legitimately.
+     */
     let inFlight = 0;
     let maxInFlight = 0;
     const sampleUsage = async () => {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 100));
       inFlight--;
       // Under budget: this test is about overlap, not about killing.
       return { cpuPct: 0.001, ramMb: 0.001 };
