@@ -316,7 +316,19 @@ export class Scheduler extends EventEmitter {
   }
 
   private _scheduleCron(job: Job): void {
-    if (!cron.validate(job.schedule ?? '')) return;
+    if (!cron.validate(job.schedule ?? '')) {
+      /*
+       * Said out loud. This used to be a bare `return`, so a job with an unrunnable schedule was
+       * listed by `orch list` and shown in the dashboard with its schedule, and simply never fired -
+       * the single hardest kind of failure to notice, because everything looks configured.
+       *
+       * The registry rejects these at write time now, so reaching here means a registry.json edited
+       * by hand or written by an older version. Refusing to schedule is still right; doing it in
+       * silence was not.
+       */
+      console.error(`[scheduler] job "${job.id}" has an unrunnable cron schedule ${JSON.stringify(job.schedule)} and will NEVER fire. Fix it with: orch edit ${job.id} --schedule "<cron>"`);
+      return;
+    }
     const task = cron.schedule(job.schedule!, () => {
       const skipUntil = this._skippedJobs.get(job.id);
       if (skipUntil && Date.now() < skipUntil) {

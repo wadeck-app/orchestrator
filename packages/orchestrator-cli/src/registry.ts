@@ -1,9 +1,17 @@
 import fs   from 'node:fs';
+// The same validator the scheduler uses, so what the registry accepts is what can actually be run.
+import cron from 'node-cron';
 import type { Job, RegistryData } from './types.js';
 import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES,
          UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 
+/*
+ * The shape a cron expression must have: five space-separated fields.
+ *
+ * Kept as a first pass because it gives a precise message about field COUNT, which node-cron does
+ * not distinguish from any other malformation.
+ */
 const CRON_RE = /^(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)$/;
 
 // Use Sets from enums for validation (single source of truth)
@@ -23,7 +31,23 @@ function validateJob(job: Partial<Job>): void {
 
   if (job.type === 'cron') {
     if (!job.schedule) throw new Error('Cron job requires a schedule field');
-    if (!CRON_RE.test(job.schedule.trim())) throw new Error(`Invalid cron schedule: "${job.schedule}"`);
+    const schedule = job.schedule.trim();
+    if (!CRON_RE.test(schedule)) {
+      throw new Error(`Invalid cron schedule: "${job.schedule}" - expected five space-separated fields`);
+    }
+    /*
+     * Ranges too, not just the shape.
+     *
+     * CRON_RE accepts any digits, so `99 99 99 99 99` was stored happily - and the scheduler guards
+     * itself with `if (!cron.validate(...)) return`, so the job was written, listed, shown in the
+     * dashboard with its schedule, and then never scheduled at all. Silent.
+     *
+     * Delegating to the same validator the scheduler uses is what makes the two agree: whatever is
+     * accepted here can actually run.
+     */
+    if (!cron.validate(schedule)) {
+      throw new Error(`Invalid cron schedule: "${job.schedule}" - a field is out of range (minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7)`);
+    }
   }
 
   if (job.type === 'startup') {
