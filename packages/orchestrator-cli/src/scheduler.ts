@@ -21,6 +21,7 @@ import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 import { isFailure } from './state.js';
+import { systemTime, type TimeService, type Timer } from './time-service.js';
 
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
@@ -51,6 +52,15 @@ interface SchedulerOptions {
    * sampler for longer than that to provoke it.
    */
   sampleIntervalMs?:      number;
+  /**
+   * The passage of time. Defaults to the real clock.
+   *
+   * Everything this class does is about when, and it used the real timers - so testing it meant
+   * sleeping, and two of those tests failed on a loaded CI runner because the machine decided the
+   * timing. `now` alone was already injectable, which covers "what time is it" and not "time has
+   * passed". See time-service.ts.
+   */
+  time?:                  TimeService;
 }
 
 export interface TreeUsage {
@@ -94,12 +104,13 @@ export class Scheduler extends EventEmitter {
   private _spawn:              SpawnFn;
   private readonly _liveness:  LivenessFn;
   private readonly _now:       () => Date;
+  private readonly _time:      TimeService;
   private readonly _configDir: string;
   private readonly _tmpDir:    string;
   private readonly _events:    EventPublisher;
   private readonly _secrets:   SecretsManager;
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
-  private readonly _timeouts  = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly _timeouts  = new Map<string, Timer>();
   private readonly _activeChildren = new Map<string, ChildProcess>();
   private readonly _killedByUser   = new Set<string>();
   private readonly _skippedJobs    = new Map<string, number>();
@@ -109,7 +120,7 @@ export class Scheduler extends EventEmitter {
   private readonly _peakFlushMs:     number;
   private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
   private readonly _sampleIntervalMs: number;
-  private readonly _retryTimers    = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly _retryTimers    = new Map<string, Timer>();
   private readonly _retryCounters  = new Map<string, number>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
@@ -123,7 +134,11 @@ export class Scheduler extends EventEmitter {
       return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
     });
     this._liveness  = options.liveness  ?? checkLiveness;
-    this._now       = options.now       ?? (() => new Date());
+    this._time      = options.time      ?? systemTime;
+    // Defaults to the time service rather than Date, so a test that moves the clock is not
+    // contradicted by a `now` that never moved. An explicit `now` still wins, for the tests that only
+    // needed to pin the date.
+    this._now       = options.now       ?? (() => new Date(this._time.now()));
     this._configDir = options.configDir ?? (
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
@@ -176,7 +191,7 @@ export class Scheduler extends EventEmitter {
               if (delayMs === 0) {
                 void this._maybeSpawn(job);
               } else {
-                setTimeout(() => { void this._maybeSpawn(job); }, delayMs);
+                this._time.after(delayMs, () => { void this._maybeSpawn(job); });
               }
             }
           }
@@ -188,11 +203,10 @@ export class Scheduler extends EventEmitter {
         if (delay === 0) {
           await this._maybeSpawn(job);
         } else {
-          const handle = setTimeout(async () => {
+          this._timeouts.set(job.id, this._time.after(delay, () => {
             this._timeouts.delete(job.id);
-            await this._maybeSpawn(job);
-          }, delay);
-          this._timeouts.set(job.id, handle);
+            void this._maybeSpawn(job);
+          }));
         }
       }
 
@@ -240,12 +254,13 @@ export class Scheduler extends EventEmitter {
       this._registry.remove(job.id);
       return;
     }
-    const handle = setTimeout(async () => {
+    this._timeouts.set(job.id, this._time.after(remaining, () => {
       this._timeouts.delete(job.id);
-      await this._maybeSpawn(job);
-      this._registry.remove(job.id);
-    }, remaining);
-    this._timeouts.set(job.id, handle);
+      void (async () => {
+        await this._maybeSpawn(job);
+        this._registry.remove(job.id);
+      })();
+    }));
   }
 
   /**
@@ -289,7 +304,7 @@ export class Scheduler extends EventEmitter {
     }
     const handle = this._timeouts.get(id);
     if (handle) {
-      clearTimeout(handle);
+      handle.cancel();
       this._timeouts.delete(id);
     }
   }
@@ -297,9 +312,9 @@ export class Scheduler extends EventEmitter {
   async stop(): Promise<void> {
     for (const task of this._cronTasks.values()) task.stop();
     this._cronTasks.clear();
-    for (const handle of this._timeouts.values()) clearTimeout(handle);
+    for (const handle of this._timeouts.values()) handle.cancel();
     this._timeouts.clear();
-    for (const t of this._retryTimers.values()) clearTimeout(t);
+    for (const t of this._retryTimers.values()) t.cancel();
     this._retryTimers.clear();
     this._retryCounters.clear();
   }
@@ -414,7 +429,7 @@ export class Scheduler extends EventEmitter {
       void this._maybeSpawn(job);
       // SLA window check: alert if job hasn't succeeded within slaWindowMinutes
       if (job.slaWindowMinutes && job.slaWindowMinutes > 0) {
-        setTimeout(() => {
+        this._time.after(job.slaWindowMinutes * 60_000, () => {
           const latest = this._state.get(job.id);
           const succeeded = latest && latest.exitCode === 0 &&
             new Date(latest.startedAt).getTime() >= new Date(scheduledAt).getTime();
@@ -424,7 +439,7 @@ export class Scheduler extends EventEmitter {
               scheduledAt, windowMinutes: job.slaWindowMinutes,
             });
           }
-        }, job.slaWindowMinutes * 60 * 1000);
+        });
       }
     });
     this._cronTasks.set(job.id, task);
@@ -535,7 +550,7 @@ export class Scheduler extends EventEmitter {
       });
     };
 
-    let resourceTimer: ReturnType<typeof setInterval> | null = null;
+    let resourceTimer: Timer | null = null;
     if (pid) {
       /*
        * One sample at a time, and one kill at a time.
@@ -564,7 +579,7 @@ export class Scheduler extends EventEmitter {
        */
       const samplingStallMs = this._sampleIntervalMs * 3;
       const sample = (): void => {
-        if (child.killed) { clearInterval(resourceTimer!); return; }
+        if (child.killed) { resourceTimer?.cancel(); return; }
         if (samplingSince !== null && Date.now() - samplingSince < samplingStallMs) {
           return;
         }
@@ -606,7 +621,7 @@ export class Scheduler extends EventEmitter {
               const msg = `[warn] Hard resource limit exceeded for ${hardBreaches} consecutive samples (${over}) - killing`;
               try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
               this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
-              clearInterval(resourceTimer!);
+              resourceTimer?.cancel();
               // Forced before the kill: the numbers that justified killing this job are the ones
               // most worth keeping, and clearing the timer above means no later sample will write.
               flushPeaks();
@@ -619,7 +634,7 @@ export class Scheduler extends EventEmitter {
           jobLogger.write(`[resource-monitor] Failed to get metrics: ${getErrorMessage(err)}`);
         });
       };
-      resourceTimer = setInterval(sample, this._sampleIntervalMs);
+      resourceTimer = this._time.every(this._sampleIntervalMs, sample);
       // Sample at once so sub-2s jobs are not left with an empty history. pidusage needs
       // two samples of a pid to derive a CPU percentage, so this first one also primes it.
       sample();
@@ -635,22 +650,22 @@ export class Scheduler extends EventEmitter {
 
     // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s)
     const timeoutMs = (job.timeoutSeconds ?? 300) * 1000;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    let timeoutHandle: Timer | null = null;
     if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
+      timeoutHandle = this._time.after(timeoutMs, () => {
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
         this._events.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
         // A timed-out job is one whose resource use is worth a look, so persist before killing.
         flushPeaks();
         this._killChild(child);
-      }, timeoutMs);
+      });
     }
 
     const done = new Promise<{ exitCode: number | null }>((resolve) => {
       child.on('close', (code) => {
         this._activeChildren.delete(job.id);
-        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-        if (resourceTimer !== null) clearInterval(resourceTimer);
+        timeoutHandle?.cancel();
+        resourceTimer?.cancel();
         const rawExitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
         const durationMs = Date.now() - new Date(startedAt).getTime();
@@ -726,11 +741,10 @@ export class Scheduler extends EventEmitter {
                 jobId: job.id, label: job.label, exitCode,
                 attempt: nextAttempt, totalAttempts: delays.length, delaySeconds: delays[attempts],
               }, (err: unknown) => console.error('[hook:onJobRetry]', err));
-              const timer = setTimeout(() => {
+              this._retryTimers.set(job.id, this._time.after(delayMs, () => {
                 this._retryTimers.delete(job.id);
                 void this._fire(job, { kind: 'retry', attempt: nextAttempt });
-              }, delayMs);
-              this._retryTimers.set(job.id, timer);
+              }));
             } else {
               this._retryCounters.delete(job.id);
               jobLogger.write(`[retry] exhausted after ${delays.length} attempts (exitCode=${exitCode}) — permanent failure`);
