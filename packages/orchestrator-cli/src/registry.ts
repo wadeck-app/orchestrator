@@ -140,6 +140,18 @@ function applyDefaults(job: Partial<Job>): Job {
     triggerMode: job.triggerMode ?? 'fire-and-forget',
     ...(job.type === 'cron'    ? { missedFiring: job.missedFiring ?? 'skip' } : {}),
     ...(job.type === 'startup' ? { delaySeconds: job.delaySeconds ?? 0 }      : {}),
+    /*
+     * A once job fires at scheduledAt + delayMs, so without scheduledAt there is nothing to measure
+     * the delay from. Only `orch add once` used to stamp it, so one created through the HTTP API
+     * arrived with a delay and no origin: the scheduler computed `now - new Date(undefined)`, which
+     * is NaN, and NaN is neither <= 0 nor a usable timeout - so setTimeout(fn, NaN) fired on the next
+     * tick and the job ran at the next daemon start with its delay silently ignored.
+     *
+     * Defaulted here rather than in each caller, because a required field every caller must remember
+     * is a field someone forgets. An explicit value is kept: the CLI sets its own, and a restored
+     * backup carries one that must not be moved.
+     */
+    ...(job.type === 'once' ? { scheduledAt: job.scheduledAt ?? new Date().toISOString() } : {}),
   } as Job);
 }
 
