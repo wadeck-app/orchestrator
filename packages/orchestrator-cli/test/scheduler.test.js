@@ -430,6 +430,78 @@ describe('hard resource budget', () => {
     assert.equal(hard.length, 1, 'expected the kill to still happen');
   });
 
+  /*
+   * Sampling is async inside setInterval, so on a machine slow enough for a sample to outlast the
+   * interval two walks were in flight at once. Both incremented the breach counter - making two
+   * OVERLAPPING samples count as two CONSECUTIVE ones - and both reached the kill branch, because
+   * clearInterval cannot retract a promise already scheduled. One kill, announced twice.
+   *
+   * It showed up once on a loaded CI runner as two job.resource_hard_limit events where the test
+   * above expects one, and reproduced nowhere else: a guard whose only witness is a busy CI machine
+   * is not a guard. The sampler is injectable so the overlap can be forced on purpose.
+   */
+  test('overlapping samples announce one kill, not one per sample', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    const events = [];
+    seedTinyBaseline(state, 'slowsample');
+    registry.add(busyJob(dir, 'slowsample', 6000));
+
+    // Always over budget, and DELIBERATELY slower than the interval: 250ms answers on a 50ms tick,
+    // so without the guard five walks are in flight at once. The first version of this test used a
+    // 400ms sampler against the production 2s interval, which can never overlap - it passed with the
+    // guard removed, and was worth nothing.
+    let calls = 0;
+    const sampleUsage = async () => {
+      calls++;
+      await new Promise(r => setTimeout(r, 250));
+      return { cpuPct: 5000, ramMb: 5000 };
+    };
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50,
+      eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
+    });
+    await sched.trigger('slowsample');
+    await sched.stop();
+    // Let the walks that were still in flight when the kill landed resolve. Without this the
+    // duplicate event arrives AFTER the assertion reads the array, and the test passes by being too
+    // early rather than by the guard working.
+    await new Promise(r => setTimeout(r, 600));
+
+    const hard = events.filter(e => e.topic === 'job.resource_hard_limit');
+    assert.equal(hard.length, 1, `expected exactly one kill event, got ${hard.length}`);
+    assert.ok(calls > 1, 'the sampler should have been called more than once');
+  });
+
+  // The counter has to mean consecutive samples, not concurrent ones, or a job is killed early.
+  test('a sample is skipped while the previous one is still in flight', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    seedTinyBaseline(state, 'inflight');
+    registry.add(busyJob(dir, 'inflight', 3000));
+
+    // Slower than the interval on purpose, so overlap is possible if nothing prevents it.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const sampleUsage = async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(r => setTimeout(r, 250));
+      inFlight--;
+      // Under budget: this test is about overlap, not about killing.
+      return { cpuPct: 0.001, ramMb: 0.001 };
+    };
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50,
+    });
+    await sched.trigger('inflight');
+    await sched.stop();
+
+    assert.equal(maxInFlight, 1, `samples must not overlap, saw ${maxInFlight} at once`);
+  });
+
   test('a sustained breach kills the job and reports the sample count', async () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);

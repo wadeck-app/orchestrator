@@ -36,6 +36,21 @@ interface SchedulerOptions {
   hookDispatcher?:        HookDispatcher;
   /** How often a running job's resource peaks are written to state. Lowered in tests. */
   peakFlushMs?:           number;
+  /**
+   * How a running process tree's CPU and memory are measured. Defaults to the real sampler.
+   *
+   * Injectable so the monitor's timing can be tested at all. The kill path is guarded against
+   * overlapping samples, and a guard whose only witness is a loaded CI runner is not guarded.
+   */
+  sampleUsage?:           (rootPid: number) => Promise<TreeUsage | null>;
+  /**
+   * How often the resource monitor samples. Lowered in tests.
+   *
+   * Needed alongside sampleUsage to test the overlap guard at all: overlap only happens when a
+   * sample outlasts the interval, and at the production 2s a test would have to stall a fake
+   * sampler for longer than that to provoke it.
+   */
+  sampleIntervalMs?:      number;
 }
 
 export interface TreeUsage {
@@ -92,6 +107,8 @@ export class Scheduler extends EventEmitter {
   private readonly _catchUpStaggerMs:      number;
   private readonly _hookDispatcher:  HookDispatcher | null;
   private readonly _peakFlushMs:     number;
+  private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
+  private readonly _sampleIntervalMs: number;
   private readonly _retryTimers    = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly _retryCounters  = new Map<string, number>();
 
@@ -116,6 +133,8 @@ export class Scheduler extends EventEmitter {
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
     this._hookDispatcher        = options.hookDispatcher        ?? null;
     this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
+    this._sampleUsage           = options.sampleUsage           ?? sampleProcessTree;
+    this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
     // Ensure root tmp dir exists (will create per-job subdirs as needed).
     this._tmpDir = ensureTmpDir(this._configDir);
     // Re-bind spawn now that _tmpDir is resolved (closure captures the value, not the field).
@@ -462,9 +481,28 @@ export class Scheduler extends EventEmitter {
 
     let resourceTimer: ReturnType<typeof setInterval> | null = null;
     if (pid) {
+      /*
+       * One sample at a time, and one kill at a time.
+       *
+       * Sampling is async inside setInterval, so on a machine slow enough for a sample to outlast
+       * the interval two walks were in flight at once. Both incremented `hardBreaches` - making two
+       * overlapping samples count as two CONSECUTIVE ones, so a job could be killed early - and
+       * both then reached the kill branch, because clearInterval cannot retract a promise that has
+       * already been scheduled. The result was one kill announced twice and _killChild called twice.
+       *
+       * Seen on a loaded CI runner as two job.resource_hard_limit events where the test expected
+       * one. It reproduced nowhere else, which is exactly what a load-dependent race looks like.
+       */
+      let sampling = false;
+      let killing = false;
       const sample = (): void => {
         if (child.killed) { clearInterval(resourceTimer!); return; }
-        sampleProcessTree(pid!).then(usage => {
+        if (sampling) {
+          // The previous walk has not come back yet. Skipping keeps "consecutive samples" honest.
+          return;
+        }
+        sampling = true;
+        this._sampleUsage(pid!).finally(() => { sampling = false; }).then(usage => {
           // Every pid in the tree vanished between the walk and the sample: the job is
           // finishing. Keep the timer -- the exit handler owns clearing it.
           if (usage === null) return;
@@ -494,7 +532,10 @@ export class Scheduler extends EventEmitter {
             if (hardBreaches < HARD_BREACHES_TO_KILL) {
               // Over budget but not yet sustained: record it and leave the job alone.
               jobLogger.write(`[resource-monitor] Over hard budget ${hardBreaches}/${HARD_BREACHES_TO_KILL} (${over})`);
-            } else {
+            } else if (!killing) {
+              // Guarded even with the in-flight check above: a walk that had already resolved when
+              // the kill started must not announce a second one. One kill, one event, one _killChild.
+              killing = true;
               const msg = `[warn] Hard resource limit exceeded for ${hardBreaches} consecutive samples (${over}) - killing`;
               try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
               this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
@@ -511,7 +552,7 @@ export class Scheduler extends EventEmitter {
           jobLogger.write(`[resource-monitor] Failed to get metrics: ${getErrorMessage(err)}`);
         });
       };
-      resourceTimer = setInterval(sample, 2000);
+      resourceTimer = setInterval(sample, this._sampleIntervalMs);
       // Sample at once so sub-2s jobs are not left with an empty history. pidusage needs
       // two samples of a pid to derive a CPU percentage, so this first one also primes it.
       sample();
