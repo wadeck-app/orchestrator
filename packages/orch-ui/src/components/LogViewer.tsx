@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, X, ArrowDown, Pause } from 'lucide-react';
+import { X, ArrowDown, Pause } from 'lucide-react';
+import { ButtonAction, ChipButton, SearchBar } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 
 // Log viewer uses a fixed dark terminal palette separate from the app theme.
@@ -19,7 +20,18 @@ import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../t
 // How far from the bottom still counts as "at the tail". Sub-pixel scroll heights and the browser
 // clamping scrollTop mean an exact comparison flickers between following and paused.
 const BOTTOM_SLACK_PX = 20;
-const CONTAINER_BASE_CLS = 'flex flex-col min-h-0 [color-scheme:dark]';
+// The terminal palette, declared as token overrides scoped to this subtree rather than as dark
+// classes on each element. Any dsl-ui component rendered inside therefore comes out
+// terminal-dark on its own, in either app theme - which is what makes SearchBar, ButtonAction
+// and ChipButton usable here at all. Hand-rolled bg-gray-700 equivalents were the reason none
+// of them could be, and the reason the log search looked nothing like the job search.
+// @formatter:off
+const TERMINAL_TOKENS =
+  '[--color-surface:#374151] [--color-bg:#111827] [--color-content:#e5e7eb] [--color-muted:#9ca3af] ' +
+  '[--color-muted-bg:#4b5563] [--color-border:#4b5563] [--color-bg-secondary:#4b5563] ' +
+  '[--color-primary:#60a5fa] [--color-primary-solid:#2563eb] [--color-primary-solid-hover:#1d4ed8]';
+// @formatter:on
+const CONTAINER_BASE_CLS = `flex flex-col min-h-0 [color-scheme:dark] ${TERMINAL_TOKENS}`;
 // Fallback for hosts that give the widget no height: h-full would resolve to
 // auto, so the pane would never overflow and follow-tail would silently do
 // nothing. 75vh keeps it scrollable without the host's help.
@@ -29,13 +41,12 @@ const CONTAINER_CAPPED_CLS = `${CONTAINER_BASE_CLS} h-full max-h-[75vh]`;
 // it (2.25rem). DSL sections stack in a plain space-y container rather than a flex
 // column, so flex-1 would collapse to nothing here.
 const CONTAINER_FILL_CLS = `${CONTAINER_BASE_CLS} h-[calc(100vh-6.75rem)]`;
-const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-gray-400 text-xs rounded-t';
-const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-gray-900 text-green-400 font-mono text-sm p-4 rounded-b';
-const SEARCH_CLS         = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs w-40 focus:outline-none focus:border-gray-400 placeholder-gray-500';
-const RUN_SELECT_CLS     = 'bg-gray-700 border border-gray-600 text-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-gray-400 mr-2';
-const KILL_BTN_CLS       = 'flex items-center gap-1 px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors';
-const AUTO_SCROLL_ON_CLS = 'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors bg-green-700 hover:bg-green-800 text-white';
-const AUTO_SCROLL_OFF_CLS= 'flex items-center gap-1 px-2 py-0.5 rounded text-xs transition-colors bg-gray-700 hover:bg-gray-600 text-gray-300';
+// Semantic tokens, resolved to the terminal palette by TERMINAL_TOKENS above. These were
+// bg-gray-800/700/900 literals, which is what locked every design-system component out.
+const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-surface text-muted text-xs rounded-t';
+const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-bg text-green-400 font-mono text-sm p-4 rounded-b';
+// The console green stays literal: it is the terminal's own ink, not a themed surface.
+const RUN_SELECT_CLS     = 'bg-muted-bg border border-border text-content rounded px-2 py-0.5 text-xs focus:outline-none mr-2';
 // @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
 
@@ -264,39 +275,42 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
         {!autoScroll && <span className="text-yellow-400">Paused</span>}
         <div className="flex items-center gap-2">
           {isJobRunning && (
-            <button onClick={handleKillJob} disabled={killing} className={KILL_BTN_CLS} title="Kill running job">
-              <X size={12} />
-              {killing ? 'Killing...' : 'Kill'}
-            </button>
+            <ButtonAction
+              label={killing ? 'Killing...' : 'Kill'}
+              icon={<X size={12} />}
+              variant="danger"
+              size="sm"
+              onClick={handleKillJob}
+              disabled={killing}
+              loading={killing}
+            />
           )}
-          {/* aria-pressed makes the toggle's state readable rather than only visible in the icon
-              and the colour. It is also the only thing a test can hold the button to, which is
-              how the badge and the button were able to disagree unnoticed. */}
-          <button
+          {/* ChipButton carries aria-pressed itself, which is what makes the toggle's state
+              readable rather than only visible in the icon and the colour - and the only thing a
+              test can hold it to, which is how the badge and the button once disagreed unnoticed. */}
+          <ChipButton
+            active={autoScroll}
+            shape="square"
             onClick={handleAutoScrollToggle}
-            aria-pressed={autoScroll}
-            className={autoScroll ? AUTO_SCROLL_ON_CLS : AUTO_SCROLL_OFF_CLS}
             title={autoScroll ? 'Disable auto-scroll' : 'Enable auto-scroll'}
           >
             {autoScroll ? <ArrowDown size={12} /> : <Pause size={12} />}
             Auto
-          </button>
-          <div className="flex items-center gap-1">
-            <Search size={10} className="text-gray-500" />
-            {/* violations-suppress: react/no-raw-input log search - FieldText requires light-mode classes incompatible with dark terminal */}
-            <input
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className={SEARCH_CLS}
-            />
-          </div>
+          </ChipButton>
+          {/* The same SearchBar the job list uses. It brings its own search icon, clear button
+              and role=search, and the scoped tokens make it terminal-dark. debounceMs 0 keeps
+              filtering per keystroke, which a log tail needs. */}
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search..."
+            debounceMs={0}
+          />
         </div>
       </div>
       <pre ref={containerRef} onScroll={handleScroll} className={LOG_BODY_CLS}>
         {filtered.length === 0 && connected
-          ? <span className="text-gray-500">{search ? 'No matching lines.' : 'No log output yet'}</span>
+          ? <span className="text-muted">{search ? 'No matching lines.' : 'No log output yet'}</span>
           : filtered.map((line, i) => (
             <React.Fragment key={i}>
               {linkify(line, search || undefined, apiBase)}
