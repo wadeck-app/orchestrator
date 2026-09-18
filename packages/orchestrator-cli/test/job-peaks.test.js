@@ -28,11 +28,19 @@ after(() => {
   }
 });
 
-/** Waits for a predicate, failing with a named reason rather than a bare timeout. */
-async function waitFor(predicate, label, timeoutMs = 20000) {
+/**
+ * Waits for a predicate, failing with a named reason rather than a bare timeout.
+ *
+ * `bail` returns a string to stop early when the wait has become pointless. Without it a closed
+ * run just burned the whole budget and then blamed the peaks, which sends the reader looking at
+ * the sampler for a fault that is really in the test's own timing.
+ */
+async function waitFor(predicate, label, { timeoutMs = 20000, bail } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (predicate()) return;
+    const reason = bail?.();
+    if (reason) assert.fail(`stopped waiting for ${label}: ${reason}`);
     await new Promise(r => setTimeout(r, 50));
   }
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
@@ -54,7 +62,13 @@ describe('resource peaks are persisted while the job runs', () => {
     const dir = tmpDir();
     const registry = new Registry(path.join(dir, 'registry.json'));
     const state = new State(path.join(dir, 'state.json'));
-    registry.add(busyJob(dir, 'peaky', 20));
+    // The job has to outlive the waits below, not merely match them. Both of them require the run
+    // to still be open, and they run back to back on a 20s budget each - so at 20s of burn the
+    // budget could exceed the job's own lifetime, the entry closed, and the predicate became
+    // permanently unsatisfiable. That is a timeout reported as "peaks never arrived" when the real
+    // answer is "the job finished first", and it failed exactly that way on a loaded Windows
+    // runner. It is killed in the `finally` either way, so the extra headroom costs nothing.
+    registry.add(busyJob(dir, 'peaky', 90));
 
     // Flush aggressively so the test does not have to wait out the 10s production interval.
     const sched = new Scheduler(registry, state, {
@@ -74,7 +88,15 @@ describe('resource peaks are persisted while the job runs', () => {
         const entry = state.get('peaky');
         return entry != null && entry.exitCode === null
           && entry.peakRamMb != null && entry.peakCpuPct != null;
-      }, 'both peaks to be written to the in-flight entry');
+      }, 'both peaks to be written to the in-flight entry', {
+        bail: () => {
+          const entry = state.get('peaky');
+          return entry != null && entry.exitCode !== null
+            ? `the run closed with exitCode ${entry.exitCode} before the peaks landed, so the job ` +
+              `did not outlive the wait - raise the busyJob duration rather than suspecting the sampler`
+            : undefined;
+        },
+      });
 
       const entry = state.get('peaky');
       assert.equal(entry.exitCode, null, 'the run must still be open, or this proves nothing');
