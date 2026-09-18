@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { X, ArrowDown, Pause } from 'lucide-react';
 import { ButtonAction, ChipButton, SearchBar } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
+import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 
 // Log viewer uses a fixed dark terminal palette separate from the app theme.
 // Semantic tokens (bg-surface, text-content) would make the terminal look like
@@ -36,11 +37,12 @@ const CONTAINER_BASE_CLS = `flex flex-col min-h-0 [color-scheme:dark] ${TERMINAL
 // auto, so the pane would never overflow and follow-tail would silently do
 // nothing. 75vh keeps it scrollable without the host's help.
 const CONTAINER_CAPPED_CLS = `${CONTAINER_BASE_CLS} h-full max-h-[75vh]`;
-// Claims the viewport minus the log page's chrome: NavBar (2.5rem) + PageContent's
-// top and bottom p-4 (2rem) + the LogPageBreadcrumb row and the space-y-4 gap above
-// it (2.25rem). DSL sections stack in a plain space-y container rather than a flex
-// column, so flex-1 would collapse to nothing here.
-const CONTAINER_FILL_CLS = `${CONTAINER_BASE_CLS} h-[calc(100vh-6.75rem)]`;
+// Claims the viewport minus the log page's chrome, term by term - see log-fill-height.ts. It was
+// a single hand-written 6.75rem, which covered the chrome above the pane and forgot the container's
+// padding below it, so the page grew a scrollbar of its own.
+// DSL sections stack in a plain space-y container rather than a flex column, so flex-1 would
+// collapse to nothing here and the viewport has to be measured against instead.
+const CONTAINER_FILL_CLS = `${CONTAINER_BASE_CLS} ${LOG_FILL_HEIGHT_CLASS}`;
 // Semantic tokens, resolved to the terminal palette by TERMINAL_TOKENS above. These were
 // bg-gray-800/700/900 literals, which is what locked every design-system component out.
 const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-surface text-muted text-xs rounded-t';

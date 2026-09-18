@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, AlertTriangle, FileText } from 'lucide-react';
+import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { JobStatusPill } from './JobStatusPill.js';
@@ -40,6 +40,27 @@ function uptimeVariant(percent: number): 'success' | 'default' | 'danger' {
     return 'success';
   }
   return percent >= 90 ? 'default' : 'danger';
+}
+
+/**
+ * What one of the five run dots is showing.
+ *
+ * Pulled out of the JSX so each state can be asserted directly, rather than inferred from a class
+ * name buried in a map callback.
+ */
+export type RunDotState = 'running' | 'cancelled' | 'ok' | 'failed' | 'empty';
+
+export function runDotState(entry: RuntimeEntry | undefined): RunDotState {
+  if (!entry) {
+    return 'empty';
+  }
+  if (isRunActive(entry)) {
+    return 'running';
+  }
+  if (isRunCancelled(entry)) {
+    return 'cancelled';
+  }
+  return entry.exitCode === 0 ? 'ok' : 'failed';
 }
 
 function tagColor(name: string): { bg: string; text: string } {
@@ -161,17 +182,32 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
           <Tooltip content="Last 5 runs, newest first">
           <div className="flex items-center gap-0.5">
             {Array.from({ length: 5 }, (_, i) => {
-              const entry = runHistory[i];
-              // violations-suppress-start: tailwind/no-raw-color-class pass/fail/running dot colors have no semantic-token equivalents in design system
-              let cls = 'bg-border';
-              if (entry) {
-                if (isRunActive(entry)) cls = 'bg-gray-400';
-                else if (isRunCancelled(entry)) cls = 'bg-orange-400';
-                else if (entry.exitCode === 0) cls = 'bg-green-500';
-                else cls = 'bg-red-500';
+              const state = runDotState(runHistory[i]);
+              // In progress reads as a shape, not just another colour: a grey circle among
+              // coloured ones says "no result" far more than it says "running". A play triangle
+              // says the thing is going. Blue rather than amber - it is activity, not a warning.
+              if (state === 'running') {
+                return (
+                  <Play
+                    key={i}
+                    size={8}
+                    data-run-state={state}
+                    aria-label="Running"
+                    className="text-primary fill-current shrink-0"
+                  />
+                );
               }
+              // violations-suppress-start: tailwind/no-raw-color-class pass/fail dot colors have no semantic-token equivalents in design system
+              const CLS: Record<Exclude<RunDotState, 'running'>, string> = {
+                cancelled: 'bg-orange-400',
+                ok:        'bg-green-500',
+                failed:    'bg-red-500',
+                empty:     'bg-border',
+              };
               // violations-suppress-end: tailwind/no-raw-color-class
-              return <span key={i} className={`w-1.5 h-1.5 rounded-full ${cls}`} />;
+              return (
+                <span key={i} data-run-state={state} className={`w-1.5 h-1.5 rounded-full ${CLS[state]}`} />
+              );
             })}
           </div>
           </Tooltip>

@@ -52,7 +52,12 @@ function relTime(iso: string): string {
  */
 export function AuditEntryRow({ entry }: AuditEntryRowProps): React.ReactElement {
   return (
-    <div className="flex items-center py-2 rounded hover:bg-muted-bg text-sm">
+    // `-mx-2 px-2` rather than plain `px-2`: the highlight needs to extend past the text on both
+    // sides, but the text itself must stay where it was. With padding alone the whole list would
+    // shift inwards; the negative margin gives the row the extra width instead of taking it from
+    // the content. Without either, the hover surface stopped exactly at the icon and the
+    // timestamp, which read as clipped rather than selected.
+    <div className="flex items-center -mx-2 px-2 py-2 rounded hover:bg-muted-bg text-sm">
       <div className="flex-1 min-w-0 flex items-center gap-2">
         <AuditEntryIcon event={entry.event} entry={entry} />
         <span className="font-medium text-content">{entry.event}</span>
