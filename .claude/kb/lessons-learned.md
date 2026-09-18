@@ -33,3 +33,11 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 **Problem:** Repeatedly asked for confirmation before executing clear next steps, causing frustration.
 **Fix:** After a decision is made, execute immediately. Launch parallel agents for independent workstreams in a single message. Only pause when a decision is genuinely open.
 **Context:** User explicitly corrected multiple times ("autonomie!!!!", "en parallel quand possible"). Asking "should I proceed?" wastes time when the path is already decided.
+
+---
+
+### Update orch with `orch cli update`, never `npm install -g` by hand
+
+**Problem:** `npm install -g @wadeck-app/orchestrator-cli@<v>` fails with `EBUSY ... orchestrator-cli-win32-x64/orchestrator.exe` while the daemon runs, and a half-applied install leaves the CLI and the daemon on different versions.
+**Fix:** Run `orch cli update`.
+**Context:** The updater exists for exactly this: strategy `without-daemon` + `restartDaemon` (`src/updater/entry.ts:151`) writes a `config.restart` sentinel then `POST /quit`, so the Go launcher relaunches the daemon on the new version and nothing holds the native binary during the install. It also defers while jobs are running, unless `UPDATER_FORCE=1`. Stopping the daemon by hand first does work, but it skips the deferral and is not the supported path -- do not teach it as the rule.

@@ -11,7 +11,12 @@ orch trigger <id>            # fire now
 orch kill <id>               # stop a running job (alias: orch terminate)
 orch server start            # web dashboard
 orch logs [--follow]
+orch cli update              # update orch itself -- never `npm install -g` by hand
 ```
+
+`orch cli update` is the only supported way to move to a new version: it stops the daemon through
+the launcher before installing, so the native binary is not locked, and it leaves the CLI and the
+daemon on the same version. See `.claude/kb/lessons-learned.md`.
 
 Config dir: `~/.config/orchestrator/`. Port file: `<configDir>/config.port`.
 
