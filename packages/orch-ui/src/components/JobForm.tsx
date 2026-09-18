@@ -2,12 +2,40 @@ import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { getErrorMessage, type Job, type MissedFiring, type LivenessConfig, type LivenessStrategy } from '../types.js';
 import { describeCron } from '../cron-describe.js';
-import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldText, IconButton } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldSelect, FieldText, IconButton, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
 const MONO_INPUT     = 'w-32 rounded border border-border px-2 py-1 text-sm bg-surface text-content font-mono';
 const FULL_INPUT    = 'w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
+
+// Option lists for the selects. Hoisted out of the render so each is declared once, and so the
+// four selects read as data rather than as four hand-rolled label-plus-select blocks - which is
+// what they were, at py-1.5 against the design system's py-2.
+// Typed, not `as const`: FieldSelect takes a mutable FieldSelectOption[], and a readonly
+// tuple cannot be assigned to it.
+const TYPE_OPTIONS: FieldSelectOption[] = [
+  { value: 'cron',    label: 'Cron' },
+  { value: 'startup', label: 'Startup' },
+  { value: 'once',    label: 'Once' },
+];
+
+const TRIGGER_MODE_OPTIONS: FieldSelectOption[] = [
+  { value: 'fire-and-forget', label: 'Fire and forget' },
+  { value: 'wait',            label: 'Wait for completion' },
+];
+
+const MISSED_FIRING_OPTIONS: FieldSelectOption[] = [
+  { value: 'skip',     label: 'Skip (default)' },
+  { value: 'catch-up', label: 'Catch-up (run immediately after restart)' },
+];
+
+const LIVENESS_OPTIONS: FieldSelectOption[] = [
+  { value: 'none',     label: 'None' },
+  { value: 'portFile', label: 'Port file' },
+  { value: 'pidFile',  label: 'PID file' },
+  { value: 'command',  label: 'Command' },
+];
 
 const CRON_TEMPLATES = [
   { label: 'Every 5 min',   value: '*/5 * * * *'  },
@@ -177,7 +205,6 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
     ? describeCron(schedule)
     : null;
 
-  const selectClass = 'w-full rounded border border-border px-3 py-1.5 text-sm bg-surface text-content focus:outline-none focus:ring-2 focus:ring-primary';
   const labelClass = 'block text-sm font-medium text-content mb-1';
 
   return (
@@ -186,25 +213,22 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
 
       <FieldText label="Tags (comma-separated)" value={tagInput} onChange={setTagInput} placeholder="scraper, daily, production" />
 
-      <div>
-        <label className={labelClass}>Type</label>
-        <select className={selectClass} value={type} onChange={(e) => setType(e.target.value as JobType)}>
-          <option value="cron">Cron</option>
-          <option value="startup">Startup</option>
-          <option value="once">Once</option>
-        </select>
-      </div>
+      <FieldSelect
+        label="Type"
+        value={type}
+        onChange={v => setType(v as JobType)}
+        options={TYPE_OPTIONS}
+      />
 
       <FieldText label="Command" value={command} onChange={setCommand} placeholder="node script.js" error={errors?.command} required />
       <FieldText label="Working directory" value={cwd} onChange={setCwd} placeholder="/optional/path" />
 
-      <div>
-        <label className={labelClass}>Trigger mode</label>
-        <select className={selectClass} value={triggerMode} onChange={(e) => setTriggerMode(e.target.value as TriggerMode)}>
-          <option value="fire-and-forget">Fire and forget</option>
-          <option value="wait">Wait for completion</option>
-        </select>
-      </div>
+      <FieldSelect
+        label="Trigger mode"
+        value={triggerMode}
+        onChange={v => setTriggerMode(v as TriggerMode)}
+        options={TRIGGER_MODE_OPTIONS}
+      />
 
       {type === 'cron' && (
         <div>
@@ -261,25 +285,19 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
             onChange={numericSetter(setTimeoutSeconds)}
             min={0}
           />
-          {/* Missed firing */}
-          <div>
-            <label className={labelClass}>Missed firing</label>
-            <select className={selectClass} value={missedFiring} onChange={(e) => setMissedFiring(e.target.value as MissedFiring)}>
-              <option value="skip">Skip (default)</option>
-              <option value="catch-up">Catch-up (run immediately after restart)</option>
-            </select>
-          </div>
+          <FieldSelect
+            label="Missed firing"
+            value={missedFiring}
+            onChange={v => setMissedFiring(v as MissedFiring)}
+            options={MISSED_FIRING_OPTIONS}
+          />
 
-          {/* Liveness */}
-          <div>
-            <label className={labelClass}>Liveness check</label>
-            <select className={selectClass} value={livenessStrategy} onChange={(e) => setLivenessStrategy(e.target.value as LivenessStrategy)}>
-              <option value="none">None</option>
-              <option value="portFile">Port file</option>
-              <option value="pidFile">PID file</option>
-              <option value="command">Command</option>
-            </select>
-          </div>
+          <FieldSelect
+            label="Liveness check"
+            value={livenessStrategy}
+            onChange={v => setLivenessStrategy(v as LivenessStrategy)}
+            options={LIVENESS_OPTIONS}
+          />
           {livenessStrategy === 'portFile' && (
             <FieldText label="Port file path" value={livenessPort} onChange={setLivenessPort} placeholder="/tmp/app.port" />
           )}

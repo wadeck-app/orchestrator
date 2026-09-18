@@ -458,7 +458,9 @@ export const ProgressEntry: ComponentRegistryEntry = {
 		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['label']
 		const showValue = resolveExpressionValue(node['showValue'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['showValue']
 		const size = resolveExpressionValue(node['size'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['size']
-		return <Progress value={value} max={max} variant={variant} label={label} showValue={showValue} size={size} />
+		const layout = resolveExpressionValue(node['layout'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['layout']
+		const valueLabel = resolveExpressionValue(node['valueLabel'], ctx) as import('@wadeck-app/dsl-ui/dist/components/display/Progress.js').ProgressProps['valueLabel']
+		return <Progress value={value} max={max} variant={variant} label={label} showValue={showValue} size={size} layout={layout} valueLabel={valueLabel} />
 	},
 }
 

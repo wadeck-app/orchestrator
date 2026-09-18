@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText } from 'lucide-react';
-import { ButtonLink, Checkbox, Tooltip } from '@wadeck-app/dsl-ui';
+import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { JobStatusPill } from './JobStatusPill.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
@@ -32,14 +32,14 @@ const TAG_TEXT = ['text-tag-1','text-tag-2','text-tag-3','text-tag-4','text-tag-
 // @formatter:on
 
 /**
- * Uptime colour. Muted while healthy so it stays background information, and only claims
- * attention once it slips - a grid of cards is scanned, not read.
+ * Uptime bar colour. Green while healthy, and only claims attention once it slips - a grid of
+ * cards is scanned, not read.
  */
-function uptimeToneCls(percent: number): string {
+function uptimeVariant(percent: number): 'success' | 'default' | 'danger' {
   if (percent >= 99) {
-    return 'text-muted';
+    return 'success';
   }
-  return percent >= 90 ? 'text-warning' : 'text-danger';
+  return percent >= 90 ? 'default' : 'danger';
 }
 
 function tagColor(name: string): { bg: string; text: string } {
@@ -187,12 +187,19 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
             <span className="text-xs text-muted">{streak} streak</span>
           </div>
         )}
-        {/* Not dsl-ui's Progress: it is w-full and puts its label on a line of its own, which
-            would break this compact horizontal row. Colour carries the meaning instead, so a
-            degraded job stands out in a grid without the reader comparing four decimals. */}
+        {/* A bar reads faster than a number in a grid. This was bare text because Progress was
+            w-full with its label on a separate line; it takes an inline layout now, and
+            valueLabel keeps the decimal that the rounded percentage was hiding. */}
         {uptimePercent !== null && uptimePercent !== undefined && (
           <Tooltip content="Share of recent runs that succeeded">
-            <span className={`text-xs ${uptimeToneCls(uptimePercent)}`}>{uptimePercent.toFixed(1)}% uptime</span>
+            <Progress
+              value={uptimePercent}
+              variant={uptimeVariant(uptimePercent)}
+              valueLabel={`${uptimePercent.toFixed(1)}% uptime`}
+              showValue
+              layout="inline"
+              size="sm"
+            />
           </Tooltip>
         )}
         {consecutiveFailures !== undefined && consecutiveFailures >= (job.alertAfterFailures ?? 3) && (
