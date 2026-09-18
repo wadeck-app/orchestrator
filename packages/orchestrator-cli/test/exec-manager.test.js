@@ -8,53 +8,26 @@ const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const { ExecManager } = require('../src/exec-manager');
-// pidtree is ESM-only ("type": "module", export default), so under require() the callable sits
-// on .default rather than being the module itself. Resolving it wrong used to throw a
-// TypeError that treeOf() swallowed, silently reducing every tree assertion below to the
-// wrapper pid alone -- the tests then passed without ever checking the process that matters.
-const pidtreeMod = require('pidtree');
-const pidtree = typeof pidtreeMod === 'function' ? pidtreeMod : pidtreeMod.default;
-assert.equal(typeof pidtree, 'function',
-  'pidtree is not callable: tree assertions would silently degrade to the wrapper pid');
 
 const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-/**
- * Pids of a run's whole tree. Commands go through a shell, so the pid the manager tracks is
- * only the wrapper: asserting on it alone cannot tell a killed job from one whose real
- * process is still running.
+/*
+ * No test here enumerates a process tree, and that is deliberate.
  *
- * Only an async rejection is tolerated, which is the root having already exited. A synchronous
- * throw (a broken import, a bad argument) must surface instead of being read as "no children".
- */
-async function treeOf(pid) {
-  return pidtree(pid, { root: true }).catch(() => [pid]);
-}
-
-// On Windows the shell wrapper is always a separate process, so a real tree has at least two
-// pids. POSIX `sh -c` usually execs a simple command in place, so one pid is legitimate there.
-const MIN_TREE_PIDS = process.platform === 'win32' ? 2 : 1;
-
-/**
- * Captures a run's process tree, waiting for the wrapper to have actually spawned its child.
+ * The tests used to call pidtree to discover a run's descendants, then assert that every pid it
+ * returned had died. The set was therefore chosen by pidtree rather than by the test, and on
+ * Windows pidtree's answer can contain processes the run never spawned: ParentProcessId is not
+ * unique over time, so a pid that has been freed still appears as the parent of unrelated live
+ * processes, and pidtree adopts that orphaned subtree instead of rejecting. Measured on a Windows
+ * host: 29 distinct dead pids were named as a parent by a live process, and asking pidtree about
+ * one of them returned 152 pids. CI hit exactly that - the assertion demanded that 128 system
+ * processes be dead, which nothing could satisfy.
  *
- * A fixed short delay was enough here but not on a CI runner, where cmd.exe had not started
- * node yet and the capture came back with the wrapper alone, failing the meaningfulness check.
- * The wait is bounded, and callers must leave enough slack before the run is killed: waiting
- * for a tree that has already been torn down would fail just as wrongly.
+ * The fixtures announce their own pid (see selfAnnouncing), so the real descendant is known
+ * without enumeration. `[wrapperPid, announcedPid]` is a set the test fully controls, and it
+ * still distinguishes a killed job from one whose real process survived its wrapper - which is
+ * the only reason the enumeration existed.
  */
-async function captureTree(pid, timeoutMs = 5000) {
-  const deadline = Date.now() + timeoutMs;
-  let tree = await treeOf(pid);
-  while (tree.length < MIN_TREE_PIDS && Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 100));
-    tree = await treeOf(pid);
-  }
-  assert.ok(tree.length >= MIN_TREE_PIDS,
-    `captured ${tree.length} pid(s), expected >= ${MIN_TREE_PIDS}: the tree assertion would be vacuous`);
-  tree.forEach(p => spawnedPids.add(p));
-  return tree;
-}
 
 /**
  * A command that reports when it is actually running, plus the file it reports through.
@@ -137,6 +110,10 @@ async function waitFor(predicate, label, timeoutMs = 20000) {
  */
 async function waitAllGone(pids, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
+  // Registered on the way in, so the shell wrappers reach the final sweep too. Only the
+  // fixtures' own pids used to be tracked, which left the wrapper covered by the calling test
+  // and by nothing afterwards.
+  pids.forEach(p => spawnedPids.add(p));
   let alive = pids.filter(isAlive);
   while (alive.length > 0 && Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 100));
@@ -158,9 +135,9 @@ const spawnedPids = new Set();
 // deliberately, short enough that a broken fixture surfaces as a failure.
 const KILL_TEST_OPTS = { timeout: 30 };
 
-// Short on purpose. The timeout tests below assert against the pid the fixture reported, so they
-// never enumerate a tree while the run is being torn down: widening this to fit an enumeration is
-// what turned two tests into 40s of waiting.
+// Short on purpose. The timeout tests assert against the pid the fixture reported, so nothing has
+// to be discovered while the run is being torn down: widening this to fit an enumeration is what
+// turned two tests into 40s of waiting.
 const TIMEOUT_SECONDS = 5;
 
 describe('ExecManager', () => {
@@ -257,13 +234,13 @@ describe('ExecManager', () => {
     test('kills a running process', async () => {
       const { readyFile, command } = selfAnnouncing(tmpDir, 'kill', 'setInterval(() => {}, 10000);');
       const { runId, pid } = manager.fireExec(command, KILL_TEST_OPTS);
-      await waitForReady(readyFile);
-      const tree = await captureTree(pid);
+      // The pid the fixture reports is the real work; `pid` is only the shell wrapper.
+      const childPid = await waitForReady(readyFile);
 
       assert.equal(manager.kill(runId), true);
 
       assert.equal(manager.get(runId).status, 'killed');
-      assert.deepEqual(await waitAllGone(tree), [], 'kill() left processes running');
+      assert.deepEqual(await waitAllGone([pid, childPid]), [], 'kill() left processes running');
     });
 
     test('returns false if process not running', async () => {
@@ -285,13 +262,15 @@ describe('ExecManager', () => {
         "process.on('SIGTERM', () => {}); setInterval(() => {}, 10000);",
       );
       const { runId, pid } = manager.fireExec(command, KILL_TEST_OPTS);
-      await waitForReady(readyFile);
-      const tree = await captureTree(pid);
+      // Reported after the handler is installed, so the handler is provably in place before the
+      // kill -- otherwise the test could pass by killing an unguarded process.
+      const childPid = await waitForReady(readyFile);
 
       manager.kill(runId);
 
       assert.equal(manager.get(runId).status, 'killed');
-      assert.deepEqual(await waitAllGone(tree), [], 'SIGTERM-ignoring process survived kill()');
+      assert.deepEqual(await waitAllGone([pid, childPid]), [],
+        'SIGTERM-ignoring process survived kill()');
     });
 
     test('stop() kills anything still running', async () => {
@@ -302,13 +281,13 @@ describe('ExecManager', () => {
       );
       const a = manager.fireExec(first.command, KILL_TEST_OPTS);
       const b = manager.fireExec(second.command, KILL_TEST_OPTS);
-      await waitForReady(first.readyFile);
-      await waitForReady(second.readyFile);
-      const tree = [...await captureTree(a.pid), ...await captureTree(b.pid)];
+      const firstChild  = await waitForReady(first.readyFile);
+      const secondChild = await waitForReady(second.readyFile);
 
       await manager.stop();
 
-      assert.deepEqual(await waitAllGone(tree), [], 'stop() left processes running');
+      assert.deepEqual(await waitAllGone([a.pid, firstChild, b.pid, secondChild]), [],
+        'stop() left processes running');
     });
   });
 
