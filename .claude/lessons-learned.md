@@ -1,8 +1,29 @@
 # Lessons learned
 
-<!-- Last updated: 2026-09-15T13:19:01.308Z -->
+<!-- Last updated: 2026-09-18T10:50:06.235Z -->
 
 ## Recurring feedback
+
+<!-- session d8190bbb 2026-09-18 -->
+- Manual sleep cycles (45s–270s) used repeatedly when awaiting CI results indicate tool unavailability should halt polling attempts, not be worked around — escalate or switch strategy immediately rather than sleeping.
+
+<!-- session dba1e94c 2026-09-18 -->
+- User had to explicitly correct output format — required pattern format was not followed in initial response, forcing clarification
+
+<!-- session d3604cfe 2026-09-18 -->
+- UI design system migrations follow a pattern: grep for old hardcoded Tailwind classes (bg-gray, text-gray, bg-red-600, bg-green-700, text-red-600, text-green-700), replace with design system token imports, then iteratively rebuild and screenshot to verify.
+
+<!-- session 722d6366 2026-09-18 -->
+- Package publication verified via `npm view @package version` after git push triggers CI — this is the verification pattern used.
+
+<!-- session d6848003 2026-09-18 -->
+- Output format must strictly follow `[Category] <finding>` one per line; no other patterns accepted
+
+<!-- session c32602cc 2026-09-16 -->
+- Multi-agent coordination via SendMessage leaves findings unverified in main context; after handing off to orchestrator-47, a separate session provided conflicting finding ("dead code is 3 files not 1") that invalidated prior work. Document scope boundaries when delegating code-review findings.
+
+<!-- session c742fdb6 2026-09-16 -->
+- When asked to output in a specific constrained format (one finding per line with exact tag prefixes), assistant failed to comply—user had to correct the format in this chunk's follow-up message. Implies prior session delivered non-compliant output.
 
 <!-- session d4afe4f0 2026-09-11 -->
 - Claiming test completion when only partial/mock tests done — said "I tested" comprehensively but only ran isolated semver.satisfies() and npm view mocks, not real updater integration with npm install + engine mismatch
@@ -78,6 +99,31 @@
 - Repeated pattern of push → sleep 10-90s → retry broken CI checks. Agent doesn't have working CI polling despite poll-ci skill being available. Consider automatic fallback to poll-ci skill when GitHub MCP tools fail.
 
 ## Agent errors
+
+<!-- session 5be8cac3 2026-09-18 -->
+- poll-ci skill and GitHub Actions MCP tools (mcp__github-wadeck-app__actions_list, actions_get, get_job_logs) were repeatedly marked "NOT YET KNOWN" despite being listed as available. After these failures, manual sleep-based polling (45s, 90s, 200s, 270s waits) was substituted to check CI status—tool initialization appears broken and should be investigated.
+
+<!-- session d8190bbb 2026-09-18 -->
+- `poll-ci` skill and GitHub Actions MCP tools (`mcp__github-wadeck-app__actions_list`, `mcp__github-wadeck-app__get_job_logs`) showing "*** NOT YET KNOWN ***" warnings repeatedly (timestamps 07:50:56 onward) — should have triggered tool schema loading via `ToolSearch` instead of continuing with manual workarounds.
+
+<!-- session dba1e94c 2026-09-18 -->
+- Poll-ci skill and GitHub MCP tools repeatedly showed "NOT YET KNOWN" warnings during CI polling — tool schema may not cache across sequential invocations within the same workflow
+
+<!-- session d3604cfe 2026-09-18 -->
+- Deferred tools (poll-ci, GitHub MCP actions) require ToolSearch schema fetch first; without it, warnings occur and manual polling with sleep becomes fallback.
+
+<!-- session 722d6366 2026-09-18 -->
+- poll-ci skill invocations triggered "*** NOT YET KNOWN ***" warnings on mcp__github-wadeck-app__actions_list and actions_get — tool schemas may not cache/reload correctly across multiple MCP calls within the same session.
+
+<!-- session ddb8b3fe 2026-09-18 -->
+- Attempted to use skill `poll-ci` and MCP tools (`actions_list`, `actions_get`) at ~07:50-07:55 without fetching schemas first via ToolSearch; marked "NOT YET KNOWN" — schema must be loaded before use.
+- Multiple context switches between orchestrator and dsl-view projects: created violations rules in dsl-view at 07:47, then resumed orchestrator refactoring at 09:24 without explicit transition note. Unclear if both projects needed updates or if focus drifted.
+
+<!-- session c32602cc 2026-09-16 -->
+- Multiple "NOT YET KNOWN" warnings for mcp__github-wadeck-app__actions_list / get_job_logs / actions_get throughout session; MCP tool schemas weren't pre-fetched via ToolSearch, so agent fell back to manual sleep+polling for CI status instead of using GitHub API to check job status in real time.
+
+<!-- session c742fdb6 2026-09-16 -->
+- Assistant called GitHub Actions MCP tools (actions_list, get_job_logs) without loading their schemas first via ToolSearch, resulting in "NOT YET KNOWN" warnings. ToolSearch was called later but inconsistently; should preload unknown tools before use.
 
 <!-- session d4afe4f0 2026-09-11 -->
 - Downgraded Node to 20 for testing but never restored the original version, leaving user to fix manually ("merci d'avoir pas remis le node")
@@ -279,6 +325,15 @@
 
 ## Documentation gaps
 
+<!-- session 5be8cac3 2026-09-18 -->
+- Job creation flow (UI form → DSL renderer → API → daemon) requires reading through multiple layers and node_modules sources (dsl-renderer useBrains, navigate brain, registry validation). The semantic mapping between form fields (id, type, schedule, delaySeconds) and job creation/validation is not documented in the project docs.
+
+<!-- session c32602cc 2026-09-16 -->
+- Process tree / kill tree test patterns on Windows lack centralized guidance; kill-related test fixes are scattered across commits (exec-manager, scheduler, handlers, platform-binary, self-check). Consolidate Windows-specific test patterns into `.claude/lessons-learned.md` or a dedicated test-harness doc.
+
+<!-- session c742fdb6 2026-09-16 -->
+- Assistant relied on repeated `sleep` commands + polling for CI results rather than using `/poll-ci` skill available in this project. Skill availability not obvious from logs alone; should check available skills when waiting on CI.
+
 <!-- session d4afe4f0 2026-09-11 -->
 - Node.js engine version constraints and EBADENGINE rollback behavior not documented; user debugged via shared-updater source inspection and npm engine queries to understand v199→v200 upgrade failure.
 
@@ -394,6 +449,32 @@
 - ToolSearch workflow for deferred MCP tools is unclear — multiple attempts to search for tools returned NOT YET KNOWN despite tools being in deferred list; no clear guidance on when/how to load schemas for MCP tools
 
 ## Known constraints
+
+<!-- session 5be8cac3 2026-09-18 -->
+- deploy-dev.mjs was debugged to ensure .dev-config/ files are generated correctly in isolated checkout (not global install); confirmed via curl tests to /api/jobs endpoints. The script includes explicit rejection of --global flag to prevent accidental global mutations.
+
+<!-- session d8190bbb 2026-09-18 -->
+- When GitHub Actions MCP tools unavailable, `gh` CLI provides reliable fallback (proven working at 10:11:55 and beyond); prefer direct CLI over prolonged manual polling.
+
+<!-- session d3604cfe 2026-09-18 -->
+- vitest is the standard test runner in dsl-view/packages/dsl-ui; node:test imports will fail; convert to vitest (describe/it/beforeAll/afterAll) before running tests.
+
+<!-- session 722d6366 2026-09-18 -->
+- Violations test rules: `node --test --import tsx` fails silently; use `vitest run` instead for rule test files.
+
+<!-- session ddb8b3fe 2026-09-18 -->
+- Build/test output filtering is standard across session: `npm run build 2>&1|grep "error TS"|head -4`, `npm test 2>&1|grep -E "Tests |ℹ"|head -6`. Default to aggressive filtering for signal:noise on noisy commands.
+- UI components in orchestrator-cli are undergoing systematic design-system token migration: JobCard, JobForm, LogViewer refactored from inline Tailwind colors to imported design-system class imports.
+
+<!-- session d6848003 2026-09-18 -->
+- Violations rules require vitest test runner with beforeAll/afterAll imports; node:test with --import tsx does not work for this use case
+
+<!-- session f89745e7 2026-09-16 -->
+- GitHub MCP tools (actions_list, actions_get, get_job_logs) return "*** NOT YET KNOWN ***" warnings repeatedly throughout the session (06:32:26, 06:33:34, 06:36:54, 07:03:46, 07:08:27, 07:21:41, 07:34:47, 07:37:30, 07:38:53, 07:41:12, 07:47:28, 07:53:28, 07:53:36, 08:09:50, 08:09:56, 08:17:19, 08:21:57) — appears to be systematic, not transient; workaround is falling back to `gh` CLI directly (used at 07:43:05)
+- Blocking on CI results after pushing requires either long waits (270-330s) or manual `gh run list` queries; poll-ci skill warnings suggest timeout/coordination issue with GitHub MCP
+
+<!-- session c32602cc 2026-09-16 -->
+- Windows test timing is flaky; multiple commits fixing race conditions and timing assumptions specific to windows-latest (see recent commit history: leak sweep reusing pid, timeout assertions, kill test runs capped, timing assumptions removed).
 
 <!-- session d4afe4f0 2026-09-11 -->
 - Cannot fully integrate-test the updater in a real scenario (npm install with EBADENGINE warning, package corruption, rollback flow) — requires actual npm registry + runtime environment state
