@@ -342,6 +342,74 @@ describe('JobForm clears fields the user emptied', () => {
     expect(sent).not.toHaveProperty('timeoutSeconds');
   });
 
+  // These three were left out when unset was first wired up, because the daemon rejected them:
+  // UNSETTABLE_FIELDS had no entry for them. It does now, so emptying them has to reach it.
+  it('sends dependsOn in unset when the dependency is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, dependsOn: 'other-job' }, onSubmit);
+
+    showAdvanced();
+    fill(/^Run after job/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['dependsOn']);
+    expect(sent).not.toHaveProperty('dependsOn');
+  });
+
+  it('sends slaWindowMinutes in unset when the SLA window is zeroed', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, slaWindowMinutes: 30 }, onSubmit);
+
+    showAdvanced();
+    fill(/^SLA window/, '0');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['slaWindowMinutes']);
+    expect(sent).not.toHaveProperty('slaWindowMinutes');
+  });
+
+  // 0 and false are values the daemon keeps, so "already off" must not look like "just turned off":
+  // saving an unchanged job would otherwise send an unset on every submit.
+  it('sends nothing for an SLA window that was already 0', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, slaWindowMinutes: 0 }, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset ?? []).not.toContain('slaWindowMinutes');
+  });
+
+  it('sends dryRunSupported in unset when the box is unticked', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, dryRunSupported: true }, onSubmit);
+
+    showAdvanced();
+    fireEvent.click(screen.getByLabelText(/Supports dry run/));
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['dryRunSupported']);
+    expect(sent).not.toHaveProperty('dryRunSupported');
+  });
+
+  it('sends nothing for a dry-run flag that was already off', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, dryRunSupported: false }, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset ?? []).not.toContain('dryRunSupported');
+  });
+
   it('sends env in unset when the last variable name is emptied', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderEditForm({ ...EXISTING_CRON, env: { TOKEN: 'abc' } }, onSubmit);

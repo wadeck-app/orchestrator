@@ -49,6 +49,7 @@ export interface Job {
 export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
   | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
+  | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
   | 'label' | 'triggerMode';
 
 /**

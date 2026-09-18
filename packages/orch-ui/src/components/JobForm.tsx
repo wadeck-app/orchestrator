@@ -254,10 +254,17 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
       if (tags.length > 0) data.tags = tags;
       else clearIfWasConfigured('tags', initial?.tags);
 
-      // v3 fields
+      // v3 fields. Emptying these was a silent no-op until the daemon accepted them in `unset`.
       if (dependsOn.trim()) data.dependsOn = dependsOn.trim();
+      else clearIfWasConfigured('dependsOn', initial?.dependsOn);
+      // These two carry their "off" state in a value the daemon keeps -- 0 and false are values, not
+      // emptiness -- so the previous state is narrowed to what the form treats as configured.
+      // Otherwise a job saved twice with the SLA already at 0 would send a pointless unset each time.
       if (slaWindowMinutes > 0) data.slaWindowMinutes = slaWindowMinutes;
+      else clearIfWasConfigured('slaWindowMinutes', initial?.slaWindowMinutes || undefined);
+      // Unticking the box has to remove the flag; omitting it would leave dry-run enabled.
       if (dryRunSupported) data.dryRunSupported = true;
+      else clearIfWasConfigured('dryRunSupported', initial?.dryRunSupported || undefined);
 
       // Only when there is something to clear: an empty array would still reach the daemon and read
       // as an edit that clears nothing.
@@ -460,9 +467,11 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
           </div>
           {/* Dependency */}
           <div>
-            <label className={labelClass}>Run after job (ID)</label>
+            {/* Tied to the input by id: the label was floating, so a screen reader announced an
+                unnamed text box and getByLabelText could not find it either. */}
+            <label className={labelClass} htmlFor="dependsOn">Run after job (ID)</label>
             {/* violations-suppress: react/no-raw-input compact ID input - no shared select for job IDs */}
-            <input type="text" value={dependsOn} onChange={e => setDependsOn(e.target.value)}
+            <input type="text" id="dependsOn" value={dependsOn} onChange={e => setDependsOn(e.target.value)}
               placeholder="Leave empty for no dependency"
               className={FULL_INPUT} />
           </div>
