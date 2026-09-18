@@ -40,6 +40,26 @@ export interface Job {
   dryRunSupported?: boolean;
 }
 
+/**
+ * The fields `PUT /api/jobs/:id` accepts in its `unset` array. Mirrors UNSETTABLE_FIELDS in
+ * orchestrator-cli's types.ts - anything else makes registry.edit() throw, and the daemon is right
+ * to: id, type, command, enabled, a cron's schedule and a once job's delayMs are what let the
+ * scheduler fire the job at all.
+ */
+export type UnsettableJobField =
+  | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
+  | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
+  | 'label' | 'triggerMode';
+
+/**
+ * What a job form submits. An edit is a PATCH, so an omitted key means "leave it alone" and there is
+ * no value that spells "clear this" - `unset` is how a field the user emptied travels to the daemon.
+ * The server lifts it out of the body, so it is a sibling of the job fields, never one of them.
+ */
+export interface JobFormPayload extends Partial<Job> {
+  unset?: UnsettableJobField[];
+}
+
 export function getErrorMessage(e: unknown): string {
   // violations-suppress: ts/no-err-message-direct this IS the instanceof-guarded safe accessor - the one place in orch-ui where .message access is correct
   if (e instanceof Error) return e.message;
@@ -61,6 +81,14 @@ export interface RuntimeEntry {
   peakCpuPct?: number;
   peakRamMb?: number;
   cancelledByUser?: boolean;
+  /**
+   * The daemon deliberately did no work, or the child exited with a code the job declares as
+   * "not a failure" (a scraper exiting 2 because a sibling already holds its lock).
+   *
+   * Authoritative: it wins over every exitCode-based classification. exitCode may still be the
+   * child's own code, or null when nothing was ever spawned, and neither may raise an alarm.
+   */
+  skipped?: boolean;
 }
 
 // Picks the run with the latest startedAt. Do not trust index 0: overlapping runs
@@ -79,13 +107,21 @@ export function isRunActive(entry: RuntimeEntry | null): boolean {
   return entry !== null && entry.finishedAt == null && entry.exitCode == null;
 }
 
+// A non-event: neither an outcome to celebrate nor one to alarm about. Checked first by every
+// other classifier below, because a skipped run's exitCode is indistinguishable from a real
+// failure (exit 2) or a signal kill (null) and would otherwise be reported as one.
+export function isRunSkipped(entry: RuntimeEntry | null): boolean {
+  return entry !== null && entry.skipped === true;
+}
+
 // Finished without an exit code (killed by signal), or explicitly cancelled.
 export function isRunCancelled(entry: RuntimeEntry | null): boolean {
-  if (entry === null || isRunActive(entry)) return false;
+  if (entry === null || isRunActive(entry) || isRunSkipped(entry)) return false;
   return entry.cancelledByUser === true || entry.exitCode === null;
 }
 
 // Only a real non-zero exit code is a failure: null means killed, not failed.
 export function isRunFailed(entry: RuntimeEntry | null): boolean {
+  if (isRunSkipped(entry)) return false;
   return entry !== null && entry.exitCode != null && entry.exitCode !== 0;
 }

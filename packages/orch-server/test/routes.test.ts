@@ -188,6 +188,39 @@ describe('Jobs API Routes', () => {
       expect(sent!.command).toBeUndefined();
       expect(sent!.label).toBeUndefined();
     });
+
+    // edit-job is a patch, so an omitted field means "leave it alone" -- a client clearing the
+    // working directory has to say so out loud. `unset` travels beside `updates`, never inside it:
+    // inside, the daemon would take it for a job field and validation would reject the whole edit.
+    it('lifts `unset` out of the body and passes it beside `updates`', async () => {
+      let sent: Record<string, unknown> | undefined;
+      (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
+        if (cmd === 'edit-job') sent = payload as Record<string, unknown>;
+        return { id: 'job1' };
+      };
+
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/jobs/job1',
+        payload: { label: 'Renamed', unset: ['cwd'] },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(sent!.unset).toEqual(['cwd']);
+      expect(sent!.updates).toEqual({ label: 'Renamed' });
+    });
+
+    it('sends no `unset` when the body has none', async () => {
+      let sent: Record<string, unknown> | undefined;
+      (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
+        if (cmd === 'edit-job') sent = payload as Record<string, unknown>;
+        return { id: 'job1' };
+      };
+
+      await app.inject({ method: 'PUT', url: '/api/jobs/job1', payload: { label: 'Renamed' } });
+
+      expect(sent!.unset).toBeUndefined();
+    });
   });
 
   describe('DELETE /api/jobs/:id', () => {

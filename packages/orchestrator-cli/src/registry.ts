@@ -1,6 +1,7 @@
 import fs   from 'node:fs';
 import type { Job, RegistryData } from './types.js';
-import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES } from './types.js';
+import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES,
+         UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 
 const CRON_RE = /^(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)$/;
@@ -48,6 +49,11 @@ function validateJob(job: Partial<Job>): void {
       throw new Error('retryOnExitCodes must be an array of numbers');
     }
   }
+  if (job.skipExitCodes !== undefined) {
+    if (!Array.isArray(job.skipExitCodes) || job.skipExitCodes.some(c => typeof c !== 'number')) {
+      throw new Error('skipExitCodes must be an array of numbers, e.g. [2]');
+    }
+  }
   if (job.retryDelays !== undefined) {
     if (!Array.isArray(job.retryDelays) || job.retryDelays.some(d => typeof d !== 'number' || d <= 0)) {
       throw new Error('retryDelays must be an array of positive numbers');
@@ -62,23 +68,55 @@ function validateJob(job: Partial<Job>): void {
   }
 }
 
+/** null, undefined, "" and empty collections all mean "not configured". 0 and false do not. */
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
+}
+
+/**
+ * Drops every field that holds nothing, so "never configured", "cleared with `--unset`" and "set to
+ * an empty value" are a single shape on disk -- see UNSETTABLE_FIELDS for what each field clears to.
+ *
+ * Two things this fixes rather than merely tidies: every job used to carry `"cwd": null` and
+ * `"liveness": null` whether or not it had either, and `orch edit j --cwd ""` stored an empty string
+ * that the scheduler handed to spawn() as a working directory.
+ *
+ * Idempotent, and applied on every write, so a job written by an older daemon is reshaped as soon as
+ * anything at all is saved -- no migration step, and no file where two shapes coexist.
+ */
+function normalizeJob(job: Job): Job {
+  const out = { ...job } as Job & Record<string, unknown>;
+  for (const [field, rule] of Object.entries(UNSETTABLE_FIELDS)) {
+    if (!isEmptyValue(out[field])) continue;
+    if (rule === 'delete') delete out[field];
+    else out[field] = rule(out);
+  }
+  return out;
+}
+
+/**
+ * Fills in what a new job needs, and keeps everything else the caller sent.
+ *
+ * `...job` first is load-bearing: this used to build a fresh object from a fixed list of keys, so
+ * any field not on that list -- timeoutSeconds, env, tags, secrets, dependsOn -- was silently
+ * dropped at creation. `orch add --timeout` and the dashboard's own fields went nowhere, and
+ * `orch edit --unset timeoutSeconds` offered to clear a field `orch add` could not even store.
+ */
 function applyDefaults(job: Partial<Job>): Job {
-  return {
+  return normalizeJob({
+    ...job,
     id:          job.id!,
     type:        job.type!,
     command:     job.command!,
     label:       job.label       ?? job.id ?? '',
     enabled:     job.enabled     ?? true,
     triggerMode: job.triggerMode ?? 'fire-and-forget',
-    liveness:    job.liveness    ?? null,
-    cwd:         job.cwd         ?? null,
-    ...(job.onExitCode       ? { onExitCode: job.onExitCode }             : {}),
-    ...(job.retryOnExitCodes ? { retryOnExitCodes: job.retryOnExitCodes } : {}),
-    ...(job.retryDelays      ? { retryDelays: job.retryDelays }           : {}),
-    ...(job.type === 'cron'    ? { schedule: job.schedule, missedFiring: job.missedFiring ?? 'skip' } : {}),
-    ...(job.type === 'startup' ? { delaySeconds: job.delaySeconds ?? 0 }                                  : {}),
-    ...(job.type === 'once'    ? { delayMs: job.delayMs!, scheduledAt: job.scheduledAt! }                 : {}),
-  } as Job;
+    ...(job.type === 'cron'    ? { missedFiring: job.missedFiring ?? 'skip' } : {}),
+    ...(job.type === 'startup' ? { delaySeconds: job.delaySeconds ?? 0 }      : {}),
+  } as Job);
 }
 
 const SUPPORTED_VERSION = 1;
@@ -125,9 +163,16 @@ export class Registry {
   /**
    * The single choke point for writing the file, so the notice cannot be forgotten by a caller.
    * First key on purpose: it is the first thing visible when the file is opened.
+   *
+   * Also where empty fields are dropped -- here rather than in each mutator, so no path can write a
+   * `"cwd": null` back, including jobs loaded from a file an older daemon wrote. The in-memory copy
+   * is replaced by the normalized one: the daemon serves every read from memory, so leaving it
+   * un-normalized would make `orch show` disagree with the file until the next restart.
    */
   private _write(data: RegistryData): void {
-    atomicWriteJson(this._file, { _README: REGISTRY_NOTICE, ...data });
+    const jobs = data.jobs.map(normalizeJob);
+    if (this._jobs !== null) this._jobs = jobs;
+    atomicWriteJson(this._file, { _README: REGISTRY_NOTICE, ...data, jobs });
   }
 
   private _ensure(): void {
@@ -177,13 +222,35 @@ export class Registry {
   enable(id: string): void  { this._patch(id, { enabled: true }); }
   disable(id: string): void { this._patch(id, { enabled: false }); }
 
-  edit(id: string, updates: Partial<Job>): void {
+  /**
+   * Patches a job: fields in `updates` are overwritten, fields named in `unset` are cleared, and
+   * everything else is left alone. Clearing is separate from updating because a patch has no way to
+   * say "remove this" through a value -- see UNSETTABLE_FIELDS for what each field clears to.
+   */
+  edit(id: string, updates: Partial<Job>, unset: readonly string[] = []): void {
     this._ensure();
     const idx = this._jobs!.findIndex((j) => j.id === id);
     if (idx === -1) throw new Error(`Job not found: "${id}"`);
-    const merged = { ...this._jobs![idx], ...updates };
-    validateJob(merged);
-    this._jobs![idx] = merged as Job;
+    // Indexable, because unsetting reaches fields by name -- still a Job for validation.
+    const merged = { ...this._jobs![idx], ...updates } as Job & Record<string, unknown>;
+
+    for (const field of unset) {
+      const problem = unsettableFieldError(field);
+      if (problem) throw new Error(problem);
+      if (Object.prototype.hasOwnProperty.call(updates, field)) {
+        // Applying both in some order would quietly discard half of what the caller asked for.
+        throw new Error(`Cannot set and unset "${field}" in the same edit -- pick one.`);
+      }
+      const rule = UNSETTABLE_FIELDS[field]!;
+      if (rule === 'delete') delete merged[field];
+      else merged[field] = rule(merged);
+    }
+
+    // Normalized before validation, not just on write: `--trigger-mode ""` should mean "back to the
+    // default", not fail validation on an empty string the caller never meant as a value.
+    const normalized = normalizeJob(merged);
+    validateJob(normalized);
+    this._jobs![idx] = normalized;
     this._write({ version: SUPPORTED_VERSION, jobs: this._jobs! });
   }
 

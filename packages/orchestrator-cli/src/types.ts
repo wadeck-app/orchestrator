@@ -29,7 +29,12 @@ export interface Job {
   enabled: boolean;
   triggerMode: TriggerMode;
   missedFiring?: MissedFiring;
-  liveness: LivenessConfig | null;
+  /**
+   * Absent when the job has no liveness check -- the registry drops the key rather than storing a
+   * null. Every reader tests it for truthiness (`!liveness` in checkLiveness, `!= null` in
+   * validateJob), so absence and null behave identically.
+   */
+  liveness?: LivenessConfig | null;
   onExitCode?: Record<string, string>;
   timeoutSeconds?: number;
   env?: Record<string, string>;
@@ -41,6 +46,78 @@ export interface Job {
   dryRunSupported?: boolean;
   retryOnExitCodes?: number[];
   retryDelays?: number[];
+  /**
+   * Exit codes that mean "this run deliberately did nothing", not "this run broke".
+   *
+   * Per job because the meaning of a code belongs to the program being launched, not to orch: the
+   * scrapers use 2 for "another instance already holds the lock" (documented in their CLAUDE.md as
+   * "consumers must treat 2 as skipped"), while for any other binary 2 could be a real fault.
+   *
+   * orch takes the program at its word and cannot verify the claim: a program that does work before
+   * checking its own lock reports "nothing was done" after having done something. So this declares
+   * "treat this code as a skip", not "the state is guaranteed unchanged", which is why the real exit
+   * code and the child's stderr stay in the run history and the per-run log. See P-8 in
+   * .claude/guiding-principles.md.
+   */
+  skipExitCodes?: number[];
+}
+
+/**
+ * Fields that can hold nothing, and what "nothing" is stored as for each.
+ *
+ * Used for both ways a field ends up empty, so they cannot drift apart: `orch edit --unset <field>`
+ * (an edit is a patch, so an omitted flag means "leave it alone" -- there is no value that spells
+ * "remove this option") and any write that carries an empty value, from `orch add` leaving cwd out
+ * to `--cwd ""`.
+ *
+ * `'delete'` drops the key: these fields are optional in Job and every consumer reads them with a
+ * fallback (`job.cwd ?? undefined`, `job.delaySeconds ?? 0`, `job.timeoutSeconds ?? 300`, `!liveness`),
+ * so an absent key behaves exactly like "not configured" and `orch show` stops mentioning it.
+ *
+ * The two mapped to a function cannot vanish: `label` is read raw in a dozen places (orch-ui's
+ * `job.label.toLowerCase()` throws on undefined) and `triggerMode` is non-optional in the type
+ * orch-ui consumes and rendered as-is. They fall back to their creation-time value instead.
+ *
+ * The rule is mechanical, so a new Job field does not land in a grey area: every optional field of
+ * Job is here, and only the required ones are absent -- id, type, command, enabled, a cron's
+ * schedule, a once job's delayMs and scheduledAt -- because clearing one of those would write a job
+ * the scheduler cannot fire. Add a field to Job, add it here.
+ */
+export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown)> = {
+  cwd:                'delete',
+  delaySeconds:       'delete',
+  missedFiring:       'delete',
+  timeoutSeconds:     'delete',
+  env:                'delete',
+  tags:               'delete',
+  onExitCode:         'delete',
+  retryOnExitCodes:   'delete',
+  retryDelays:        'delete',
+  skipExitCodes:      'delete',
+  liveness:           'delete',
+  alertAfterFailures: 'delete',
+  dependsOn:          'delete',
+  slaWindowMinutes:   'delete',
+  secrets:            'delete',
+  dryRunSupported:    'delete',
+  label:              (job) => job.id,
+  triggerMode:        () => 'fire-and-forget',
+};
+
+/** Job fields that cannot be cleared, so the error can say "required" instead of "unknown". */
+const REQUIRED_FIELDS = new Set(['id', 'type', 'command', 'enabled', 'schedule', 'delayMs', 'scheduledAt']);
+
+/**
+ * Explains why `field` cannot be cleared, and lists what can be -- the caller typed a name and needs
+ * to know which one to type instead. Returns null when the field is unsettable, i.e. all is well.
+ */
+export function unsettableFieldError(field: string): string | null {
+  if (UNSETTABLE_FIELDS[field]) return null;
+  const valid = Object.keys(UNSETTABLE_FIELDS).join(', ');
+  const reason = REQUIRED_FIELDS.has(field)
+    ? `"${field}" is required to run the job and cannot be unset.`
+    : `Unknown job field "${field}".`;
+  return `${reason}\n\nFields that can be unset: ${valid}`;
 }
 
 export interface StartupResult {
@@ -65,6 +142,15 @@ export interface RuntimeEntry {
   peakCpuPct?: number;
   peakRamMb?: number;
   cancelledByUser?: boolean;
+  /**
+   * Set when the daemon deliberately did not do the work: the liveness check found the target
+   * already alive, or the child exited with one of the job's `skipExitCodes`.
+   *
+   * Authoritative over exitCode for every reader -- failures, consecutive-failure count, uptime,
+   * systray, dashboard. A skip is neither a success nor a failure, so it is excluded from all of
+   * them rather than counted on either side.
+   */
+  skipped?: boolean;
   retryAttempt?: number;
   /**
    * Set when the daemon closed this run at startup because it had no finishedAt: the daemon that

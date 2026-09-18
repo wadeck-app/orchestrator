@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
-import { getErrorMessage, type Job, type MissedFiring, type LivenessConfig, type LivenessStrategy } from '../types.js';
+import { getErrorMessage, type Job, type JobFormPayload, type MissedFiring, type LivenessConfig, type LivenessStrategy, type UnsettableJobField } from '../types.js';
 import { describeCron } from '../cron-describe.js';
 import { ButtonAction, ButtonCancel, CronBuilder, FieldNumber, FieldSelect, FieldText, IconButton, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
@@ -51,7 +51,7 @@ type TriggerMode = Job['triggerMode'];
 
 export interface JobFormProps {
   initial?: Partial<Job>;
-  onSubmit: (data: Partial<Job>) => Promise<void>;
+  onSubmit: (data: JobFormPayload) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -77,6 +77,18 @@ function numericSetter(set: (n: number) => void): (v: string | number) => void {
     const n = typeof v === 'number' ? v : Number(v);
     set(Number.isFinite(n) ? n : 0);
   };
+}
+
+/**
+ * Whether the job already stored something in this field. Same rule as registry.ts isEmptyValue(),
+ * so "was configured" means the same thing on both sides: 0 and false are values, an empty string
+ * or an empty collection is not.
+ */
+function wasConfigured(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
 }
 
 function parseCron(expr: string): string | null {
@@ -172,15 +184,34 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
     if (!validate()) return;
     setLoading(true);
     try {
-      const data: Partial<Job> = { label: label.trim(), type, command: command.trim(), triggerMode, missedFiring };
+      const data: JobFormPayload = { label: label.trim(), type, command: command.trim(), triggerMode, missedFiring };
       // Only on create: the edit route reads the id from the URL, so sending it would let a body and
       // a path disagree about which job is being written.
       if (isCreating) {
         data.id = jobId.trim();
       }
+
+      /*
+       * An edit is a PATCH, so leaving a key out means "keep what you have". Emptying a field and
+       * saving therefore used to do nothing at all: no error, and the old value still in place.
+       * Naming the field here is the only way to say "clear it".
+       *
+       * Called from the branch where the field is NOT going into the body, so a field can never end
+       * up in both - registry.edit() rejects that outright. Nothing to clear when creating, and
+       * required fields never reach this: validate() stops the submit first.
+       */
+      const unset: UnsettableJobField[] = [];
+      const clearIfWasConfigured = (field: UnsettableJobField, previous: unknown): void => {
+        if (!isCreating && wasConfigured(previous)) unset.push(field);
+      };
+
       if (cwd.trim()) data.cwd = cwd.trim();
+      else clearIfWasConfigured('cwd', initial?.cwd);
       if (type === 'cron' && schedule.trim()) data.schedule = schedule.trim();
       if (type === 'startup') data.delaySeconds = delaySeconds;
+      // Switching the type takes this field off the form. Without this the patch keeps a delay that
+      // now belongs to no type, and `orch show` still reports it.
+      else clearIfWasConfigured('delaySeconds', initial?.delaySeconds);
       // Required by the daemon for this type, and never sent before, so every `once` job created
       // from the dashboard was rejected.
       if (type === 'once') {
@@ -197,29 +228,40 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
         data.liveness = null;
       }
 
-      // timeout
+      // timeout. 0 is a value to the daemon, not an absence, so zeroing the box has to unset the
+      // field rather than store a job that times out immediately.
       if (timeoutSeconds > 0) data.timeoutSeconds = timeoutSeconds;
+      else clearIfWasConfigured('timeoutSeconds', initial?.timeoutSeconds);
 
       // onExitCode
       const validPairs = exitCodePairs.filter(p => p.code.trim() && p.msg.trim());
       if (validPairs.length > 0) {
         data.onExitCode = Object.fromEntries(validPairs.map(p => [p.code.trim(), p.msg.trim()]));
+      } else {
+        clearIfWasConfigured('onExitCode', initial?.onExitCode);
       }
 
       // env vars
       const validEnv = envPairs.filter(p => p.key.trim());
       if (validEnv.length > 0) {
         data.env = Object.fromEntries(validEnv.map(p => [p.key.trim(), p.val]));
+      } else {
+        clearIfWasConfigured('env', initial?.env);
       }
 
       // tags
       const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean);
       if (tags.length > 0) data.tags = tags;
+      else clearIfWasConfigured('tags', initial?.tags);
 
       // v3 fields
       if (dependsOn.trim()) data.dependsOn = dependsOn.trim();
       if (slaWindowMinutes > 0) data.slaWindowMinutes = slaWindowMinutes;
       if (dryRunSupported) data.dryRunSupported = true;
+
+      // Only when there is something to clear: an empty array would still reach the daemon and read
+      // as an edit that clears nothing.
+      if (unset.length > 0) data.unset = unset;
 
       setSubmitError(null);
       await onSubmit(data);

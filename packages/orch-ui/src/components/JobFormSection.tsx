@@ -1,13 +1,16 @@
 import React from 'react';
-import type { Job } from '../types.js';
+import type { Job, JobFormPayload } from '../types.js';
 import { getErrorMessage } from '../types.js';
 import { JobForm } from './JobForm.js';
 
 export interface JobFormSectionProps {
   jobId?: string;
   initial?: { job: Job };
-  /** DSL $outputs callbacks -- injected via registry-overrides */
-  onSubmit?: (data: Partial<Job>) => void | Promise<void>;
+  /**
+   * DSL $outputs callbacks -- injected via registry-overrides. Takes the payload, not Partial<Job>:
+   * the whole object becomes the PUT body, and `unset` is what carries the fields the user emptied.
+   */
+  onSubmit?: (data: JobFormPayload) => void | Promise<void>;
   onCancel?: () => void;
 }
 
@@ -19,7 +22,7 @@ export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCance
   const isEdit = Boolean(jobId);
   const [error, setError] = React.useState<string | null>(null);
 
-  const handleSubmit = async (data: Partial<Job>) => {
+  const handleSubmit = async (data: JobFormPayload) => {
     if (!onSubmitProp) {
       setError('[JobFormSection] onSubmit is not wired -- add $brains.$http.post to the YAML page');
       console.error('[JobFormSection] onSubmit prop is required -- wire this component via YAML $brains');

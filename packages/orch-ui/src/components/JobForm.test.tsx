@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { JobForm } from './JobForm.js';
+import type { Job } from '../types.js';
 
 // Covers JobForm's own contract: a caller that awaits the save and rejects must see why.
 //
@@ -189,5 +190,241 @@ describe('JobForm sends what the daemon requires', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByLabelText(/^Id/)).toBeNull();
+  });
+});
+
+/*
+ * Clearing a field in the form used to be a no-op. An edit is a PATCH: `if (cwd.trim())
+ * data.cwd = ...` simply omitted the key, and an omitted key tells the daemon "leave it alone".
+ * The user emptied the box, hit Save, saw no error, and the old value was still there.
+ *
+ * `PUT /api/jobs/:id` already takes an `unset` array beside the changed fields, which the server
+ * lifts out of the body and hands to registry.edit(). These tests pin the form to that contract.
+ */
+type SubmittedPayload = Partial<Job> & { unset?: string[] };
+
+function renderEditForm(initial: Partial<Job>, onSubmit: (data: unknown) => Promise<void>) {
+  return render(
+    <MemoryRouter>
+      <JobForm onSubmit={onSubmit} onCancel={() => {}} initial={initial} />
+    </MemoryRouter>,
+  );
+}
+
+function submitted(onSubmit: ReturnType<typeof vi.fn>): SubmittedPayload {
+  return onSubmit.mock.calls[0]![0] as SubmittedPayload;
+}
+
+// fireEvent, not a bare .click(): the advanced block only exists after the state update is flushed,
+// and the queries below run synchronously right after this call.
+function showAdvanced(): void {
+  fireEvent.click(screen.getByRole('button', { name: /Advanced options/ }));
+}
+
+const EXISTING_CRON: Partial<Job> = {
+  id: 'j1', type: 'cron', command: 'node -v', label: 'Original', schedule: '0 9 * * *',
+};
+
+describe('JobForm clears fields the user emptied', () => {
+  it('sends cwd in unset, and not in the body, when an existing cwd is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, cwd: 'C:/work' }, onSubmit);
+
+    fill(/^Working directory/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['cwd']);
+    // Both would be a contradiction, and registry.edit() rejects it outright.
+    expect(sent).not.toHaveProperty('cwd');
+  });
+
+  it('leaves an untouched cwd in the body and out of unset', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, cwd: 'C:/work' }, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.cwd).toBe('C:/work');
+    expect(sent).not.toHaveProperty('unset');
+  });
+
+  it('omits unset entirely when a field was empty before and after', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    // An empty array would still travel to the daemon and read as an edit that clears nothing.
+    expect(submitted(onSubmit)).not.toHaveProperty('unset');
+  });
+
+  it('never sends unset when creating, since there is no stored value to clear', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderNewForm(onSubmit);
+
+    fill(/^Id/, 'my-job');
+    fill(/^Label/, 'My job');
+    fill(/^Command/, 'node --version');
+    fill(/^Schedule/, '0 9 * * *');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit)).not.toHaveProperty('unset');
+  });
+
+  it('refuses to clear a required command instead of unsetting it', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Command/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(screen.getByText('Command is required')).toBeInTheDocument());
+    // The daemon cannot run a job without a command, so `unset` is not an option here.
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('refuses to clear a required schedule instead of unsetting it', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Schedule/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(screen.getByText(/Schedule/)).toBeInTheDocument());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // label IS unsettable in the daemon, but it resets to the job id rather than disappearing, and
+  // the form declares it required. Required wins: the user gets told, not silently renamed.
+  it('refuses to clear the label instead of unsetting it', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Label/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(screen.getByText('Label is required')).toBeInTheDocument());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('sends tags in unset when every tag is removed', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, tags: ['daily', 'scraper'] }, onSubmit);
+
+    fill(/^Tags/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['tags']);
+    expect(sent).not.toHaveProperty('tags');
+  });
+
+  // 0 is not "no timeout" to the daemon: isEmptyValue() keeps 0, so the body would store a job that
+  // times out instantly. Clearing the box has to mean unset.
+  it('sends timeoutSeconds in unset when the timeout is zeroed', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, timeoutSeconds: 600 }, onSubmit);
+
+    showAdvanced();
+    fill(/^Timeout/, '0');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['timeoutSeconds']);
+    expect(sent).not.toHaveProperty('timeoutSeconds');
+  });
+
+  it('sends env in unset when the last variable name is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, env: { TOKEN: 'abc' } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Environment variable key/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['env']);
+    expect(sent).not.toHaveProperty('env');
+  });
+
+  it('sends onExitCode in unset when the last exit code is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, onExitCode: { '2': 'locked' } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Exit code$/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['onExitCode']);
+    expect(sent).not.toHaveProperty('onExitCode');
+  });
+
+  // Changing the type takes the delay field off the form. Left alone, the patch keeps a delaySeconds
+  // that now belongs to no type.
+  it('sends delaySeconds in unset when a startup job becomes a cron job', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ id: 'j2', type: 'startup', command: 'node -v', label: 'Boot', delaySeconds: 30 }, onSubmit);
+
+    fill(/^Type/, 'cron');
+    fill(/^Schedule/, '0 9 * * *');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['delaySeconds']);
+    expect(sent).not.toHaveProperty('delaySeconds');
+  });
+
+  // liveness is unsettable, but the form already sends `liveness: null` and normalizeJob() drops an
+  // empty value on every write. Naming it in `unset` too would be the forbidden set-and-unset.
+  it('clears liveness through the body, never through unset', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'portFile', portFile: '/tmp/a.port' } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Liveness check/, 'none');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.liveness).toBeNull();
+    expect(sent).not.toHaveProperty('unset');
+  });
+
+  // retryOnExitCodes, retryDelays and skipExitCodes are unsettable in the daemon but absent from
+  // this form. Unsetting what the user was never shown would delete config behind their back.
+  it('never unsets retry or skip config the form does not edit', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, cwd: 'C:/work' }, onSubmit);
+
+    fill(/^Working directory/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).unset).toEqual(['cwd']);
+  });
+
+  it('collects every emptied field into one unset array', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, cwd: 'C:/work', tags: ['daily'] }, onSubmit);
+
+    fill(/^Working directory/, '');
+    fill(/^Tags/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).unset).toEqual(expect.arrayContaining(['cwd', 'tags']));
+    expect(submitted(onSubmit).unset).toHaveLength(2);
   });
 });

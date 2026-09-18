@@ -71,7 +71,14 @@ export async function jobsRoutes(
       const { id } = req.params as { id: string };
       // `updates`, not spread: edit-job reads payload.updates. Flattening left it undefined, the
       // daemon threw on Object.keys(undefined), and Save in the web UI did nothing at all.
-      const result = await proxy.send('edit-job', { id, updates: req.body as object });
+      //
+      // `unset` travels beside `updates`, not inside it: an edit is a patch, so an omitted field
+      // means "leave it alone" and a client clearing e.g. the working directory has to name it.
+      // Left inside, the daemon would take "unset" for a job field.
+      const { unset, ...fields } = (req.body ?? {}) as { unset?: string[] } & Record<string, unknown>;
+      const result = await proxy.send('edit-job', {
+        id, updates: fields, ...(unset !== undefined ? { unset } : {}),
+      });
       return reply.send(result);
     });
   });

@@ -40,6 +40,6 @@ export { useFailures } from './hooks/useFailures.js';
 export type { FailureEntry } from './hooks/useFailures.js';
 export { useHeartbeat } from './hooks/useHeartbeat.js';
 export type { JobWithHistory } from './job-with-history.js';
-export type { Job, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';
+export type { Job, JobFormPayload, UnsettableJobField, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';
 export { getErrorMessage } from './types.js';
 export { describeCron } from './cron-describe.js';

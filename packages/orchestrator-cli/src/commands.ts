@@ -63,7 +63,7 @@ export function makeCommands(
     },
 
     'edit-job':    (p) => {
-      const { id, updates } = p as { id: string; updates: Partial<Job> };
+      const { id, updates, unset } = p as { id: string; updates?: Partial<Job>; unset?: string[] };
       // Validated before anything is written. orch-server used to flatten the body into the payload,
       // so `updates` was undefined: registry.edit spread nothing and wrote the job back unchanged,
       // then Object.keys(undefined) threw "Cannot convert undefined or null to object". A caller got
@@ -71,24 +71,36 @@ export function makeCommands(
       if (typeof id !== 'string' || id === '') {
         throw new Error('edit-job requires a string `id`');
       }
-      if (updates === null || typeof updates !== 'object' || Array.isArray(updates)) {
+      // A clear needs no updates, so `unset` alone is a complete edit; anything else must bring one.
+      if (unset !== undefined && (!Array.isArray(unset) || unset.some((f) => typeof f !== 'string'))) {
         throw new Error(
-          'edit-job requires an `updates` object, e.g. { id, updates: { label: "New name" } }; '
-          + `got ${updates === undefined ? 'nothing' : JSON.stringify(updates)}`,
+          'edit-job `unset` must be an array of field names, e.g. { id, unset: ["cwd"] }; '
+          + `got ${JSON.stringify(unset)}`,
         );
       }
-      registry.edit(id, updates);
+      const fields = updates ?? (Array.isArray(unset) ? {} : undefined);
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        throw new Error(
+          'edit-job requires an `updates` object, e.g. { id, updates: { label: "New name" } }; '
+          + `got ${fields === undefined ? 'nothing' : JSON.stringify(fields)}`,
+        );
+      }
+      registry.edit(id, fields, unset ?? []);
       const updatedJob = registry.get(id);
-      audit?.log('job.edited', { jobId: id, label: updatedJob?.label, changes: Object.keys(updates) });
+      audit?.log('job.edited', {
+        jobId: id, label: updatedJob?.label,
+        changes: Object.keys(fields), ...(unset?.length ? { unset } : {}),
+      });
       return updatedJob!;
     },
 
     'trigger-job': (p) => {
-      const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
+      const { id, ip, userAgent, wait } = p as { id: string; ip?: string; userAgent?: string; wait?: boolean };
       const job = registry.get(id);
       audit?.log('job.triggered_manual', { jobId: id, label: job?.label, ip, userAgent });
       events?.publish('job.triggered_manual', { jobId: id, label: job?.label ?? id, ip: ip ?? null, userAgent: userAgent ?? null });
-      return scheduler.trigger(id, { kind: 'manual', ip, userAgent });
+      // The CLI has always sent `wait`; it used to be dropped here, so --wait silently did nothing.
+      return scheduler.trigger(id, { kind: 'manual', ip, userAgent }, wait === true);
     },
 
     // Awaited, not fired off: the reply's `killed` flag is what the CLI and the dashboard show,

@@ -2,6 +2,7 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, LivenessConfig } from './types.js';
+import { UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
@@ -40,6 +41,27 @@ function has(argv: string[], name: string): boolean {
   return argv.includes(name);
 }
 
+/**
+ * Every value given to a repeatable flag, splitting comma-separated lists, so `--unset a,b` and
+ * `--unset a --unset b` mean the same thing.
+ *
+ * Throws when a value is missing or is the next flag: `flag()` reads argv[idx + 1] blindly, so
+ * `orch edit j --unset --label x` would otherwise clear a field named "--label".
+ */
+function multiFlag(argv: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== name) continue;
+    const raw = argv[i + 1];
+    if (raw === undefined || raw.startsWith('--')) {
+      throw new Error(`${name} needs a value, but was followed by ${raw === undefined ? 'nothing' : `"${raw}"`}.`);
+    }
+    values.push(...raw.split(',').map(v => v.trim()).filter(v => v !== ''));
+    i++;
+  }
+  return values;
+}
+
 
 function buildLiveness(argv: string[]): LivenessConfig | null {
   const strategy = flag(argv, '--liveness-strategy');
@@ -48,6 +70,26 @@ function buildLiveness(argv: string[]): LivenessConfig | null {
   if (strategy === 'portFile') liveness.portFile = flag(argv, '--liveness-port-file');
   if (strategy === 'command')  liveness.command  = flag(argv, '--liveness-command');
   return liveness;
+}
+
+/**
+ * A comma-separated list of numbers, or undefined when the flag is absent.
+ *
+ * Throws on anything non-numeric: `.split(',').map(Number)` turns a typo into [NaN], which reaches
+ * the registry as a valid array of numbers and then silently matches no exit code at all.
+ */
+function numberListFlag(argv: string[], name: string): number[] | undefined {
+  const raw = flag(argv, name);
+  if (raw === undefined || raw === '') return undefined;
+  const parts = raw.split(',').map(v => v.trim()).filter(v => v !== '');
+  const values = parts.map((part) => {
+    const n = Number(part);
+    if (!Number.isFinite(n)) {
+      throw new Error(`${name} expects numbers separated by commas, but got "${part}" in "${raw}".`);
+    }
+    return n;
+  });
+  return values.length > 0 ? values : undefined;
 }
 
 function errorExit(message: string, exitCode: number = 1): never {
@@ -114,6 +156,12 @@ Job mutation:
   orch enable <id>             Enable a job
   orch disable <id>            Disable a job
   orch edit <id> [--schedule <expr>] [--delay <s>] [--command <c>] [--label <t>] ...
+                               Patches the job: a flag you omit leaves that field as it was
+                               [--unset <field>[,<field>...]]  Clear an option instead of changing it
+                               Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
+                               env, tags, onExitCode, retryOnExitCodes, retryDelays,
+                               skipExitCodes, liveness, label, triggerMode
+                               Example: orch edit my-job --unset cwd
 
 Schedule format (cron jobs): standard 5-field cron -- min hour day month weekday
   Examples: "*/5 * * * *"   every 5 minutes
@@ -145,6 +193,18 @@ Retry on failure:
   --retry-on-exit-codes <codes>  Comma-separated exit codes that trigger retry, e.g. 3
   --retry-delays <seconds>       Comma-separated delays in seconds, e.g. 300,600,1800,5400
   Hooks: configure onJobRetry / onJobExhausted in ~/.config/orchestrator/hooks.json
+
+Exit codes that are not failures:
+  --skip-exit-codes <codes>      Comma-separated exit codes meaning "nothing was done", e.g. 2
+                                 The run is recorded as skipped: no failure, no retry, no alert,
+                                 no systray badge, and it neither helps nor hurts the uptime figure
+                                 Per job on purpose -- what a code means belongs to the program
+                                 being run. The @wadeck-app scrapers use 2 for "another instance is
+                                 already running"; another binary may use 2 for a real fault
+                                 Example: orch edit wa-scrape --skip-exit-codes 2
+
+  A skip also happens without any exit code when the job has a liveness check and the target is
+  already alive -- see --liveness-strategy above.
 
 Logs:
   orch logs [--follow] [--job <id>] [--tail <N>] [--json]
@@ -469,10 +529,16 @@ Examples:
         body['scheduledAt'] = new Date().toISOString();
       }
 
-      const addRetryOnExitCodes = flag(addRest, '--retry-on-exit-codes');
-      const addRetryDelays      = flag(addRest, '--retry-delays');
-      if (addRetryOnExitCodes) body['retryOnExitCodes'] = addRetryOnExitCodes.split(',').map(Number);
-      if (addRetryDelays)      body['retryDelays']      = addRetryDelays.split(',').map(Number);
+      try {
+        const addRetryOnExitCodes = numberListFlag(addRest, '--retry-on-exit-codes');
+        const addRetryDelays      = numberListFlag(addRest, '--retry-delays');
+        const addSkipExitCodes    = numberListFlag(addRest, '--skip-exit-codes');
+        if (addRetryOnExitCodes) body['retryOnExitCodes'] = addRetryOnExitCodes;
+        if (addRetryDelays)      body['retryDelays']      = addRetryDelays;
+        if (addSkipExitCodes)    body['skipExitCodes']    = addSkipExitCodes;
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
 
       await send('add-job', body);
       console.log(`Job "${id}" added.`);
@@ -516,12 +582,42 @@ Examples:
       if (delay !== undefined) updates['delaySeconds'] = parseInt(delay, 10);
       const livenessStrategy = flag(editRest, '--liveness-strategy');
       if (livenessStrategy) updates['liveness'] = buildLiveness(editRest);
-      const editRetryOnExitCodes = flag(editRest, '--retry-on-exit-codes');
-      const editRetryDelays      = flag(editRest, '--retry-delays');
-      if (editRetryOnExitCodes) updates['retryOnExitCodes'] = editRetryOnExitCodes.split(',').map(Number);
-      if (editRetryDelays)      updates['retryDelays']      = editRetryDelays.split(',').map(Number);
+      try {
+        const editRetryOnExitCodes = numberListFlag(editRest, '--retry-on-exit-codes');
+        const editRetryDelays      = numberListFlag(editRest, '--retry-delays');
+        const editSkipExitCodes    = numberListFlag(editRest, '--skip-exit-codes');
+        if (editRetryOnExitCodes) updates['retryOnExitCodes'] = editRetryOnExitCodes;
+        if (editRetryDelays)      updates['retryDelays']      = editRetryDelays;
+        if (editSkipExitCodes)    updates['skipExitCodes']    = editSkipExitCodes;
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
 
-      await send('edit-job', { id, updates });
+      // An edit is a patch, so an omitted flag means "leave this alone" -- there is no value that
+      // means "remove this option". --unset is how you say it. Names are checked here so a typo
+      // costs no daemon round-trip and reports as a validation error.
+      let unset: string[];
+      try {
+        unset = multiFlag(editRest, '--unset');
+      } catch (e) {
+        errorExit(`${getErrorMessage(e)}
+
+Usage: orch edit <id> --unset <field>[,<field>...]
+
+Example: orch edit my-job --unset cwd
+
+Fields that can be unset: ${Object.keys(UNSETTABLE_FIELDS).join(', ')}`, 4);
+      }
+      for (const field of unset) {
+        const problem = unsettableFieldError(field);
+        if (problem) errorExit(problem, 4);
+        if (field in updates) {
+          errorExit(`Cannot set and unset "${field}" in the same command -- drop one of `
+            + `--${field.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)} and --unset ${field}.`, 4);
+        }
+      }
+
+      await send('edit-job', { id, updates, ...(unset.length ? { unset } : {}) });
       console.log(`Job "${id}" updated.`);
       break;
     }

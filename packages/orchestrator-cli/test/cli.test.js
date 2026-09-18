@@ -195,6 +195,137 @@ describe('orch edit', () => {
     assert.equal(calls[0].payload.updates.label, 'New label');
     assert.equal(Object.keys(calls[0].payload.updates).length, 1);
   });
+
+  test('no --unset means no unset in the payload at all', async () => {
+    const { calls } = await run(['edit', 'my-job', '--label', 'New label']);
+    assert.ok(!('unset' in calls[0].payload), 'an empty unset was sent for nothing');
+  });
+});
+
+// Which exit codes mean "nothing was done" belongs to the program being launched, not to orch, so it
+// is configured per job. The scrapers document 2 as "another instance is already running - not a
+// failure"; for another binary 2 could be a genuine fault.
+describe('--skip-exit-codes', () => {
+  test('add accepts a single code', async () => {
+    const { calls } = await run(['add', 'cron', 'wa', '--schedule', '0 8 * * *',
+      '--command', 'npm run scrape', '--skip-exit-codes', '2']);
+    assert.equal(calls[0].command, 'add-job');
+    assert.deepEqual(calls[0].payload.skipExitCodes, [2]);
+  });
+
+  test('add accepts a comma-separated list, as numbers', async () => {
+    const { calls } = await run(['add', 'cron', 'wa', '--schedule', '0 8 * * *',
+      '--command', 'npm run scrape', '--skip-exit-codes', '2,75']);
+    assert.deepEqual(calls[0].payload.skipExitCodes, [2, 75]);
+  });
+
+  test('a job without the flag sends nothing, keeping the old default', async () => {
+    const { calls } = await run(['add', 'cron', 'wa', '--schedule', '0 8 * * *',
+      '--command', 'npm run scrape']);
+    assert.ok(!('skipExitCodes' in calls[0].payload));
+  });
+
+  test('edit sets it on an existing job', async () => {
+    const { calls } = await run(['edit', 'wa', '--skip-exit-codes', '2']);
+    assert.equal(calls[0].command, 'edit-job');
+    assert.deepEqual(calls[0].payload.updates.skipExitCodes, [2]);
+  });
+
+  test('edit --unset clears it', async () => {
+    const { calls } = await run(['edit', 'wa', '--unset', 'skipExitCodes']);
+    assert.deepEqual(calls[0].payload.unset, ['skipExitCodes']);
+  });
+
+  test('a non-numeric code is refused locally, before the daemon is contacted', async () => {
+    const origError = console.error;
+    let stderr = '';
+    console.error = (msg) => { stderr += `${msg}\n`; };
+    try {
+      const { exitCode, calls } = await run(['edit', 'wa', '--skip-exit-codes', 'two']);
+      assert.equal(exitCode, 4, 'a non-numeric exit code should be a validation error');
+      assert.match(stderr, /two/, `the error does not quote what was typed: ${stderr}`);
+      assert.equal(calls.length, 0);
+    } finally {
+      console.error = origError;
+    }
+  });
+});
+
+// `orch edit` patches: an absent flag leaves the field alone, so clearing an option needs its own
+// spelling. --unset is that spelling.
+describe('orch edit --unset', () => {
+  async function runCapturingErrors(argv) {
+    const origError = console.error;
+    let stderr = '';
+    console.error = (msg) => { stderr += `${msg}\n`; };
+    try {
+      const result = await run(argv);
+      return { ...result, stderr };
+    } finally {
+      console.error = origError;
+    }
+  }
+
+  test('sends the field in unset, next to updates', async () => {
+    const { calls } = await run(['edit', 'my-job', '--unset', 'cwd']);
+    assert.equal(calls[0].command, 'edit-job');
+    assert.equal(calls[0].payload.id, 'my-job');
+    assert.deepEqual(calls[0].payload.unset, ['cwd']);
+    assert.deepEqual(calls[0].payload.updates, {}, 'unset leaked into updates');
+  });
+
+  test('a comma-separated list clears several fields', async () => {
+    const { calls } = await run(['edit', 'my-job', '--unset', 'cwd,label']);
+    assert.deepEqual(calls[0].payload.unset, ['cwd', 'label']);
+  });
+
+  test('the flag repeats', async () => {
+    const { calls } = await run(['edit', 'my-job', '--unset', 'cwd', '--unset', 'liveness']);
+    assert.deepEqual(calls[0].payload.unset, ['cwd', 'liveness']);
+  });
+
+  test('clearing one field and setting another in one command', async () => {
+    const { calls } = await run(['edit', 'my-job', '--unset', 'cwd', '--label', 'Renamed']);
+    assert.deepEqual(calls[0].payload.unset, ['cwd']);
+    assert.equal(calls[0].payload.updates.label, 'Renamed');
+  });
+
+  test('an unknown field is refused locally, with the valid names', async () => {
+    const { exitCode, stderr, calls } = await runCapturingErrors(['edit', 'my-job', '--unset', 'workdir']);
+    assert.equal(exitCode, 4, 'a bad field name should be a validation error');
+    assert.match(stderr, /workdir/);
+    assert.match(stderr, /cwd/, `the error does not list the real field names: ${stderr}`);
+    assert.equal(calls.length, 0, 'the daemon was contacted with a field it will only reject');
+  });
+
+  test('a required field is refused by name, saying it is required', async () => {
+    const { exitCode, stderr } = await runCapturingErrors(['edit', 'my-job', '--unset', 'command']);
+    assert.equal(exitCode, 4);
+    assert.match(stderr, /command/);
+    assert.match(stderr, /required/i);
+  });
+
+  // `orch edit j --unset --label x` -- flag() would happily read "--label" as the field name.
+  test('a missing field name is refused, not read from the next flag', async () => {
+    const { exitCode, stderr } = await runCapturingErrors(['edit', 'my-job', '--unset', '--label', 'x']);
+    assert.equal(exitCode, 4);
+    assert.match(stderr, /--unset/, `the error does not name the flag: ${stderr}`);
+  });
+
+  test('--unset as the last argument with nothing after it is refused', async () => {
+    const { exitCode, stderr } = await runCapturingErrors(['edit', 'my-job', '--unset']);
+    assert.equal(exitCode, 4);
+    assert.match(stderr, /--unset/);
+  });
+
+  test('setting and clearing the same field is refused before the daemon sees it', async () => {
+    const { exitCode, stderr, calls } = await runCapturingErrors(
+      ['edit', 'my-job', '--cwd', 'C:/tmp', '--unset', 'cwd'],
+    );
+    assert.equal(exitCode, 4);
+    assert.match(stderr, /cwd/);
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe('orch trigger', () => {
