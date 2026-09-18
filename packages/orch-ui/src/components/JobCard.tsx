@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText } from 'lucide-react';
-import { ButtonLink } from '@wadeck-app/dsl-ui';
+import { ButtonLink, Checkbox, Tooltip } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { JobStatusPill } from './JobStatusPill.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
@@ -30,6 +30,17 @@ export const TYPE_COLORS: Record<Job['type'], string> = {
 const TAG_BG  = ['bg-tag-1','bg-tag-2','bg-tag-3','bg-tag-4','bg-tag-5','bg-tag-6'] as const;
 const TAG_TEXT = ['text-tag-1','text-tag-2','text-tag-3','text-tag-4','text-tag-5','text-tag-6'] as const;
 // @formatter:on
+
+/**
+ * Uptime colour. Muted while healthy so it stays background information, and only claims
+ * attention once it slips - a grid of cards is scanned, not read.
+ */
+function uptimeToneCls(percent: number): string {
+  if (percent >= 99) {
+    return 'text-muted';
+  }
+  return percent >= 90 ? 'text-warning' : 'text-danger';
+}
 
 function tagColor(name: string): { bg: string; text: string } {
   let h = 0;
@@ -96,9 +107,15 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           {onSelect != null && (
-            // violations-suppress: react/no-raw-input selection checkbox - no FieldText variant for boolean without label
-            <input type="checkbox" checked={selected ?? false} onChange={() => {}} onClick={onSelect}
-              className="w-4 h-4 shrink-0 cursor-pointer accent-primary" />
+            // aria-label because the box has no visible label: it was previously an unlabelled
+            // raw input, announced as nothing at all.
+            <Checkbox
+              checked={selected ?? false}
+              onChange={() => {}}
+              onClick={onSelect}
+              aria-label={`Select ${job.label}`}
+              className="shrink-0 cursor-pointer"
+            />
           )}
           <span className="font-semibold text-content truncate">{job.label}</span>
           <span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type]}`}>{job.type}</span>
@@ -134,9 +151,15 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               })()
             : 'Last run: Never'}
         </p>
-        {/* Mini run history: last 5 runs as colored dots */}
+        {/* Last 5 runs as coloured dots. The tooltip is what makes them readable: five 6px
+            dots with no legend told the reader nothing about what they were looking at. */}
+        {/* ml-auto has to sit on the outermost element to push the dots to the card edge.
+            Tooltip inserts its own inline-flex wrapper and takes no className, so leaving
+            ml-auto on the inner div left the dots crammed against the timestamp. */}
         {runHistory.length > 0 && (
-          <div className="flex items-center gap-0.5 ml-auto">
+          <span className="ml-auto">
+          <Tooltip content="Last 5 runs, newest first">
+          <div className="flex items-center gap-0.5">
             {Array.from({ length: 5 }, (_, i) => {
               const entry = runHistory[i];
               // violations-suppress-start: tailwind/no-raw-color-class pass/fail/running dot colors have no semantic-token equivalents in design system
@@ -151,6 +174,8 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               return <span key={i} className={`w-1.5 h-1.5 rounded-full ${cls}`} />;
             })}
           </div>
+          </Tooltip>
+          </span>
         )}
       </div>
 
@@ -162,8 +187,13 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
             <span className="text-xs text-muted">{streak} streak</span>
           </div>
         )}
+        {/* Not dsl-ui's Progress: it is w-full and puts its label on a line of its own, which
+            would break this compact horizontal row. Colour carries the meaning instead, so a
+            degraded job stands out in a grid without the reader comparing four decimals. */}
         {uptimePercent !== null && uptimePercent !== undefined && (
-          <span className="text-xs text-muted">{uptimePercent.toFixed(1)}% uptime</span>
+          <Tooltip content="Share of recent runs that succeeded">
+            <span className={`text-xs ${uptimeToneCls(uptimePercent)}`}>{uptimePercent.toFixed(1)}% uptime</span>
+          </Tooltip>
         )}
         {consecutiveFailures !== undefined && consecutiveFailures >= (job.alertAfterFailures ?? 3) && (
           <div className="flex items-center gap-0.5 text-warning">
