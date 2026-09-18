@@ -56,10 +56,16 @@ export interface JobFormProps {
 }
 
 interface FormErrors {
+  id?: string;
   label?: string;
   command?: string;
   schedule?: string;
+  onceDelay?: string;
 }
+
+// registry.ts validateJob() enforces this. Checked here too, so the field that is wrong gets named
+// instead of the daemon answering 500 into a channel the page does not display.
+const MAX_ID_LENGTH = 128;
 
 /**
  * Adapts dsl-ui's FieldNumber, whose onChange carries `string | number` so the field can
@@ -85,6 +91,10 @@ function parseCron(expr: string): string | null {
  * @registryTags form job edit create
  */
 export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.ReactElement {
+  // The id is the registry key. It is set once, at creation: the edit route addresses the job by id
+  // in the URL and ignores the body, so an editable field here would only ever mislead.
+  const isCreating = initial?.id === undefined;
+  const [jobId, setJobId] = useState('');
   const [label, setLabel] = useState(initial?.label ?? '');
   const [type, setType] = useState<JobType>(initial?.type ?? 'cron');
   const [command, setCommand] = useState(initial?.command ?? '');
@@ -92,6 +102,12 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
   const [triggerMode, setTriggerMode] = useState<TriggerMode>(initial?.triggerMode ?? 'fire-and-forget');
   const [schedule, setSchedule] = useState(initial?.schedule ?? '');
   const [delaySeconds, setDelaySeconds] = useState(initial?.delaySeconds ?? 0);
+  // Separate from `delaySeconds`, which belongs to `startup` and may legitimately be 0. A `once` job
+  // must carry a POSITIVE delayMs or the daemon refuses it, so this one starts at a valid value
+  // rather than being coerced up at submit time behind the user's back.
+  const [onceDelaySeconds, setOnceDelaySeconds] = useState(
+    initial?.delayMs !== undefined && initial.delayMs > 0 ? Math.round(initial.delayMs / 1000) : 1
+  );
   const [missedFiring, setMissedFiring] = useState<MissedFiring>(initial?.missedFiring ?? 'skip');
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(initial?.timeoutSeconds ?? 300);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -130,6 +146,16 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
 
   const validate = (): boolean => {
     const e: FormErrors = {};
+    if (isCreating) {
+      if (!jobId.trim()) {
+        e.id = 'Id is required';
+      } else if (jobId.trim().length > MAX_ID_LENGTH) {
+        e.id = `Id must be ${MAX_ID_LENGTH} characters or fewer`;
+      }
+    }
+    if (type === 'once' && !(onceDelaySeconds >= 1)) {
+      e.onceDelay = 'Delay must be at least 1 second';
+    }
     if (!label.trim()) e.label = 'Label is required';
     if (!command.trim()) e.command = 'Command is required';
     if (type === 'cron') {
@@ -147,9 +173,19 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
     setLoading(true);
     try {
       const data: Partial<Job> = { label: label.trim(), type, command: command.trim(), triggerMode, missedFiring };
+      // Only on create: the edit route reads the id from the URL, so sending it would let a body and
+      // a path disagree about which job is being written.
+      if (isCreating) {
+        data.id = jobId.trim();
+      }
       if (cwd.trim()) data.cwd = cwd.trim();
       if (type === 'cron' && schedule.trim()) data.schedule = schedule.trim();
       if (type === 'startup') data.delaySeconds = delaySeconds;
+      // Required by the daemon for this type, and never sent before, so every `once` job created
+      // from the dashboard was rejected.
+      if (type === 'once') {
+        data.delayMs = onceDelaySeconds * 1000;
+      }
 
       // Liveness
       if (livenessStrategy !== 'none') {
@@ -209,6 +245,19 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Create only. It is the registry key, the URL segment and what `orch trigger <id>` takes,
+          so it is the one field the daemon cannot invent. */}
+      {isCreating && (
+        <FieldText
+          label="Id"
+          value={jobId}
+          onChange={setJobId}
+          placeholder="my-job"
+          error={errors?.id}
+          required
+        />
+      )}
+
       <FieldText label="Label" value={label} onChange={setLabel} placeholder="My job" error={errors?.label} required />
 
       <FieldText label="Tags (comma-separated)" value={tagInput} onChange={setTagInput} placeholder="scraper, daily, production" />
@@ -267,6 +316,17 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
 
       {type === 'startup' && (
         <FieldNumber label="Delay (seconds)" value={delaySeconds} onChange={numericSetter(setDelaySeconds)} min={0} />
+      )}
+
+      {type === 'once' && (
+        <FieldNumber
+          label="Run after (seconds)"
+          value={onceDelaySeconds}
+          onChange={numericSetter(setOnceDelaySeconds)}
+          min={1}
+          error={errors?.onceDelay}
+          required
+        />
       )}
 
       <div>

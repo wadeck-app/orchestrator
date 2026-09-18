@@ -13,7 +13,16 @@ export interface Job {
   type: 'cron' | 'startup' | 'once';
   label: string;
   schedule?: string;
+  /** `startup` only: how long after the daemon starts. May be 0. */
   delaySeconds?: number;
+  /**
+   * `once` only, and REQUIRED by the daemon for that type: how long until the single run.
+   * Must be a positive integer - registry.ts rejects 0 and any non-integer.
+   *
+   * Its absence from this type is why the web form never sent it, so every `once` job created from
+   * the dashboard came back 500.
+   */
+  delayMs?: number;
   command: string;
   cwd?: string | null;
   enabled: boolean;

@@ -1,10 +1,43 @@
 #!/usr/bin/env node
+/* ===========================================================================================
+ *  ###############################################################################
+ *  ##                                                                           ##
+ *  ##   STOP. DEV NEVER GOES TO GLOBAL. NOT ONCE. NOT BEHIND A FLAG.             ##
+ *  ##                                                                           ##
+ *  ###############################################################################
+ *
+ *  DO NOT add a `--global` flag to this script. DO NOT copy dist/, server/dist/ or
+ *  server/public/ into the globally installed @wadeck-app/orchestrator-cli. DO NOT write
+ *  anywhere outside this repository. If you are reading this because you are about to add
+ *  "just a small opt-in sync to test something quickly": that is the exact sentence that
+ *  caused the incident described below. The answer is no.
+ *
+ *  There are EXACTLY TWO ways the machine's `orch` may change, and this script is neither:
+ *
+ *      npm install -g @wadeck-app/orchestrator-cli@latest
+ *      orch cli update
+ *
+ *  Both install a PUBLISHED, COMMITTED version. That is the entire point.
+ *
+ *  WHAT HAPPENED WHEN THIS RULE DID NOT EXIST:
+ *  A `--global` flag here copied the working tree - UNCOMMITTED WORK INCLUDED - over the
+ *  installed package. The user's `orch` silently became a build that existed in no release
+ *  and in no commit. It then took a reinstall to undo, and left an orphaned npm staging
+ *  directory behind. Worse than the breakage: two later sessions read that install as
+ *  evidence about the PUBLISHED package, and one nearly reported a packaging regression
+ *  that was never real - it was only somebody's local build wearing the install's name.
+ *
+ *  A dev build that can become the machine's install is not a convenience, it is a
+ *  corrupted source of truth. The capability is DELETED, not guarded, because a guarded
+ *  one gets passed by whoever is in a hurry - and that was me.
+ * ===========================================================================================
+ */
 /**
  * deploy-dev.mjs - rebuild every package into this checkout.
  * Run after any code change: node scripts/deploy-dev.mjs
  *
- * By default nothing outside the repository is written. To test a change, run
- * the local CLI entry point rather than the `orch` on PATH:
+ * Nothing outside the repository is written, ever. To test a change, run the local CLI entry
+ * point rather than the `orch` on PATH:
  *
  *   node scripts/dev-server.mjs
  *
@@ -12,10 +45,17 @@
  * packages/orchestrator-cli/dist/orchestrator-cli.cjs runs this checkout's
  * server/dist and server/public - never the globally installed copy.
  *
- * `--global` additionally overwrites the globally installed package with these
- * local builds. That mutates the `orch` command the machine uses outside this
- * repo, including from uncommitted work, so it is opt-in and never implied by a
- * plain build.
+ * There is deliberately no way to push a local build into the global install. The only ways to
+ * change the machine's `orch` are the two that install a published, committed version:
+ *
+ *   npm install -g @wadeck-app/orchestrator-cli@latest
+ *   orch cli update
+ *
+ * A `--global` flag used to do it from here. It copied the working tree - uncommitted work
+ * included - over the installed package, so `orch` ran code that was in no release and in no
+ * commit. Two sessions then read that install as evidence about the published package, and one
+ * nearly reported a packaging regression that was only a local build. A dev build must not be
+ * able to become the machine's install by accident, so the path is gone rather than guarded.
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, rmSync, existsSync } from 'node:fs';
@@ -23,7 +63,20 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
-const SYNC_GLOBAL = process.argv.includes('--global');
+
+// Rejected loudly rather than ignored. Anyone typing it believes it does something, and a flag
+// that is silently a no-op would let them think the global install was updated when it was not.
+if (process.argv.includes('--global')) {
+  console.error('--global is not supported: a dev build must never overwrite the installed orch.');
+  console.error('');
+  console.error('To change the machine-wide `orch`, install a published version:');
+  console.error('    npm install -g @wadeck-app/orchestrator-cli@latest');
+  console.error('    orch cli update');
+  console.error('');
+  console.error('To run THIS checkout without touching the install:');
+  console.error('    node scripts/dev-server.mjs');
+  process.exit(2);
+}
 
 const isWin = process.platform === 'win32';
 const npm = isWin ? 'npm.cmd' : 'npm';
@@ -47,57 +100,33 @@ function syncDir(src, dst) {
   cpSync(src, dst, { recursive: true });
 }
 
-// 1. Build orch-server
+// 1. Build the front end, before anything copies its output.
+//
+// These two were missing entirely: the script built orch-server and orchestrator-cli, then copied
+// orch-app/dist into the server's public dir - whatever was in it. So "rebuild every package",
+// which is what the header promised, silently shipped a stale bundle, and every UI change tested
+// through `node scripts/dev-server.mjs` was tested against the previous build. The dist was over an
+// hour old when this was found, and the change under test simply was not in the page.
+//
+// orch-ui first: orch-app imports it, and its registry entries are generated from orch-ui sources.
+run(npm, ['run', 'build', '-w', '@wadeck-app/orch-ui']);
+run(npm, ['run', 'build', '-w', '@wadeck-app/orch-app']);
+
+// 2. Build orch-server
 run(npm, ['run', 'build', '-w', '@wadeck-app/orch-server']);
 
-// 2. Sync orch-server dist to orchestrator-cli/server/dist
+// 3. Sync orch-server dist to orchestrator-cli/server/dist
 syncDir(resolve(ROOT, 'packages/orch-server/dist'), resolve(ROOT, 'packages/orchestrator-cli/server/dist'));
 console.log('✓ synced orch-server dist');
 
-// 3. Copy orch-app dist to both server public dirs
+// 4. Copy orch-app dist to both server public dirs
 run(node, ['packages/orch-server/scripts/copy-app.mjs']);
 
-// 4. Build orchestrator-cli
+// 5. Build orchestrator-cli
 run(npm, ['run', 'build', '-w', '@wadeck-app/orchestrator-cli']);
 
-// 5. Overwrite the global install, only when asked. The flag existed but was never read, so the
-// header's promise that nothing outside the repository is written was false and every plain build
-// still replaced the machine's `orch`.
-if (SYNC_GLOBAL) {
-  // Resolve global node_modules from node executable (works with nvm symlinks)
-  const nodeDir = resolve(node, '..');                   // e.g. /c/App/nodejs
-  const globalRoot = resolve(nodeDir, '..', 'nvm', process.version, 'node_modules');
-  const globalPkg = resolve(globalRoot, '@wadeck-app/orchestrator-cli');
-  syncDir(resolve(ROOT, 'packages/orchestrator-cli/dist'), resolve(globalPkg, 'dist'));
-  syncDir(resolve(ROOT, 'packages/orchestrator-cli/server/dist'), resolve(globalPkg, 'server/dist'));
-  syncDir(resolve(ROOT, 'packages/orchestrator-cli/server/public'), resolve(globalPkg, 'server/public'));
-  // Sync runtime deps that aren't in the published package (added locally)
-  const runtimeDeps = ['pidusage'];
-  for (const dep of runtimeDeps) {
-    const src = resolve(ROOT, 'node_modules', dep);
-    const dst = resolve(globalRoot, dep);
-    if (existsSync(src)) { syncDir(src, dst); }
-  }
-  console.log(`✓ synced to global install at ${globalPkg}`);
-
-  // Said out loud on purpose. The install is no longer what npm shipped, uncommitted work included.
-  // Two sessions each treated it as evidence about the published package, and one nearly reported a
-  // packaging regression that was only a local build.
-  const dirty = execFileSync('git', ['status', '--porcelain'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    windowsHide: true,
-  }).trim();
-  console.log('\n! The global install is now your working tree, not the npm package.');
-  if (dirty) {
-    console.log(`  ${dirty.split('\n').length} uncommitted file(s) are live in it, so \`orch\` runs code that is not in git.`);
-  }
-  console.log('  To check what npm actually ships, use `npm pack`, not this install.');
-  console.log('  To restore it: npm install -g @wadeck-app/orchestrator-cli@latest');
-  console.log('\nDone. Run: orch server stop && orch server start');
-} else {
-  console.log('\n✓ Built into this checkout. The global install was NOT touched.');
-  console.log('  Run the dashboard on this build, isolated from the real config dir:');
-  console.log('    node scripts/dev-server.mjs          # add --seed to copy the real job list');
-  console.log('  To overwrite the machine-wide `orch` with this build: npm run deploy -- --global');
-}
+// 6. Report where the build went, and where it did NOT go. There is no step 7: see the banner.
+console.log('\n✓ Built into this checkout. The global install was NOT touched, and cannot be.');
+console.log('  Run the dashboard on this build, isolated from the real config dir:');
+console.log('    node scripts/dev-server.mjs          # add --seed to copy the real job list');
+console.log('  To change the machine-wide `orch`: npm install -g @wadeck-app/orchestrator-cli@latest');
