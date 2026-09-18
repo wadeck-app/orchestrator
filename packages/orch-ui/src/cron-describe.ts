@@ -93,8 +93,15 @@ export function describeCron(expr: string | null | undefined): string | null {
   if (dom === '*' && DAY_NAMES[dow] !== undefined) {
     return `${DAY_NAMES[dow]} at ${times}`;
   }
+  // Range-checked like the hour field. Without the bounds this described `0 9 99 * *` as
+  // "Monthly on the 99th", naming a day that does not exist - the exact confident guess this
+  // module returns null to avoid. A surviving mutant on the hour bounds is what pointed at the
+  // asymmetry.
   if (dow === '*' && isPlainNumber(dom)) {
-    return `Monthly on the ${ordinal(Number(dom))} at ${times}`;
+    const day = Number(dom);
+    if (day >= 1 && day <= 31) {
+      return `Monthly on the ${ordinal(day)} at ${times}`;
+    }
   }
   return null;
 }

@@ -38,6 +38,17 @@ describe('classifyDashboard', () => {
     assert.deepEqual(classifyDashboard('', ALIVE), { kind: 'corrupt' });
   });
 
+  // Valid JSON that is not an object. Every other case here parses to an object, so the guard's
+  // null-and-scalar branch was never reached: mutating it away left the suite green, while in
+  // reality `'port' in value` throws a TypeError and `orch server status` dies on a one-line
+  // pidfile instead of reporting a corrupt one.
+  test('reports corrupt for valid JSON that is not an object', () => {
+    assert.deepEqual(classifyDashboard('null', ALIVE), { kind: 'corrupt' });
+    assert.deepEqual(classifyDashboard('42', ALIVE), { kind: 'corrupt' });
+    assert.deepEqual(classifyDashboard('"47951"', ALIVE), { kind: 'corrupt' });
+    assert.deepEqual(classifyDashboard('[]', ALIVE), { kind: 'corrupt' });
+  });
+
   test('reports corrupt when the pid is missing or not a number', () => {
     assert.deepEqual(classifyDashboard(JSON.stringify({ port: 47951 }), ALIVE), { kind: 'corrupt' });
     assert.deepEqual(classifyDashboard(JSON.stringify({ port: 47951, pid: 'x' }), ALIVE), { kind: 'corrupt' });

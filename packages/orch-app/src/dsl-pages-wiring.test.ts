@@ -208,3 +208,262 @@ describe('a node that declares $outputs is reachable by a brain', () => {
     expect(orphans).toEqual([]);
   });
 });
+
+/*
+ * Everything below was added after running mutation testing over these page files
+ * (scripts/mutation-test.mjs). Renaming a single key in a page and re-running the suite showed
+ * that half of the mutants survived: the checks above cover the component nodes and nothing else,
+ * so the entire data and mutation layer of every page - `$sources`, `$brains`, and the event names
+ * a node declares - was unverified. Concretely, these all passed the suite before:
+ *
+ *   url: -> urlZ:            a brain that fetches nothing
+ *   $brain: -> $brainZ:      a brain with no implementation
+ *   onToggle: -> onToggleZ:  a brain listening for an event the node never emits
+ *   $type: -> $typeZ:        a node that renders nothing, which is the exact defect this
+ *                            file was created for - `walk` identifies a node BY `$type`, so
+ *                            renaming it made the node invisible to every check at once
+ */
+
+/** Route parameters the engine fills in by itself, from `$route: /jobs/:id`. */
+function routeParams(page: Node): Set<string> {
+  const route = typeof page['$route'] === 'string' ? page['$route'] : '';
+  return new Set([...route.matchAll(/:(\w+)/g)].map(m => m[1]!));
+}
+
+/** `{id}` placeholders in a url or navigation target. */
+function placeholders(template: unknown): string[] {
+  return typeof template === 'string' ? [...template.matchAll(/\{(\w+)\}/g)].map(m => m[1]!) : [];
+}
+
+function entriesOf(page: Node, key: string): [string, Node][] {
+  const map = page[key];
+  if (map === null || typeof map !== 'object' || Array.isArray(map)) {
+    return [];
+  }
+  return Object.entries(map as Node).map(([k, v]) => [k, v as Node]);
+}
+
+// Keys the engine consumes itself. Every other key on a brain is a URL parameter, so it is dead
+// weight unless the template names it.
+const BRAIN_ENGINE_KEYS = new Set(['$brain', '$reload', '$outputs', '_event', 'url', 'body', 'to', 'route', 'varName', 'value']);
+const SOURCE_KEYS = new Set(['url', 'poll', 'params']);
+
+describe('every object in a slot is a renderable node', () => {
+  // `walk` recognises a node by its `$type`, so a node missing one is skipped by every other
+  // check in this file rather than reported by it. The renderer has nothing to render.
+  it.each(pageFiles)('%s has no slot entry without a $type', file => {
+    const untyped: string[] = [];
+    const visit = (value: unknown, path: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((item, i) => {
+          if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+            if (typeof (item as Node)['$type'] !== 'string') {
+              untyped.push(`${path}[${i}]: ${JSON.stringify(Object.keys(item as Node))}`);
+            }
+          }
+          visit(item, `${path}[${i}]`);
+        });
+        return;
+      }
+      if (value !== null && typeof value === 'object') {
+        Object.entries(value as Node).forEach(([k, v]) => visit(v, `${path}.${k}`));
+      }
+    };
+    // `$brains` and `$sources` are declarations, not nodes.
+    Object.entries(pages.get(file)!)
+      .filter(([k]) => k !== '$brains' && k !== '$sources')
+      .forEach(([k, v]) => visit(v, k));
+
+    expect(untyped).toEqual([]);
+  });
+});
+
+describe('every event a brain listens for is an event some node emits', () => {
+  /** node $id -> event name -> declared payload keys. */
+  function declaredOutputs(page: Node): Map<string, Map<string, string[]>> {
+    const byId = new Map<string, Map<string, string[]>>();
+    for (const node of walk(page)) {
+      const id = node['$id'], outputs = node['$outputs'];
+      if (typeof id !== 'string' || outputs === null || typeof outputs !== 'object' || Array.isArray(outputs)) {
+        continue;
+      }
+      byId.set(id, new Map(
+        Object.entries(outputs as Node)
+          .map(([event, payload]) => [event, Array.isArray(payload) ? payload.map(String) : []])
+      ));
+    }
+    return byId;
+  }
+
+  // `$outputs.jobGrid.onToggle` naming an event the node does not declare is a brain that never
+  // fires. The check above this one only proved the node id exists, so a renamed event name -
+  // on either side - was invisible.
+  it.each(pageFiles)('%s listens only for declared events', file => {
+    const page = pages.get(file)!;
+    const declared = declaredOutputs(page);
+    const dangling = references(page)
+      .filter(r => r.startsWith('$outputs.'))
+      .filter(r => {
+        const [, id, event] = r.split('.');
+        const events = declared.get(id!);
+        return events !== undefined && event !== undefined && !events.has(event);
+      });
+
+    expect([...new Set(dangling)]).toEqual([]);
+  });
+
+  // The payload key too: `$outputs.jobGrid.onToggle.action` is undefined at runtime unless
+  // `onToggle` lists `action`, which is how a brain sends a request with a missing parameter.
+  it.each(pageFiles)('%s reads only declared payload keys', file => {
+    const page = pages.get(file)!;
+    const declared = declaredOutputs(page);
+    const dangling = references(page)
+      .filter(r => r.startsWith('$outputs.'))
+      .filter(r => {
+        const [, id, event, key] = r.split('.');
+        if (key === undefined) {
+          return false;
+        }
+        const payload = declared.get(id!)?.get(event!);
+        return payload !== undefined && !payload.includes(key);
+      });
+
+    expect([...new Set(dangling)]).toEqual([]);
+  });
+});
+
+describe('every brain declares an implementation it can actually run', () => {
+  const KNOWN_CTX = new Set(['$brains.$ctx.setVar', '$brains.$ctx.navigate', '$brains.$ctx.reload']);
+
+  it.each(pageFiles)('%s declares a known $brain for every brain', file => {
+    const bad: string[] = [];
+    for (const [name, decl] of entriesOf(pages.get(file)!, '$brains')) {
+      const ref = decl['$brain'];
+      if (typeof ref !== 'string') {
+        bad.push(`${name}: no $brain`);
+      } else if (!ref.startsWith('$brains.$http.') && !KNOWN_CTX.has(ref)) {
+        bad.push(`${name}: unknown brain ${ref}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  // An $http brain with no `url`, or a navigate with neither `to` nor `route`, is silently a
+  // no-op: useBrains returns early on a falsy target rather than reporting it.
+  it.each(pageFiles)('%s gives every brain the parameters its kind requires', file => {
+    const missing: string[] = [];
+    for (const [name, decl] of entriesOf(pages.get(file)!, '$brains')) {
+      const ref = decl['$brain'];
+      if (typeof ref !== 'string') {
+        continue; // reported above
+      }
+      if (ref.startsWith('$brains.$http.') && typeof decl['url'] !== 'string') {
+        missing.push(`${name}: $http brain without a url`);
+      }
+      if (ref === '$brains.$ctx.navigate' && typeof decl['to'] !== 'string' && typeof decl['route'] !== 'string') {
+        missing.push(`${name}: navigate without a to/route`);
+      }
+      if (ref === '$brains.$ctx.setVar' && (typeof decl['varName'] !== 'string' || decl['value'] === undefined)) {
+        missing.push(`${name}: setVar without varName/value`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  // Both directions. A placeholder with no source resolves to the literal `{id}` in the request
+  // path; a parameter no template names is a value computed and thrown away.
+  it.each(pageFiles)('%s resolves every url placeholder and uses every parameter', file => {
+    const page = pages.get(file)!;
+    const fromRoute = routeParams(page);
+    const problems: string[] = [];
+    for (const [name, decl] of entriesOf(page, '$brains')) {
+      const template = decl['url'] ?? decl['to'] ?? decl['route'];
+      const named = placeholders(template);
+      const params = Object.keys(decl).filter(k => !BRAIN_ENGINE_KEYS.has(k));
+      for (const p of named) {
+        if (!fromRoute.has(p) && !params.includes(p)) {
+          problems.push(`${name}: {${p}} has no route param and no brain param`);
+        }
+      }
+      for (const p of params) {
+        if (!named.includes(p)) {
+          problems.push(`${name}: parameter "${p}" is not used by the template`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it.each(pageFiles)('%s reloads only declared sources', file => {
+    const page = pages.get(file)!;
+    const declared = new Set(Object.keys((page['$sources'] as Node) ?? {}));
+    const unknown: string[] = [];
+    for (const [name, decl] of entriesOf(page, '$brains')) {
+      const reload = decl['$reload'];
+      if (!Array.isArray(reload)) {
+        continue;
+      }
+      reload.filter(s => !declared.has(String(s))).forEach(s => unknown.push(`${name}: $reload ${String(s)}`));
+    }
+    expect(unknown).toEqual([]);
+  });
+});
+
+describe('every source declares a request it can actually make', () => {
+  it.each(pageFiles)('%s gives every source a url and no unknown keys', file => {
+    const problems: string[] = [];
+    for (const [name, decl] of entriesOf(pages.get(file)!, '$sources')) {
+      if (typeof decl['url'] !== 'string') {
+        problems.push(`${name}: no url`);
+      }
+      Object.keys(decl).filter(k => !SOURCE_KEYS.has(k)).forEach(k => problems.push(`${name}: unknown key "${k}"`));
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it.each(pageFiles)('%s resolves every source url placeholder', file => {
+    const page = pages.get(file)!;
+    const fromRoute = routeParams(page);
+    const problems: string[] = [];
+    for (const [name, decl] of entriesOf(page, '$sources')) {
+      const params = decl['params'];
+      const paramKeys = params !== null && typeof params === 'object' ? Object.keys(params as Node) : [];
+      const named = placeholders(decl['url']);
+      for (const p of named) {
+        if (!fromRoute.has(p) && !paramKeys.includes(p)) {
+          problems.push(`${name}: {${p}} has no route param and no source param`);
+        }
+      }
+      for (const p of paramKeys) {
+        if (!named.includes(p)) {
+          problems.push(`${name}: param "${p}" is not used by the url`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+});
+
+// Guards the guards. Every check above passes trivially on an empty collection, so a helper that
+// silently stops finding brains, sources or outputs would turn this whole file green while
+// verifying nothing - the same failure mode as a test that skips its own assertion.
+describe('the new checks are looking at something', () => {
+  it('finds brains, sources and declared outputs across the pages', () => {
+    const all = [...pages.values()];
+    const brains = all.flatMap(p => entriesOf(p, '$brains'));
+    const sources = all.flatMap(p => entriesOf(p, '$sources'));
+    const outputs = all.flatMap(p => walk(p).filter(n => n['$outputs'] !== undefined));
+
+    expect(brains.length).toBeGreaterThan(15);
+    expect(sources.length).toBeGreaterThan(5);
+    expect(outputs.length).toBeGreaterThan(5);
+    // A page with a templated url has to be in the set, or the placeholder checks never run.
+    expect(brains.some(([, d]) => placeholders(d['url'] ?? d['to'] ?? d['route']).length > 0)).toBe(true);
+  });
+
+  it('extracts route parameters and placeholders', () => {
+    expect([...routeParams({ $route: '/jobs/:id/logs' })]).toEqual(['id']);
+    expect(placeholders('POST /api/jobs/{id}/{action}')).toEqual(['id', 'action']);
+    expect(placeholders(undefined)).toEqual([]);
+  });
+});
