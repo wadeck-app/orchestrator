@@ -1626,7 +1626,8 @@ export const JobStatusBadgeEntry: ComponentRegistryEntry = {
 		const exitCode = resolveExpressionValue(node['exitCode'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['exitCode']
 		const running = resolveExpressionValue(node['running'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['running']
 		const cancelled = resolveExpressionValue(node['cancelled'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['cancelled']
-		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} />
+		const skipped = resolveExpressionValue(node['skipped'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['skipped']
+		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} skipped={skipped} />
 	},
 }
 
