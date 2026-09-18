@@ -1,38 +1,42 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { X, ArrowDown, Pause } from 'lucide-react';
-import { ButtonAction, ChipButton, SearchBar } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ChipButton, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 
-// Log viewer uses a fixed dark terminal palette separate from the app theme.
-// Semantic tokens (bg-surface, text-content) would make the terminal look like
-// the rest of the UI - wrong for a log tail component.
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
-// min-h-0 lets the log pane shrink inside a flex parent; max-h bounds it when the host
-// page provides no height, without which overflow-auto never scrolls and follow-tail
-// would silently do nothing.
-// [color-scheme:dark] makes the UA paint this widget's scrollbar, and the native
-// select/input chrome in the toolbar, with its dark palette. It is set here and
-// inherited rather than set on the pane alone, because the whole widget stays
-// dark in the light theme - where an inherited light scheme yields a white
-// scrollbar over a near-black pane.
 // How far from the bottom still counts as "at the tail". Sub-pixel scroll heights and the browser
 // clamping scrollTop mean an exact comparison flickers between following and paused.
 const BOTTOM_SLACK_PX = 20;
-// The terminal palette, declared as token overrides scoped to this subtree rather than as dark
-// classes on each element. Any dsl-ui component rendered inside therefore comes out
-// terminal-dark on its own, in either app theme - which is what makes SearchBar, ButtonAction
-// and ChipButton usable here at all. Hand-rolled bg-gray-700 equivalents were the reason none
-// of them could be, and the reason the log search looked nothing like the job search.
-// @formatter:off
-const TERMINAL_TOKENS =
-  '[--color-surface:#374151] [--color-bg:#111827] [--color-content:#e5e7eb] [--color-muted:#9ca3af] ' +
-  '[--color-muted-bg:#4b5563] [--color-border:#4b5563] [--color-bg-secondary:#4b5563] ' +
-  '[--color-primary:#60a5fa] [--color-primary-solid:#2563eb] [--color-primary-solid-hover:#1d4ed8]';
+/*
+ * The terminal palette, handed to dsl-ui's ThemeScope.
+ *
+ * This used to be a string of Tailwind arbitrary properties plus a separate `[color-scheme:dark]`,
+ * maintained here. ThemeScope generalises exactly that: it carries the palette AND the UA
+ * colour-scheme together, so the two cannot drift - and it is the same component any other app
+ * uses for a console, a code viewer or a print preview.
+ *
+ * Declared at module scope, not inline in the render, because changing a custom property
+ * invalidates computed style for the whole subtree. A frozen object can never do that.
+ */
+const TERMINAL_TOKENS: Record<string, string> = {
+  '--color-surface': '#374151',
+  '--color-bg': '#111827',
+  '--color-content': '#e5e7eb',
+  '--color-muted': '#9ca3af',
+  '--color-muted-bg': '#4b5563',
+  '--color-border': '#4b5563',
+  '--color-bg-secondary': '#4b5563',
+  '--color-primary': '#60a5fa',
+  '--color-primary-solid': '#2563eb',
+  '--color-primary-solid-hover': '#1d4ed8',
+};
 // @formatter:on
-const CONTAINER_BASE_CLS = `flex flex-col min-h-0 [color-scheme:dark] ${TERMINAL_TOKENS}`;
+// min-h-0 lets the pane shrink inside a flex parent; without it a flex child is min-height:auto,
+// never overflows, and follow-tail silently does nothing.
+const CONTAINER_BASE_CLS = 'flex flex-col min-h-0';
 // Fallback for hosts that give the widget no height: h-full would resolve to
 // auto, so the pane would never overflow and follow-tail would silently do
 // nothing. 75vh keeps it scrollable without the host's help.
@@ -252,7 +256,15 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   const matchCount = search ? filtered.length : null;
 
   return (
-    <div className={fill ? CONTAINER_FILL_CLS : CONTAINER_CAPPED_CLS}>
+    // theme="dark" for the UA chrome - the scrollbar and the run select are browser-painted, and in
+    // a light app they would come out white over a near-black pane. surface="none" because the
+    // palette below supplies the background itself.
+    <ThemeScope
+      theme="dark"
+      surface="none"
+      tokens={TERMINAL_TOKENS}
+      className={fill ? CONTAINER_FILL_CLS : CONTAINER_CAPPED_CLS}
+    >
       {/* violations-suppress-start: tailwind/no-raw-color-class terminal palette - intentional dark theme separate from app theme tokens */}
       <div className={LOG_HEADER_CLS}>
         {runs.length > 1 && (
@@ -321,6 +333,6 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
           ))}
       </pre>
       {/* violations-suppress-end: tailwind/no-raw-color-class */}
-    </div>
+    </ThemeScope>
   );
 }

@@ -12,9 +12,11 @@ $brains:
     url: PUT /api/jobs/{id}
     body: $outputs.jobForm.onSubmit
     $outputs: [id]
+  # To the list, not back to the job: the same destination as a create, so saving a job always
+  # lands in the same place. Waiting on $brains.updateJob.id is what could never fire before.
   navigateAfterUpdate:
     $brain: $brains.$ctx.navigate
-    to: /jobs/{id}
+    to: /
     id: $brains.updateJob.id
   navigateCancel:
     $brain: $brains.$ctx.navigate
@@ -25,10 +27,15 @@ $type: PageContent
 sections:
   - $type: BackLink
     label: Back to job
+  - $type: MutationFeedback
+    pending: $brains.updateJob.$pending
+    error: $brains.updateJob.$error
+    successMessage: Job saved
   - $type: JobFormSection
     $id: jobForm
     jobId: $route.id
     initial: $sources.jobData
+    saving: $brains.updateJob.$pending
     $outputs:
       onSubmit: [formData]
       onCancel: []

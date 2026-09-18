@@ -6,9 +6,12 @@ $brains:
     url: POST /api/jobs
     body: $outputs.jobForm.onSubmit
     $outputs: [id]
+  # Fires when submitJob publishes its id. That chain could never run before: useBrains was handed
+  # a ctx with no $brains key, so this waited on a value it could not see and the page just sat on
+  # the form after a successful save.
   navigateAfterCreate:
     $brain: $brains.$ctx.navigate
-    to: /jobs/{id}
+    to: /
     id: $brains.submitJob.id
   navigateCancel:
     $brain: $brains.$ctx.navigate
@@ -20,8 +23,15 @@ sections:
   - $type: BackLink
     to: /
     label: Back to jobs
+  # Every action gets a reaction: the button shows a spinner while the request is in flight, a
+  # failure is announced where it happened, and the success is carried across the redirect.
+  - $type: MutationFeedback
+    pending: $brains.submitJob.$pending
+    error: $brains.submitJob.$error
+    successMessage: Job created
   - $type: JobFormSection
     $id: jobForm
+    saving: $brains.submitJob.$pending
     $outputs:
       onSubmit: [formData]
       onCancel: []

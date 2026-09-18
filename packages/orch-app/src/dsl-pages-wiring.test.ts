@@ -386,6 +386,19 @@ describe('every brain declares an implementation it can actually run', () => {
         }
       }
       for (const p of params) {
+        /*
+         * A parameter whose value is a `$brains.` reference is the brain's TRIGGER, not a template
+         * parameter: the brain fires when that value changes from undefined, which is how one brain
+         * is sequenced after another. The DSL has no separate key for it - `_event` sequences on an
+         * output, and nothing sequences on a brain - so the parameter does double duty.
+         *
+         * Exempting them narrowly, by value, rather than dropping the check: a parameter fed from
+         * `$outputs.` or a literal and used by no template really is computed and thrown away, and
+         * that is what this catches.
+         */
+        if (typeof decl[p] === 'string' && (decl[p] as string).startsWith('$brains.')) {
+          continue;
+        }
         if (!named.includes(p)) {
           problems.push(`${name}: parameter "${p}" is not used by the template`);
         }

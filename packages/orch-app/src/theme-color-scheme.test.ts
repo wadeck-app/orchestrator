@@ -13,14 +13,23 @@ const themeCss = fs.readFileSync(
   'utf8',
 );
 
-/** Declarations of the first rule whose selector list matches, comments stripped. */
+/**
+ * Declarations of the first rule whose selector list matches.
+ *
+ * Searches the stylesheet with comments already removed. It used to strip them only from the
+ * captured body, so a comment that merely MENTIONED a selector was matched before the rule itself:
+ * a sentence in dsl-ui's theme.css explaining that an inner light scope beats an outer dark one made
+ * this return the light block when asked for the dark one, and the assertion failed against a file
+ * that was entirely correct.
+ */
 function ruleBody(css: string, selector: string): string {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`${escaped}[^{]*\\{([^}]*)\\}`).exec(css);
+  const match = new RegExp(`${escaped}[^{]*\\{([^}]*)\\}`).exec(withoutComments);
   if (!match) {
     throw new Error(`No rule matching "${selector}"`);
   }
-  return match[1]!.replace(/\/\*[\s\S]*?\*\//g, '');
+  return match[1]!;
 }
 
 function tokensIn(body: string): Set<string> {

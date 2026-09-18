@@ -50,6 +50,10 @@ $brains:
 
 $type: PageContent
 sections:
+  # Consumes the flash a save left behind. The form pages redirect here, and the navigate brain
+  # assigns window.location.href - a full page load - so the confirmation has to be picked up on
+  # arrival rather than shown before leaving.
+  - $type: MutationFeedback
   - $type: PageHeader
     title: Orchestrator Dashboard
   - $type: JobCardGrid

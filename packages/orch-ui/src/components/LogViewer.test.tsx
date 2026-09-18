@@ -46,7 +46,14 @@ describe('LogViewer', () => {
     const { container } = renderInRouter(<LogViewer jobId="j1" />);
 
     const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toMatch(/\[color-scheme:dark\]/);
+    // Asserted as "the pane is in a dark theme scope", not as a particular utility class. It used
+    // to require the literal `[color-scheme:dark]`, which broke when dsl-ui's ThemeScope took over
+    // the job - the behaviour was identical and only the mechanism moved, so the test was pinning
+    // the wrong thing.
+    expect(root.getAttribute('data-theme-scope')).toBe('dark');
+
+    // The terminal palette has to come with it, or the scheme is right and the surfaces are not.
+    expect(root.style.getPropertyValue('--color-bg')).toBe('#111827');
 
     // The scroll container must sit inside that subtree for inheritance to reach it.
     const pre = root.querySelector('pre');

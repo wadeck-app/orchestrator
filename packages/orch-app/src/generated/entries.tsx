@@ -64,9 +64,11 @@ import { HorizontalStack } from '@wadeck-app/dsl-ui/dist/components/layout/Horiz
 import { NavBar } from '@wadeck-app/dsl-ui/dist/components/layout/NavBar.js'
 import { PageContent } from '@wadeck-app/dsl-ui/dist/components/layout/PageContent.js'
 import { PageSection } from '@wadeck-app/dsl-ui/dist/components/layout/PageHeader.js'
+import { ScrollArea } from '@wadeck-app/dsl-ui/dist/components/layout/ScrollArea.js'
 import { Section } from '@wadeck-app/dsl-ui/dist/components/layout/Section.js'
 import { StatTile } from '@wadeck-app/dsl-ui/dist/components/layout/StatTile.js'
 import { TableRowActions } from '@wadeck-app/dsl-ui/dist/components/layout/TableRowActions.js'
+import { ThemeScope } from '@wadeck-app/dsl-ui/dist/components/layout/ThemeScope.js'
 import { VerticalStack } from '@wadeck-app/dsl-ui/dist/components/layout/VerticalStack.js'
 import { BackLink } from '@wadeck-app/dsl-ui/dist/components/navigation/BackLink.js'
 import { Breadcrumb } from '@wadeck-app/dsl-ui/dist/components/navigation/Breadcrumb.js'
@@ -109,6 +111,7 @@ import { JobStatusBadge } from '../../../orch-ui/src/components/JobStatusBadge.j
 import { JobToggle } from '../../../orch-ui/src/components/JobToggle.js'
 import { LogPageBreadcrumb } from '../../../orch-ui/src/components/LogPageBreadcrumb.js'
 import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
+import { MutationFeedback } from '../../../orch-ui/src/components/MutationFeedback.js'
 import { NextFireCountdown } from '../../../orch-ui/src/components/NextFireCountdown.js'
 import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
 import { RunningAlertDetail } from '../../../orch-ui/src/components/RunningAlertDetail.js'
@@ -164,10 +167,12 @@ export const ChipButtonEntry: ComponentRegistryEntry = {
 		const color = resolveExpressionValue(node['color'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['color']
 		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['onClick']
 		const shape = resolveExpressionValue(node['shape'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['shape']
+		const emphasis = resolveExpressionValue(node['emphasis'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['emphasis']
 		const ariaPressed = resolveExpressionValue(node['aria-pressed'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['aria-pressed']
+		const ariaLabel = resolveExpressionValue(node['aria-label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['aria-label']
 		const title = resolveExpressionValue(node['title'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js').ChipButtonProps['title']
 		return (
-			<ChipButton active={active} color={color} onClick={onClick} shape={shape} aria-pressed={ariaPressed} title={title}>
+			<ChipButton active={active} color={color} onClick={onClick} shape={shape} emphasis={emphasis} aria-pressed={ariaPressed} aria-label={ariaLabel} title={title}>
 				{items ? renderChildren(items, registry, ctx) : null}
 			</ChipButton>
 		)
@@ -1068,6 +1073,21 @@ export const PageSectionEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const ScrollAreaEntry: ComponentRegistryEntry = {
+	name: 'ScrollArea', category: 'disposition', tags: ["scroll","overflow","pane","scrollbar"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const scheme = resolveExpressionValue(node['scheme'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/ScrollArea.js').ScrollAreaProps['scheme']
+		const axis = resolveExpressionValue(node['axis'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/ScrollArea.js').ScrollAreaProps['axis']
+		return (
+			<ScrollArea scheme={scheme} axis={axis}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</ScrollArea>
+		)
+	},
+}
+
 export const SectionEntry: ComponentRegistryEntry = {
 	name: 'Section', category: 'disposition', tags: ["content"],
 	nodeSchema: null as never,
@@ -1104,6 +1124,22 @@ export const TableRowActionsEntry: ComponentRegistryEntry = {
 			<TableRowActions>
 				{items ? renderChildren(items, registry, ctx) : null}
 			</TableRowActions>
+		)
+	},
+}
+
+export const ThemeScopeEntry: ComponentRegistryEntry = {
+	name: 'ThemeScope', category: 'disposition', tags: ["theme","scope","palette","dark","light","surface"],
+	nodeSchema: null as never,
+	render: ({ node, registry, ctx }: RegistryRenderProps) => {
+		const items = node['items'] as unknown[] | undefined
+		const theme = resolveExpressionValue(node['theme'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/ThemeScope.js').ThemeScopeProps['theme']
+		const surface = resolveExpressionValue(node['surface'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/ThemeScope.js').ThemeScopeProps['surface']
+		const tokens = resolveExpressionValue(node['tokens'], ctx) as import('@wadeck-app/dsl-ui/dist/components/layout/ThemeScope.js').ThemeScopeProps['tokens']
+		return (
+			<ThemeScope theme={theme} surface={surface} tokens={tokens}>
+				{items ? renderChildren(items, registry, ctx) : null}
+			</ThemeScope>
 		)
 	},
 }
@@ -1603,7 +1639,8 @@ export const JobFormEntry: ComponentRegistryEntry = {
 		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['initial']
 		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['onSubmit']
 		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['onCancel']
-		return <JobForm initial={initial} onSubmit={onSubmit} onCancel={onCancel} />
+		const busy = resolveExpressionValue(node['busy'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['busy']
+		return <JobForm initial={initial} onSubmit={onSubmit} onCancel={onCancel} busy={busy} />
 	},
 }
 
@@ -1615,7 +1652,8 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['initial']
 		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSubmit']
 		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onCancel']
-		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onCancel={onCancel} />
+		const saving = resolveExpressionValue(node['saving'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['saving']
+		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onCancel={onCancel} saving={saving} />
 	},
 }
 
@@ -1658,6 +1696,17 @@ export const LogViewerEntry: ComponentRegistryEntry = {
 		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['apiBase']
 		const fill = resolveExpressionValue(node['fill'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['fill']
 		return <LogViewer jobId={jobId} apiBase={apiBase} fill={fill} />
+	},
+}
+
+export const MutationFeedbackEntry: ComponentRegistryEntry = {
+	name: 'MutationFeedback', category: 'composite', tags: ["toast","feedback","mutation","notification"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const pending = resolveExpressionValue(node['pending'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['pending']
+		const error = resolveExpressionValue(node['error'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['error']
+		const successMessage = resolveExpressionValue(node['successMessage'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['successMessage']
+		return <MutationFeedback pending={pending} error={error} successMessage={successMessage} />
 	},
 }
 
@@ -1823,9 +1872,11 @@ export const allEntries: ComponentRegistryEntry[] = [
 	NavBarEntry,
 	PageContentEntry,
 	PageSectionEntry,
+	ScrollAreaEntry,
 	SectionEntry,
 	StatTileEntry,
 	TableRowActionsEntry,
+	ThemeScopeEntry,
 	VerticalStackEntry,
 	BackLinkEntry,
 	BreadcrumbEntry,
@@ -1868,6 +1919,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	JobToggleEntry,
 	LogPageBreadcrumbEntry,
 	LogViewerEntry,
+	MutationFeedbackEntry,
 	NextFireCountdownEntry,
 	RunHistoryEntry,
 	RunningAlertDetailEntry,
@@ -1915,3 +1967,4 @@ DataTableEntry.allowedChildren = {"filtersTop":["filter"],"filters":["filter"]};
 DataTableEntry.providesContext = ["DataTableSelectionCtx","DataTableFilterCtx"];
 DataTableEntry.requiresContext = ["RouterContext"];
 JobCardGridEntry.allowedChildren = {"filters":["filter","atomic","composite","layout"]};
+MutationFeedbackEntry.requiresContext = ["ToastContext"];

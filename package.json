@@ -13,7 +13,7 @@
     "dev:stop": "node scripts/dev-server.mjs --stop"
   },
   "dependencies": {
-    "@wadeck-app/dsl-renderer": "^2026.9.12-062-00d7925d",
-    "@wadeck-app/dsl-ui": "^2026.9.18-071-d583ad6b"
+    "@wadeck-app/dsl-renderer": "^2026.9.18-076-00cba669",
+    "@wadeck-app/dsl-ui": "^2026.9.18-076-00cba669"
   }
 }

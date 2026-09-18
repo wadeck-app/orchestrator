@@ -12,13 +12,21 @@ export interface JobFormSectionProps {
    */
   onSubmit?: (data: JobFormPayload) => void | Promise<void>;
   onCancel?: () => void;
+  /**
+   * Bound to `$brains.<id>.$pending` in the YAML page.
+   *
+   * The brain owns the request, so this component cannot tell when the save finishes - awaiting
+   * `onSubmit` returns as soon as the event is published. Without this the Save button looked idle
+   * for the whole duration of the save.
+   */
+  saving?: boolean;
 }
 
 /**
  * @registryCategory composite
  * @registryTags job form create edit
  */
-export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCancel }: JobFormSectionProps): React.ReactElement {
+export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCancel, saving }: JobFormSectionProps): React.ReactElement {
   const isEdit = Boolean(jobId);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -47,6 +55,7 @@ export function JobFormSection({ jobId, initial, onSubmit: onSubmitProp, onCance
         initial={initial?.job}
         onSubmit={handleSubmit}
         onCancel={onCancel ?? (() => window.history.back())}
+        busy={saving}
       />
     </div>
   );

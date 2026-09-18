@@ -53,6 +53,15 @@ export interface JobFormProps {
   initial?: Partial<Job>;
   onSubmit: (data: JobFormPayload) => Promise<void>;
   onCancel: () => void;
+  /**
+   * A save the form cannot see, still in flight.
+   *
+   * Under the DSL the brain owns the HTTP call, so the `onSubmit` this form awaits resolves as soon
+   * as the event is published - long before the request finishes. The internal `loading` therefore
+   * flashes off immediately and the Save button goes back to looking idle mid-save, which is half
+   * of why saving appeared to do nothing. This carries the brain's own `$pending`.
+   */
+  busy?: boolean;
 }
 
 interface FormErrors {
@@ -102,7 +111,7 @@ function parseCron(expr: string): string | null {
  * @registryCategory composite
  * @registryTags form job edit create
  */
-export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.ReactElement {
+export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): React.ReactElement {
   // The id is the registry key. It is set once, at creation: the edit route addresses the job by id
   // in the URL and ignores the body, so an editable field here would only ever mislead.
   const isCreating = initial?.id === undefined;
@@ -499,7 +508,10 @@ export function JobForm({ initial, onSubmit, onCancel }: JobFormProps): React.Re
 
       <div className="flex justify-end gap-2 pt-2">
         <ButtonCancel onCancel={onCancel} />
-        <ButtonAction label="Save" variant="primary" type="submit" loading={loading} />
+        {/* `loading || busy`: under the DSL the brain owns the request, so `onSubmit` resolves
+            immediately and the internal `loading` flickers off while the save is still in flight.
+            `busy` carries the brain's own $pending, which is the only thing that knows. */}
+        <ButtonAction label="Save" variant="primary" type="submit" loading={loading || busy === true} />
       </div>
     </form>
   );

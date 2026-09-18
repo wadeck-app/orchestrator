@@ -15,6 +15,7 @@ export { JobForm } from './components/JobForm.js';
 export { LogViewer } from './components/LogViewer.js';
 export { LogPageBreadcrumb } from './components/LogPageBreadcrumb.js';
 export { JobFormSection } from './components/JobFormSection.js';
+export { MutationFeedback } from './components/MutationFeedback.js';
 export { JobCardGrid } from './components/JobCardGrid.js';
 export { FailureBanner } from './components/FailureBanner.js';
 export type { FailureEntry as FailureBannerEntry } from './components/FailureBanner.js';

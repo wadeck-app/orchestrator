@@ -20,6 +20,13 @@ export const fetcher: Fetcher = async (
   });
   if (res.status === 204) return undefined;
   const data = await res.json();
-  if (!res.ok) throw Object.assign(new Error((data as { error?: string }).error ?? res.statusText), { status: res.status });
+  if (!res.ok) {
+    // `message` before `error`: in Fastify's error payload `error` is the generic HTTP reason phrase
+    // ("Internal Server Error") and `message` is the cause ("Job not found: verify-toast"). This
+    // string is now what the user reads - brains publish it as $error and it is announced in a toast
+    // - so picking the reason phrase told them only that something, somewhere, went wrong.
+    const { message, error } = data as { message?: string; error?: string };
+    throw Object.assign(new Error(message ?? error ?? res.statusText), { status: res.status });
+  }
   return data;
 };

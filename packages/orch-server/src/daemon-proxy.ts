@@ -8,6 +8,32 @@ export class DaemonUnavailableError extends Error {
   }
 }
 
+/**
+ * The daemon's own reason for refusing, as a sentence.
+ *
+ * The daemon answers `{"error":"Command failed: Job not found: \"x\""}`. This used to be pasted
+ * whole into `Daemon RPC error 500: {"error":"Command failed: ..."}`, and that string now reaches
+ * the user: brains publish it as `$error` and the dashboard announces it in a toast. So the reader
+ * was shown raw JSON, escaped quotes and a transport detail in order to learn that a job did not
+ * exist.
+ *
+ * The status code is dropped on purpose. It says nothing the message does not, and "500" invites
+ * the reader to suspect the dashboard rather than read the sentence.
+ */
+export async function daemonErrorMessage(res: { status: number; text: () => Promise<string> }): Promise<string> {
+  const text = await res.text();
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      // The CLI prefixes its own failures; the prefix tells the reader nothing.
+      return parsed.error.replace(/^Command failed:\s*/, '');
+    }
+  } catch {
+    // Not JSON: fall through and report what was actually said.
+  }
+  return text.trim() || `Daemon refused the request (HTTP ${res.status})`;
+}
+
 interface PortInfo {
   port: number;
   pid: number;
@@ -69,8 +95,7 @@ export class DaemonProxy {
       throw new DaemonUnavailableError();
     }
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Daemon RPC error ${res.status}: ${text}`);
+      throw new Error(await daemonErrorMessage(res));
     }
     const body = await res.json() as { ok: boolean; result?: unknown };
     return body.result;
