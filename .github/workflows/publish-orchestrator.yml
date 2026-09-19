@@ -71,10 +71,25 @@ jobs:
             - name: Build orch-ui
               run: npm run build --workspace=packages/orch-ui
 
-            # Built on every OS: dashboard-server.test.js asserts the SPA is served ("SPA returns
-            # 200"), so skipping it here turned that into a 404 on Windows and macOS.
+            # 57s on the Windows runner, and dashboard-server.test.js asserts the SPA is served, so it
+            # cannot simply be skipped there. Cached on its inputs instead. No runner.os in the key:
+            # the output is static assets, so one build serves all three runners.
+            - name: Cache the built SPA
+              id: spa-cache
+              uses: actions/cache@v4
+              with:
+                  path: packages/orch-app/dist
+                  key: spa-${{ hashFiles('package-lock.json', 'packages/orch-app/src/**', 'packages/orch-app/index.html', 'packages/orch-app/vite.config.ts', 'packages/orch-app/package.json', 'packages/orch-ui/src/**', 'packages/orch-ui/package.json') }}
+
             - name: Build orch-app
+              if: steps.spa-cache.outputs.cache-hit != 'true'
               run: npm run build --workspace=packages/orch-app
+
+            # orch-app's `build` is `vite build && patch-entries && tsc --noEmit`, so skipping it on a
+            # cache hit would skip the typecheck too. Same verification on both paths.
+            - name: Typecheck orch-app
+              if: steps.spa-cache.outputs.cache-hit == 'true'
+              run: npm run typecheck --workspace=packages/orch-app
 
             - name: Copy orch-app to orch-server public
               run: npm run copy-app --workspace=packages/orch-server
