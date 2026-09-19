@@ -71,10 +71,14 @@ jobs:
             - name: Build orch-ui
               run: npm run build --workspace=packages/orch-ui
 
+            # Linux only: the SPA costs 57s on the Windows runner and no test on any OS reads it.
+            # What ships is built by the publish job, which does run this.
             - name: Build orch-app
+              if: runner.os == 'Linux'
               run: npm run build --workspace=packages/orch-app
 
             - name: Copy orch-app to orch-server public
+              if: runner.os == 'Linux'
               run: npm run copy-app --workspace=packages/orch-server
 
             - name: Build orch-server
@@ -84,7 +88,10 @@ jobs:
               run: |
                   mkdir -p packages/orchestrator-cli/server
                   cp -r packages/orch-server/dist packages/orchestrator-cli/server/dist
-                  cp -r packages/orch-server/public packages/orchestrator-cli/server/public
+                  # Absent unless the SPA was built, which is Linux only here.
+                  if [ -d packages/orch-server/public ]; then
+                      cp -r packages/orch-server/public packages/orchestrator-cli/server/public
+                  fi
 
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli
