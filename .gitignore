@@ -16,3 +16,13 @@ packages/orchestrator-cli/server/public/
 .env.local
 *.log
 .idea/
+# Crash dump MSYS2 bash drops in the CWD. It was committed by accident in 4aa24ca and then
+# showed as modified after every shell crash, putting a diff nobody wrote into every commit.
+*.stackdump
+# Output of the w-learning session-end hook, which rewrites both files every time a session ends.
+# Their durable content was merged into .claude/kb/lessons-learned.md, which is the one lessons file
+# for this project. Ignored rather than deleted because the hook recreates them regardless -- the
+# path is hardcoded in a plugin cache directory -- and tracking a file no human edits put a diff
+# nobody wrote into every commit and made the two files drift.
+.claude/lessons-learned.md
+.claude/lessons-recommendations.md

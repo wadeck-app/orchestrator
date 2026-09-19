@@ -61,5 +61,10 @@ the package specifier in `ci/launcher.config.json`. That is what makes start-at-
 
 ## Knowledge base
 
-- `.claude/lessons-learned.md` - session-sourced lessons; read before debugging.
-- `.claude/lessons-recommendations.md` - recommendations extracted from past sessions.
+`.claude/kb/lessons-learned.md` is the single lessons file for this project - read it before
+debugging, and add entries with the `kb` skill (`/kb`).
+
+There used to be a second, flat `.claude/lessons-learned.md` written by the w-learning session-end
+hook, plus its `.claude/lessons-recommendations.md`. Both were merged into the kb file and are now
+gitignored: the hook still recreates them locally on every session end, so treat anything it writes
+as scratch. A lesson only counts once it is in the kb file.
