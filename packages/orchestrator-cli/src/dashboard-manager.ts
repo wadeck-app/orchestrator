@@ -43,7 +43,7 @@ export class DashboardManager {
       }
       // Remove stale file so the new server can write fresh port
       try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-    } catch { /* file absent or invalid — nothing to kill */ }
+    } catch { /* file absent or invalid -- nothing to kill */ }
   }
 
   start(): Promise<void> {
@@ -163,7 +163,7 @@ export class DashboardManager {
       // Use cmd /c start which handles http:// URLs reliably on all Windows versions.
       // explorer.exe with a URL can fail on some Windows 11 configurations when the
       // default browser association is not set up for explorer.exe to delegate.
-      // Pass url as a plain arg — execFile does not use a shell so no extra quoting needed;
+      // Pass url as a plain arg -- execFile does not use a shell so no extra quoting needed;
       // embedding quotes in the string causes cmd.exe start to interpret them as backslashes.
       // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
       execFile('cmd.exe', ['/c', 'start', '', url], (err) => {

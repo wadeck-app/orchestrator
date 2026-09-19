@@ -1,7 +1,7 @@
-const { execFileSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 
 const configDir = path.join(os.homedir(), '.config', 'orchestrator');
 

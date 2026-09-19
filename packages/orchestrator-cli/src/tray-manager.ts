@@ -175,7 +175,7 @@ export class TrayManager extends EventEmitter {
   }
 
   /**
-   * Programmatically trigger a tray action by ID — same as the user clicking it.
+   * Programmatically trigger a tray action by ID -- same as the user clicking it.
    * Used by `orch tray <action>` for scriptable / test automation.
    */
   triggerAction(id: string): { ok: boolean; error?: string } {
@@ -341,7 +341,7 @@ export class TrayManager extends EventEmitter {
     const versionEnabled = this._updateStatus !== 'checking' && this._updateStatus !== 'updating';
     items.push({ id: 'update-btn', type: 'normal', title: versionTitle, enabled: versionEnabled });
 
-    // Config dir — helps orient when multiple instances run
+    // Config dir -- helps orient when multiple instances run
     const shortConfig = this._configDir.replace(/^\/c\/Users\/[^/]+/, '~').replace(/^C:\\Users\\[^\\]+/, '~');
     items.push({ id: 'config-dir', type: 'normal', title: `Config: ${shortConfig}`, enabled: false });
 
@@ -497,7 +497,7 @@ export class TrayManager extends EventEmitter {
         const logsDir = path.join(this._configDir, 'logs');
         if (process.platform === 'win32') {
           // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
-          // Pass path without embedded quotes — execFile is not a shell, quotes become literal backslashes.
+          // Pass path without embedded quotes -- execFile is not a shell, quotes become literal backslashes.
           execFile('cmd.exe', ['/c', 'start', '', logsDir], (err) => {
             if (err) {
               const msg = getErrorMessage(err);

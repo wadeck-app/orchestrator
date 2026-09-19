@@ -85,7 +85,7 @@ const CONFIG_DIR: string = resolveConfigDir();
 process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
 process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
 
-// Synchronous write to the daemon log file — used for both pre-start markers and
+// Synchronous write to the daemon log file -- used for both pre-start markers and
 // early crash capture before daemonLog (DailyLogger) is initialised.
 function _syncLogWrite(msg: string): void {
   try {
@@ -120,7 +120,7 @@ process.on('uncaughtException',  _earlyUncaughtHandler);
 process.on('unhandledRejection', _earlyRejectionHandler);
 
 async function main(): Promise<void> {
-  // writePreStartLog() already called at module level — no duplicate call needed.
+  // writePreStartLog() already called at module level -- no duplicate call needed.
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   cleanTmpDir(path.join(CONFIG_DIR, 'tmp'), { maxAgeDays: 7, maxSizeMb: 100 });
   // Copies of the native binaries from versions this install no longer uses. Best-effort: an older

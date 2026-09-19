@@ -71,13 +71,13 @@ await server.register(logsRoutes, { configDir, idleTimer });
 await server.register(heartbeatRoute, { idleTimer, proxy });
 
 // Open a local file or URL using the OS default handler.
-// Chrome blocks file:// navigation from http:// pages — this proxies the open via server.
+// Chrome blocks file:// navigation from http:// pages -- this proxies the open via server.
 server.get('/api/open', async (req, reply) => {
   const { path: rawPath } = req.query as { path?: string };
   if (!rawPath) return reply.code(400).send({ error: 'path required' });
   idleTimer.reset();
   const target = decodeURIComponent(rawPath);
-  // Security: only allow file:// URLs and http(s)://localhost — never remote URLs
+  // Security: only allow file:// URLs and http(s)://localhost -- never remote URLs
   const isFileUrl   = target.startsWith('file:///');
   const isLocalHttp = target.startsWith('http://localhost') || target.startsWith('https://localhost');
   const isWinPath   = /^[A-Za-z]:[\\\/]/.test(target);

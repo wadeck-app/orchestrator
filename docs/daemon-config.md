@@ -1,4 +1,4 @@
-# Daemon configuration — config.yml
+# Daemon configuration -- config.yml
 
 File: `<configDir>/config.yml` (default `~/.config/orchestrator/config.yml`).
 
@@ -44,7 +44,7 @@ Catch-up jobs fire with staggered delays to avoid simultaneous load (e.g. after 
 - Job 2 fires after `catchUpInitialDelaySeconds + catchUpStaggerSeconds`
 - Job N fires after `catchUpInitialDelaySeconds + (N-1) × catchUpStaggerSeconds`
 
-Only the **most recent** missed firing is caught up per job — multiple missed days do not accumulate.
+Only the **most recent** missed firing is caught up per job -- multiple missed days do not accumulate.
 
 ## Example
 

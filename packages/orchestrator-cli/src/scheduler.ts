@@ -882,7 +882,7 @@ export class Scheduler extends EventEmitter {
     const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv, job.id);
     const pid   = child.pid ?? null;
 
-    // Per-run log: one file per execution — <jobId>-<startedAt>.log
+    // Per-run log: one file per execution -- <jobId>-<startedAt>.log
     const jobLogger = new RunLogger(
       path.join(this._configDir, 'logs', 'jobs', job.id),
       job.id,
@@ -1132,7 +1132,7 @@ export class Scheduler extends EventEmitter {
               });
             } else {
               this._retryCounters.delete(job.id);
-              jobLogger.write(`[retry] exhausted after ${delays.length} attempts (exitCode=${exitCode}) — permanent failure`);
+              jobLogger.write(`[retry] exhausted after ${delays.length} attempts (exitCode=${exitCode}) -- permanent failure`);
               void this._hookDispatcher?.dispatch('onJobExhausted' as never, {
                 jobId: job.id, label: job.label, exitCode, attempts: delays.length,
               }, (err: unknown) => console.error('[hook:onJobExhausted]', err));
