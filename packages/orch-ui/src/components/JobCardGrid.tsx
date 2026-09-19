@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
-import { ButtonAction, ButtonLink, IconButton } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonLink, IconButton, Spinner } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type RuntimeEntry } from '../types.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -169,8 +169,9 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
     });
   }, [selected, onBulkDelete, onAfterBulk, ask]);
 
+  // dsl-ui's Spinner rather than a hand-rolled div, for the accessible name the raw one lacked.
   if (!items) {
-    return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+    return <div className="flex justify-center py-12"><Spinner size="lg" /></div>;
   }
 
   const visible = items.filter(({ job, runHistory }) => {

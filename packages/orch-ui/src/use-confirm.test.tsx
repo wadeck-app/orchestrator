@@ -124,4 +124,80 @@ describe('useConfirm', () => {
 	});
 });
 
+/*
+ * `notify` replaces four native alert() calls -- "failed to kill job", in LogViewer and
+ * RunningBannerDetail. Same objection as confirm(): it blocks the page, cannot be styled, and looks
+ * nothing like the dashboard.
+ *
+ * It shares this hook rather than living in a second one so a component has ONE dialog slot. Two
+ * hooks would mean two independent `open` states, which is how a confirmation and an error end up on
+ * screen together arguing with each other.
+ */
+describe('useConfirm notify', () => {
+	function NoticeHarness({ title = 'Could not kill the process' }: { title?: string }) {
+		const { notify, dialog } = useConfirm();
+		return (
+			<div>
+				<button type="button" onClick={() => notify({ title, message: 'No such process.' })}>Fail</button>
+				{dialog}
+			</div>
+		);
+	}
+
+	it('says nothing until something is reported', () => {
+		render(<NoticeHarness />);
+		expect(screen.queryByRole('dialog')).toBeNull();
+	});
+
+	it('shows the title and message', () => {
+		render(<NoticeHarness />);
+		fireEvent.click(screen.getByRole('button', { name: 'Fail' }));
+
+		expect(screen.getByText('Could not kill the process')).toBeInTheDocument();
+		expect(screen.getByText('No such process.')).toBeInTheDocument();
+	});
+
+	// There is no choice to make, so offering Cancel next to OK would only ask the reader to decide
+	// something about a failure that has already happened.
+	it('offers one button, not a choice', () => {
+		render(<NoticeHarness />);
+		fireEvent.click(screen.getByRole('button', { name: 'Fail' }));
+
+		expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+	});
+
+	it('dismisses on OK', () => {
+		render(<NoticeHarness />);
+		fireEvent.click(screen.getByRole('button', { name: 'Fail' }));
+		fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+
+		expect(screen.queryByRole('dialog')).toBeNull();
+	});
+
+	// One pending item, so the two cannot stack.
+	it('a notice replaces a pending confirmation, and its action does not run', () => {
+		const onConfirm = vi.fn();
+		function Both() {
+			const { ask, notify, dialog } = useConfirm();
+			return (
+				<div>
+					<button type="button" onClick={() => ask({ title: 'Kill?', message: 'm', onConfirm })}>Ask</button>
+					<button type="button" onClick={() => notify({ title: 'Failed', message: 'm' })}>Notify</button>
+					{dialog}
+				</div>
+			);
+		}
+		render(<Both />);
+
+		fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Notify' }));
+
+		expect(screen.getByText('Failed')).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+		expect(onConfirm).not.toHaveBeenCalled();
+	});
+});
+
 // violations-suppress-end: react/no-raw-button

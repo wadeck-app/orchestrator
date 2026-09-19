@@ -3,6 +3,7 @@ import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry } from '../types.js';
 import { windowStateAt } from '../active-window.js';
+import { describeAgo } from '../relative-time.js';
 import { JobStatusPill } from './JobStatusPill.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
@@ -89,22 +90,15 @@ const CARD_CLS        = 'rounded-lg border border-border p-4 shadow-sm hover:sha
 export const TYPE_BADGE_BASE = 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium shrink-0';
 // @formatter:on
 
+/**
+ * Kept as a named re-export so the two call sites read the same as before.
+ *
+ * The body was the third private "how long ago" in orch-ui, each worded differently. This one said
+ * "just now" under a minute, which told the reader less than the shared `describeAgo`'s "42s ago" --
+ * on a last-run stamp the actual number is the thing being checked.
+ */
 export function relativeTime(isoDate: string): string {
-  const diffMs = Date.now() - new Date(isoDate).getTime();
-  const s = Math.floor(diffMs / 1000);
-  if (s < 60)  {
-    return 'just now';
-  }
-  const m = Math.floor(s / 60);
-  if (m < 60)  {
-    return `${m}m ago`;
-  }
-  const h = Math.floor(m / 60);
-  if (h < 24)  {
-    return `${h}h ago`;
-  }
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return describeAgo(isoDate, Date.now());
 }
 
 // Differs from JobStatusBadge only in the failed label, which counts failures across the

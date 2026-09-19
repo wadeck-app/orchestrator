@@ -6,24 +6,12 @@ import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { formatElapsed } from '../relative-time.js';
 
 // @formatter:off
 // violations-suppress: tailwind/no-raw-color-class amber alert for running state -- no semantic token for warning/running state
 const ALERT_CARD_CLS = 'mb-4 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 overflow-hidden';
 // @formatter:on
-
-function formatDuration(startedAt: string): string {
-  const ms = Date.now() - new Date(startedAt).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) {
-    return `${s}s`;
-  }
-  const m = Math.floor(s / 60);
-  if (m < 60) {
-    return `${m}m ${s % 60}s`;
-  }
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -95,14 +83,17 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
     setKilling(true);
     try {
       if (onKill) {
-        await (onKill as () => Promise<void>)();
-      } else {
-        const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({})) as { error?: string };
-          setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
-          return;
-        }
+        // The page owns the kill, so the outcome is not ours to claim. See the long note in
+        // RunningBannerDetail: `onKill` never rejects, so the old await fell through to setJustKilled
+        // and a refused kill looked exactly like a successful one.
+        onKill();
+        return;
+      }
+      const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({})) as { error?: string };
+        setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
+        return;
       }
       setJustKilled(true);
     } finally { setKilling(false); }
@@ -133,7 +124,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
               <div className="flex items-center gap-3 mt-0.5 text-xs text-muted flex-wrap">
                 <span className="flex items-center gap-1">
                   <Clock size={11} />
-                  {formatDuration(currentRun.startedAt)} elapsed
+                  {formatElapsed(currentRun.startedAt, Date.now())} elapsed
                 </span>
                 <span>&middot; started {fmtTime(currentRun.startedAt)}</span>
                 {currentRun.pid != null && <span>&middot; PID {currentRun.pid}</span>}

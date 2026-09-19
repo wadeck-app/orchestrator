@@ -173,7 +173,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   // were reading different variables.
   const [autoScroll, setAutoScroll] = useState(true);
   const [killing, setKilling] = useState(false);
-  const { ask, dialog } = useConfirm();
+  const { ask, notify, dialog } = useConfirm();
   const [widePane, toggleWidePane] = useWidePane();
   const containerRef = useRef<HTMLPreElement>(null);
 
@@ -277,13 +277,14 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
       const res = await fetch(`${apiBase}/api/jobs/${jobId}/kill`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
-        alert(err.error ?? `Failed to kill job (HTTP ${res.status})`);
+        // The app's own dialog, for the same reason as the confirmation above. See useConfirm.
+        notify({ title: 'Could not kill the process', message: err.error ?? `Failed to kill job (HTTP ${res.status})` });
         return;
       }
       // Hide the button right away; the status poll re-shows it if a new run starts.
       setIsJobRunning(false);
     } catch (err) {
-      alert(`Failed to kill job: ${getErrorMessage(err)}`);
+      notify({ title: 'Could not kill the process', message: getErrorMessage(err) });
     } finally {
       setKilling(false);
     }

@@ -47,6 +47,34 @@ export function formatApproxDuration(ms: number): string {
 }
 
 /**
+ * Time elapsed since a moment, as a live clock: "7s", "1m 5s", "2h 13m".
+ *
+ * Deliberately not `formatApproxDuration`. That one drops to a single unit and only changes unit at
+ * twice its size, which is right for a countdown read at a glance and wrong for a running job: the
+ * reader is watching to see it move, and "1m" sitting still for a minute looks like a stalled UI.
+ *
+ * `now` is a parameter rather than a `Date.now()` call inside, matching describeMoment/describeAgo --
+ * the three callers already re-render on their own tick, and a hidden clock read cannot be tested.
+ */
+export function formatElapsed(startedAt: MomentLike, now: number): string {
+  const startedMs = toMs(startedAt);
+  if (startedMs === null) {
+    return '-';
+  }
+  // A negative elapsed means a clock skew or a timestamp from another machine. 0s is at least not a
+  // count that runs backwards.
+  const s = Math.max(0, Math.floor((now - startedMs) / 1000));
+  if (s < 60) {
+    return `${s}s`;
+  }
+  const m = Math.floor(s / 60);
+  if (m < 60) {
+    return `${m}m ${s % 60}s`;
+  }
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/**
  * How far off a moment is: "in 3h", "overdue by 5m".
  *
  * An overdue moment says so rather than clamping to "in 0s", which read as "about to fire" for a job

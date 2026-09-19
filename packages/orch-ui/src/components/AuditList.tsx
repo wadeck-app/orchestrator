@@ -1,4 +1,5 @@
 import React from 'react';
+import { Spinner } from '@wadeck-app/dsl-ui';
 import { AuditEntryRow, type AuditEntry } from './AuditEntryRow.js';
 
 export interface AuditListProps {
@@ -10,10 +11,12 @@ export interface AuditListProps {
  * @registryTags audit list entries icons
  */
 export function AuditList({ entries }: AuditListProps): React.ReactElement {
+  // dsl-ui's Spinner rather than a hand-rolled div: the raw one had no role and no accessible name,
+  // so a screen reader was told nothing at all while the page was loading.
   if (!entries) {
     return (
       <div className="flex justify-center py-12">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <Spinner size="lg" />
       </div>
     );
   }

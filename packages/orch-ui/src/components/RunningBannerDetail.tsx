@@ -6,24 +6,12 @@ import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { formatElapsed } from '../relative-time.js';
 
 // @formatter:off
 // violations-suppress: tailwind/no-raw-color-class blue running banner -- no semantic token for info/running state
 const BANNER_CLS   = 'mb-4 flex items-center gap-4 px-4 py-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950';
 // @formatter:on
-
-function formatDuration(startedAt: string): string {
-  const ms = Date.now() - new Date(startedAt).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) {
-    return `${s}s`;
-  }
-  const m = Math.floor(s / 60);
-  if (m < 60) {
-    return `${m}m ${s % 60}s`;
-  }
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
 
 export interface RunningBannerDetailProps {
   job: Job;
@@ -48,7 +36,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
-  const { ask, dialog } = useConfirm();
+  const { ask, notify, dialog } = useConfirm();
   const [justKilled, setJustKilled] = useState(false);
 
   const currentRun = latestRun(runHistory);
@@ -87,18 +75,32 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
     setKilling(true);
     try {
       if (onKill) {
-        await (onKill as () => Promise<void>)();
-      } else {
-        const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as { error?: string };
-          alert(err.error ?? `Failed to kill job (HTTP ${res.status})`);
-          return;
-        }
+        /*
+         * The page owns the kill, so the outcome is not ours to claim.
+         *
+         * `onKill` is the DSL's publishOutput: synchronous, returns undefined, never rejects. The old
+         * `await (onKill as () => Promise<void>)()` was a cast to a promise that does not exist, so
+         * control always fell through to setJustKilled and the banner vanished as if the kill had
+         * worked. A kill the daemon refused looked exactly like one that succeeded. Confirmed in the
+         * browser with the request blocked: the process was still alive, the run still open, and the
+         * page showed "Run now".
+         *
+         * The page reloads its job source on the same event, and that reload is what tells the truth.
+         * The failure itself surfaces through the brain's `$error`, via MutationFeedback on the page.
+         */
+        onKill();
+        return;
+      }
+      const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        // The app's own dialog, for the same reason as the confirmation above. See useConfirm.
+        notify({ title: 'Could not kill the process', message: err.error ?? `Failed to kill job (HTTP ${res.status})` });
+        return;
       }
       setJustKilled(true);
     } catch (err) {
-      alert(`Failed to kill job: ${getErrorMessage(err)}`);
+      notify({ title: 'Could not kill the process', message: getErrorMessage(err) });
     } finally {
       setKilling(false);
     }
@@ -121,7 +123,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
             <span className="font-semibold text-content">Running</span>
             <span className="text-muted text-sm">&middot;</span>
-            <span className="text-sm text-content font-mono">{formatDuration(currentRun.startedAt)}</span>
+            <span className="text-sm text-content font-mono">{formatElapsed(currentRun.startedAt, Date.now())}</span>
             {currentRun.pid != null && (
               <>
                 <span className="text-muted text-sm">&middot;</span>

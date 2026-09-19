@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuditEntryIcon } from './AuditEntryIcon.js';
+import { describeAgo } from '../relative-time.js';
 
 export interface AuditEntry {
   ts: string;
@@ -46,19 +47,9 @@ function formatDetails(entry: AuditEntry): string {
   return parts.join(' | ');
 }
 
-function relTime(iso: string): string {
-  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (d < 60) {
-    return `${d}s ago`;
-  }
-  if (d < 3600) {
-    return `${Math.floor(d / 60)}m ago`;
-  }
-  if (d < 86400) {
-    return `${Math.floor(d / 3600)}h ago`;
-  }
-  return `${Math.floor(d / 86400)}d ago`;
-}
+// Was a private copy of "how long ago", one of three in orch-ui with three different wordings.
+// describeAgo is the shared one; it differs only below two minutes, where it keeps saying seconds
+// ("90s ago") instead of rounding to "1m ago".
 
 /**
  * @registryCategory atomic
@@ -78,7 +69,7 @@ export function AuditEntryRow({ entry }: AuditEntryRowProps): React.ReactElement
         {' '}
         <span className="text-muted truncate">{formatDetails(entry)}</span>
       </div>
-      <span className="shrink-0 text-xs text-muted ml-4" title={entry.ts}>{relTime(entry.ts)}</span>
+      <span className="shrink-0 text-xs text-muted ml-4" title={entry.ts}>{describeAgo(entry.ts, Date.now())}</span>
     </div>
   );
 }

@@ -22,7 +22,16 @@ function runName(startedAt: string): string {
   return startedAt.replace(/:/g, '-').slice(0, 19);
 }
 
-function formatDuration(entry: RuntimeEntry): string {
+/*
+ * How long a FINISHED run took, which is a different question from how long a running one has been
+ * going -- that is `formatElapsed` in relative-time.ts.
+ *
+ * Named apart on purpose. Both were called `formatDuration`, in four files, so the three that were
+ * genuinely identical copies of the elapsed formatter and this one, which is not a copy of anything,
+ * all read as the same helper. Sub-second precision matters here and nowhere else: a 40ms run and a
+ * 900ms run are both "0s" to the other formatter.
+ */
+function formatFinishedDuration(entry: RuntimeEntry): string {
   // Liveness is finishedAt: a killed run has no exit code but did finish, and must
   // show its real duration rather than "running...".
   if (isRunActive(entry)) {
@@ -78,7 +87,7 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
           return (
             <tr key={i}>
               <td className="py-1 pr-4 text-content">{formatted}</td>
-              <td className="py-1 pr-4 text-muted">{formatDuration(entry)}</td>
+              <td className="py-1 pr-4 text-muted">{formatFinishedDuration(entry)}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
               <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
               <td className="py-1 pr-4">

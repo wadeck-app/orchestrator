@@ -6,6 +6,7 @@ import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { formatElapsed } from '../relative-time.js';
 
 // @formatter:off
 // violations-suppress: tailwind/no-raw-color-class amber running badge -- no semantic token for running/info state
@@ -13,19 +14,6 @@ const RUNNING_BADGE = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
 // violations-suppress: tailwind/no-raw-color-class kill button uses danger color blend -- no semantic hover token
 const KILL_BTN_CLS  = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-danger/10 text-danger border border-danger/30 hover:bg-danger hover:text-white transition-colors';
 // @formatter:on
-
-function formatDuration(startedAt: string): string {
-  const ms = Date.now() - new Date(startedAt).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) {
-    return `${s}s`;
-  }
-  const m = Math.floor(s / 60);
-  if (m < 60) {
-    return `${m}m ${s % 60}s`;
-  }
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
 
 export interface RunningInlineDetailProps {
   job: Job;
@@ -90,14 +78,17 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
     setKilling(true);
     try {
       if (onKill) {
-        await (onKill as () => Promise<void>)();
-      } else {
-        const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({})) as { error?: string };
-          setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
-          return;
-        }
+        // The page owns the kill, so the outcome is not ours to claim. See the long note in
+        // RunningBannerDetail: `onKill` never rejects, so the old await fell through to setJustKilled
+        // and a refused kill looked exactly like a successful one.
+        onKill();
+        return;
+      }
+      const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({})) as { error?: string };
+        setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
+        return;
       }
       setJustKilled(true);
     } finally { setKilling(false); }
@@ -121,7 +112,7 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
             <span className={RUNNING_BADGE}>
               {/* violations-suppress: tailwind/no-raw-color-class amber pulse dot */}
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-              Running &middot; {formatDuration(currentRun.startedAt)}
+              Running &middot; {formatElapsed(currentRun.startedAt, Date.now())}
               {currentRun.pid != null && <span className="opacity-70">&middot; {currentRun.pid}</span>}
             </span>
             {/* violations-suppress: react/no-raw-button pill-style kill button -- Button component cannot render this shape */}

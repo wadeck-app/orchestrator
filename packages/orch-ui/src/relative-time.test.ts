@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeMoment, describeAgo, formatApproxDuration } from './relative-time.js';
+import { describeMoment, describeAgo, formatApproxDuration, formatElapsed } from './relative-time.js';
 
 /*
  * orch-ui had seven duration formatters and two relative-time implementations, none shared, and none
@@ -76,5 +76,42 @@ describe('describeAgo', () => {
 
   it('an unparseable moment says so', () => {
     expect(describeAgo(undefined, NOW)).toBe('at an unrecorded time');
+  });
+});
+
+/*
+ * The live clock on a running job. Three components had byte-identical private copies of this; the
+ * wording is pinned here so replacing them cannot have changed what the dashboard shows.
+ */
+describe('formatElapsed', () => {
+  it('counts seconds under a minute', () => {
+    expect(formatElapsed(NOW - 7 * SECOND, NOW)).toBe('7s');
+    expect(formatElapsed(NOW - 59 * SECOND, NOW)).toBe('59s');
+  });
+
+  // Two units, unlike formatApproxDuration: the reader is watching to see it move, and a bare "1m"
+  // sitting still for a minute looks like a stalled UI.
+  it('keeps the seconds once it passes a minute', () => {
+    expect(formatElapsed(NOW - 65 * SECOND, NOW)).toBe('1m 5s');
+    expect(formatElapsed(NOW - 59 * MINUTE - 59 * SECOND, NOW)).toBe('59m 59s');
+  });
+
+  it('drops to hours and minutes past an hour', () => {
+    expect(formatElapsed(NOW - 2 * HOUR - 13 * MINUTE, NOW)).toBe('2h 13m');
+    expect(formatElapsed(NOW - 26 * HOUR, NOW)).toBe('26h 0m');
+  });
+
+  it('accepts an ISO string as well as epoch millis', () => {
+    expect(formatElapsed('2026-09-19T11:58:55.000Z', NOW)).toBe('1m 5s');
+  });
+
+  // A clock skew or a timestamp from another machine. 0s is at least not a count running backwards.
+  it('clamps a future moment to zero rather than going negative', () => {
+    expect(formatElapsed(NOW + 5 * MINUTE, NOW)).toBe('0s');
+  });
+
+  it('an unparseable moment is a dash, not NaN', () => {
+    expect(formatElapsed(undefined, NOW)).toBe('-');
+    expect(formatElapsed('not a date', NOW)).toBe('-');
   });
 });

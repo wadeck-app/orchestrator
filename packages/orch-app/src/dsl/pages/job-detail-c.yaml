@@ -45,6 +45,10 @@ sections:
   - $type: BackLink
     to: /
     label: Back to jobs
+  # Reports a kill or a delete the brain could not carry out. Without it the brain's rejection
+  # reached only the console: the request failed, the page reloaded, and the reader was told nothing.
+  - $type: MutationFeedback
+    error: $brains.killJob.$error
   - $type: DesignSwitcher
     jobId: $route.id
     current: design-c
