@@ -170,7 +170,9 @@ describe('Jobs API Routes', () => {
     it('sends the body as `updates`, the shape the daemon actually reads', async () => {
       let sent: Record<string, unknown> | undefined;
       (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
-        if (cmd === 'edit-job') sent = payload as Record<string, unknown>;
+        if (cmd === 'edit-job') {
+          sent = payload as Record<string, unknown>;
+        }
         return { id: 'job1', command: 'updated' };
       };
 
@@ -195,7 +197,9 @@ describe('Jobs API Routes', () => {
     it('lifts `unset` out of the body and passes it beside `updates`', async () => {
       let sent: Record<string, unknown> | undefined;
       (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
-        if (cmd === 'edit-job') sent = payload as Record<string, unknown>;
+        if (cmd === 'edit-job') {
+          sent = payload as Record<string, unknown>;
+        }
         return { id: 'job1' };
       };
 
@@ -213,7 +217,9 @@ describe('Jobs API Routes', () => {
     it('sends no `unset` when the body has none', async () => {
       let sent: Record<string, unknown> | undefined;
       (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
-        if (cmd === 'edit-job') sent = payload as Record<string, unknown>;
+        if (cmd === 'edit-job') {
+          sent = payload as Record<string, unknown>;
+        }
         return { id: 'job1' };
       };
 
@@ -320,7 +326,9 @@ describe('GET /api/health counting', () => {
     app = fastify();
     const proxy = {
       send: async (cmd: string) => {
-        if (cmd === 'list-jobs') return [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+        if (cmd === 'list-jobs') {
+          return [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+        }
         if (cmd === 'list-state') {
           return {
             // In flight: no finishedAt.

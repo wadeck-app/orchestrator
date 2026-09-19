@@ -25,13 +25,23 @@ function runName(startedAt: string): string {
 function formatDuration(entry: RuntimeEntry): string {
   // Liveness is finishedAt: a killed run has no exit code but did finish, and must
   // show its real duration rather than "running...".
-  if (isRunActive(entry)) return 'running...';
-  if (!entry.finishedAt) return '-';
+  if (isRunActive(entry)) {
+    return 'running...';
+  }
+  if (!entry.finishedAt) {
+    return '-';
+  }
   const ms = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
-  if (ms < 0) return '-';
-  if (ms < 1000) return `${ms}ms`;
+  if (ms < 0) {
+    return '-';
+  }
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
   const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
+  if (s < 60) {
+    return `${s.toFixed(1)}s`;
+  }
   const m = Math.floor(s / 60);
   const rem = Math.round(s % 60);
   return `${m}m ${rem}s`;

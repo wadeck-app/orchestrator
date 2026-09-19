@@ -143,7 +143,11 @@ export class TrayProcess {
       const line = JSON.stringify(msg) + '\n';
       await new Promise<void>((resolve, reject) => {
         this.process.stdin!.write(line, (err) => {
-          if (err) reject(err); else resolve();
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
         });
       });
     });
@@ -184,12 +188,16 @@ export class TrayProcess {
       await this.send({ type: 'exit' });
     } catch { /* ignore - process may already be dead */ }
 
-    if (this.killed) return;
+    if (this.killed) {
+      return;
+    }
 
     await new Promise<void>((resolve) => {
       let settled = false;
       const finish = (): void => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         resolve();
       };
@@ -197,7 +205,9 @@ export class TrayProcess {
       const timer = setTimeout(() => {
         this.process.kill('SIGTERM');
         setTimeout(() => {
-          if (!this.process.killed) this.process.kill('SIGKILL');
+          if (!this.process.killed) {
+            this.process.kill('SIGKILL');
+          }
           finish();
         }, 500);
       }, KILL_TIMEOUT_MS);

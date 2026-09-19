@@ -100,10 +100,14 @@ export function waitUntil(time: TimeService, deadlineMs: number, fn: () => void)
   let cancelled = false;
 
   const arm = (): void => {
-    if (cancelled) return;
+    if (cancelled) {
+      return;
+    }
     const remaining = deadlineMs - time.now();
     if (remaining <= 0) {
-      current = time.after(0, () => { if (!cancelled) fn(); });
+      current = time.after(0, () => { if (!cancelled) {
+        fn();
+      } });
       return;
     }
     current = time.after(Math.min(remaining, MAX_TIMER_CHUNK_MS), arm);
@@ -122,7 +126,9 @@ export function waitUntil(time: TimeService, deadlineMs: number, fn: () => void)
 
 /** What a runtime timer would actually do with this delay. */
 function clampDelay(ms: number): number {
-  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return 0;
+  }
   return ms > TIMER_CEILING_MS ? 1 : ms;
 }
 

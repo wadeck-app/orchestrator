@@ -18,7 +18,9 @@ export const fetcher: Fetcher = async (
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 204) return undefined;
+  if (res.status === 204) {
+    return undefined;
+  }
   const data = await res.json();
   if (!res.ok) {
     // `message` before `error`: in Fastify's error payload `error` is the generic HTTP reason phrase

@@ -35,7 +35,9 @@ async function run(argv) {
   try {
     await runCli(argv, deps);
   } catch (e) {
-    if (e.message !== 'exit') throw e;
+    if (e.message !== 'exit') {
+      throw e;
+    }
   } finally {
     process.exit = origExit;
     console.error = origError;

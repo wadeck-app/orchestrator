@@ -133,13 +133,17 @@ export class TrayManager extends EventEmitter {
       // Only kill if the tray wasn't already gracefully killed by triggerRestart/triggerQuit.
       if (this._tp && !this._tp.killed) {
         const pid = this._tp.process.pid;
-        if (pid) this._killByPid(pid);
+        if (pid) {
+          this._killByPid(pid);
+        }
       } else {
         // Fallback: read PID file in case _tp reference was lost.
         try {
           const raw = fs.readFileSync(this._trayPidFile, 'utf8').trim();
           const filePid = parseInt(raw, 10);
-          if (!isNaN(filePid) && filePid > 0) this._killByPid(filePid);
+          if (!isNaN(filePid) && filePid > 0) {
+            this._killByPid(filePid);
+          }
         } catch { /* no PID file */ }
       }
       this._clearTrayPid();
@@ -158,7 +162,9 @@ export class TrayManager extends EventEmitter {
   async triggerRestart(): Promise<void> {
     this._logAction('[tray] action: restart requested');
     this._intentionalStop = true;
-    if (this._tp && !this._tp.killed) await this._tp.kill();
+    if (this._tp && !this._tp.killed) {
+      await this._tp.kill();
+    }
     this._tp = null;
     this._logAction('[tray] restarting daemon');
     this.emit('restart');
@@ -168,7 +174,9 @@ export class TrayManager extends EventEmitter {
   async triggerQuit(): Promise<void> {
     this._logAction('[tray] action: quit requested');
     this._intentionalStop = true;
-    if (this._tp && !this._tp.killed) await this._tp.kill();
+    if (this._tp && !this._tp.killed) {
+      await this._tp.kill();
+    }
     this._tp = null;
     this._logAction('[tray] quitting daemon');
     this.emit('quit');
@@ -205,19 +213,27 @@ export class TrayManager extends EventEmitter {
 
   private _onJobFinished({ id, exitCode, job, skipped }: { id: string; exitCode: number; job: Job; skipped?: boolean }): void {
     // A skipped run is neither a failure to badge nor a success to flash green: it did no work.
-    if (skipped) return;
+    if (skipped) {
+      return;
+    }
     if (exitCode !== 0) {
       const now  = new Date();
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const msg  = job.onExitCode?.[String(exitCode)] ?? null;
-      if (this._failures.length >= MAX_FAILURES) this._failures.shift();
+      if (this._failures.length >= MAX_FAILURES) {
+        this._failures.shift();
+      }
       this._failures.push({ id, label: job.label || id, exitCode, message: msg, time });
     } else {
       const idx = this._failures.findIndex((f) => f.id === id);
-      if (idx !== -1) this._failures.splice(idx, 1);
+      if (idx !== -1) {
+        this._failures.splice(idx, 1);
+      }
       // Flash a green success icon for SUCCESS_FLASH_MS, then revert
       this._showSuccess = true;
-      if (this._successTimer) clearTimeout(this._successTimer);
+      if (this._successTimer) {
+        clearTimeout(this._successTimer);
+      }
       this._successTimer = setTimeout(() => {
         this._showSuccess = false;
         this._successTimer = null;
@@ -228,7 +244,9 @@ export class TrayManager extends EventEmitter {
   }
 
   private _refresh(): void {
-    if (!this._tp || this._tp.killed) return;
+    if (!this._tp || this._tp.killed) {
+      return;
+    }
     void this._tp.send({ type: 'set-menu', menu: this._buildMenu() });
   }
 
@@ -285,7 +303,9 @@ export class TrayManager extends EventEmitter {
     if (this._updateStatus === 'up-to-date') {
       this._setVersionLabel('Up to date', 4_000);
       this._showSuccess = true;
-      if (this._successTimer) clearTimeout(this._successTimer);
+      if (this._successTimer) {
+        clearTimeout(this._successTimer);
+      }
       this._successTimer = setTimeout(() => {
         this._showSuccess = false;
         this._successTimer = null;
@@ -426,7 +446,9 @@ export class TrayManager extends EventEmitter {
       this._logAction(`[tray] spawn error: ${getErrorMessage(err)}`);
       console.error(`[tray] spawn error: ${getErrorMessage(err)}`);
       this._tp = null;
-      if (!this._intentionalStop) this._scheduleRestart();
+      if (!this._intentionalStop) {
+        this._scheduleRestart();
+      }
     });
 
     tp.onClicked((id) => this._handleClick(id));
@@ -435,7 +457,9 @@ export class TrayManager extends EventEmitter {
       await tp.ready();
       this._restartAttempt = 0;
       // Record PID so the next daemon session can kill this orphan on startup.
-      if (tp.process.pid) this._writeTrayPid(tp.process.pid);
+      if (tp.process.pid) {
+        this._writeTrayPid(tp.process.pid);
+      }
       this._logAction('[tray] ready, sending init');
       // Write init DIRECTLY and synchronously to stdin - this guarantees it arrives
       // before any message that may have been queued via tp.send() from other code paths.
@@ -446,7 +470,9 @@ export class TrayManager extends EventEmitter {
       this._logAction(`[tray] failed to start: ${getErrorMessage(err)}`);
       console.error('[tray] failed to start:', getErrorMessage(err));
       // Explicitly kill the tray that failed to init so it doesn't linger as an orphan.
-      if (tp.process.pid && !tp.killed) this._killByPid(tp.process.pid);
+      if (tp.process.pid && !tp.killed) {
+        this._killByPid(tp.process.pid);
+      }
       this._tp = null;
       this._scheduleRestart();
     } finally {
@@ -455,7 +481,9 @@ export class TrayManager extends EventEmitter {
   }
 
   private _scheduleRestart(): void {
-    if (this._restartTimer) return;
+    if (this._restartTimer) {
+      return;
+    }
     const delay = Math.min(1000 * Math.pow(2, this._restartAttempt), 30_000);
     this._restartAttempt++;
     this._restartTimer = setTimeout(() => {

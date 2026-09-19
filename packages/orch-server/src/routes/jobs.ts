@@ -10,7 +10,9 @@ interface HealthRunEntry {
 
 // Run history is not guaranteed to be ordered newest-first, so resolve by startedAt.
 function newestRun(entries: HealthRunEntry[] | undefined): HealthRunEntry | null {
-  if (!entries || entries.length === 0) return null;
+  if (!entries || entries.length === 0) {
+    return null;
+  }
   return entries.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
 }
 
@@ -246,7 +248,9 @@ export async function jobsRoutes(
       const { command, cwd, timeout, env, label } = req.body as {
         command?: string; cwd?: string; timeout?: number; env?: Record<string, string>; label?: string;
       };
-      if (!command?.trim()) return reply.code(400).send({ error: 'command is required' });
+      if (!command?.trim()) {
+        return reply.code(400).send({ error: 'command is required' });
+      }
       const result = await proxy.send('exec-run', { command, cwd, timeout, env, label });
       return reply.code(202).send(result);
     });
@@ -259,7 +263,9 @@ export async function jobsRoutes(
   fastify.get('/api/exec/:runId', async (req, reply) => {
     return guard(reply, async () => {
       const result = await proxy.send('exec-status', { runId: (req.params as { runId: string }).runId });
-      if ((result as { error?: string }).error === 'not-found') return reply.code(404).send(result);
+      if ((result as { error?: string }).error === 'not-found') {
+        return reply.code(404).send(result);
+      }
       return reply.send(result);
     });
   });

@@ -156,7 +156,9 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
 
   // Without the root there is nothing to attribute usage to: the job has exited.
   const root = samples.find(s => s !== null && s.pid === rootPid);
-  if (!root) return null;
+  if (!root) {
+    return null;
+  }
 
   // The tree is rebuilt link by link rather than trusted as given. pidtree walks ParentProcessId, and
   // a pid is reused the moment its process dies, so the parent a process claims may be a pid that has
@@ -165,7 +167,9 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
   // before it. Age alone would not do, since a stranger hanging off a recycled DESCENDANT pid is
   // younger than the root.
   const byPid = new Map<number, { cpu: number; memory: number; elapsed: number; ppid: number }>();
-  for (const s of samples) if (s !== null) byPid.set(s.pid, s.sample);
+  for (const s of samples) if (s !== null) {
+    byPid.set(s.pid, s.sample);
+  }
 
   let cpuPct   = root.sample.cpu;
   let ramBytes = root.sample.memory;
@@ -174,12 +178,18 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
   while (frontier.length > 0) {
     const next: number[] = [];
     for (const [pid, sample] of byPid) {
-      if (accepted.has(pid)) continue;
+      if (accepted.has(pid)) {
+        continue;
+      }
       // Only against the pids accepted on the previous round, so one pass adds one generation and a
       // cycle in the claimed parent links cannot loop forever.
-      if (!frontier.includes(sample.ppid)) continue;
+      if (!frontier.includes(sample.ppid)) {
+        continue;
+      }
       const parentElapsed = accepted.get(sample.ppid)!;
-      if (sample.elapsed > parentElapsed + TREE_AGE_TOLERANCE_MS) continue;
+      if (sample.elapsed > parentElapsed + TREE_AGE_TOLERANCE_MS) {
+        continue;
+      }
       accepted.set(pid, sample.elapsed);
       cpuPct   += sample.cpu;
       ramBytes += sample.memory;
@@ -286,7 +296,9 @@ export class Scheduler extends EventEmitter {
     let catchUpStaggerMs = this._catchUpInitialDelayMs;
 
     for (const job of this._registry.list()) {
-      if (!job.enabled) continue;
+      if (!job.enabled) {
+        continue;
+      }
 
       if (job.type === 'cron') {
         // Through scheduleJob, not _scheduleCron: that is where the active window is honoured, so a
@@ -365,7 +377,9 @@ export class Scheduler extends EventEmitter {
      * means "it is still to fire". Without this guard every daemon start would re-arm a job whose
      * moment is months past, find it overdue, and run it - once per restart, forever.
      */
-    if (job.spent === true) return;
+    if (job.spent === true) {
+      return;
+    }
 
     const elapsed   = this._now().getTime() - new Date(job.scheduledAt!).getTime();
     const remaining = job.delayMs! - elapsed;
@@ -384,7 +398,9 @@ export class Scheduler extends EventEmitter {
         await this._maybeSpawn(job);
         // Removed while it waited or while it ran -- `orch remove` is allowed at any moment. Nothing
         // to mark then, and an unhandled rejection here would take the daemon down with it (P-1).
-        if (this._registry.get(job.id) !== null) this._registry.markSpent(job.id);
+        if (this._registry.get(job.id) !== null) {
+          this._registry.markSpent(job.id);
+        }
       })();
     });
   }
@@ -608,7 +624,9 @@ export class Scheduler extends EventEmitter {
       }
       return null;
     }
-    if (job.type === 'startup') return null;           // fires once at daemon start, nothing to arm
+    if (job.type === 'startup') {
+      return null;
+    }           // fires once at daemon start, nothing to arm
     if (windowState === 'expired') {
       return 'its active period has ended -- enabled but nothing armed; re-enable it to resume';
     }
@@ -618,8 +636,12 @@ export class Scheduler extends EventEmitter {
 
   async dryRun(id: string): Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }> {
     const job = this._registry.get(id);
-    if (!job) throw new Error(`Job not found: "${id}"`);
-    if (!job.dryRunSupported) return { error: `Job "${id}" does not declare dryRunSupported: true` };
+    if (!job) {
+      throw new Error(`Job not found: "${id}"`);
+    }
+    if (!job.dryRunSupported) {
+      return { error: `Job "${id}" does not declare dryRunSupported: true` };
+    }
     const dryJob = { ...job, command: job.command + ' --dry-run' };
     return this._fire(dryJob, { kind: 'manual' });
   }
@@ -634,7 +656,9 @@ export class Scheduler extends EventEmitter {
    */
   async trigger(id: string, source: TriggerSource = { kind: 'manual' }, wait = false): Promise<{ pid: number | null; consumed?: boolean } | { exitCode: number | null; consumed?: boolean }> {
     const job = this._registry.get(id);
-    if (!job) throw new Error(`Job not found: "${id}"`);
+    if (!job) {
+      throw new Error(`Job not found: "${id}"`);
+    }
 
     /*
      * Running a once job is what consumes it, whoever asked.
@@ -652,13 +676,17 @@ export class Scheduler extends EventEmitter {
      * keeps the original spentAt for exactly that reason.
      */
     const consumed = job.type === 'once';
-    if (consumed) this.unscheduleJob(job.id);
+    if (consumed) {
+      this.unscheduleJob(job.id);
+    }
 
     const result = await this._fire(job, source, wait);
 
     // After the fire, mirroring the scheduled path, so a `wait` trigger still has its job in place
     // while it runs.
-    if (consumed && this._registry.get(job.id) !== null) this._registry.markSpent(job.id);
+    if (consumed && this._registry.get(job.id) !== null) {
+      this._registry.markSpent(job.id);
+    }
 
     return { ...result, ...(consumed ? { consumed: true } : {}) };
   }
@@ -718,7 +746,9 @@ export class Scheduler extends EventEmitter {
 
   skipNextFiring(id: string): void {
     const job = this._registry.get(id);
-    if (!job || job.type !== 'cron' || !job.schedule) return;
+    if (!job || job.type !== 'cron' || !job.schedule) {
+      return;
+    }
     // Compute the next occurrence from 1 minute from now (avoids current-minute edge case)
     const firings = getNextFirings(job.schedule, 1, new Date(Date.now() + 60_000));
     if (firings.length > 0) {
@@ -925,7 +955,9 @@ export class Scheduler extends EventEmitter {
     let peakDirty    = false;
     let peakFlushedAt = Date.now();
     const flushPeaks = (): void => {
-      if (!peakDirty) return;
+      if (!peakDirty) {
+        return;
+      }
       peakDirty     = false;
       peakFlushedAt = Date.now();
       this._state.record(job.id, {
@@ -973,17 +1005,23 @@ export class Scheduler extends EventEmitter {
         this._sampleUsage(pid!).finally(() => { samplingSince = null; }).then(usage => {
           // Every pid in the tree vanished between the walk and the sample: the job is
           // finishing. Keep the timer -- the exit handler owns clearing it.
-          if (usage === null) return;
+          if (usage === null) {
+            return;
+          }
           const cpuPct = usage.cpuPct;
           const ramMb  = usage.ramMb;
           if (cpuPct > peakCpuPct) { peakCpuPct = cpuPct; peakDirty = true; }
           if (ramMb  > peakRamMb)  { peakRamMb  = ramMb;  peakDirty = true; }
           // Throttled here rather than inside flushPeaks, so the kill paths below can force a
           // write. Peaks only ever climb, so a settled job stops writing on its own.
-          if (peakDirty && Date.now() - peakFlushedAt >= this._peakFlushMs) flushPeaks();
+          if (peakDirty && Date.now() - peakFlushedAt >= this._peakFlushMs) {
+            flushPeaks();
+          }
           const overHard = hardThreshold !== null && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb);
           // Any sample back under the hard budget means the spike was transient.
-          if (!overHard) hardBreaches = 0;
+          if (!overHard) {
+            hardBreaches = 0;
+          }
           // Warn on the soft budget independently of the hard one. Gating this behind "not over
           // hard" meant a job that jumped straight past the hard threshold was killed on the
           // third sample having never emitted a warning -- and now that the kill is delayed on

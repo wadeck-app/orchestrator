@@ -16,9 +16,13 @@ const KILL_BTN_CLS  = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
 function formatDuration(startedAt: string): string {
   const ms = Date.now() - new Date(startedAt).getTime();
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) {
+    return `${s}s`;
+  }
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
+  if (m < 60) {
+    return `${m}m ${s % 60}s`;
+  }
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
@@ -39,7 +43,9 @@ export interface RunningInlineDetailProps {
  * @registryTags job detail running inline design-c
  */
 export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
-  if (!job) return null;
+  if (!job) {
+    return null;
+  }
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -53,7 +59,9 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
   useEffect(() => { setJustKilled(false); }, [currentRun?.pid]);
 
   useEffect(() => {
-    if (!isRunning) return;
+    if (!isRunning) {
+      return;
+    }
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, [isRunning]);
@@ -65,7 +73,9 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
 
   const handleKill = async () => {
     const pid = currentRun?.pid;
-    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
+    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) {
+      return;
+    }
     setKilling(true);
     try {
       if (onKill) {

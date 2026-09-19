@@ -50,13 +50,17 @@ function validateStartupTarget(): string | null {
  */
 export function buildWindowsCommand(configDir: string): string {
   const launcher = launcherToRun(configDir);
-  if (!launcher) throw new Error('buildWindowsCommand: no launcher binary');
+  if (!launcher) {
+    throw new Error('buildWindowsCommand: no launcher binary');
+  }
   return `${cmdQuote(launcher)} ${cmdQuote(configDir)}`;
 }
 
 export function buildMacArgs(configDir: string): string[] {
   const launcher = launcherToRun(configDir);
-  if (!launcher) throw new Error('buildMacArgs: no launcher binary');
+  if (!launcher) {
+    throw new Error('buildMacArgs: no launcher binary');
+  }
   return [launcher, configDir];
 }
 
@@ -109,7 +113,9 @@ ${argsXml}
 }
 
 export function enableStartup(configDir: string): StartupResult {
-  if (/[\r\n\x00]/.test(configDir)) return { ok: false, error: 'configDir contains invalid characters' };
+  if (/[\r\n\x00]/.test(configDir)) {
+    return { ok: false, error: 'configDir contains invalid characters' };
+  }
 
   // Platform first: on a target with no start-at-login mechanism at all, reporting a missing
   // launcher would name a consequence instead of the actual reason.
@@ -118,7 +124,9 @@ export function enableStartup(configDir: string): StartupResult {
   }
 
   const unusable = validateStartupTarget();
-  if (unusable) return { ok: false, error: unusable };
+  if (unusable) {
+    return { ok: false, error: unusable };
+  }
 
   if (process.platform === 'darwin') {
     const plistPath = macPlistPath();
@@ -155,7 +163,9 @@ export function enableStartup(configDir: string): StartupResult {
 }
 
 export function disableStartup(configDir: string): StartupResult {
-  if (/[\r\n\x00]/.test(configDir)) return { ok: false, error: 'configDir contains invalid characters' };
+  if (/[\r\n\x00]/.test(configDir)) {
+    return { ok: false, error: 'configDir contains invalid characters' };
+  }
   if (process.platform === 'darwin') {
     const plistPath = macPlistPath();
     const uid       = process.getuid?.() ?? 0;
@@ -216,6 +226,8 @@ export function isStartupEnabled(configDir: string): boolean {
  * No-op when start-at-login is not enabled.
  */
 export function refreshStartupEntry(configDir: string): StartupResult | null {
-  if (!isStartupEnabled(configDir)) return null;
+  if (!isStartupEnabled(configDir)) {
+    return null;
+  }
   return enableStartup(configDir);
 }

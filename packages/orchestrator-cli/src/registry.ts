@@ -24,16 +24,32 @@ const VALID_LIVENESS      = new Set(LIVENESS_STRATEGIES);
 // Exported so the rules can be tested as rules. Reaching them only through add() means a test has
 // to build a registry and a temp config dir to ask whether a delay is acceptable.
 export function validateJob(job: Partial<Job>): void {
-  if (!job.id || typeof job.id !== 'string')           throw new Error('Job id must be a non-empty string');
-  if (job.id.length > 128)                             throw new Error('Job id must be 128 chars or fewer');
-  if (job.id.includes('\x00'))                         throw new Error('Job id must not contain null bytes');
-  if (!job.type || !VALID_TYPES.has(job.type))         throw new Error(`Job type must be "cron", "startup", or "once" (got: ${job.type})`);
-  if (!job.command || typeof job.command !== 'string') throw new Error('Job command must be a non-empty string');
-  if (job.command.length > 4096)                       throw new Error('Job command must be 4096 chars or fewer');
-  if (job.command.includes('\x00'))                    throw new Error('Job command must not contain null bytes');
+  if (!job.id || typeof job.id !== 'string')           {
+    throw new Error('Job id must be a non-empty string');
+  }
+  if (job.id.length > 128)                             {
+    throw new Error('Job id must be 128 chars or fewer');
+  }
+  if (job.id.includes('\x00'))                         {
+    throw new Error('Job id must not contain null bytes');
+  }
+  if (!job.type || !VALID_TYPES.has(job.type))         {
+    throw new Error(`Job type must be "cron", "startup", or "once" (got: ${job.type})`);
+  }
+  if (!job.command || typeof job.command !== 'string') {
+    throw new Error('Job command must be a non-empty string');
+  }
+  if (job.command.length > 4096)                       {
+    throw new Error('Job command must be 4096 chars or fewer');
+  }
+  if (job.command.includes('\x00'))                    {
+    throw new Error('Job command must not contain null bytes');
+  }
 
   if (job.type === 'cron') {
-    if (!job.schedule) throw new Error('Cron job requires a schedule field');
+    if (!job.schedule) {
+      throw new Error('Cron job requires a schedule field');
+    }
     const schedule = job.schedule.trim();
     if (!CRON_RE.test(schedule)) {
       throw new Error(`Invalid cron schedule: "${job.schedule}" - expected five space-separated fields`);
@@ -61,12 +77,18 @@ export function validateJob(job: Partial<Job>): void {
 
   if (job.type === 'startup') {
     const delay = job.delaySeconds ?? 0;
-    if (!Number.isInteger(delay) || delay < 0) throw new Error(`delaySeconds must be a non-negative integer (got: ${delay})`);
+    if (!Number.isInteger(delay) || delay < 0) {
+      throw new Error(`delaySeconds must be a non-negative integer (got: ${delay})`);
+    }
   }
 
   if (job.type === 'once') {
-    if (job.delayMs === undefined) throw new Error('Once job requires a delayMs field');
-    if (!Number.isInteger(job.delayMs) || job.delayMs <= 0) throw new Error(`delayMs must be a positive integer (got: ${job.delayMs})`);
+    if (job.delayMs === undefined) {
+      throw new Error('Once job requires a delayMs field');
+    }
+    if (!Number.isInteger(job.delayMs) || job.delayMs <= 0) {
+      throw new Error(`delayMs must be a positive integer (got: ${job.delayMs})`);
+    }
     // Deliberately no upper bound. A timer's 2^31-1 ms ceiling is the scheduler's problem to solve,
     // not a rule to hand the user - see waitUntil in time-service.ts.
   }
@@ -97,17 +119,29 @@ export function validateJob(job: Partial<Job>): void {
 
   if (job.liveness != null) {
     const s = job.liveness.strategy;
-    if (!VALID_LIVENESS.has(s)) throw new Error(`Unknown liveness strategy: "${s}". Valid: ${[...VALID_LIVENESS].join(', ')}`);
-    if (s === 'portFile' && !job.liveness.portFile) throw new Error('liveness.portFile is required for portFile strategy');
-    if (s === 'command'  && !job.liveness.command)  throw new Error('liveness.command is required for command strategy');
+    if (!VALID_LIVENESS.has(s)) {
+      throw new Error(`Unknown liveness strategy: "${s}". Valid: ${[...VALID_LIVENESS].join(', ')}`);
+    }
+    if (s === 'portFile' && !job.liveness.portFile) {
+      throw new Error('liveness.portFile is required for portFile strategy');
+    }
+    if (s === 'command'  && !job.liveness.command)  {
+      throw new Error('liveness.command is required for command strategy');
+    }
   }
 }
 
 /** null, undefined, "" and empty collections all mean "not configured". 0 and false do not. */
 function isEmptyValue(value: unknown): boolean {
-  if (value === null || value === undefined || value === '') return true;
-  if (Array.isArray(value)) return value.length === 0;
-  if (typeof value === 'object') return Object.keys(value).length === 0;
+  if (value === null || value === undefined || value === '') {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  if (typeof value === 'object') {
+    return Object.keys(value).length === 0;
+  }
   return false;
 }
 
@@ -125,9 +159,15 @@ function isEmptyValue(value: unknown): boolean {
 function normalizeJob(job: Job): Job {
   const out = { ...job } as Job & Record<string, unknown>;
   for (const [field, rule] of Object.entries(UNSETTABLE_FIELDS)) {
-    if (!isEmptyValue(out[field])) continue;
-    if (rule === 'delete') delete out[field];
-    else out[field] = rule(out);
+    if (!isEmptyValue(out[field])) {
+      continue;
+    }
+    if (rule === 'delete') {
+      delete out[field];
+    }
+    else {
+      out[field] = rule(out);
+    }
   }
   return out;
 }
@@ -225,9 +265,13 @@ export class Registry {
   }
 
   private _read(): RegistryData {
-    if (!fs.existsSync(this._file)) return { version: SUPPORTED_VERSION, jobs: [] };
+    if (!fs.existsSync(this._file)) {
+      return { version: SUPPORTED_VERSION, jobs: [] };
+    }
     const raw = readJsonFile<RegistryData>(this._file);
-    if (!raw) throw new Error('registry.json is malformed');
+    if (!raw) {
+      throw new Error('registry.json is malformed');
+    }
     if (typeof raw.version === 'number' && raw.version > SUPPORTED_VERSION) {
       throw new Error(
         `registry.json version ${raw.version} is not supported by this daemon (max: ${SUPPORTED_VERSION}). ` +
@@ -248,12 +292,16 @@ export class Registry {
    */
   private _write(data: RegistryData): void {
     const jobs = data.jobs.map(normalizeJob);
-    if (this._jobs !== null) this._jobs = jobs;
+    if (this._jobs !== null) {
+      this._jobs = jobs;
+    }
     atomicWriteJson(this._file, { _README: REGISTRY_NOTICE, ...data, jobs });
   }
 
   private _ensure(): void {
-    if (this._jobs === null) this.load();
+    if (this._jobs === null) {
+      this.load();
+    }
   }
 
   load(): RegistryData {
@@ -288,7 +336,9 @@ export class Registry {
   markSpent(id: string): void {
     this._ensure();
     const idx = this._jobs!.findIndex((j) => j.id === id);
-    if (idx === -1) throw new Error(`Job not found: "${id}"`);
+    if (idx === -1) {
+      throw new Error(`Job not found: "${id}"`);
+    }
     const job = this._jobs![idx]!;
     // Loud rather than a no-op: nothing else has a single firing to spend, so asking for it on a cron
     // job is a caller bug, and silently ignoring it would hide a job that never gets consumed.
@@ -353,7 +403,9 @@ export class Registry {
   remove(id: string): void {
     this._ensure();
     const idx = this._jobs!.findIndex((j) => j.id === id);
-    if (idx === -1) throw new Error(`Job not found: "${id}"`);
+    if (idx === -1) {
+      throw new Error(`Job not found: "${id}"`);
+    }
     this._jobs!.splice(idx, 1);
     this._write({ version: SUPPORTED_VERSION, jobs: this._jobs! });
   }
@@ -369,20 +421,28 @@ export class Registry {
   edit(id: string, updates: Partial<Job>, unset: readonly string[] = []): void {
     this._ensure();
     const idx = this._jobs!.findIndex((j) => j.id === id);
-    if (idx === -1) throw new Error(`Job not found: "${id}"`);
+    if (idx === -1) {
+      throw new Error(`Job not found: "${id}"`);
+    }
     // Indexable, because unsetting reaches fields by name -- still a Job for validation.
     const merged = { ...this._jobs![idx], ...updates } as Job & Record<string, unknown>;
 
     for (const field of unset) {
       const problem = unsettableFieldError(field);
-      if (problem) throw new Error(problem);
+      if (problem) {
+        throw new Error(problem);
+      }
       if (Object.prototype.hasOwnProperty.call(updates, field)) {
         // Applying both in some order would quietly discard half of what the caller asked for.
         throw new Error(`Cannot set and unset "${field}" in the same edit -- pick one.`);
       }
       const rule = UNSETTABLE_FIELDS[field]!;
-      if (rule === 'delete') delete merged[field];
-      else merged[field] = rule(merged);
+      if (rule === 'delete') {
+        delete merged[field];
+      }
+      else {
+        merged[field] = rule(merged);
+      }
     }
 
     // Normalized before validation, not just on write: `--trigger-mode ""` should mean "back to the
@@ -396,7 +456,9 @@ export class Registry {
   private _patch(id: string, updates: Partial<Job>): void {
     this._ensure();
     const idx = this._jobs!.findIndex((j) => j.id === id);
-    if (idx === -1) throw new Error(`Job not found: "${id}"`);
+    if (idx === -1) {
+      throw new Error(`Job not found: "${id}"`);
+    }
     this._jobs![idx] = { ...this._jobs![idx], ...updates };
     this._write({ version: SUPPORTED_VERSION, jobs: this._jobs! });
   }

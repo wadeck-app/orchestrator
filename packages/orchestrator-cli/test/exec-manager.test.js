@@ -94,7 +94,9 @@ async function waitForFinished(manager, runId) {
 async function waitFor(predicate, label, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (predicate()) {
+      return;
+    }
     await new Promise(r => setTimeout(r, 100));
   }
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
@@ -120,7 +122,9 @@ async function waitAllGone(pids, timeoutMs = 8000) {
     alive = alive.filter(isAlive);
   }
   for (const pid of pids) {
-    if (!alive.includes(pid)) spawnedPids.delete(pid);
+    if (!alive.includes(pid)) {
+      spawnedPids.delete(pid);
+    }
   }
   return alive;
 }

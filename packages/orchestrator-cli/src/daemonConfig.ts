@@ -80,7 +80,9 @@ export function loadDaemonConfig(
 
   for (const [lineNo, line] of raw.split('\n').entries()) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
     const where = `config.yml line ${lineNo + 1}`;
 
     const colon = trimmed.indexOf(':');

@@ -657,7 +657,9 @@ describe('hard resource budget', () => {
     const sampleUsage = async () => {
       if (inFlight > 0) {
         const heldForMs = Date.now() - outstandingSince;
-        if (heldForMs < STALL_MS) prematureOverlaps.push(heldForMs);
+        if (heldForMs < STALL_MS) {
+          prematureOverlaps.push(heldForMs);
+        }
       }
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);

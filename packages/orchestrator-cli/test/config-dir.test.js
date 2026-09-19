@@ -38,7 +38,9 @@ after(() => {
 /** True once the daemon has written its pre-start marker, which names the directory it chose. */
 function hasDaemonLog(dir) {
   const logDir = path.join(dir, 'logs', 'daemon');
-  if (!fs.existsSync(logDir)) return false;
+  if (!fs.existsSync(logDir)) {
+    return false;
+  }
   return fs.readdirSync(logDir).some((f) => f.startsWith('daemon-') && f.endsWith('.log'));
 }
 
@@ -57,7 +59,9 @@ async function daemonChose(dir, args, env = {}, timeoutMs = 8000) {
   try {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (hasDaemonLog(dir)) return true;
+      if (hasDaemonLog(dir)) {
+        return true;
+      }
       await new Promise((r) => setTimeout(r, 50));
     }
     return false;

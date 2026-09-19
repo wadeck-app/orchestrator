@@ -30,7 +30,9 @@ const ACK_ALL_CLS    = 'self-end text-xs px-3 py-1.5 rounded border border-borde
 // @formatter:on
 
 export function FailureBanner({ failures, onAcknowledge, onAcknowledgeAll }: FailureBannerProps): React.ReactElement | null {
-  if (failures.length === 0) return null;
+  if (failures.length === 0) {
+    return null;
+  }
 
   return (
     <div className={PANEL_CLS} role="alert" aria-live="polite">

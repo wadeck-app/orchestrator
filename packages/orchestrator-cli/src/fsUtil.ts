@@ -64,7 +64,9 @@ export function getErrorMessage(e: unknown): string {
  * Safe to call even if the directory doesn't exist yet.
  */
 export function cleanTmpDir(tmpDir: string, opts: { maxAgeDays: number; maxSizeMb: number }): void {
-  if (!fs.existsSync(tmpDir)) return;
+  if (!fs.existsSync(tmpDir)) {
+    return;
+  }
 
   const nowMs = Date.now();
   const maxAgeMs = opts.maxAgeDays * 24 * 60 * 60 * 1000;
@@ -100,7 +102,9 @@ export function cleanTmpDir(tmpDir: string, opts: { maxAgeDays: number; maxSizeM
     entries.sort((a, b) => a.mtime - b.mtime);
     let remaining = totalBytes;
     for (const e of entries) {
-      if (remaining <= maxSizeBytes) break;
+      if (remaining <= maxSizeBytes) {
+        break;
+      }
       try { fs.rmSync(e.full, { recursive: true, force: true }); } catch { /* ignore */ }
       remaining -= e.size;
     }

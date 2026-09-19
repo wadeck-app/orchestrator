@@ -38,9 +38,13 @@ after(() => {
 async function waitFor(predicate, label, { timeoutMs = 20000, bail } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (predicate()) {
+      return;
+    }
     const reason = bail?.();
-    if (reason) assert.fail(`stopped waiting for ${label}: ${reason}`);
+    if (reason) {
+      assert.fail(`stopped waiting for ${label}: ${reason}`);
+    }
     await new Promise(r => setTimeout(r, 50));
   }
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
@@ -107,7 +111,9 @@ describe('resource peaks are persisted while the job runs', () => {
       // reaches its close handler is the whole point. State batches writes on a 500ms timer, so
       // the file lags the cache by up to that.
       await waitFor(() => {
-        if (!fs.existsSync(path.join(dir, 'state.json'))) return false;
+        if (!fs.existsSync(path.join(dir, 'state.json'))) {
+          return false;
+        }
         const raw = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
         const open = raw.jobs?.['peaky']?.find(e => e.exitCode === null);
         return open?.peakRamMb != null;
@@ -119,7 +125,9 @@ describe('resource peaks are persisted while the job runs', () => {
       assert.ok(persisted.peakRamMb > 0, 'peaks were only in memory, not on disk');
     } finally {
       await sched.stop();
-      if (pid) await killTree(pid);
+      if (pid) {
+        await killTree(pid);
+      }
     }
   });
 

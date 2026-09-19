@@ -4,7 +4,9 @@ import * as path from 'node:path';
 
 export async function findFreePort(base: number): Promise<number> {
   for (let port = base; port <= base + 10; port++) {
-    if (await isPortFree(port)) return port;
+    if (await isPortFree(port)) {
+      return port;
+    }
   }
   throw new Error(`No free port found in range ${base}-${base + 10}`);
 }

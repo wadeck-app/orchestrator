@@ -39,7 +39,9 @@ export class SecretsManager {
   }
 
   private _load(): Record<string, string> {
-    if (!fs.existsSync(this._file)) return {};
+    if (!fs.existsSync(this._file)) {
+      return {};
+    }
     try { return JSON.parse(fs.readFileSync(this._file, 'utf8')) as Record<string, string>; }
     catch { return {}; }
   }
@@ -56,7 +58,9 @@ export class SecretsManager {
 
   get(name: string): string | null {
     const data = this._load();
-    if (!data[name]) return null;
+    if (!data[name]) {
+      return null;
+    }
     return decrypt(data[name]!, this._key);
   }
 
@@ -75,7 +79,9 @@ export class SecretsManager {
     const result: Record<string, string> = {};
     for (const name of names) {
       const val = this.get(name);
-      if (val !== null) result[name] = val;
+      if (val !== null) {
+        result[name] = val;
+      }
     }
     return result;
   }

@@ -152,7 +152,9 @@ const DAEMON_OWNED_FIELDS = new Set(['spent', 'spentAt']);
  * to know which one to type instead. Returns null when the field is unsettable, i.e. all is well.
  */
 export function unsettableFieldError(field: string): string | null {
-  if (UNSETTABLE_FIELDS[field]) return null;
+  if (UNSETTABLE_FIELDS[field]) {
+    return null;
+  }
   const valid = Object.keys(UNSETTABLE_FIELDS).join(', ');
   let reason: string;
   if (REQUIRED_FIELDS.has(field)) {

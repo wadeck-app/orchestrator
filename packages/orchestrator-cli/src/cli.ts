@@ -93,7 +93,9 @@ const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json',
 /** Flags that consume the next argument; the rest are presence-only. */
 function takesValue(flagName: string): boolean {
   const known = JOB_FIELD_FLAGS.find(f => f.flag === flagName);
-  if (known) return known.kind !== 'presence';
+  if (known) {
+    return known.kind !== 'presence';
+  }
   return !['--once', '--disabled', '--json'].includes(flagName);
 }
 
@@ -101,9 +103,13 @@ function takesValue(flagName: string): boolean {
 function rawOccurrences(argv: string[], name: string): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] !== name) continue;
+    if (argv[i] !== name) {
+      continue;
+    }
     const raw = argv[i + 1];
-    if (raw === undefined) throw new Error(`${name} needs a value, but was followed by nothing.`);
+    if (raw === undefined) {
+      throw new Error(`${name} needs a value, but was followed by nothing.`);
+    }
     out.push(raw);
     i++;
   }
@@ -118,7 +124,9 @@ function rawOccurrences(argv: string[], name: string): string[] {
  */
 function mapFlag(argv: string[], name: string): Record<string, string> | undefined {
   const raws = rawOccurrences(argv, name);
-  if (raws.length === 0) return undefined;
+  if (raws.length === 0) {
+    return undefined;
+  }
   const out: Record<string, string> = {};
   for (const raw of raws) {
     const eq = raw.indexOf('=');
@@ -141,21 +149,29 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const { flag: name, field, kind } of JOB_FIELD_FLAGS) {
     if (kind === 'presence') {
-      if (has(argv, name)) out[field] = true;
+      if (has(argv, name)) {
+        out[field] = true;
+      }
       continue;
     }
     if (kind === 'map') {
       const map = mapFlag(argv, name);
-      if (map !== undefined) out[field] = map;
+      if (map !== undefined) {
+        out[field] = map;
+      }
       continue;
     }
     if (kind === 'numberList') {
       const list = numberListFlag(argv, name);
-      if (list !== undefined) out[field] = list;
+      if (list !== undefined) {
+        out[field] = list;
+      }
       continue;
     }
     const raw = flag(argv, name);
-    if (raw === undefined) continue;
+    if (raw === undefined) {
+      continue;
+    }
     if (kind === 'string') {
       out[field] = raw;
     } else if (kind === 'int') {
@@ -166,7 +182,9 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
       out[field] = n;
     } else {
       const items = raw.split(',').map(v => v.trim()).filter(v => v !== '');
-      if (items.length > 0) out[field] = items;
+      if (items.length > 0) {
+        out[field] = items;
+      }
     }
   }
   return out;
@@ -183,10 +201,14 @@ function rejectUnknownFlags(argv: string[], extra: string[], cmdName: string): v
   const known = new Set([...JOB_FIELD_FLAGS.map(f => f.flag), ...extra]);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (!arg.startsWith('--')) continue;
+    if (!arg.startsWith('--')) {
+      continue;
+    }
     if (known.has(arg)) {
       // Skip the value, which may itself start with -- (`--command "--version"`).
-      if (takesValue(arg)) i++;
+      if (takesValue(arg)) {
+        i++;
+      }
       continue;
     }
     errorExit(`${cmdName}: unknown flag "${arg}".\n\nAccepted flags: `
@@ -246,7 +268,9 @@ function activeWindowFlags(argv: string[]): Record<string, string> {
 function multiFlag(argv: string[], name: string): string[] {
   const values: string[] = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] !== name) continue;
+    if (argv[i] !== name) {
+      continue;
+    }
     const raw = argv[i + 1];
     if (raw === undefined || raw.startsWith('--')) {
       throw new Error(`${name} needs a value, but was followed by ${raw === undefined ? 'nothing' : `"${raw}"`}.`);
@@ -272,10 +296,16 @@ function buildLiveness(argv: string[]): LivenessConfig | null {
       }
     }
   }
-  if (!strategy || strategy === 'none') return null;
+  if (!strategy || strategy === 'none') {
+    return null;
+  }
   const liveness: LivenessConfig = { strategy: strategy as LivenessConfig['strategy'] };
-  if (strategy === 'portFile') liveness.portFile = flag(argv, '--liveness-port-file');
-  if (strategy === 'command')  liveness.command  = flag(argv, '--liveness-command');
+  if (strategy === 'portFile') {
+    liveness.portFile = flag(argv, '--liveness-port-file');
+  }
+  if (strategy === 'command')  {
+    liveness.command  = flag(argv, '--liveness-command');
+  }
   return liveness;
 }
 
@@ -287,7 +317,9 @@ function buildLiveness(argv: string[]): LivenessConfig | null {
  */
 function numberListFlag(argv: string[], name: string): number[] | undefined {
   const raw = flag(argv, name);
-  if (raw === undefined || raw === '') return undefined;
+  if (raw === undefined || raw === '') {
+    return undefined;
+  }
   const parts = raw.split(',').map(v => v.trim()).filter(v => v !== '');
   const values = parts.map((part) => {
     const n = Number(part);
@@ -630,7 +662,9 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       // Said, not left to be discovered: a job the user knows they created and cannot find in the
       // list reads as data loss. Only on the human path, so the JSON stays parseable.
       const pastNote = (): void => {
-        if (hiddenPast === 0) return;
+        if (hiddenPast === 0) {
+          return;
+        }
         console.log(
           `\n${hiddenPast} past once job${hiddenPast === 1 ? '' : 's'} hidden (already fired). `
           + `Show with: orch list --past`,
@@ -641,7 +675,9 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         // it is the exact wording a user would read as "my jobs are gone".
         const empty = hiddenPast > 0 ? 'No jobs left to fire.' : 'No jobs registered.';
         output(forceJson || !process.stdout.isTTY ? [] : empty, forceJson);
-        if (!forceJson && process.stdout.isTTY) pastNote();
+        if (!forceJson && process.stdout.isTTY) {
+          pastNote();
+        }
         break;
       }
       if (forceJson || !process.stdout.isTTY) {
@@ -762,9 +798,13 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
           '--liveness-strategy', '--liveness-port-file', '--liveness-command']);
         const positionals: string[] = [];
         for (let i = 0; i < rest.length; i++) {
-          if (rest[i] === '--once' || rest[i] === '--disabled') continue;
+          if (rest[i] === '--once' || rest[i] === '--disabled') {
+            continue;
+          }
           if (rest[i]!.startsWith('--')) {
-            if (flagsWithValues.has(rest[i]!)) i++;
+            if (flagsWithValues.has(rest[i]!)) {
+              i++;
+            }
           } else {
             positionals.push(rest[i]!);
           }
@@ -811,7 +851,9 @@ Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4
         errorExit(getErrorMessage(e), 4);
       }
       const liveness = buildLiveness(addRest);
-      if (liveness) body['liveness'] = liveness;
+      if (liveness) {
+        body['liveness'] = liveness;
+      }
 
       if (type === 'cron') {
         const schedule = flag(addRest, '--schedule');
@@ -830,12 +872,16 @@ Full usage: orch add cron <id> --schedule "<expr>" --command "..."`, 4);
         }
         body['schedule'] = schedule;
         const missedFiring = flag(addRest, '--missed-firing');
-        if (missedFiring) body['missedFiring'] = missedFiring;
+        if (missedFiring) {
+          body['missedFiring'] = missedFiring;
+        }
       }
 
       if (type === 'startup') {
         const delay = flag(addRest, '--delay');
-        if (delay !== undefined) body['delaySeconds'] = parseInt(delay, 10);
+        if (delay !== undefined) {
+          body['delaySeconds'] = parseInt(delay, 10);
+        }
       }
 
       if (type === 'cron') {
@@ -872,9 +918,15 @@ Examples:
         const addRetryOnExitCodes = numberListFlag(addRest, '--retry-on-exit-codes');
         const addRetryDelays      = numberListFlag(addRest, '--retry-delays');
         const addSkipExitCodes    = numberListFlag(addRest, '--skip-exit-codes');
-        if (addRetryOnExitCodes) body['retryOnExitCodes'] = addRetryOnExitCodes;
-        if (addRetryDelays)      body['retryDelays']      = addRetryDelays;
-        if (addSkipExitCodes)    body['skipExitCodes']    = addSkipExitCodes;
+        if (addRetryOnExitCodes) {
+          body['retryOnExitCodes'] = addRetryOnExitCodes;
+        }
+        if (addRetryDelays)      {
+          body['retryDelays']      = addRetryDelays;
+        }
+        if (addSkipExitCodes)    {
+          body['skipExitCodes']    = addSkipExitCodes;
+        }
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
       }
@@ -918,7 +970,9 @@ Examples:
         errorExit(getErrorMessage(e), 4);
       }
       const delay = flag(editRest, '--delay');
-      if (delay !== undefined) updates['delaySeconds'] = parseInt(delay, 10);
+      if (delay !== undefined) {
+        updates['delaySeconds'] = parseInt(delay, 10);
+      }
       // Same flags as `add`, so extending or shortening a window is the same vocabulary as setting
       // one. `--unset activeUntil` removes the end and leaves the job running indefinitely.
       try {
@@ -930,7 +984,9 @@ Examples:
       // --liveness-port-file. Only ASSIGNED when a strategy was given, since liveness: null would
       // clear the job's existing check on every unrelated edit.
       const liveness = buildLiveness(editRest);
-      if (flag(editRest, '--liveness-strategy')) updates['liveness'] = liveness;
+      if (flag(editRest, '--liveness-strategy')) {
+        updates['liveness'] = liveness;
+      }
       // An edit is a patch, so an omitted flag means "leave this alone" -- there is no value that
       // means "remove this option". --unset is how you say it. Names are checked here so a typo
       // costs no daemon round-trip and reports as a validation error.
@@ -948,7 +1004,9 @@ Fields that can be unset: ${Object.keys(UNSETTABLE_FIELDS).join(', ')}`, 4);
       }
       for (const field of unset) {
         const problem = unsettableFieldError(field);
-        if (problem) errorExit(problem, 4);
+        if (problem) {
+          errorExit(problem, 4);
+        }
         if (field in updates) {
           errorExit(`Cannot set and unset "${field}" in the same command -- drop one of `
             + `--${field.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)} and --unset ${field}.`, 4);
@@ -1162,7 +1220,9 @@ Use --wait to block until the command finishes.`);
         const daemonPortFile = path.join(configDir, 'config.port');
         const isDaemonRunning = (): boolean => {
           try {
-            if (!fs.existsSync(daemonPortFile)) return false;
+            if (!fs.existsSync(daemonPortFile)) {
+              return false;
+            }
             const stat = fs.statSync(daemonPortFile);
             return (Date.now() - stat.mtimeMs) < 60_000;
           } catch { return false; }
@@ -1312,12 +1372,16 @@ Use --wait to block until the command finishes.`);
           ? `No logs for job "${jobFlag}" today`
           : `No daemon logs for today`;
         process.stdout.write(json ? JSON.stringify({ message: msg }) + '\n' : msg + '\n');
-        if (!follow) return;
+        if (!follow) {
+          return;
+        }
       }
 
       const parseLines = (content: string): string[] => {
         let lines = content.split('\n').filter(l => l);
-        if (tailLines !== undefined) lines = lines.slice(Math.max(0, lines.length - tailLines));
+        if (tailLines !== undefined) {
+          lines = lines.slice(Math.max(0, lines.length - tailLines));
+        }
         return lines;
       };
 
@@ -1336,16 +1400,24 @@ Use --wait to block until the command finishes.`);
           }
         } else {
           process.stdout.write(lines.join('\n'));
-          if (lines.length > 0) process.stdout.write('\n');
+          if (lines.length > 0) {
+            process.stdout.write('\n');
+          }
         }
         offset = Buffer.byteLength(content, 'utf8');
       }
-      if (!follow) return;
+      if (!follow) {
+        return;
+      }
       await new Promise<void>((resolve) => {
         fsLogs.watchFile(logFile, { interval: 250 }, () => {
-          if (!fsLogs.existsSync(logFile)) return;
+          if (!fsLogs.existsSync(logFile)) {
+            return;
+          }
           const size = fsLogs.statSync(logFile).size;
-          if (size <= offset) return;
+          if (size <= offset) {
+            return;
+          }
           const buf = Buffer.alloc(size - offset);
           const fd  = fsLogs.openSync(logFile, 'r');
           fsLogs.readSync(fd, buf, 0, buf.length, offset);
@@ -1363,7 +1435,9 @@ Use --wait to block until the command finishes.`);
             }
           } else {
             process.stdout.write(newLines.join('\n'));
-            if (newLines.length > 0) process.stdout.write('\n');
+            if (newLines.length > 0) {
+              process.stdout.write('\n');
+            }
           }
         });
         process.on('SIGINT', () => { fsLogs.unwatchFile(logFile); resolve(); });
@@ -1400,7 +1474,9 @@ async function waitForDaemonAlive(configDir: string, timeoutMs: number): Promise
       process.kill(pid, 0);
       return true;
     } catch { /* file absent, malformed, or the pid is gone */ }
-    if (Date.now() >= deadline) return false;
+    if (Date.now() >= deadline) {
+      return false;
+    }
     await new Promise((r) => setTimeout(r, 150));
   }
 }
@@ -1486,7 +1562,9 @@ export async function main(): Promise<void> {
   let _autoStarted = false;
   function send(command: string, payload?: unknown): Promise<unknown> {
     const doSend = (): Promise<unknown> => {
-      if (command === 'version') return client.version() as Promise<unknown>;
+      if (command === 'version') {
+        return client.version() as Promise<unknown>;
+      }
       const c = client as { send(cmd: string, p?: unknown): Promise<unknown> };
       return c.send(command, payload);
     };
@@ -1531,9 +1609,15 @@ List available jobs:
   const { UpdateManager: CliUpdateManager } = await import('@wadeck-app/shared-cli');
   const cliUpdateManager = new CliUpdateManager('@wadeck-app/orchestrator-cli', configDir);
   const cliUpdateState = cliUpdateManager.readAndClearState();
-  if (cliUpdateState?.status === 'success') process.stderr.write(`[orch] Updated to v${cliUpdateState.targetVersion ?? cliUpdateState.newVersion}\n`);
-  if (cliUpdateState?.status === 'rolled-back') process.stderr.write(`[orch] Rollback to v${cliUpdateState.previousVersion}\n`);
-  if (cliUpdateState?.status === 'failed') process.stderr.write(`[orch] Update failed (${cliUpdateState.error ?? cliUpdateState.reason})\n`);
+  if (cliUpdateState?.status === 'success') {
+    process.stderr.write(`[orch] Updated to v${cliUpdateState.targetVersion ?? cliUpdateState.newVersion}\n`);
+  }
+  if (cliUpdateState?.status === 'rolled-back') {
+    process.stderr.write(`[orch] Rollback to v${cliUpdateState.previousVersion}\n`);
+  }
+  if (cliUpdateState?.status === 'failed') {
+    process.stderr.write(`[orch] Update failed (${cliUpdateState.error ?? cliUpdateState.reason})\n`);
+  }
 
   await runCli(process.argv.slice(2), { send, startDaemon, configDir });
 }

@@ -47,7 +47,9 @@ async function checkCommand(command: string): Promise<boolean> {
 export async function checkLiveness(job: Pick<Job, 'id' | 'liveness'>): Promise<boolean> {
   try {
     const liveness = job.liveness;
-    if (!liveness || liveness.strategy === 'none') return false;
+    if (!liveness || liveness.strategy === 'none') {
+      return false;
+    }
     switch (liveness.strategy) {
       case 'portFile': return await checkPortFile(liveness.portFile ?? '');
       case 'pidFile':  return await checkPidFile(job.id);

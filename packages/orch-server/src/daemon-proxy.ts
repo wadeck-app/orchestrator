@@ -52,7 +52,9 @@ function readDaemonPort(configDir: string): number {
   }
   const stat = fs.statSync(filePath);
   const ageMs = Date.now() - stat.mtimeMs;
-  if (ageMs > 60_000) throw new DaemonUnavailableError();
+  if (ageMs > 60_000) {
+    throw new DaemonUnavailableError();
+  }
   return (JSON.parse(raw) as DaemonInfo).port;
 }
 

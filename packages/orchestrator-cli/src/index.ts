@@ -50,7 +50,9 @@ function configDirFromArgv(argv: string[]): string | null {
     }
     if (arg.startsWith('--config-dir=')) {
       const value = arg.slice('--config-dir='.length);
-      if (value === '') throw new Error('--config-dir= requires a path after the equals sign');
+      if (value === '') {
+        throw new Error('--config-dir= requires a path after the equals sign');
+      }
       return value;
     }
   }
@@ -82,8 +84,12 @@ const CONFIG_DIR: string = resolveConfigDir();
 // while the daemon is still running. Any console.log/console.error or process.stdout.write
 // then throws EPIPE - uncaught, it exits with code 1 with no log entry.
 // Suppressing EPIPE here makes the daemon survive pipe closure without crashing.
-process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
-process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') throw err; });
+process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') {
+  throw err;
+} });
+process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') {
+  throw err;
+} });
 
 // Synchronous write to the daemon log file -- used for both pre-start markers and
 // early crash capture before daemonLog (DailyLogger) is initialised.
@@ -106,7 +112,9 @@ function writePreStartLog(): void {
 // Replaced in main() by the daemonLog-based handler once the logger is initialised.
 function _earlyUncaughtHandler(err: Error): void {
   _syncLogWrite(`daemon crash (uncaughtException, pre-init): ${getErrorMessage(err)}`);
-  if (err.stack) _syncLogWrite(err.stack);
+  if (err.stack) {
+    _syncLogWrite(err.stack);
+  }
   process.exit(1);
 }
 function _earlyRejectionHandler(reason: unknown): void {
@@ -134,7 +142,9 @@ async function main(): Promise<void> {
 
   let updateScheduled = false;
   const scheduleUpdate = (): void => {
-    if (updateScheduled) return;
+    if (updateScheduled) {
+      return;
+    }
     updateScheduled = true;
     updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
   };
@@ -148,7 +158,9 @@ async function main(): Promise<void> {
   process.removeListener('unhandledRejection', _earlyRejectionHandler);
   process.on('uncaughtException', (err: Error) => {
     daemonLog.write(`daemon crash (uncaughtException): ${getErrorMessage(err)}`);
-    if ((err as Error & { stack?: string }).stack) daemonLog.write((err as Error & { stack?: string }).stack!);
+    if ((err as Error & { stack?: string }).stack) {
+      daemonLog.write((err as Error & { stack?: string }).stack!);
+    }
     daemonLog.close();
     process.exit(1);
   });
@@ -211,7 +223,9 @@ async function main(): Promise<void> {
     // badge already claimed amber. The suffix is stripped before any version comparison, so a dev
     // tray does not permanently claim an update is available.
     const trayColor = isDevInstance ? '#F9A8D4' : undefined;
-    if (isDevInstance) daemonLog.write(`dev instance: tray tinted ${trayColor}, version shown as ${displayVersion}`);
+    if (isDevInstance) {
+      daemonLog.write(`dev instance: tray tinted ${trayColor}, version shown as ${displayVersion}`);
+    }
     const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, displayVersion, trayColor, dashboardManager);
     const execManager = new ExecManager(CONFIG_DIR, events);
 
@@ -272,8 +286,12 @@ async function main(): Promise<void> {
       const prev = process.env['UPDATER_FORCE'];
       process.env['UPDATER_FORCE'] = '1';
       updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
-      if (prev === undefined) delete process.env['UPDATER_FORCE'];
-      else process.env['UPDATER_FORCE'] = prev;
+      if (prev === undefined) {
+        delete process.env['UPDATER_FORCE'];
+      }
+      else {
+        process.env['UPDATER_FORCE'] = prev;
+      }
     });
     trayManager.on('quit',    () => process.exit(0));
     trayManager.on('restart', () => {

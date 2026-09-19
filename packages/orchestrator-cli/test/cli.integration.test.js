@@ -16,9 +16,13 @@ function findBin(name) {
   let dir = __dirname;
   while (true) {
     const candidate = path.join(dir, 'node_modules', '.bin', binName);
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
     const parent = path.dirname(dir);
-    if (parent === dir) throw new Error(`${name} not found in any node_modules/.bin`);
+    if (parent === dir) {
+      throw new Error(`${name} not found in any node_modules/.bin`);
+    }
     dir = parent;
   }
 }

@@ -14,7 +14,9 @@ const POLL_INTERVAL_MS = 500;
  *   - daily:    <jobId>-YYYY-MM-DD.log             (legacy)
  */
 export function listLogFiles(logDir: string, jobId: string): string[] {
-  if (!fs.existsSync(logDir)) return [];
+  if (!fs.existsSync(logDir)) {
+    return [];
+  }
   const esc = escapeRegExp(jobId);
   const runPat   = new RegExp(`^${esc}-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}\\.log$`);
   const dailyPat = new RegExp(`^${esc}-\\d{4}-\\d{2}-\\d{2}\\.log$`);
@@ -47,7 +49,9 @@ export async function logsRoutes(
   // List available run log files for a job
   fastify.get('/api/logs/:jobId/runs', async (req, reply) => {
     const { jobId } = req.params as { jobId: string };
-    if (!JOB_ID_RE.test(jobId)) return reply.code(400).send({ error: 'invalid-job-id' });
+    if (!JOB_ID_RE.test(jobId)) {
+      return reply.code(400).send({ error: 'invalid-job-id' });
+    }
     idleTimer.reset();
     const logDir = path.join(configDir, 'logs', 'jobs', jobId);
     const files  = listLogFiles(logDir, jobId);
@@ -111,7 +115,9 @@ export async function logsRoutes(
         // Without ?run= the request means "what is happening now", so there the switch is the point.
         if (runName === undefined) {
           const latestPath = findLatestLogFile(logDir, jobId);
-          if (latestPath === null) return;
+          if (latestPath === null) {
+            return;
+          }
 
           // A new run started, or the date rolled over on a legacy daily file.
           if (latestPath !== currentLogPath) {
@@ -120,10 +126,14 @@ export async function logsRoutes(
           }
         }
         // A pinned run whose file never appeared has nothing to poll for.
-        if (currentLogPath === null) return;
+        if (currentLogPath === null) {
+          return;
+        }
 
         const newSize = fs.statSync(currentLogPath).size;
-        if (newSize <= fileSize) return;
+        if (newSize <= fileSize) {
+          return;
+        }
 
         const stream = fs.createReadStream(currentLogPath, { start: fileSize });
         fileSize = newSize;

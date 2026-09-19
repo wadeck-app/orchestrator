@@ -158,7 +158,9 @@ export function makeCommands(
 
     'tray-action': (p) => {
       const id = (p as { id?: string })?.id ?? '';
-      if (!trayManager) return { ok: false, error: 'Tray not running (daemon started without tray)' };
+      if (!trayManager) {
+        return { ok: false, error: 'Tray not running (daemon started without tray)' };
+      }
       return trayManager.triggerAction(id);
     },
 
@@ -215,15 +217,21 @@ export function makeCommands(
     },
 
     'exec-run': (p) => {
-      if (!execManager) throw new Error('ExecManager not initialized');
+      if (!execManager) {
+        throw new Error('ExecManager not initialized');
+      }
       const { command, cwd, timeout, env, label } = p as {
         command: string; cwd?: string; timeout?: number; env?: Record<string, string>; label?: string;
       };
-      if (!command?.trim()) throw new Error('command is required');
+      if (!command?.trim()) {
+        throw new Error('command is required');
+      }
       return execManager.fireExec(command, { cwd, timeout, env, label });
     },
     'exec-status': (p) => {
-      if (!execManager) throw new Error('ExecManager not initialized');
+      if (!execManager) {
+        throw new Error('ExecManager not initialized');
+      }
       return execManager.get((p as { runId: string }).runId) ?? { error: 'not-found' };
     },
     'exec-list': () => execManager?.list() ?? [],

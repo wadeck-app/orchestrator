@@ -13,7 +13,9 @@ export function useFailures(apiBase = ''): {
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`${apiBase}/api/failures`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        return;
+      }
       const data = await res.json() as FailureEntry[];
       setFailures(data);
     } catch { /* daemon may be unavailable transiently - keep previous state */ }
@@ -22,7 +24,9 @@ export function useFailures(apiBase = ''): {
   useEffect(() => {
     void refresh();
     timerRef.current = setInterval(() => { void refresh(); }, 30_000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => { if (timerRef.current) {
+      clearInterval(timerRef.current);
+    } };
   }, [refresh]);
 
   const acknowledgeAll = useCallback(async () => {

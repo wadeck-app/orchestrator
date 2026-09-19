@@ -34,7 +34,9 @@ async function run(argv, overrides = {}) {
   try {
     await runCli(argv, deps);
   } catch (e) {
-    if (e.message !== 'exit') throw e;
+    if (e.message !== 'exit') {
+      throw e;
+    }
   } finally {
     process.exit = origExit;
   }
@@ -491,7 +493,9 @@ describe('orch cli self-check', () => {
         configDir: require('node:os').tmpdir(),
       });
     } catch (e) {
-      if (!(e instanceof Error) || !e.message.startsWith('exit:')) throw e;
+      if (!(e instanceof Error) || !e.message.startsWith('exit:')) {
+        throw e;
+      }
     } finally {
       process.exit = origExit;
       process.env['CLI_SELF_CHECK_QUIET'] = origEnv;
@@ -514,7 +518,9 @@ describe('orch cli self-check', () => {
         configDir: require('node:os').tmpdir(),
       });
     } catch (e) {
-      if (!(e instanceof Error) || !e.message.startsWith('exit:')) throw e;
+      if (!(e instanceof Error) || !e.message.startsWith('exit:')) {
+        throw e;
+      }
     } finally {
       process.exit = origExit;
       console.error = origErr;
@@ -537,7 +543,9 @@ describe('orch cli self-check', () => {
     try {
       await runSelfCheck(false);
     } catch (e) {
-      if (!e || e.message !== 'exit') throw e;
+      if (!e || e.message !== 'exit') {
+        throw e;
+      }
     } finally {
       process.stderr.write = origStderrWrite;
       process.stdout.write = origStdoutWrite;
@@ -566,7 +574,9 @@ describe('orch cli self-check', () => {
         configDir: require('node:os').tmpdir(),
       });
     } catch (e) {
-      if (!(e instanceof Error) || !e.message.startsWith('exit:')) throw e;
+      if (!(e instanceof Error) || !e.message.startsWith('exit:')) {
+        throw e;
+      }
     } finally {
       process.exit = origExit;
       console.log = origLog;
@@ -621,7 +631,9 @@ describe('orch server start -- daemon auto-start', () => {
         configDir,
       });
     } catch (e) {
-      if (!(e instanceof Error) || e.message !== 'exit') throw e;
+      if (!(e instanceof Error) || e.message !== 'exit') {
+        throw e;
+      }
     } finally {
       process.exit = origExit;
       // Stop the dashboard server if it started
@@ -653,7 +665,9 @@ describe('orch list --verbose', () => {
     const deps = {
       send: async (command, payload) => {
         calls.push({ command, payload });
-        if (command === 'list-jobs') return jobs;
+        if (command === 'list-jobs') {
+          return jobs;
+        }
         if (command === 'list-state') { listStateCalled = true; return stateMap; }
         return {};
       },
@@ -685,7 +699,9 @@ describe('orch list --verbose', () => {
     let listStateCalled = false;
     const deps = {
       send: async (command) => {
-        if (command === 'list-jobs') return jobs;
+        if (command === 'list-jobs') {
+          return jobs;
+        }
         if (command === 'list-state') { listStateCalled = true; return {}; }
         return {};
       },
@@ -711,8 +727,12 @@ describe('orch list --verbose', () => {
     const jobs = [{ id: 'my-job', type: 'cron', label: 'My Job', enabled: true, schedule: '0 * * * *' }];
     const deps = {
       send: async (command) => {
-        if (command === 'list-jobs') return jobs;
-        if (command === 'list-state') return {};
+        if (command === 'list-jobs') {
+          return jobs;
+        }
+        if (command === 'list-state') {
+          return {};
+        }
         return {};
       },
       startDaemon: async () => {},
@@ -772,7 +792,9 @@ describe('orch kill', () => {
     const deps = {
       send: async (command, payload) => {
         calls.push({ command, payload });
-        if (!(command in results)) throw new Error(`unexpected command: ${command}`);
+        if (!(command in results)) {
+          throw new Error(`unexpected command: ${command}`);
+        }
         return results[command];
       },
       startDaemon: async () => {},
@@ -781,7 +803,9 @@ describe('orch kill', () => {
     let exitCode = 0;
     const origExit = process.exit;
     process.exit = (code) => { exitCode = code ?? 0; throw Object.assign(new Error('exit'), { exitCode }); };
-    try { await runCli(argv, deps); } catch (e) { if (e.message !== 'exit') throw e; } finally { process.exit = origExit; }
+    try { await runCli(argv, deps); } catch (e) { if (e.message !== 'exit') {
+      throw e;
+    } } finally { process.exit = origExit; }
     return { calls, exitCode };
   }
 

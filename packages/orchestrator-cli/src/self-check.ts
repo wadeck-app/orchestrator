@@ -37,7 +37,9 @@ export async function runSelfCheck(quiet = false): Promise<void> {
             );
           }
           for (let i = 0; i < firings.length; i++) {
-            if (Number.isNaN(firings[i]!.getTime())) throw new Error(`firing ${i} is not a valid date`);
+            if (Number.isNaN(firings[i]!.getTime())) {
+              throw new Error(`firing ${i} is not a valid date`);
+            }
             if (firings[i]!.getTime() <= from.getTime()) {
               throw new Error(`firing ${i} (${firings[i]!.toISOString()}) is not after ${from.toISOString()}`);
             }
@@ -56,7 +58,9 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           const tmp = path.join(os.tmpdir(), `orch-selfcheck-reg-${Date.now()}.json`);
           const reg = new Registry(tmp);
           const data = reg.load();
-          if (!Array.isArray(data.jobs)) throw new Error('registry.load() returned invalid data');
+          if (!Array.isArray(data.jobs)) {
+            throw new Error('registry.load() returned invalid data');
+          }
           try { fs.unlinkSync(tmp); } catch { /* ok */ }
           return { name: 'registry-load', ok: true };
         } catch (err) {
@@ -69,7 +73,9 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           const tmp = path.join(os.tmpdir(), `orch-selfcheck-state-${Date.now()}.json`);
           const s = new State(tmp);
           const all = s.getAll();
-          if (typeof all !== 'object' || all === null) throw new Error('state.getAll() returned non-object');
+          if (typeof all !== 'object' || all === null) {
+            throw new Error('state.getAll() returned non-object');
+          }
           try { fs.unlinkSync(tmp); } catch { /* ok */ }
           return { name: 'state-load', ok: true };
         } catch (err) {
@@ -82,7 +88,9 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { findOrchServerBinary } = require('./dashboard-binary.js') as typeof import('./dashboard-binary.js');
           const p = findOrchServerBinary();
-          if (!p) throw new Error('server binary path is empty');
+          if (!p) {
+            throw new Error('server binary path is empty');
+          }
           return { name: 'server-binary', ok: true };
         } catch (err) {
           return { name: 'server-binary', ok: false, detail: (err as Error).message };
@@ -110,8 +118,12 @@ export async function runSelfCheck(quiet = false): Promise<void> {
               ok: true,
             };
           }
-          if (!findLauncherBinary()) throw new Error(`Go launcher not found; expected in ${pkg}`);
-          if (!findTrayBinary())     throw new Error(`tray binary not found; expected in ${pkg}`);
+          if (!findLauncherBinary()) {
+            throw new Error(`Go launcher not found; expected in ${pkg}`);
+          }
+          if (!findTrayBinary())     {
+            throw new Error(`tray binary not found; expected in ${pkg}`);
+          }
           return { name: 'native-binaries', ok: true };
         } catch (err) {
           return { name: 'native-binaries', ok: false, detail: (err as Error).message };
@@ -158,9 +170,15 @@ export async function runSelfCheck(quiet = false): Promise<void> {
             bin?: string | Record<string, string>;
           };
           const targets: string[] = [];
-          if (manifest.main) targets.push(manifest.main);
-          if (typeof manifest.bin === 'string') targets.push(manifest.bin);
-          else if (manifest.bin) targets.push(...Object.values(manifest.bin));
+          if (manifest.main) {
+            targets.push(manifest.main);
+          }
+          if (typeof manifest.bin === 'string') {
+            targets.push(manifest.bin);
+          }
+          else if (manifest.bin) {
+            targets.push(...Object.values(manifest.bin));
+          }
 
           const missing = [...new Set(targets)].filter((t) => !fs.existsSync(path.join(root, t)));
           if (missing.length > 0) {
@@ -176,7 +194,9 @@ export async function runSelfCheck(quiet = false): Promise<void> {
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { version } = require('../package.json') as { version: string };
-          if (typeof version !== 'string' || !version) throw new Error('package.json version missing');
+          if (typeof version !== 'string' || !version) {
+            throw new Error('package.json version missing');
+          }
           return { name: 'package-version', ok: true };
         } catch (err) {
           return { name: 'package-version', ok: false, detail: (err as Error).message };

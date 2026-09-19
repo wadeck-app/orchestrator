@@ -14,12 +14,18 @@ export default defineConfig({
       name: 'resolve-js-to-ts',
       enforce: 'pre',
       resolveId(id, importer) {
-        if (!importer || !id.endsWith('.js')) return;
+        if (!importer || !id.endsWith('.js')) {
+          return;
+        }
         const abs = path.resolve(path.dirname(importer), id);
         const tsx = abs.replace(/\.js$/, '.tsx');
         const ts  = abs.replace(/\.js$/, '.ts');
-        if (fs.existsSync(tsx)) return tsx;
-        if (fs.existsSync(ts))  return ts;
+        if (fs.existsSync(tsx)) {
+          return tsx;
+        }
+        if (fs.existsSync(ts))  {
+          return ts;
+        }
       },
     },
   ],

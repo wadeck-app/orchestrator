@@ -36,9 +36,13 @@ const testFetcher: Fetcher = async (url, _params, body, extraHeaders) => {
     headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...extraHeaders },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 204) return undefined;
+  if (res.status === 204) {
+    return undefined;
+  }
   const data = await res.json();
-  if (!res.ok) throw Object.assign(new Error((data as { error?: string }).error ?? res.statusText), { status: res.status });
+  if (!res.ok) {
+    throw Object.assign(new Error((data as { error?: string }).error ?? res.statusText), { status: res.status });
+  }
   return data;
 };
 

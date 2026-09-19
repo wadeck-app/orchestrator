@@ -104,13 +104,17 @@ export class ExecManager {
     child.stdout?.on('data', (d: Buffer) => {
       const line = d.toString().trimEnd();
       run.logs.push(line);
-      if (run.logs.length > 1000) run.logs.shift();
+      if (run.logs.length > 1000) {
+        run.logs.shift();
+      }
       logger.write(line);
     });
     child.stderr?.on('data', (d: Buffer) => {
       const line = `[stderr] ${d.toString().trimEnd()}`;
       run.logs.push(line);
-      if (run.logs.length > 1000) run.logs.shift();
+      if (run.logs.length > 1000) {
+        run.logs.shift();
+      }
       logger.write(line);
     });
 
@@ -127,7 +131,9 @@ export class ExecManager {
     }
 
     child.on('close', (code) => {
-      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+      }
       const exitCode = code ?? 1;
       run.exitCode = exitCode;
       run.finishedAt = new Date().toISOString();
@@ -156,7 +162,9 @@ export class ExecManager {
 
   kill(runId: string): boolean {
     const run = this._runs.get(runId);
-    if (!run || run.status !== 'running') return false;
+    if (!run || run.status !== 'running') {
+      return false;
+    }
     run.status = 'killed';
     void this._terminate(runId);
     return true;
@@ -170,7 +178,9 @@ export class ExecManager {
   private async _terminate(runId: string): Promise<void> {
     const child = this._pids.get(runId);
     const pid = child?.pid;
-    if (pid === undefined) return;
+    if (pid === undefined) {
+      return;
+    }
     await killTree(pid);
   }
 
@@ -196,9 +206,13 @@ export class ExecManager {
    */
   stopSync(): void {
     for (const [runId, run] of this._runs) {
-      if (run.status !== 'running') continue;
+      if (run.status !== 'running') {
+        continue;
+      }
       const pid = this._pids.get(runId)?.pid;
-      if (pid !== undefined) killTreeSync(pid);
+      if (pid !== undefined) {
+        killTreeSync(pid);
+      }
     }
   }
 }

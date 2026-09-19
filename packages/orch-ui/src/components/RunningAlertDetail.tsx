@@ -14,9 +14,13 @@ const ALERT_CARD_CLS = 'mb-4 rounded-lg border border-amber-300 dark:border-ambe
 function formatDuration(startedAt: string): string {
   const ms = Date.now() - new Date(startedAt).getTime();
   const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) {
+    return `${s}s`;
+  }
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
+  if (m < 60) {
+    return `${m}m ${s % 60}s`;
+  }
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
@@ -44,7 +48,9 @@ export interface RunningAlertDetailProps {
  * @registryTags job detail running alert design-b
  */
 export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningAlertDetailProps): React.ReactElement | null {
-  if (!job) return null;
+  if (!job) {
+    return null;
+  }
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -58,7 +64,9 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
   useEffect(() => { setJustKilled(false); }, [currentRun?.pid]);
 
   useEffect(() => {
-    if (!isRunning) return;
+    if (!isRunning) {
+      return;
+    }
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, [isRunning]);
@@ -70,7 +78,9 @@ export function RunningAlertDetail({ job, jobId, runHistory, onTrigger, onKill, 
 
   const handleKill = async () => {
     const pid = currentRun?.pid;
-    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) return;
+    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) {
+      return;
+    }
     setKilling(true);
     try {
       if (onKill) {

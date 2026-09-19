@@ -42,7 +42,9 @@ if (isForced) {
  * silently re-enable auto-updating a user who explicitly turned it off.
  */
 function restoreConfigYml(): void {
-  if (!_patchedConfigYml) return;
+  if (!_patchedConfigYml) {
+    return;
+  }
   try { writeFileSync(_patchedConfigYml.path, _patchedConfigYml.original); } catch { /* ignore */ }
   _patchedConfigYml = null;
 }
@@ -95,7 +97,9 @@ async function checkEngineCompatibility(pkgName: string, version: string): Promi
   try {
     const npmView = execNpm(['view', `${pkgName}@${version}`, 'engines.node', '--json'], { timeout: 10_000 }).trim();
     const engineSpec = JSON.parse(npmView) as string;
-    if (!engineSpec) return { ok: true }; // no engine constraint
+    if (!engineSpec) {
+      return { ok: true };
+    } // no engine constraint
     if (!semver.satisfies(process.version, engineSpec)) {
       return { ok: false, reason: `Node.js engine mismatch: requires ${engineSpec}, current ${process.version}` };
     }

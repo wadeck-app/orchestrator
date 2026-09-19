@@ -28,9 +28,13 @@ export function onceScheduleDisplay(
  */
 export function describeMoment(at: string | number, now: number): string {
   const atMs = typeof at === 'number' ? at : new Date(at).getTime();
-  if (Number.isNaN(atMs)) return 'unscheduled';
+  if (Number.isNaN(atMs)) {
+    return 'unscheduled';
+  }
   const remainingMs = atMs - now;
-  if (remainingMs >= 0) return `in ${formatSeconds(remainingMs)}`;
+  if (remainingMs >= 0) {
+    return `in ${formatSeconds(remainingMs)}`;
+  }
   return `overdue by ${formatSeconds(-remainingMs)}`;
 }
 
@@ -43,11 +47,15 @@ export function describeMoment(at: string | number, now: number): string {
  */
 export function describeAgo(at: string | number, now: number): string {
   const atMs = typeof at === 'number' ? at : new Date(at).getTime();
-  if (Number.isNaN(atMs)) return 'at an unrecorded time';
+  if (Number.isNaN(atMs)) {
+    return 'at an unrecorded time';
+  }
   const elapsedMs = now - atMs;
   // A moment in the future here means a clock that moved or a timestamp written by another machine.
   // Saying "in 3h" is at least true; "-3h ago" would not be.
-  if (elapsedMs < 0) return describeMoment(atMs, now);
+  if (elapsedMs < 0) {
+    return describeMoment(atMs, now);
+  }
   return `${formatSeconds(elapsedMs)} ago`;
 }
 
@@ -61,10 +69,16 @@ function formatSeconds(ms: number): string {
   // which throws away the detail a reader is looking at a countdown for. Past 120 the smaller unit
   // has stopped being informative.
   const s = Math.round(ms / 1000);
-  if (s < 120) return `${s}s`;
+  if (s < 120) {
+    return `${s}s`;
+  }
   const m = Math.round(s / 60);
-  if (m < 120) return `${m}m`;
+  if (m < 120) {
+    return `${m}m`;
+  }
   const h = Math.round(m / 60);
-  if (h < 48) return `${h}h`;
+  if (h < 48) {
+    return `${h}h`;
+  }
   return `${Math.round(h / 24)}d`;
 }

@@ -23,7 +23,9 @@ function withOutputCallbacks(
     const id = node['$id'] as string | undefined;
     const pub = ctx['$publishOutput'] as PublishFn | undefined;
 
-    if (!id || !pub) return original(props);
+    if (!id || !pub) {
+      return original(props);
+    }
 
     const callbacks: Record<string, (payload?: unknown) => void> = {};
     for (const name of outputNames) {
@@ -61,7 +63,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
       const { node, ctx } = props;
       const id = node['$id'] as string | undefined;
       const pub = ctx['$publishOutput'] as PublishFn | undefined;
-      if (!id || !pub) return originalJcg(props);
+      if (!id || !pub) {
+        return originalJcg(props);
+      }
       const extra = {
         onTrigger: (jobId: string) => pub(id, 'onTrigger', jobId),
         onToggle: (jobId: string, enabled: boolean) => pub(id, 'onToggle', { id: jobId, action: enabled ? 'enable' : 'disable' }),
@@ -80,7 +84,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
   const outputs = ['onTrigger', 'onDelete', 'onDryRun', 'onViewLogs', 'onEdit', 'onKill'];
   for (const name of ['RunningBannerDetail', 'RunningAlertDetail', 'RunningInlineDetail']) {
     const entry = registry[name];
-    if (entry) entry.render = withOutputCallbacks(entry.render, outputs);
+    if (entry) {
+      entry.render = withOutputCallbacks(entry.render, outputs);
+    }
   }
 
   // JobFormSection: form lifecycle as DSL $outputs
@@ -110,7 +116,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
       const { node, ctx } = props;
       const id = node['$id'] as string | undefined;
       const pub = ctx['$publishOutput'] as PublishFn | undefined;
-      if (!id || !pub) return originalSt(props);
+      if (!id || !pub) {
+        return originalSt(props);
+      }
       const extra = {
         onRunEarly: (jobId: string) => pub(id, 'onRunEarly', { jobId }),
       };

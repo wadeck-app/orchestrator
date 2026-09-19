@@ -23,11 +23,17 @@ export interface ScheduleTimelineProps {
 
 function relTime(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now();
-  if (diff < 0) return 'now';
+  if (diff < 0) {
+    return 'now';
+  }
   const m = Math.floor(diff / 60000);
-  if (m < 60) return `in ${m}m`;
+  if (m < 60) {
+    return `in ${m}m`;
+  }
   const h = Math.floor(m / 60);
-  if (h < 24) return `in ${h}h ${m % 60}m`;
+  if (h < 24) {
+    return `in ${h}h ${m % 60}m`;
+  }
   return `in ${Math.floor(h / 24)}d`;
 }
 
@@ -54,7 +60,9 @@ export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineP
   const [btnState, setBtnState] = useState<Record<string, 'pending'|'ok'|'error'>>({});
 
   const handleRunEarly = useCallback(async (jobId: string, key: string) => {
-    if (!onRunEarly || btnState[key] === 'pending') return;
+    if (!onRunEarly || btnState[key] === 'pending') {
+      return;
+    }
     setBtnState(s => ({ ...s, [key]: 'pending' }));
     try {
       await onRunEarly(jobId);

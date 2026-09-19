@@ -64,7 +64,9 @@ const RUN_SELECT_CLS     = 'bg-muted-bg border border-border text-content rounde
 const URL_RE = /(file:\/\/\/[^\s\r\n]+|https?:\/\/[^\s\r\n]+|[A-Za-z]:[\\\/][^\s\r\n]+\.(?:html?|json|csv|txt|log))/gi;
 
 function toFileUrl(raw: string): string {
-  if (raw.startsWith('file:///') || raw.startsWith('http')) return raw;
+  if (raw.startsWith('file:///') || raw.startsWith('http')) {
+    return raw;
+  }
   // Convert Windows path: C:\foo\bar.html -> file:///C:/foo/bar.html
   return 'file:///' + raw.replace(/\\/g, '/');
 }
@@ -76,7 +78,9 @@ function isLocalFile(raw: string): boolean {
 // Chrome blocks file:// navigation from http:// pages.
 // Route local file opens through the dashboard server's /api/open endpoint instead.
 function openHref(raw: string, apiBase: string): string {
-  if (!isLocalFile(raw)) return raw; // http(s) URLs open directly
+  if (!isLocalFile(raw)) {
+    return raw;
+  } // http(s) URLs open directly
   const fileUrl = toFileUrl(raw);
   return `${apiBase}/api/open?path=${encodeURIComponent(fileUrl)}`;
 }
@@ -105,7 +109,9 @@ function linkify(line: string, highlight: string | undefined, apiBase: string): 
   };
 
   while ((m = URL_RE.exec(line)) !== null) {
-    if (m.index > last) pushText(line.slice(last, m.index));
+    if (m.index > last) {
+      pushText(line.slice(last, m.index));
+    }
     const href = openHref(m[0], apiBase);
     parts.push(
       // violations-suppress: tailwind/no-raw-color-class link inside dark terminal - no semantic token for terminal-link color
@@ -114,7 +120,9 @@ function linkify(line: string, highlight: string | undefined, apiBase: string): 
     );
     last = m.index + m[0].length;
   }
-  if (last < line.length) pushText(line.slice(last));
+  if (last < line.length) {
+    pushText(line.slice(last));
+  }
   return parts.length > 0 ? parts : line;
 }
 
@@ -122,7 +130,9 @@ interface RunEntry { name: string; file: string; sizeBytes: number; }
 
 function fmtRunName(name: string, index: number, total: number): string {
   const m = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[1]} ${m[2]}:${m[3]}:${m[4]} #${total - index}`;
+  if (m) {
+    return `${m[1]} ${m[2]}:${m[3]}:${m[4]} #${total - index}`;
+  }
   return name; // legacy daily format: already yyyy-mm-dd
 }
 
@@ -195,7 +205,9 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
       fetch(`${apiBase}/api/jobs/${jobId}`)
         .then(r => r.ok ? r.json() as Promise<{ job: unknown; runHistory: RuntimeEntry[] }> : null)
         .then(data => {
-          if (data?.runHistory) setIsJobRunning(isRunActive(latestRun(data.runHistory)));
+          if (data?.runHistory) {
+            setIsJobRunning(isRunActive(latestRun(data.runHistory)));
+          }
         })
         .catch(() => {});
     };
@@ -218,7 +230,9 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
     es.onopen = () => { setConnected(true); };
     es.onmessage = (ev) => {
       setConnected(true);
-      if (ev.data) setLines((prev) => [...prev, ev.data as string]);
+      if (ev.data) {
+        setLines((prev) => [...prev, ev.data as string]);
+      }
     };
     es.onerror = () => { setConnected(false); };
     return () => { es.close(); };
@@ -226,13 +240,17 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !autoScroll) return;
+    if (!el || !autoScroll) {
+      return;
+    }
     el.scrollTop = el.scrollHeight;
   }, [lines, autoScroll]);
 
   const handleScroll = (): void => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     // Scrolling away from the tail IS switching following off, and scrolling back to it switches
     // following on. Expressing it as the one flag is what keeps the button honest: it can no
     // longer show a state that the scroll handler has quietly overridden.
@@ -241,7 +259,9 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   };
 
   const handleKillJob = async (): Promise<void> => {
-    if (!confirm(`Kill running job "${jobId}"?`)) return;
+    if (!confirm(`Kill running job "${jobId}"?`)) {
+      return;
+    }
     setKilling(true);
     try {
       const res = await fetch(`${apiBase}/api/jobs/${jobId}/kill`, { method: 'POST' });
@@ -267,7 +287,9 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
     setAutoScroll(next);
     if (next) {
       const el = containerRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   };
 

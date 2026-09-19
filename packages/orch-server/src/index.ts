@@ -21,9 +21,15 @@ function parseArgs(): { configDir: string; basePort: number; appDir: string | nu
   let basePort = 47950;
   let appDir: string | null = null;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--config-dir' && args[i + 1]) configDir = args[++i];
-    if (args[i] === '--base-port' && args[i + 1]) basePort = parseInt(args[++i], 10);
-    if (args[i] === '--app-dir' && args[i + 1]) appDir = args[++i];
+    if (args[i] === '--config-dir' && args[i + 1]) {
+      configDir = args[++i];
+    }
+    if (args[i] === '--base-port' && args[i + 1]) {
+      basePort = parseInt(args[++i], 10);
+    }
+    if (args[i] === '--app-dir' && args[i + 1]) {
+      appDir = args[++i];
+    }
   }
   if (!configDir) {
     process.stderr.write('Error: --config-dir is required\n');
@@ -74,7 +80,9 @@ await server.register(heartbeatRoute, { idleTimer, proxy });
 // Chrome blocks file:// navigation from http:// pages -- this proxies the open via server.
 server.get('/api/open', async (req, reply) => {
   const { path: rawPath } = req.query as { path?: string };
-  if (!rawPath) return reply.code(400).send({ error: 'path required' });
+  if (!rawPath) {
+    return reply.code(400).send({ error: 'path required' });
+  }
   idleTimer.reset();
   const target = decodeURIComponent(rawPath);
   // Security: only allow file:// URLs and http(s)://localhost -- never remote URLs

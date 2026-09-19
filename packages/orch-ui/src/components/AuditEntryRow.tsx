@@ -14,8 +14,12 @@ export interface AuditEntryRowProps {
 function formatDetails(entry: AuditEntry): string {
   const skip = new Set(['ts', 'event', 'label', 'jobId', 'userAgent']);
   const parts: string[] = [];
-  if (entry.label) parts.push(String(entry.label));
-  else if (entry.jobId) parts.push(String(entry.jobId));
+  if (entry.label) {
+    parts.push(String(entry.label));
+  }
+  else if (entry.jobId) {
+    parts.push(String(entry.jobId));
+  }
 
   if (entry.event === 'job.completed' && entry.exitCode !== undefined) {
     parts.push(`exit ${entry.exitCode}`);
@@ -31,8 +35,12 @@ function formatDetails(entry: AuditEntry): string {
     parts.push(`from ${entry.ip}`);
   }
   for (const [k, v] of Object.entries(entry)) {
-    if (skip.has(k) || ['exitCode', 'finishedAt', 'startedAt', 'ip'].includes(k)) continue;
-    if (v === undefined || v === null) continue;
+    if (skip.has(k) || ['exitCode', 'finishedAt', 'startedAt', 'ip'].includes(k)) {
+      continue;
+    }
+    if (v === undefined || v === null) {
+      continue;
+    }
     parts.push(`${k}=${v}`);
   }
   return parts.join(' | ');
@@ -40,9 +48,15 @@ function formatDetails(entry: AuditEntry): string {
 
 function relTime(iso: string): string {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (d < 60) return `${d}s ago`;
-  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
-  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
+  if (d < 60) {
+    return `${d}s ago`;
+  }
+  if (d < 3600) {
+    return `${Math.floor(d / 60)}m ago`;
+  }
+  if (d < 86400) {
+    return `${Math.floor(d / 3600)}h ago`;
+  }
   return `${Math.floor(d / 86400)}d ago`;
 }
 

@@ -13,7 +13,9 @@ const VALUE_CLS  = 'mt-1 font-mono text-sm text-content break-all';
  * @registryTags job config display
  */
 export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactElement | null {
-  if (!job) return null;
+  if (!job) {
+    return null;
+  }
   return (
     <div className="bg-surface rounded-lg border border-border p-4 space-y-3">
       <div><span className={LABEL_CLS}>Command</span><p className={VALUE_CLS}>{job.command}</p></div>

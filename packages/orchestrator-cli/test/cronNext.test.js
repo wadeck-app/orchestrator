@@ -19,19 +19,27 @@ const FROM = new Date('2026-01-01T00:00:00.000Z');
  */
 function bruteForce(expression, n, from, horizonMs) {
   const parts = expression.trim().split(/\s+/);
-  if (parts.length < 5) return [];
+  if (parts.length < 5) {
+    return [];
+  }
   const [minExpr, hourExpr, domExpr, monExpr, dowExpr] = parts;
   const matches = (val, expr, min, max) => {
-    if (expr === '*') return true;
+    if (expr === '*') {
+      return true;
+    }
     for (const part of expr.split(',')) {
       if (part.includes('/')) {
         const [range, step] = part.split('/');
         const stepN = parseInt(step, 10);
         const start = range === '*' ? min : parseInt(range, 10);
-        for (let v = start; v <= max; v += stepN) if (v === val) return true;
+        for (let v = start; v <= max; v += stepN) if (v === val) {
+          return true;
+        }
       } else if (part.includes('-')) {
         const [lo, hi] = part.split('-').map(Number);
-        if (val >= lo && val <= hi) return true;
+        if (val >= lo && val <= hi) {
+          return true;
+        }
       } else if (parseInt(part, 10) === val) {
         return true;
       }

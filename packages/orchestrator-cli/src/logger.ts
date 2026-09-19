@@ -119,7 +119,9 @@ export class DailyLogger {
 
   private _rotate(): void {
     const today = new Date().toISOString().slice(0, 10);
-    if (today === this._date) return;
+    if (today === this._date) {
+      return;
+    }
     this.close();
     this._date = today;
     const file = path.join(this._dir, `${this._prefix}-${today}.log`);

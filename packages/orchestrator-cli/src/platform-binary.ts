@@ -46,7 +46,9 @@ function platformKey(): string {
 
 function resolveInPlatformPackage(fileName: string): string | null {
   const pkg = platformPackage();
-  if (!pkg) return null;
+  if (!pkg) {
+    return null;
+  }
   try {
     return require.resolve(`${pkg}/${fileName}`);
   } catch {
@@ -93,7 +95,9 @@ export function stageBinary(source: string, configDir: string, stamp: string): s
   }
 
   try {
-    if (fs.statSync(target).size === sourceSize) return target;
+    if (fs.statSync(target).size === sourceSize) {
+      return target;
+    }
   } catch {
     // Not staged yet, which is the normal path on a new version.
   }
@@ -132,7 +136,9 @@ export function pruneStagedBinaries(configDir: string, keepStamp: string): numbe
     return 0;
   }
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === keepStamp) continue;
+    if (!entry.isDirectory() || entry.name === keepStamp) {
+      continue;
+    }
     try {
       fs.rmSync(path.join(root, entry.name), { recursive: true });
       removed++;
@@ -150,18 +156,26 @@ function describe(err: unknown): string {
 /** Go launcher binary: the process that supervises the daemon. */
 export function findLauncherBinary(): string | null {
   const fromPkg = resolveInPlatformPackage(LAUNCHER_IN_PLATFORM_PKG);
-  if (fromPkg) return fromPkg;
+  if (fromPkg) {
+    return fromPkg;
+  }
   const devName = LAUNCHER_DEV_NAME[platformKey()];
-  if (!devName) return null;
+  if (!devName) {
+    return null;
+  }
   return firstExisting([path.join(__dirname, '..', 'launcher-go', 'dist', devName)]);
 }
 
 /** Systray binary, spawned by the daemon. */
 export function findTrayBinary(): string | null {
   const fromPkg = resolveInPlatformPackage(TRAY_IN_PLATFORM_PKG);
-  if (fromPkg) return fromPkg;
+  if (fromPkg) {
+    return fromPkg;
+  }
   const devName = TRAY_DEV_NAME[platformKey()];
-  if (!devName) return null;
+  if (!devName) {
+    return null;
+  }
   return firstExisting([path.join(__dirname, '..', 'tray-go', 'dist', devName)]);
 }
 
@@ -174,7 +188,9 @@ export function findTrayBinary(): string | null {
  */
 function platformPackageVersion(): string | null {
   const pkg = platformPackage();
-  if (!pkg) return null;
+  if (!pkg) {
+    return null;
+  }
   try {
     const manifest = require.resolve(`${pkg}/package.json`);
     const parsed = JSON.parse(fs.readFileSync(manifest, 'utf8')) as { version?: string };
@@ -191,8 +207,12 @@ function platformPackageVersion(): string | null {
  * copy of a binary that is rebuilt by hand would silently run yesterday's launcher.
  */
 function toRun(resolved: string | null, configDir: string): string | null {
-  if (resolved === null) return null;
-  if (!resolved.includes('node_modules')) return resolved;
+  if (resolved === null) {
+    return null;
+  }
+  if (!resolved.includes('node_modules')) {
+    return resolved;
+  }
   const stamp = platformPackageVersion();
   if (stamp === null) {
     throw new Error(
@@ -217,7 +237,9 @@ export function trayToRun(configDir: string): string | null {
 /** Drops staged copies from every version but the one this install would use. */
 export function pruneStaleStagedBinaries(configDir: string): number {
   const stamp = platformPackageVersion();
-  if (stamp === null) return 0;
+  if (stamp === null) {
+    return 0;
+  }
   return pruneStagedBinaries(configDir, stamp);
 }
 
@@ -236,7 +258,9 @@ export function findDaemonEntry(): string | null {
   const tscOut = path.join(__dirname, 'index.js');
   const hasBundle = fs.existsSync(bundle);
   const hasTscOut = fs.existsSync(tscOut);
-  if (!hasBundle) return hasTscOut ? tscOut : null;
+  if (!hasBundle) {
+    return hasTscOut ? tscOut : null;
+  }
   // A stale bundle is reported instead of being worked around. Silently preferring the fresher
   // tsc output would hide the fact that `npm run bundle` was never run, and silently running the
   // stale bundle would hide it just as well -- so say it, and name the command that fixes it.

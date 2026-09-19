@@ -32,7 +32,9 @@ export class DashboardManager {
       const filePath = path.join(this._configDir, 'config.dashboard');
       const raw = fs.readFileSync(filePath, 'utf8');
       const info = JSON.parse(raw) as DashboardPortInfo;
-      if (!info.pid) return;
+      if (!info.pid) {
+        return;
+      }
       // Check if the process is still alive
       try { process.kill(info.pid, 0); } catch { return; /* already dead */ }
       // Kill the orphaned dashboard process tree
@@ -47,7 +49,9 @@ export class DashboardManager {
   }
 
   start(): Promise<void> {
-    if (this._running) return Promise.resolve();
+    if (this._running) {
+      return Promise.resolve();
+    }
     this._killStaleFromFile();
 
     return new Promise<void>((resolve, reject) => {
@@ -106,7 +110,9 @@ export class DashboardManager {
 
   async stop(): Promise<void> {
     const child = this._proc;
-    if (!child) return;
+    if (!child) {
+      return;
+    }
 
     this._running = false;
     this._port = null;
@@ -135,7 +141,9 @@ export class DashboardManager {
 
   getPort(): number | null {
     // Fast path: use in-memory port
-    if (this._port !== null) return this._port;
+    if (this._port !== null) {
+      return this._port;
+    }
 
     // Fallback: read from config.dashboard file
     try {
@@ -143,7 +151,9 @@ export class DashboardManager {
       const raw = fs.readFileSync(filePath, 'utf8');
       const stat = fs.statSync(filePath);
       const ageMs = Date.now() - stat.mtimeMs;
-      if (ageMs > 60_000) return null;
+      if (ageMs > 60_000) {
+        return null;
+      }
       const info = JSON.parse(raw) as DashboardPortInfo;
       return info.port;
     } catch {
@@ -167,14 +177,22 @@ export class DashboardManager {
       // embedding quotes in the string causes cmd.exe start to interpret them as backslashes.
       // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
       execFile('cmd.exe', ['/c', 'start', '', url], (err) => {
-        if (err) this._log(`[dashboard] open browser failed (cmd /c start "${url}"): ${getErrorMessage(err)}`);
-        else this._log(`[dashboard] browser opened successfully`);
+        if (err) {
+          this._log(`[dashboard] open browser failed (cmd /c start "${url}"): ${getErrorMessage(err)}`);
+        }
+        else {
+          this._log(`[dashboard] browser opened successfully`);
+        }
       });
     } else {
       // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
       execFile('open', [url], (err) => {
-        if (err) this._log(`[dashboard] open browser failed (open "${url}"): ${getErrorMessage(err)}`);
-        else this._log(`[dashboard] browser opened successfully`);
+        if (err) {
+          this._log(`[dashboard] open browser failed (open "${url}"): ${getErrorMessage(err)}`);
+        }
+        else {
+          this._log(`[dashboard] browser opened successfully`);
+        }
       });
     }
   }

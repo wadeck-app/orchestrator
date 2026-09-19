@@ -35,7 +35,9 @@ function deps(pids, samples) {
     tree:  async () => pids,
     usage: async (pid) => {
       const s = samples[pid];
-      if (!s) throw new Error(`no such process: ${pid}`);
+      if (!s) {
+        throw new Error(`no such process: ${pid}`);
+      }
       return s;
     },
   };

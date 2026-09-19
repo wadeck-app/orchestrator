@@ -48,7 +48,9 @@ async function collect(
   const pump = (async () => {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) return;
+      if (done) {
+        return;
+      }
       buffer += decoder.decode(value, { stream: true });
       const parts = buffer.split('\n\n');
       buffer = parts.pop() ?? '';

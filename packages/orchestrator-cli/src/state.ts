@@ -27,7 +27,9 @@ export class State {
   }
 
   private _ensure(): void {
-    if (this._cache !== null) return;
+    if (this._cache !== null) {
+      return;
+    }
     try {
       if (fs.existsSync(this._file)) {
         const raw = readJsonFile<StateData>(this._file) ?? { jobs: {} };
@@ -82,7 +84,9 @@ export class State {
   }
 
   private _scheduledFlush(): void {
-    if (this._flushTimer !== null) return; // already scheduled
+    if (this._flushTimer !== null) {
+      return;
+    } // already scheduled
     this._flushPending = true;
     this._flushTimer = setTimeout(() => {
       this._flushTimer = null;
@@ -109,13 +113,19 @@ export class State {
     let closed = 0;
     for (const [id, entries] of Object.entries(this._cache!)) {
       const next = entries.map(e => {
-        if (e.finishedAt != null) return e;
+        if (e.finishedAt != null) {
+          return e;
+        }
         closed++;
         return { ...e, finishedAt: now.toISOString(), orphaned: true };
       });
-      if (closed > 0) this._cache![id] = next;
+      if (closed > 0) {
+        this._cache![id] = next;
+      }
     }
-    if (closed > 0) this._scheduledFlush();
+    if (closed > 0) {
+      this._scheduledFlush();
+    }
     return closed;
   }
 
@@ -158,7 +168,9 @@ export class State {
   private _latest(entries: RuntimeEntry[]): RuntimeEntry | undefined {
     let newest: RuntimeEntry | undefined;
     for (const e of entries) {
-      if (newest === undefined || e.startedAt > newest.startedAt) newest = e;
+      if (newest === undefined || e.startedAt > newest.startedAt) {
+        newest = e;
+      }
     }
     return newest;
   }
@@ -166,14 +178,18 @@ export class State {
   get(id: string): RuntimeEntry | null {
     this._ensure();
     const arr = this._cache![id];
-    if (!arr || arr.length === 0) return null;
+    if (!arr || arr.length === 0) {
+      return null;
+    }
     const latest = this._latest(arr);
     return latest === undefined ? null : { ...latest };
   }
 
   getAll(): Record<string, RuntimeEntry[]> {
     this._ensure();
-    if (!fs.existsSync(this._file)) this._doFlush();
+    if (!fs.existsSync(this._file)) {
+      this._doFlush();
+    }
     const copy: Record<string, RuntimeEntry[]> = {};
     for (const [k, arr] of Object.entries(this._cache!)) {
       copy[k] = arr.map(e => ({ ...e }));
@@ -185,7 +201,9 @@ export class State {
     this._ensure();
     const result: Array<{ jobId: string; entry: RuntimeEntry }> = [];
     for (const [jobId, entries] of Object.entries(this._cache!)) {
-      if (!entries || entries.length === 0) continue;
+      if (!entries || entries.length === 0) {
+        continue;
+      }
       const latest = this._latest(entries)!;
       if (isFailure(latest) && !latest.acknowledgedAt) {
         result.push({ jobId, entry: { ...latest } });
@@ -199,14 +217,18 @@ export class State {
     const now = new Date().toISOString();
     let changed = false;
     for (const entries of Object.values(this._cache!)) {
-      if (!entries || entries.length === 0) continue;
+      if (!entries || entries.length === 0) {
+        continue;
+      }
       const latest = this._latest(entries)!;
       if (isFailure(latest) && !latest.acknowledgedAt) {
         latest.acknowledgedAt = now;
         changed = true;
       }
     }
-    if (changed) this._scheduledFlush();
+    if (changed) {
+      this._scheduledFlush();
+    }
   }
 
   getRollingAvgDurationMs(id: string, n = 10): number | null {
@@ -215,7 +237,9 @@ export class State {
     const completed = entries
       .filter(e => e.exitCode !== null && e.finishedAt)
       .slice(0, n);
-    if (completed.length < 3) return null;
+    if (completed.length < 3) {
+      return null;
+    }
     const total = completed.reduce((sum, e) => {
       return sum + (new Date(e.finishedAt!).getTime() - new Date(e.startedAt).getTime());
     }, 0);
@@ -229,7 +253,9 @@ export class State {
     // declining to run, and counting them as uptime would invent availability nothing demonstrated.
     const entries = (this._cache![id] ?? [])
       .filter(e => e.startedAt >= cutoff && e.exitCode !== null && !e.skipped);
-    if (entries.length < 3) return null;
+    if (entries.length < 3) {
+      return null;
+    }
     const successes = entries.filter(e => e.exitCode === 0).length;
     return (successes / entries.length) * 100;
   }
@@ -240,7 +266,9 @@ export class State {
     const entries = (this._cache![id] ?? [])
       .filter(e => e.exitCode === 0 && e.peakCpuPct != null && e.peakRamMb != null)
       .slice(0, n);
-    if (entries.length < 3) return null;
+    if (entries.length < 3) {
+      return null;
+    }
     const cpuPct = entries.reduce((s, e) => s + (e.peakCpuPct ?? 0), 0) / entries.length;
     const ramMb  = entries.reduce((s, e) => s + (e.peakRamMb  ?? 0), 0) / entries.length;
     return { cpuPct, ramMb };
@@ -253,9 +281,15 @@ export class State {
     for (const e of entries) {
       // Transparent, not neutral: a skip must not add to the streak, and must not end it either.
       // Ending it would let a job alternating "fail, skip, fail" escape the consecutive-failure alert.
-      if (e.skipped) continue;
-      if (isFailure(e)) count++;
-      else break;
+      if (e.skipped) {
+        continue;
+      }
+      if (isFailure(e)) {
+        count++;
+      }
+      else {
+        break;
+      }
     }
     return count;
   }
