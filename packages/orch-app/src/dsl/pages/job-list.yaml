@@ -43,6 +43,14 @@ $brains:
     id: $outputs.jobGrid.onJobClick
     _event: $outputs.jobGrid.onJobClick
 
+  # The grid runs the bulk actions itself: an $http brain takes one URL, so "delete these four" has
+  # no single-brain form. It signals here when the fan-out is done, so the list refreshes at once
+  # rather than after the next 30s poll.
+  reloadAfterBulk:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobGrid.onAfterBulk
+    $reload: [jobs]
+
   navigateToNewJob:
     $brain: $brains.$ctx.navigate
     route: /jobs/new
@@ -85,3 +93,4 @@ sections:
       onToggle: [id, action]
       onJobClick: [id]
       onAddJob: [_]
+      onAfterBulk: [_]

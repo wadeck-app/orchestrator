@@ -10,9 +10,39 @@ import type { ComponentRegistry, ComponentRegistryEntry, RegistryRenderProps } f
 type PublishFn = (id: string, event: string, payload?: unknown) => void;
 
 /**
+ * The event names the YAML node itself declares under `$outputs`.
+ *
+ * Injecting a callback the page did not declare is worse than injecting none. Every one of these
+ * components treats "the prop is defined" as "the page owns this action" and skips its own
+ * implementation -- so an undeclared event publishes into a namespace no brain reads and the click
+ * does nothing at all, with no confirmation and no error. That is exactly how bulk Delete in the
+ * dashboard became a silent no-op: `job-list.yaml` declares four outputs and the override injected
+ * eight. Filtering on the declaration hands the undeclared ones back to the component.
+ */
+function declaredOutputs(node: Record<string, unknown>): Set<string> {
+  const declared = node['$outputs'];
+  if (declared === null || typeof declared !== 'object') {
+    return new Set();
+  }
+  return new Set(Object.keys(declared));
+}
+
+/** Drop every entry of `extra` the node does not declare as an `$output`. See declaredOutputs. */
+function keepDeclared(extra: Record<string, unknown>, node: Record<string, unknown>): Record<string, unknown> {
+  const declared = declaredOutputs(node);
+  const kept: Record<string, unknown> = {};
+  for (const [name, callback] of Object.entries(extra)) {
+    if (declared.has(name)) {
+      kept[name] = callback;
+    }
+  }
+  return kept;
+}
+
+/**
  * Wrap a render function to inject publishOutput callbacks for declared output events.
  * The wrapped render reads node['$id'] and ctx['$publishOutput'], then creates a
- * callback for each listed event name and merges them into the node props.
+ * callback for each listed event name the node declares and merges them into the node props.
  */
 function withOutputCallbacks(
   original: ComponentRegistryEntry['render'],
@@ -33,7 +63,7 @@ function withOutputCallbacks(
       callbacks[name] = (payload?: unknown) => pub(id, eventName, payload);
     }
 
-    return original({ ...props, node: { ...node, ...callbacks } });
+    return original({ ...props, node: { ...node, ...keepDeclared(callbacks, node) } });
   };
 }
 
@@ -75,8 +105,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
         onBulkDisable: (ids: string[]) => pub(id, 'onBulkDisable', ids),
         onBulkTrigger: (ids: string[]) => pub(id, 'onBulkTrigger', ids),
         onBulkDelete: (ids: string[]) => pub(id, 'onBulkDelete', ids),
+        onAfterBulk: () => pub(id, 'onAfterBulk', undefined),
       };
-      return originalJcg({ ...props, node: { ...node, ...extra } });
+      return originalJcg({ ...props, node: { ...node, ...keepDeclared(extra, node) } });
     };
   }
 
@@ -122,7 +153,7 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
       const extra = {
         onRunEarly: (jobId: string) => pub(id, 'onRunEarly', { jobId }),
       };
-      return originalSt({ ...props, node: { ...node, ...extra } });
+      return originalSt({ ...props, node: { ...node, ...keepDeclared(extra, node) } });
     };
   }
 }

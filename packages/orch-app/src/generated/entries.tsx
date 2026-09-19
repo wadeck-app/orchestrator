@@ -1669,9 +1669,10 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const onBulkDisable = resolveExpressionValue(node['onBulkDisable'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDisable']
 		const onBulkTrigger = resolveExpressionValue(node['onBulkTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkTrigger']
 		const onBulkDelete = resolveExpressionValue(node['onBulkDelete'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
+		const onAfterBulk = resolveExpressionValue(node['onAfterBulk'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAfterBulk']
 		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onTrigger={onTrigger} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onTrigger={onTrigger} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onExport={onExport} onImport={onImport} />
 	},
 }
 

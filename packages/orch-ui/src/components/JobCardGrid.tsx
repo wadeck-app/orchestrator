@@ -81,6 +81,14 @@ export interface JobCardGridProps {
   onBulkDisable?: (ids: string[]) => void;
   onBulkTrigger?: (ids: string[]) => void;
   onBulkDelete?: (ids: string[]) => void;
+  /**
+   * Fired once a bulk action this component ran itself has finished.
+   *
+   * A bulk action cannot be a single DSL brain -- an `$http` brain takes one URL, so "delete these
+   * four" has no expression -- so the fan-out stays here. Without this the page's job source only
+   * catches up on its next poll, and for up to 30s the deleted cards are still on screen.
+   */
+  onAfterBulk?: () => void;
   onExport?: () => void;
   onImport?: () => void;
 }
@@ -89,7 +97,7 @@ export interface JobCardGridProps {
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onTrigger, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onTrigger, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk }: JobCardGridProps): React.ReactElement {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -128,34 +136,38 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const handleBulkEnable  = useCallback(async () => {
     const ids = [...selected];
     if (onBulkEnable) { onBulkEnable(ids); setSelected(new Set()); return; }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/enable`, { method: 'POST' }))); setSelected(new Set());
-  }, [selected, onBulkEnable]);
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/enable`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
+  }, [selected, onBulkEnable, onAfterBulk]);
   const handleBulkDisable = useCallback(async () => {
     const ids = [...selected];
     if (onBulkDisable) { onBulkDisable(ids); setSelected(new Set()); return; }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/disable`, { method: 'POST' }))); setSelected(new Set());
-  }, [selected, onBulkDisable]);
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/disable`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
+  }, [selected, onBulkDisable, onAfterBulk]);
   const handleBulkTrigger = useCallback(async () => {
     const ids = [...selected];
     if (onBulkTrigger) { onBulkTrigger(ids); setSelected(new Set()); return; }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/trigger`, { method: 'POST' }))); setSelected(new Set());
-  }, [selected, onBulkTrigger]);
+    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/trigger`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
+  }, [selected, onBulkTrigger, onAfterBulk]);
   // Asks in the app's own dialog rather than the browser's. A native confirm() blocks the page and
   // cannot be styled, which for "delete N jobs" is the moment the reader most needs to be sure what
   // they are looking at. See useConfirm.
+  //
+  // The prompt is outside the onBulkDelete branch on purpose: a page that owns the deletion still
+  // wants it confirmed, and the earlier ordering made this dialog dead code anywhere the DSL wired
+  // the output.
   const handleBulkDelete = useCallback(() => {
     const ids = [...selected];
-    if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
     ask({
       title: `Delete ${ids.length} job${ids.length === 1 ? '' : 's'}?`,
       message: 'Their definitions are removed. Run history and logs are not.',
       confirmLabel: 'Delete',
       onConfirm: () => {
+        if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
         void Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })))
-          .then(() => setSelected(new Set()));
+          .then(() => { setSelected(new Set()); onAfterBulk?.(); });
       },
     });
-  }, [selected, onBulkDelete, ask]);
+  }, [selected, onBulkDelete, onAfterBulk, ask]);
 
   if (!items) {
     return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
