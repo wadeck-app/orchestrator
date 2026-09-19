@@ -5,6 +5,20 @@ const assert = require('node:assert/strict');
 
 const { FakeTime, systemTime } = require('../src/time-service');
 
+/**
+ * Polls until `condition` holds, or gives up after `timeoutMs`.
+ *
+ * Only for the systemTime tests below, which exercise the real clock and therefore cannot use
+ * FakeTime. Asserting a count inside a fixed wall-clock window makes the machine's load part of the
+ * assertion -- which is how "every repeats" failed on windows-latest and nowhere else.
+ */
+async function waitFor(condition, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition() && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 10));
+  }
+}
+
 /*
  * The fake clock is about to be the basis of the scheduler's tests, so it gets its own.
  *
@@ -201,27 +215,34 @@ describe('systemTime is the real clock', () => {
     assert.ok(Math.abs(systemTime.now() - Date.now()) < 50);
   });
 
+  // Same fragility as the test below, one line away: a starved runner can leave `fired` at 0 in a
+  // 30ms window. The cancelled timer is what the += 100 catches, and that needs no window at all.
   test('after fires and can be cancelled', async () => {
     let fired = 0;
     systemTime.after(1, () => { fired++; });
     const cancelled = systemTime.after(1, () => { fired += 100; });
     cancelled.cancel();
 
-    await new Promise(r => setTimeout(r, 30));
+    await waitFor(() => fired >= 1, 5_000);
+    await new Promise(r => setTimeout(r, 50));
 
-    assert.equal(fired, 1);
+    assert.equal(fired, 1, 'either it never fired, or the cancelled timer fired too');
   });
 
   test('every repeats and can be cancelled', async () => {
     let fired = 0;
     const timer = systemTime.every(5, () => { fired++; });
 
-    await new Promise(r => setTimeout(r, 60));
+    // Waits for the property instead of assuming a wall-clock window. A 5ms interval against
+    // Windows' ~15.6ms timer resolution fires about three times in 60ms on an idle machine and
+    // once on a loaded CI runner -- which is exactly how this failed, on windows-latest only.
+    // The deadline is generous because it only has to catch `every` never repeating at all.
+    await waitFor(() => fired >= 2, 5_000);
     timer.cancel();
     const afterCancel = fired;
-    await new Promise(r => setTimeout(r, 30));
+    await new Promise(r => setTimeout(r, 50));
 
-    assert.ok(fired >= 2, `expected repeats, got ${fired}`);
+    assert.ok(fired >= 2, `expected repeats within 5s, got ${fired}`);
     assert.equal(fired, afterCancel, 'must stop after cancel');
   });
 });
