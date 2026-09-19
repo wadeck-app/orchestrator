@@ -1328,7 +1328,7 @@ export async function main(): Promise<void> {
   const client = createDaemonClient({ configDir, commands });
 
   function startDaemon(): void {
-    const { findLauncherBinary, findDaemonEntry, platformPackage } =
+    const { launcherToRun, findDaemonEntry, platformPackage } =
       require('./platform-binary.js') as typeof import('./platform-binary.js');
 
     const daemonPath = findDaemonEntry();
@@ -1344,7 +1344,7 @@ export async function main(): Promise<void> {
     // process group, so the shell waits for all descendants even with detached+unref().
     // Starting the daemon without it used to be a silent fallback through wscript.exe, which
     // produced a daemon that looked fine and never restarted itself after an update.
-    const launcherPath = findLauncherBinary();
+    const launcherPath = launcherToRun(configDir);
     if (!launcherPath) {
       const pkg = platformPackage();
       console.error('Cannot start the daemon: the Go launcher binary was not found.');

@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs   from 'node:fs';
 import os   from 'node:os';
 import type { StartupResult } from './types.js';
-import { findLauncherBinary, findDaemonEntry } from './platform-binary.js';
+import { findLauncherBinary, findDaemonEntry, launcherToRun } from './platform-binary.js';
 
 const REG_KEY            = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
@@ -41,15 +41,21 @@ function validateStartupTarget(): string | null {
   return null;
 }
 
-/** Both builders assume validateStartupTarget() already passed. */
+/**
+ * Both builders assume validateStartupTarget() already passed.
+ *
+ * The registered path is the staged copy, never the one inside node_modules: an entry pointing into
+ * node_modules would start the launcher from a directory npm has to move aside on every update, and
+ * a running image there is what makes that move fail.
+ */
 export function buildWindowsCommand(configDir: string): string {
-  const launcher = findLauncherBinary();
+  const launcher = launcherToRun(configDir);
   if (!launcher) throw new Error('buildWindowsCommand: no launcher binary');
   return `${cmdQuote(launcher)} ${cmdQuote(configDir)}`;
 }
 
 export function buildMacArgs(configDir: string): string[] {
-  const launcher = findLauncherBinary();
+  const launcher = launcherToRun(configDir);
   if (!launcher) throw new Error('buildMacArgs: no launcher binary');
   return [launcher, configDir];
 }

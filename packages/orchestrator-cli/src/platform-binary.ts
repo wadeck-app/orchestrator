@@ -59,6 +59,94 @@ function firstExisting(candidates: string[]): string | null {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
+/**
+ * Where a native binary is run from: `<configDir>/bin/<stamp>/<name>`.
+ *
+ * Deliberately outside node_modules. npm installs the platform package in there, and updating the
+ * main package means moving that directory aside -- `fs.rename` first, then, when Windows refuses
+ * because a descendant is a running image (EPERM), @npmcli/fs falls back to copying file by file, and
+ * copying a running .exe is EBUSY. Nothing here holds a file npm has to move.
+ */
+export function stagedBinaryPath(configDir: string, stamp: string, fileName: string): string {
+  return path.join(configDir, 'bin', stamp, fileName);
+}
+
+/**
+ * Copies a native binary out of node_modules, once per stamp, and returns the path to run.
+ *
+ * Throws rather than falling back to the source path: a silent fallback would put the EBUSY back
+ * without a word, which is the failure this exists to remove.
+ *
+ * A short copy is replaced, since an interrupted one would fail at exec time pointing nowhere near
+ * the cause. Sizes are compared rather than hashed -- hashing two multi-megabyte binaries on every
+ * daemon start is not worth catching a same-size corruption, which no observed failure produces.
+ */
+export function stageBinary(source: string, configDir: string, stamp: string): string {
+  const fileName = path.basename(source);
+  const target   = stagedBinaryPath(configDir, stamp, fileName);
+
+  let sourceSize: number;
+  try {
+    sourceSize = fs.statSync(source).size;
+  } catch (err) {
+    throw new Error(`Cannot stage the native binary: ${source} is not readable (${describe(err)}).`);
+  }
+
+  try {
+    if (fs.statSync(target).size === sourceSize) return target;
+  } catch {
+    // Not staged yet, which is the normal path on a new version.
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    // Written beside the target then renamed, so a copy interrupted by a crash or a power loss cannot
+    // leave a short file at the path the launcher is started from.
+    const partial = `${target}.partial`;
+    fs.copyFileSync(source, partial);
+    fs.renameSync(partial, target);
+  } catch (err) {
+    throw new Error(
+      `Cannot stage the native binary to ${target} (${describe(err)}).\n\n`
+      + `It is copied out of node_modules on purpose: npm cannot update a package while one of its `
+      + `binaries is running, so orch must not execute this file from where npm installed it `
+      + `(${source}).`,
+    );
+  }
+  return target;
+}
+
+/**
+ * Deletes staged binaries from versions other than `keepStamp`, and returns how many went.
+ *
+ * Failures are skipped, not raised: an older launcher may still be running from its own copy, and
+ * Windows refuses to delete a running image. That is expected at every daemon start.
+ */
+export function pruneStagedBinaries(configDir: string, keepStamp: string): number {
+  const root = path.join(configDir, 'bin');
+  let removed = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === keepStamp) continue;
+    try {
+      fs.rmSync(path.join(root, entry.name), { recursive: true });
+      removed++;
+    } catch {
+      // Still in use; the next start will try again.
+    }
+  }
+  return removed;
+}
+
+function describe(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** Go launcher binary: the process that supervises the daemon. */
 export function findLauncherBinary(): string | null {
   const fromPkg = resolveInPlatformPackage(LAUNCHER_IN_PLATFORM_PKG);
@@ -75,6 +163,62 @@ export function findTrayBinary(): string | null {
   const devName = TRAY_DEV_NAME[platformKey()];
   if (!devName) return null;
   return firstExisting([path.join(__dirname, '..', 'tray-go', 'dist', devName)]);
+}
+
+/**
+ * Version of the installed platform package, used as the staging stamp.
+ *
+ * Not the main package's version: that changes several times a day, which would recopy the binaries
+ * and rewrite the start-at-login path for nothing. The platform package is republished only when a
+ * binary hash changes, so the stamp changes exactly when the copy must be refreshed.
+ */
+function platformPackageVersion(): string | null {
+  const pkg = platformPackage();
+  if (!pkg) return null;
+  try {
+    const manifest = require.resolve(`${pkg}/package.json`);
+    const parsed = JSON.parse(fs.readFileSync(manifest, 'utf8')) as { version?: string };
+    return parsed.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stages a resolved binary when it came from the platform package, and returns what to execute.
+ *
+ * A dev build is returned untouched: nothing npm-managed is at stake in a checkout, and freezing a
+ * copy of a binary that is rebuilt by hand would silently run yesterday's launcher.
+ */
+function toRun(resolved: string | null, configDir: string): string | null {
+  if (resolved === null) return null;
+  if (!resolved.includes('node_modules')) return resolved;
+  const stamp = platformPackageVersion();
+  if (stamp === null) {
+    throw new Error(
+      `Found the native binary at ${resolved} but could not read the version of `
+      + `${platformPackage()}, which is needed to copy it out of node_modules. `
+      + `Reinstall with: npm install -g @wadeck-app/orchestrator-cli`,
+    );
+  }
+  return stageBinary(resolved, configDir, stamp);
+}
+
+/** The launcher to execute or to register at login: staged out of node_modules. */
+export function launcherToRun(configDir: string): string | null {
+  return toRun(findLauncherBinary(), configDir);
+}
+
+/** The tray binary to spawn: staged out of node_modules. */
+export function trayToRun(configDir: string): string | null {
+  return toRun(findTrayBinary(), configDir);
+}
+
+/** Drops staged copies from every version but the one this install would use. */
+export function pruneStaleStagedBinaries(configDir: string): number {
+  const stamp = platformPackageVersion();
+  if (stamp === null) return 0;
+  return pruneStagedBinaries(configDir, stamp);
 }
 
 /**

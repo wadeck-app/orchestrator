@@ -6,7 +6,7 @@ import { DailyLogger } from './logger.js';
 import { TrayProcess, type MenuSnapshot, type MenuItemSnapshot } from './tray-process.js';
 import { getIcons } from './tray-icons.js';
 import { enableStartup, disableStartup, isStartupEnabled } from './startup.js';
-import { findTrayBinary, platformPackage } from './platform-binary.js';
+import { trayToRun, platformPackage } from './platform-binary.js';
 import type { State } from './state.js';
 import type { Registry } from './registry.js';
 import { getErrorMessage } from './fsUtil.js';
@@ -467,7 +467,9 @@ export class TrayManager extends EventEmitter {
   }
 
   private _findBinary(): string | null {
-    return findTrayBinary();
+    // Staged out of node_modules: a running tray there is one of the two images that make npm's
+    // directory move fail during an update.
+    return trayToRun(this._configDir);
   }
 
   private _handleClick(id: string): void {

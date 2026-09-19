@@ -12,6 +12,7 @@ import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
 import { AuditLogger } from './audit.js';
 import { wireAuditEvents } from './audit-wiring.js';
+import { pruneStaleStagedBinaries } from './platform-binary.js';
 import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
@@ -122,6 +123,9 @@ async function main(): Promise<void> {
   // writePreStartLog() already called at module level — no duplicate call needed.
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   cleanTmpDir(path.join(CONFIG_DIR, 'tmp'), { maxAgeDays: 7, maxSizeMb: 100 });
+  // Copies of the native binaries from versions this install no longer uses. Best-effort: an older
+  // launcher may still be running from its own copy, and a running image cannot be deleted.
+  pruneStaleStagedBinaries(CONFIG_DIR);
 
   // Init updateManager before try/finally so scheduleUpdate fires even on crash paths.
   // @wadeck-app/shared-cli is ESM-only - use dynamic import() from a CJS module context.
