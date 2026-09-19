@@ -1,15 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { X, ArrowDown, Pause } from 'lucide-react';
+import { X, ArrowDown, Pause, ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
 import { ButtonAction, ChipButton, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
+import { useWidePane, widthClass } from './log-pane-width.js';
 
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
 // How far from the bottom still counts as "at the tail". Sub-pixel scroll heights and the browser
 // clamping scrollTop mean an exact comparison flickers between following and paused.
 const BOTTOM_SLACK_PX = 20;
+// How often the run list is refreshed. Matches the job-status poll below: a new run is exactly the
+// event that changes both, so refreshing at different rates would let the two disagree on screen.
+const RUN_LIST_POLL_MS = 2000;
 /*
  * The terminal palette, handed to dsl-ui's ThemeScope.
  *
@@ -139,7 +143,17 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   const [search, setSearch] = useState('');
   const [runs, setRuns] = useState<RunEntry[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
+  /*
+   * The run the READER pinned. '' means the live tail, and that is the default.
+   *
+   * It used to be seeded with the newest run as soon as the run list arrived, so every reader looked
+   * pinned to the server. The server could then only keep the tail live by following the newest file
+   * whatever the pin said - which appended a NEW run's output to the run on screen, two runs
+   * interleaved in one pane with nothing marking the seam. Only an explicit choice pins now.
+   */
   const [selectedRun, setSelectedRun] = useState<string>(searchParams.get('run') ?? '');
+  // What the selector shows while nothing is pinned: the newest run is what the live tail is on.
+  const [latestRunName, setLatestRunName] = useState<string>('');
   const [isJobRunning, setIsJobRunning] = useState(false);
   // Single source of truth for following the tail. It used to be three: this flag, a `paused`
   // state derived from the scroll position, and a `userScrolledUp` ref that silently vetoed the
@@ -149,6 +163,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   // were reading different variables.
   const [autoScroll, setAutoScroll] = useState(true);
   const [killing, setKilling] = useState(false);
+  const [widePane, toggleWidePane] = useWidePane();
   const containerRef = useRef<HTMLPreElement>(null);
 
   const handleSelectRun = (name: string): void => {
@@ -156,16 +171,22 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
     setSearchParams(name ? { run: name } : {}, { replace: true });
   };
 
-  // Fetch available run list
+  // Fetch available run list. Re-fetched while the page is open so a run that starts now appears in
+  // the selector instead of needing a reload.
   useEffect(() => {
-    fetch(`${apiBase}/api/logs/${jobId}/runs`)
-      .then(r => r.ok ? r.json() as Promise<RunEntry[]> : [])
-      .then(data => {
-        setRuns(data);
-        // Only default to latest if no ?run= in URL
-        if (data.length > 0 && !searchParams.get('run')) handleSelectRun(data[0]!.name);
-      })
-      .catch(() => {});
+    const load = (): void => {
+      fetch(`${apiBase}/api/logs/${jobId}/runs`)
+        .then(r => r.ok ? r.json() as Promise<RunEntry[]> : [])
+        .then(data => {
+          setRuns(data);
+          // Newest first, per the endpoint. Display only - it does not pin.
+          setLatestRunName(data[0]?.name ?? '');
+        })
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, RUN_LIST_POLL_MS);
+    return () => { clearInterval(interval); };
   }, [jobId, apiBase]);
 
   // Check if job is currently running
@@ -263,17 +284,28 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
       theme="dark"
       surface="none"
       tokens={TERMINAL_TOKENS}
-      className={fill ? CONTAINER_FILL_CLS : CONTAINER_CAPPED_CLS}
+      // The width preference lands on the pane's own container, so the page shell does not have to
+      // know about it - job-logs.yaml asks PageContent for `full` and delegates the decision here.
+      className={`${fill ? CONTAINER_FILL_CLS : CONTAINER_CAPPED_CLS} ${widthClass(widePane)}`}
     >
       {/* violations-suppress-start: tailwind/no-raw-color-class terminal palette - intentional dark theme separate from app theme tokens */}
       <div className={LOG_HEADER_CLS}>
-        {runs.length > 1 && (
+        {runs.length > 0 && (
           /* violations-suppress: react/no-raw-input run selector - dark terminal palette incompatible with FieldText light-mode classes */
           <select
+            // While nothing is pinned the control shows the run the live tail is on, so it never
+            // reads as a blank choice - but the value it carries is '' , which is what keeps the
+            // stream unpinned.
             value={selectedRun}
             onChange={e => handleSelectRun(e.target.value)}
             className={RUN_SELECT_CLS}
+            aria-label="Which run to show"
           >
+            {/* The way back to the live tail. Pinning without one is a trap: the reader leaves the
+                tail and cannot return without editing the URL. */}
+            <option value="">
+              {latestRunName ? `Live - ${fmtRunName(latestRunName, 0, runs.length)}` : 'Live'}
+            </option>
             {runs.map((r, i) => (
               <option key={r.name} value={r.name}>{fmtRunName(r.name, i, runs.length)}</option>
             ))}
@@ -325,6 +357,27 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
           >
             {autoScroll ? <ArrowDown size={12} /> : <Pause size={12} />}
             {autoScroll ? 'Live' : 'Paused'}
+          </ChipButton>
+          {/* Width, remembered per reader. A log line is long, and the reading column that suits the
+              rest of the dashboard is the one place it works against you - but it stays a preference,
+              which is why the choice is stored rather than decided here.
+
+              The icon names the ACTION, not the state: chevrons pushing apart while narrow, pulling
+              together while wide.
+
+              `active` tracks the mode here, unlike the Live/Paused chip beside it. There both states
+              are meaningful and the colour carries which one, so it is always filled; full width is
+              plainly on or off, and the muted inactive palette says "off" correctly. */}
+          <ChipButton
+            active={widePane}
+            color="blue"
+            aria-pressed={widePane}
+            shape="square"
+            onClick={toggleWidePane}
+            title={widePane ? 'Full width - click for the fixed reading width' : 'Fixed width - click to use the full page'}
+          >
+            {widePane ? <ChevronsRightLeft size={12} /> : <ChevronsLeftRight size={12} />}
+            {widePane ? 'Narrow' : 'Wide'}
           </ChipButton>
           {/* The same SearchBar the job list uses. It brings its own search icon, clear button
               and role=search, and the scoped tokens make it terminal-dark. debounceMs 0 keeps

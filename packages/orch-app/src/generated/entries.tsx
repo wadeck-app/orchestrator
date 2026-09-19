@@ -1724,7 +1724,8 @@ export const RunHistoryEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../orch-ui/src/components/RunHistory.js').RunHistoryProps['entries']
-		return <RunHistory entries={entries} />
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunHistory.js').RunHistoryProps['jobId']
+		return <RunHistory entries={entries} jobId={jobId} />
 	},
 }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LogViewer } from './LogViewer.js';
@@ -84,6 +84,79 @@ describe('LogViewer', () => {
     expect(cls).toMatch(/h-\[calc\(100vh-/);
     // min-h-0 is what lets the pane shrink and scroll rather than grow forever.
     expect(cls).toMatch(/min-h-0/);
+  });
+
+  /*
+   * Which run the stream follows.
+   *
+   * The pane used to auto-select the newest run on mount and send ?run=<it>, which made every reader
+   * look pinned. The server then had to follow the newest file regardless of the pin to keep the tail
+   * live, and that is what appended a NEW run's output to the run on screen - two runs interleaved,
+   * nothing marking the seam. The pin now means what it says, so the default must not set one.
+   */
+  describe('which run the stream follows', () => {
+    const runsResponse = [
+      { name: '2026-09-18T11-00-00', file: 'j1-2026-09-18T11-00-00.log', sizeBytes: 10 },
+      { name: '2026-09-18T10-00-00', file: 'j1-2026-09-18T10-00-00.log', sizeBytes: 10 },
+    ];
+
+    function stubFetch(): void {
+      vi.stubGlobal('fetch', (url: string) => {
+        if (url.includes('/runs')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(runsResponse) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ job: {}, runHistory: [] }) });
+      });
+    }
+
+    it('follows the live tail by default, sending no run pin', async () => {
+      stubFetch();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      // Let the run list resolve: it used to pin the newest run at this point.
+      await waitFor(() => { expect(screen.getByRole('combobox')).toBeInTheDocument(); });
+
+      expect(MockEventSource.instance!.url).not.toMatch(/[?&]run=/);
+    });
+
+    it('pins the run the reader picks', async () => {
+      stubFetch();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      const select = await screen.findByRole('combobox');
+      await act(async () => {
+        fireEvent.change(select, { target: { value: '2026-09-18T10-00-00' } });
+      });
+
+      expect(MockEventSource.instance!.url).toMatch(/run=2026-09-18T10-00-00/);
+    });
+
+    // Without a way back, pinning would be a trap: the reader could leave the live tail and not
+    // return without editing the URL.
+    it('offers a way back to the live tail, which clears the pin', async () => {
+      stubFetch();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      const select = await screen.findByRole('combobox') as HTMLSelectElement;
+      // The option has to exist: jsdom will accept a value no <option> offers, so asserting only on
+      // the resulting URL would pass against a control a real reader could not operate.
+      const live = [...select.options].find(o => o.value === '');
+      expect(live, 'no option returns to the live tail').toBeDefined();
+      expect(live!.textContent).toMatch(/live/i);
+
+      await act(async () => {
+        fireEvent.change(select, { target: { value: '2026-09-18T10-00-00' } });
+      });
+      expect(MockEventSource.instance!.url).toMatch(/run=/);
+
+      await act(async () => {
+        fireEvent.change(select, { target: { value: '' } });
+      });
+      expect(MockEventSource.instance!.url).not.toMatch(/[?&]run=/);
+    });
   });
 
   it('shows "N lines" in header and log content after lines arrive', () => {

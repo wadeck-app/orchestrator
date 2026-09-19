@@ -1,7 +1,35 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect } from 'vitest';
 import { RunHistory } from './RunHistory.js';
+
+/*
+ * A row names a run and says how it went, but offered no way to read it: getting to the output meant
+ * going to the logs page and finding the run again in a dropdown, matching it by timestamp by eye.
+ * The link carries the run, so the pane opens on that exact run.
+ */
+describe('RunHistory - reaching a run\'s output', () => {
+  const entry = { startedAt: '2026-09-18T10:00:00Z', exitCode: 0, pid: 1 };
+
+  it('links each run to its own logs, pinned to that run', () => {
+    render(
+      <MemoryRouter><RunHistory entries={[entry]} jobId="j1" /></MemoryRouter>
+    );
+
+    const link = screen.getByRole('link', { name: /logs/i });
+    // The run name is the log file's own stamp: colons become dashes and the ms are dropped, which
+    // is what RunLogger does when it names the file. Anything else deep-links to a run that is not
+    // there, and the pane silently falls back to the live tail.
+    expect(link.getAttribute('href')).toBe('/jobs/j1/logs?run=2026-09-18T10-00-00');
+  });
+
+  // The component is also used where the job is not known; a broken link is worse than none.
+  it('omits the link when no job id is given', () => {
+    render(<MemoryRouter><RunHistory entries={[entry]} /></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: /logs/i })).toBeNull();
+  });
+});
 
 describe('RunHistory - exit code display in detail page', () => {
   it('shows "No runs yet" when empty', () => {

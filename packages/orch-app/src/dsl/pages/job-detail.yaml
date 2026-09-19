@@ -65,3 +65,6 @@ sections:
     items:
       - $type: RunHistory
         entries: $sources.jobData.runHistory
+        # Turns each row into a link to that run's own output. Without it a reader has to open the
+        # logs page and re-find the run in the dropdown by matching timestamps by eye.
+        jobId: $route.id

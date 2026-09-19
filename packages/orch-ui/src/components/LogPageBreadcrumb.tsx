@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { BACK_ROW_CLS, BACK_LINK_CLS } from '@wadeck-app/dsl-ui';
+import { useWidePane, widthClass } from './log-pane-width.js';
 
 // One row: back link, job name, page kind. Replaces a stacked back link, a
 // text-2xl page title and a "Logs" subtitle, which together pushed the first log
@@ -29,7 +30,13 @@ export interface LogPageBreadcrumbProps {
  * @registryTags header navigation log
  */
 export function LogPageBreadcrumb({ jobId, jobLabel }: LogPageBreadcrumbProps): React.ReactElement {
+  // Follows the pane's width so the two stay aligned. The page asks PageContent for `full`, so
+  // without this the arrow would sit at the viewport edge while the pane below it was centred.
+  const [widePane] = useWidePane();
   return (
+    // The width goes on a wrapper, not on the row: BACK_ROW_CLS carries `-mx-4` to bleed into the
+    // page padding, and `mx-auto` on the same element would be two rules fighting over margin-x.
+    <div className={widthClass(widePane)}>
     <div className={BACK_ROW_CLS}>
       <div className="flex items-center gap-3 text-sm" data-testid="log-breadcrumb">
         {/* The label is visible text rather than an aria-label: it names the destination for
@@ -43,6 +50,7 @@ export function LogPageBreadcrumb({ jobId, jobLabel }: LogPageBreadcrumbProps): 
         <span className={JOB_CLS}>{jobLabel ?? jobId}</span>
         <span className={KIND_CLS}>Logs</span>
       </div>
+    </div>
     </div>
   );
 }

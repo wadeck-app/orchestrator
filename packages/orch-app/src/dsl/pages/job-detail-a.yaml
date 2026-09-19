@@ -68,3 +68,5 @@ sections:
     items:
       - $type: RunHistory
         entries: $sources.jobData.runHistory
+        # Turns each row into a link to that run's own output.
+        jobId: $route.id

@@ -1,10 +1,25 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
+import { FileText } from 'lucide-react';
 import { isRunActive, isRunCancelled, isRunSkipped, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { TriggerBadge } from './TriggerBadge.js';
 
 export interface RunHistoryProps {
   entries: RuntimeEntry[];
+  /** Enables the per-run Logs link. Without it the run cannot be addressed, so no link is shown. */
+  jobId?: string;
+}
+
+/**
+ * The run's log file stamp, as RunLogger names it: colons to dashes, milliseconds dropped.
+ *
+ * Duplicating the rule is what makes the link land on the right run; deriving it from the displayed
+ * locale string would produce a name no file has, and the pane would quietly fall back to the live
+ * tail rather than say the run was not found.
+ */
+function runName(startedAt: string): string {
+  return startedAt.replace(/:/g, '-').slice(0, 19);
 }
 
 function formatDuration(entry: RuntimeEntry): string {
@@ -26,7 +41,7 @@ function formatDuration(entry: RuntimeEntry): string {
  * @registryCategory composite
  * @registryTags history table runs
  */
-export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
+export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElement {
   if (!entries || entries.length === 0) {
     return <p className="text-sm text-muted italic">No runs yet</p>;
   }
@@ -42,6 +57,7 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
           <th className="pb-1 font-medium">Result</th>
           <th className="pb-1 font-medium">Triggered by</th>
           <th className="pb-1 font-medium">PID</th>
+          {jobId !== undefined && <th className="pb-1 font-medium">Output</th>}
         </tr>
       </thead>
       <tbody>
@@ -65,7 +81,18 @@ export function RunHistory({ entries }: RunHistoryProps): React.ReactElement {
                 />
               </td>
               <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
-              <td className="py-1 text-muted">{entry.pid ?? '-'}</td>
+              <td className="py-1 pr-4 text-muted">{entry.pid ?? '-'}</td>
+              {jobId !== undefined && (
+                <td className="py-1">
+                  <Link
+                    to={`/jobs/${jobId}/logs?run=${encodeURIComponent(runName(entry.startedAt))}`}
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <FileText size={12} />
+                    Logs
+                  </Link>
+                </td>
+              )}
             </tr>
           );
         })}

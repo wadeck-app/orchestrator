@@ -105,19 +105,27 @@ export async function logsRoutes(
     // Poll for new lines every POLL_INTERVAL_MS (reliable on Windows, avoids fs.watch quirks)
     const pollTimer = setInterval(() => {
       try {
-        const latestPath = findLatestLogFile(logDir, jobId);
-        if (latestPath === null) return;
+        // A reader who named a run is pinned to it. Following the newest file regardless is what
+        // appended the NEXT run's output to the run on screen: two runs interleaved in one pane,
+        // with nothing marking where the first ended. Reported as "it shows the logs of both".
+        // Without ?run= the request means "what is happening now", so there the switch is the point.
+        if (runName === undefined) {
+          const latestPath = findLatestLogFile(logDir, jobId);
+          if (latestPath === null) return;
 
-        // Date rolled over - new log file appeared
-        if (latestPath !== currentLogPath) {
-          currentLogPath = latestPath;
-          fileSize = 0;
+          // A new run started, or the date rolled over on a legacy daily file.
+          if (latestPath !== currentLogPath) {
+            currentLogPath = latestPath;
+            fileSize = 0;
+          }
         }
+        // A pinned run whose file never appeared has nothing to poll for.
+        if (currentLogPath === null) return;
 
-        const newSize = fs.statSync(currentLogPath!).size;
+        const newSize = fs.statSync(currentLogPath).size;
         if (newSize <= fileSize) return;
 
-        const stream = fs.createReadStream(currentLogPath!, { start: fileSize });
+        const stream = fs.createReadStream(currentLogPath, { start: fileSize });
         fileSize = newSize;
         const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
         rl.on('line', send);

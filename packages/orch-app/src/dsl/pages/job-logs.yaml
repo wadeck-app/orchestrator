@@ -7,6 +7,10 @@ $sources:
       id: $route.id
 
 $type: PageContent
+# The shell stops constraining the width, because on this page the width is the reader's choice: the
+# Wide/Narrow toggle in the pane's toolbar remembers it. Both sections below apply that choice
+# themselves, so they stay aligned with each other instead of with the shell.
+maxWidth: full
 sections:
   # One compact row instead of a BackLink, a text-2xl PageHeader and a redundant
   # "Logs" subtitle stacked over each other: those pushed the first log line to
