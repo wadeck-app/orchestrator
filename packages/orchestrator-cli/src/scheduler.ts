@@ -69,14 +69,6 @@ export interface TreeUsage {
   ramMb:  number;
 }
 
-/**
- * Sums CPU and RAM over a process and all its descendants.
- *
- * Returns null when not a single pid could be sampled, which lets the caller tell
- * "the job exited" apart from "the job is genuinely using 0%". Individual pids are
- * sampled independently because a descendant can exit between the tree walk and the
- * sample, and one dead pid must not discard the readings of its siblings.
- */
 /** Injection seam for the tests; production passes nothing and gets pidtree + pidusage. */
 interface TreeDeps {
   tree:  (pid: number) => Promise<number[]>;
@@ -89,6 +81,16 @@ interface TreeDeps {
  */
 const TREE_AGE_TOLERANCE_MS = 1_000;
 
+/**
+ * Sums CPU and RAM over a process and all its descendants.
+ *
+ * Returns null when the root itself could not be sampled, which lets the caller tell "the job exited"
+ * apart from "the job is genuinely using 0%". Descendants are sampled independently because one can
+ * exit between the tree walk and the sample, and a dead pid must not discard its siblings' readings.
+ *
+ * Processes older than the root are dropped: they cannot be its descendants. See the comment below
+ * for why the tree walk offers them at all.
+ */
 export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps>): Promise<TreeUsage | null> {
   const tree  = deps?.tree  ?? ((pid: number) => pidtree(pid, { root: true }));
   const usage = deps?.usage ?? ((pid: number) => pidusage(pid));

@@ -44,17 +44,6 @@ function has(argv: string[], name: string): boolean {
 }
 
 /**
- * Reads `--active-from`, `--active-until` and `--active-for` into the job's window fields.
- *
- * `--active-for` is the form the feature is actually wanted in - "active for three weeks" - and is
- * measured from `--active-from` when one is given, so a window can be both future and bounded:
- * `--active-from 2026-03-01 --active-for 3w`.
- *
- * Giving both `--active-for` and `--active-until` is refused rather than silently preferring one.
- * They are two ways of saying the same thing, and picking a winner would mean the job ends at a time
- * the user did not ask for.
- */
-/**
  * Every job field settable by a plain flag, in one place.
  *
  * `add` and `edit` both read this, because the two lists used to be maintained by hand and drifted:
@@ -205,6 +194,17 @@ function rejectUnknownFlags(argv: string[], extra: string[], cmdName: string): v
   }
 }
 
+/**
+ * Reads `--active-from`, `--active-until` and `--active-for` into the job's window fields.
+ *
+ * `--active-for` is the form the feature is actually wanted in - "active for three weeks" - and is
+ * measured from `--active-from` when one is given, so a window can be both future and bounded:
+ * `--active-from 2026-03-01 --active-for 3w`.
+ *
+ * Giving both `--active-for` and `--active-until` is refused rather than silently preferring one.
+ * They are two ways of saying the same thing, and picking a winner would mean the job ends at a time
+ * the user did not ask for.
+ */
 function activeWindowFlags(argv: string[]): Record<string, string> {
   const from  = flag(argv, '--active-from');
   const until = flag(argv, '--active-until');
