@@ -155,9 +155,9 @@ exit-code claim was dropped for lack of sources in this checkout.
 
 ### Violations: suppression syntax is per-rule, one line, and blocks need start/end
 
-**Problem:** A single `violations-suppress shared/no-emoji,shared/no-unicode-symbol` line was assumed to work; it does not, and suppression only covers the one following line, so JSX or multi-line violations stay unsuppressed.
-**Fix:** One suppress comment per rule, and `suppress-start` / `suppress-end` around multi-line or JSX violations.
-**Context:** Run `violations check` with no grep filter as the final commit gate -- filtering with negative greps masked real violations and the filter list itself was wrong. Compare the total before and after a change to see what you actually added.
+**Problem:** Suppression only covers the one following line, so JSX or multi-line violations stay unsuppressed -- and a suppression separated from its target by an intervening comment silently does nothing.
+**Fix:** Put the suppress comment IMMEDIATELY above the offending line, and use `suppress-start` / `suppress-end` around multi-line or JSX violations. A comma-separated rule list on one line is supported: `violations-suppress: rule/one,rule/two <reason>`.
+**Context:** The comma-separated form was previously recorded here as not working. It does -- proven by suppressing `cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide` on four sites and watching both rules stop firing, and the repo already used the form in `violations-suppress-start` blocks. The adjacency rule is the real trap, and it bit again in `tray-manager.ts`: a suppression sat above an explanatory comment rather than above the `execFile`, so the finding survived a decision that had already been made. Also note sibling rules: a spawn can be reported by two rules at once, and suppressing one leaves the other firing, which reads as an unaddressed finding. Run `violations check` with no grep filter as the final commit gate and compare totals before and after.
 
 ---
 
@@ -222,3 +222,51 @@ exit-code claim was dropped for lack of sources in this checkout.
 **Problem:** The shim intercepted `start` and ran the windowsgui launcher through `execFileSync`, whose output goes to NUL -- `orch start` printed nothing and blocked for the daemon's whole lifetime, while `cli.ts`'s own detached `start` path was dead code.
 **Fix:** Keep the shim a pass-through to the CLI bundle; daemon lifecycle decisions stay in TypeScript in `cli.ts`.
 **Context:** Four earlier fixes targeted the wrong layer and produced the false lesson "MSYS2 Job Objects make fast detach impossible" -- measure which layer is waiting before theorising about the OS. The shim also re-spawns the bundle as a child, so its stdout is a real pipe: forcing `isTTY` in a parent process will not reach the human-readable render path.
+
+---
+
+### `pidtree` on a just-spawned pid can return processes that are not yours
+
+**Problem:** A `killJob` test polled `pidtree(pid, {root: true})` as soon as the job's pid was recorded, then asserted every pid it returned was dead -- and reported nine survivors, one of which was a `node` process that had been running since the previous day.
+**Fix:** Never let `pidtree` choose a test's assertion set. Have the fixture announce its own pid (`selfAnnouncing` in `exec-manager.test.js`) and assert on `[wrapperPid, announcedPid]`, a set the test fully controls.
+**Context:** `pidtree` walks `ParentProcessId`, which is not unique over time on Windows: a freed pid still appears as the parent of unrelated live processes, so `pidtree` adopts an orphaned subtree. `process-tree-strangers.test.js` measured 29 dead pids named as a parent by a live process, one yielding 152 pids. `sampleProcessTree` guards the mirror image by rebuilding the tree link by link from `ppid` plus age. A fixed sleep does NOT fix this -- the strangers are not late, they are not ours -- and `exec-manager.test.js` already says why in one line: "waiting longer only widens the race."
+
+---
+
+### In a shared working tree, committing without a pathspec takes someone else's staged work
+
+**Problem:** Two sessions shared one checkout. One had staged its files and was waiting on a permission dialog; the other committed with no pathspec, which took the whole index -- 12 of that commit's 14 files belonged to the other session and reached `main` under the wrong message.
+**Fix:** Always name the paths explicitly on the commit, `-- <path> <path>`. Staging file by file is NOT the safeguard; the index is global.
+**Context:** "I only staged my own files" gives a false sense of safety, because a commit with no pathspec ignores how carefully each index entry got there. Any pause between staging and committing -- a permission prompt, a test run, a question to the user -- is a window for another session's staging to land in your commit. Rewriting history is the wrong cure when both sessions are pushing to the same branch: leave it and add an empty commit documenting what the other half actually was.
+
+---
+
+### An unquoted `**` glob in an npm script silently runs a fraction of the suite
+
+**Problem:** `"test": "node --test --require tsx/cjs test/**/*.test.js"` was unquoted, and `globstar` is off in this shell, so `**` degrades to `*`.
+**Fix:** Quote the pattern -- `"test/**/*.test.js"` -- so Node's own globber expands it instead of the shell.
+**Context:** It worked only because `test/` was flat: nothing matched, so the literal string reached Node, which does support `**`. Add one `test/<subdir>/` and on Linux and macOS (npm spawns `/bin/sh`) the shell expands it to that subdirectory alone -- `npm test` then runs one file and exits 0, green, while Windows (`cmd.exe`, no globbing) still runs all of them. A silently passing CI on two of three platforms, with no error anywhere. Proven here with `printf '%s\n' src/**/*.ts | wc -l` -> 4 against `ls src/*.ts | wc -l` -> 33.
+
+---
+
+### Use the `poll-ci` skill after every push -- hand-rolled sleep loops are a drift, not a shortcut
+
+**Problem:** After the first push the skill was abandoned in favour of a `for i in $(seq 1 16); do sleep 25; ...` loop, for four consecutive pushes, and the user had to interrupt twice to stop it.
+**Fix:** Invoke `/poll-ci <owner>/<repo> <sha>` after every push. No exceptions, including when a local script gives a more compact answer.
+**Context:** The rule is already in `guiding-principles.md:47`. The pull towards the hand-rolled loop was that a custom timings script produced one tidy line per poll -- optimising for the agent's convenience over an explicit instruction. Compact output is not a reason to replace a skill; if a skill's output is too verbose, say so rather than silently dropping it.
+
+---
+
+### `typescript` 7.x exposes no JS compiler API -- codemods need a different parser
+
+**Problem:** A codemod calling `ts.createSourceFile` threw `Cannot read properties of undefined (reading 'Latest')`; `require('typescript')` returns an object with exactly two keys, `version` and `versionMajorMinor`.
+**Fix:** Use `@babel/parser` (present transitively via vite's react plugin) with `plugins: ['typescript']`, adding `'jsx'` only for `.tsx` -- in a `.ts` file `<Foo>bar` is a type assertion and the jsx plugin turns it into a parse error.
+**Context:** This repo is on `typescript@7.0.2`, the native port, where the JS entry point is a version shim and the compiler is a Go binary. Anything that used to walk a TS AST from a script is broken by that upgrade. Leaning on a transitive dependency is acceptable for a one-off codemod and not for anything shipped or run in CI.
+
+---
+
+### The resource monitor mixes injected time with `Date.now()`, so `FakeTime` cannot drive it
+
+**Problem:** `scheduler.ts` arms the sampling timer through `this._time.every` but reads the wall clock directly for the stall window (`samplingSince`, ~line 969) and the peak-flush throttle (`peakFlushedAt`, ~lines 926/930/983). Under `FakeTime` the ticks advance and those comparisons do not.
+**Fix:** Until those reads go through `this._time.now()`, test the monitor with an injected `sampleUsage` plus a short real `sampleIntervalMs` -- not `FakeTime`.
+**Context:** Found independently by two reviews. It is why the resource-budget tests use a real 25ms interval rather than stating elapsed time like `deadlines.test.js` does. Related trap in the same area: `samplingStallMs` is `sampleIntervalMs * 3` and the sampler must outlast the interval for an overlap test to mean anything, so the ratio is bounded below 3 by construction -- there is no "safe" constant. Assert that an overlap happened *before the stall window was due*, rather than that overlap never happened, or a merely busy runner fails the test for the host's reasons.
