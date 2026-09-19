@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
+import { ColumnHelpers, DataTable, type TableColumn } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunSkipped, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { TriggerBadge } from './TriggerBadge.js';
@@ -57,65 +58,86 @@ function formatFinishedDuration(entry: RuntimeEntry): string {
 }
 
 /**
+ * One run, flattened for DataTable.
+ *
+ * A type alias rather than an interface: DataTable is generic over `T extends Record<string,
+ * unknown>`, and only an object type literal gets the implicit index signature that satisfies it.
+ *
+ * The text columns are pre-formatted strings because that is what they display -- a column sorting on
+ * "1.4s" would sort lexically and lie. `entry` rides along so the badge columns can classify the run
+ * from the real values rather than re-parse the strings.
+ */
+type RunRow = {
+  started: string;
+  duration: string;
+  peakCpu: string;
+  peakRam: string;
+  pid: string;
+  entry: RuntimeEntry;
+};
+
+function toRow(entry: RuntimeEntry): RunRow {
+  const date = new Date(entry.startedAt);
+  // violations-suppress: ts/no-locale-date no shared formatter in orch-ui; toLocaleString acceptable here because run timestamps are display-only and test assertions use DOM presence, not text content, so locale does not affect test correctness
+  const started = isNaN(date.getTime()) ? entry.startedAt : date.toLocaleString();
+  return {
+    started,
+    duration: formatFinishedDuration(entry),
+    peakCpu: entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-',
+    peakRam: entry.peakRamMb != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-',
+    pid: entry.pid != null ? String(entry.pid) : '-',
+    entry,
+  };
+}
+
+/**
  * @registryCategory composite
  * @registryTags history table runs
  */
 export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElement {
-  if (!entries || entries.length === 0) {
-    return <p className="text-sm text-muted italic">No runs yet</p>;
+  const rows = (entries ?? []).map(toRow);
+
+  const columns: TableColumn<RunRow>[] = [
+    ColumnHelpers.text<RunRow>('started', 'Started'),
+    ColumnHelpers.text<RunRow>('duration', 'Duration', { muted: true }),
+    ColumnHelpers.text<RunRow>('peakCpu', 'Peak CPU', { muted: true }),
+    ColumnHelpers.text<RunRow>('peakRam', 'Peak RAM', { muted: true }),
+    {
+      key: 'result',
+      label: 'Result',
+      // The badge owns the whole outcome-to-pill mapping; this column only classifies.
+      render: ({ entry }) => (
+        <JobStatusBadge
+          exitCode={entry.exitCode}
+          running={isRunActive(entry)}
+          cancelled={isRunCancelled(entry)}
+          skipped={isRunSkipped(entry)}
+        />
+      ),
+    },
+    { key: 'triggeredBy', label: 'Triggered by', render: ({ entry }) => <TriggerBadge source={entry.triggeredBy} /> },
+    ColumnHelpers.text<RunRow>('pid', 'PID', { muted: true }),
+  ];
+
+  // Without a jobId a run cannot be addressed, so the column is absent rather than empty.
+  if (jobId !== undefined) {
+    columns.push({
+      key: 'output',
+      label: 'Output',
+      render: ({ entry }) => (
+        <Link
+          to={`/jobs/${jobId}/logs?run=${encodeURIComponent(runName(entry.startedAt))}`}
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+        >
+          <FileText size={12} />
+          Logs
+        </Link>
+      ),
+    });
   }
 
-  return (
-    <table className="w-full text-sm border-collapse">
-      <thead>
-        <tr className="text-left text-muted border-b">
-          <th className="pb-1 font-medium">Started</th>
-          <th className="pb-1 font-medium">Duration</th>
-          <th className="pb-1 font-medium">Peak CPU</th>
-          <th className="pb-1 font-medium">Peak RAM</th>
-          <th className="pb-1 font-medium">Result</th>
-          <th className="pb-1 font-medium">Triggered by</th>
-          <th className="pb-1 font-medium">PID</th>
-          {jobId !== undefined && <th className="pb-1 font-medium">Output</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((entry, i) => {
-          const date = new Date(entry.startedAt);
-          // violations-suppress: ts/no-locale-date no shared formatter in orch-ui; toLocaleString acceptable here because run timestamps are display-only and test assertions use DOM presence, not text content, so locale does not affect test correctness
-          const formatted = isNaN(date.getTime()) ? entry.startedAt : date.toLocaleString();
-          return (
-            <tr key={i}>
-              <td className="py-1 pr-4 text-content">{formatted}</td>
-              <td className="py-1 pr-4 text-muted">{formatFinishedDuration(entry)}</td>
-              <td className="py-1 pr-4 text-muted">{entry.peakCpuPct != null ? `${entry.peakCpuPct.toFixed(1)}%` : '-'}</td>
-              <td className="py-1 pr-4 text-muted">{entry.peakRamMb  != null ? `${entry.peakRamMb.toFixed(0)}MB` : '-'}</td>
-              <td className="py-1 pr-4">
-                {/* The badge owns the whole outcome-to-pill mapping; this cell only classifies. */}
-                <JobStatusBadge
-                  exitCode={entry.exitCode}
-                  running={isRunActive(entry)}
-                  cancelled={isRunCancelled(entry)}
-                  skipped={isRunSkipped(entry)}
-                />
-              </td>
-              <td className="py-1 pr-4"><TriggerBadge source={entry.triggeredBy} /></td>
-              <td className="py-1 pr-4 text-muted">{entry.pid ?? '-'}</td>
-              {jobId !== undefined && (
-                <td className="py-1">
-                  <Link
-                    to={`/jobs/${jobId}/logs?run=${encodeURIComponent(runName(entry.startedAt))}`}
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
-                  >
-                    <FileText size={12} />
-                    Logs
-                  </Link>
-                </td>
-              )}
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
+  // DataTable owns the empty state now, so the early return is gone. Deliberately no `selectable` and
+  // no `sortable`: a run history has nothing to act on in bulk, and every text column here holds a
+  // formatted string that would sort lexically.
+  return <DataTable rows={rows} columns={columns} emptyMessage="No runs yet" />;
 }

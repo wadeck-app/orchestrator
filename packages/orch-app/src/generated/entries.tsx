@@ -1476,6 +1476,7 @@ export const DataTableEntry: ComponentRegistryEntry = {
 		const emptyMessage = resolveExpressionValue(node['emptyMessage'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['emptyMessage']
 		const onAction = resolveExpressionValue(node['onAction'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onAction']
 		const navigateTo = resolveExpressionValue(node['navigateTo'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['navigateTo']
+		const onRowClick = resolveExpressionValue(node['onRowClick'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onRowClick']
 		const filtersTop = node['filtersTop'] as unknown[] | undefined
 		const filters = node['filters'] as unknown[] | undefined
 		const id = resolveExpressionValue(node['id'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['id']
@@ -1493,7 +1494,7 @@ export const DataTableEntry: ComponentRegistryEntry = {
 		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onBatchAction']
 		const expansionCondition = resolveExpressionValue(node['expansionCondition'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansionCondition']
 		const fontMono = resolveExpressionValue(node['fontMono'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['fontMono']
-		return <DataTable rows={rows} columns={columns} loading={loading} emptyMessage={emptyMessage} onAction={onAction} navigateTo={navigateTo} filtersTop={filtersTop ? renderChildren(filtersTop, registry, ctx) : null} filters={filters ? renderChildren(filters, registry, ctx) : null} id={id} page={page} onPageChange={onPageChange} sortCol={sortCol} onSortColChange={onSortColChange} sortDir={sortDir} onSortDirChange={onSortDirChange} defaultFilters={defaultFilters} expansion={expansion} renderNode={renderNode} selectable={selectable} batchActions={batchActions} onBatchAction={onBatchAction} expansionCondition={expansionCondition} fontMono={fontMono} />
+		return <DataTable rows={rows} columns={columns} loading={loading} emptyMessage={emptyMessage} onAction={onAction} navigateTo={navigateTo} onRowClick={onRowClick} filtersTop={filtersTop ? renderChildren(filtersTop, registry, ctx) : null} filters={filters ? renderChildren(filters, registry, ctx) : null} id={id} page={page} onPageChange={onPageChange} sortCol={sortCol} onSortColChange={onSortColChange} sortDir={sortDir} onSortDirChange={onSortDirChange} defaultFilters={defaultFilters} expansion={expansion} renderNode={renderNode} selectable={selectable} batchActions={batchActions} onBatchAction={onBatchAction} expansionCondition={expansionCondition} fontMono={fontMono} />
 	},
 }
 

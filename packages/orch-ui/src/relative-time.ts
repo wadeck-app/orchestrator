@@ -75,20 +75,52 @@ export function formatElapsed(startedAt: MomentLike, now: number): string {
 }
 
 /**
+ * A duration that keeps its second unit where that unit carries information: "47s", "9m",
+ * "3h 20m", "14d".
+ *
+ * For a list of upcoming firings, where the minutes are the thing being read -- "in 3h" for
+ * something due at 3h20 is worse information than the extra word costs. A zero remainder is dropped,
+ * so it is "in 3h" and never "in 3h 0m".
+ *
+ * Days do not carry hours: at that range the reader is placing the firing on a calendar, not timing it.
+ */
+export function formatPreciseDuration(ms: number): string {
+  const s = Math.round(Math.abs(ms) / 1000);
+  if (s < 60) {
+    return `${s}s`;
+  }
+  const m = Math.floor(s / 60);
+  if (m < 60) {
+    return `${m}m`;
+  }
+  const h = Math.floor(m / 60);
+  if (h < 24) {
+    const rem = m % 60;
+    return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
+  }
+  return `${Math.round(h / 24)}d`;
+}
+
+/**
  * How far off a moment is: "in 3h", "overdue by 5m".
  *
  * An overdue moment says so rather than clamping to "in 0s", which read as "about to fire" for a job
  * whose moment had already passed -- the state that actually means the daemon was down when it was due.
+ *
+ * `precise` keeps the second unit ("in 3h 20m"). It exists because ScheduleTimeline's own private
+ * relTime did, and folding it in here without the option would have silently coarsened the schedule
+ * page. Default off: a countdown read at a glance is better off with one unit.
  */
-export function describeMoment(at: MomentLike, now: number): string {
+export function describeMoment(at: MomentLike, now: number, options?: { precise?: boolean }): string {
   const atMs = toMs(at);
   if (atMs === null) {
     return 'unscheduled';
   }
+  const format = options?.precise === true ? formatPreciseDuration : formatApproxDuration;
   const remainingMs = atMs - now;
   return remainingMs >= 0
-    ? `in ${formatApproxDuration(remainingMs)}`
-    : `overdue by ${formatApproxDuration(-remainingMs)}`;
+    ? `in ${format(remainingMs)}`
+    : `overdue by ${format(-remainingMs)}`;
 }
 
 /**

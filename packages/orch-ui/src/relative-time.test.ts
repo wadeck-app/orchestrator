@@ -80,6 +80,43 @@ describe('describeAgo', () => {
 });
 
 /*
+ * ScheduleTimeline's wording, folded in from its own private relTime. Pinned because the default
+ * one-unit form would silently coarsen the schedule page: "in 3h" for a firing due at 3h20.
+ */
+describe('describeMoment precise', () => {
+  it('keeps the minutes past an hour', () => {
+    expect(describeMoment(NOW + 3 * HOUR + 20 * MINUTE, NOW, { precise: true })).toBe('in 3h 20m');
+  });
+
+  // "in 3h 0m" reads as a machine talking.
+  it('drops a zero remainder', () => {
+    expect(describeMoment(NOW + 3 * HOUR, NOW, { precise: true })).toBe('in 3h');
+  });
+
+  it('is minutes only below an hour, and seconds only below a minute', () => {
+    expect(describeMoment(NOW + 9 * MINUTE, NOW, { precise: true })).toBe('in 9m');
+    expect(describeMoment(NOW + 47 * SECOND, NOW, { precise: true })).toBe('in 47s');
+  });
+
+  // At the day range the reader is placing the firing on a calendar, not timing it.
+  it('is whole days beyond a day', () => {
+    expect(describeMoment(NOW + 2 * DAY + 5 * HOUR, NOW, { precise: true })).toBe('in 2d');
+  });
+
+  /*
+   * The old relTime said "now" for anything already past, which hid a firing the daemon missed behind
+   * the same word it used for one about to happen.
+   */
+  it('says an overdue firing is overdue, not "now"', () => {
+    expect(describeMoment(NOW - 5 * MINUTE, NOW, { precise: true })).toBe('overdue by 5m');
+  });
+
+  it('the default is still the one-unit form', () => {
+    expect(describeMoment(NOW + 3 * HOUR + 20 * MINUTE, NOW)).toBe('in 3h');
+  });
+});
+
+/*
  * The live clock on a running job. Three components had byte-identical private copies of this; the
  * wording is pinned here so replacing them cannot have changed what the dashboard shows.
  */

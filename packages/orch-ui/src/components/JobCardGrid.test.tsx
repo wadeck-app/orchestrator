@@ -139,3 +139,102 @@ describe('JobCardGrid status column', () => {
     expect(screen.queryByText('Cancelled')).toBeNull();
   });
 });
+
+/*
+ * List view, which was a hand-rolled <table> and is now dsl-ui's DataTable.
+ *
+ * Worth its own block because the previous tests all run in grid view (the default), so the table
+ * had no coverage at all -- the migration would have been verified by nothing.
+ */
+describe('JobCardGrid list view', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // The view mode is persisted, so a test that switches it would otherwise leak into the next.
+    try { localStorage.clear(); } catch { /* not available */ }
+  });
+
+  const ITEMS = [
+    { job: JOB('j1', 'Job A'), runHistory: HISTORY },
+    { job: JOB('j2', 'Job B'), runHistory: HISTORY },
+  ];
+
+  async function inListView(extra: Partial<React.ComponentProps<typeof JobCardGrid>> = {}) {
+    const user = userEvent.setup();
+    wrap(<JobCardGrid items={ITEMS} {...extra} />);
+    await user.click(screen.getByLabelText('List view'));
+    return user;
+  }
+
+  it('renders the columns and a row per job', async () => {
+    await inListView();
+
+    for (const header of ['Job', 'Type', 'Schedule', 'Status', 'Last run', 'Actions']) {
+      expect(screen.getByText(header)).toBeInTheDocument();
+    }
+    expect(screen.getByText('Job A')).toBeInTheDocument();
+    expect(screen.getByText('Job B')).toBeInTheDocument();
+  });
+
+  // DataTable's own navigateTo needs a RouterContext this app does not mount, so the row click goes
+  // through onRowClick. Without it the whole row would be dead.
+  it('clicking a row hands the job id to onJobClick', async () => {
+    const onJobClick = vi.fn();
+    const user = await inListView({ onJobClick });
+
+    await user.click(screen.getByText('Job B'));
+
+    expect(onJobClick).toHaveBeenCalledWith('j2');
+  });
+
+  it('the row checkbox selects without triggering the row click', async () => {
+    const onJobClick = vi.fn();
+    const user = await inListView({ onJobClick });
+
+    await user.click(screen.getByLabelText('Select Job A'));
+
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect(onJobClick).not.toHaveBeenCalled();
+  });
+
+  // TableColumn.label is a string, so select-all cannot be a header cell; it is in the toolbar, with
+  // a visible label so it does not read as one more filter chip.
+  it('select-all takes every visible job, and clears them again', async () => {
+    const user = await inListView();
+    const selectAll = screen.getByLabelText('Select all');
+
+    await user.click(selectAll);
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+    await user.click(selectAll);
+    expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it('selection survives a switch back to grid view, since one set drives both', async () => {
+    const user = await inListView();
+
+    await user.click(screen.getByLabelText('Select Job A'));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Grid view'));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+  });
+
+  it('per-row Run now triggers that job without navigating', async () => {
+    const onTrigger = vi.fn();
+    const onJobClick = vi.fn();
+    const user = await inListView({ onTrigger, onJobClick });
+
+    await user.click(screen.getAllByRole('button', { name: 'Run now' })[0]!);
+
+    expect(onTrigger).toHaveBeenCalledWith('j1');
+    expect(onJobClick).not.toHaveBeenCalled();
+  });
+
+  it('DataTable owns the empty state, so the message is not doubled', async () => {
+    const user = userEvent.setup();
+    wrap(<JobCardGrid items={ITEMS} search="nothing matches this" />);
+    await user.click(screen.getByLabelText('List view'));
+
+    expect(screen.getAllByText('No jobs match the current filter.')).toHaveLength(1);
+  });
+});

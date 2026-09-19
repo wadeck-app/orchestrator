@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
-import { ButtonAction, ButtonLink, IconButton, Spinner } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonLink, Checkbox, ColumnHelpers, DataTable, IconButton, Spinner, type TableColumn } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type RuntimeEntry } from '../types.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -28,6 +28,36 @@ function readViewMode(): ViewMode {
 // @formatter:off
 const BULK_BAR_CLS  = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 bg-surface rounded-lg border border-border shadow-lg flex-wrap max-w-2xl';
 // @formatter:on
+
+/**
+ * One job, flattened for DataTable's list view.
+ *
+ * A type alias rather than an interface: DataTable is generic over `T extends Record<string,
+ * unknown>`, and only an object type literal gets the implicit index signature that satisfies it.
+ *
+ * `item` rides along so the columns that render a badge can classify from the real run rather than
+ * re-parse a string.
+ */
+type JobRow = {
+  id: string;
+  label: string;
+  type: string;
+  schedule: string;
+  lastRun: string;
+  item: JobWithUptime;
+};
+
+function toJobRow(item: JobWithUptime): JobRow {
+  const last = latestRun(item.runHistory);
+  return {
+    id: item.job.id,
+    label: item.job.label,
+    type: item.job.type,
+    schedule: item.job.schedule ?? `${item.job.delaySeconds ?? 0}s`,
+    lastRun: last ? relativeTime(last.startedAt) : 'Never',
+    item,
+  };
+}
 
 /**
  * Failures at the head of the history, which is what drives the "N fails" alert on a card.
@@ -200,12 +230,102 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
     return matchSearch && matchFilter;
   });
 
+  const allVisibleSelected = visible.length > 0 && visible.every(i => selected.has(i.job.id));
+  const toggleSelectAll = () => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      for (const i of visible) {
+        if (allVisibleSelected) { next.delete(i.job.id); } else { next.add(i.job.id); }
+      }
+      return next;
+    });
+  };
+
+  /*
+   * Selection stays here rather than moving to DataTable's own `selectable`.
+   *
+   * DataTable keeps its selection internal, with no way to read or seed it, so handing it over would
+   * give the list view one selection model and its own toolbar while the grid view kept another --
+   * two different bulk UIs for the same jobs, and a selection lost on every view switch. Here one
+   * `selected` set drives both views and the single floating bulk bar, exactly as before.
+   *
+   * The consequence is that the row checkbox is a column: `TableColumn.label` is a string, so the
+   * select-all cannot be a header cell. It lives in the toolbar instead, which is a gain -- grid view
+   * never had one at all.
+   */
+  const listColumns: TableColumn<JobRow>[] = [
+    {
+      key: 'select',
+      label: '',
+      width: 6,
+      render: ({ item }) => (
+        <span onClick={e => { e.stopPropagation(); toggleSelect(item.job.id); }}>
+          <Checkbox
+            checked={selected.has(item.job.id)}
+            onChange={() => {}}
+            aria-label={`Select ${item.job.label}`}
+            className="cursor-pointer"
+          />
+        </span>
+      ),
+    },
+    ColumnHelpers.text<JobRow>('label', 'Job'),
+    {
+      key: 'type',
+      label: 'Type',
+      render: ({ item }) => (
+        <span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[item.job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>
+          {item.job.type}
+        </span>
+      ),
+    },
+    ColumnHelpers.text<JobRow>('schedule', 'Schedule', { mono: true, muted: true }),
+    {
+      key: 'status',
+      label: 'Status',
+      render: ({ item }) => {
+        const last = latestRun(item.runHistory);
+        return <JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} skipped={isRunSkipped(last)} />;
+      },
+    },
+    ColumnHelpers.text<JobRow>('lastRun', 'Last run', { muted: true }),
+    {
+      key: 'actions',
+      label: 'Actions',
+      // Same pair as the card footer, at the same size. The spans stop the row's click.
+      render: ({ item }) => (
+        <div className="flex items-center gap-2">
+          <span onClick={e => e.stopPropagation()}>
+            <ButtonLink to={`/jobs/${item.job.id}/logs`} label="Logs" icon={<FileText size={12} />} variant="secondary" size="sm" />
+          </span>
+          <span onClick={e => e.stopPropagation()}>
+            <ButtonAction label="Run now" size="sm" onClick={() => { void handleTrigger(item.job.id); }} />
+          </span>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       {/* One toolbar: filters left, actions right. The filters arrive as a slot so they share
           this row instead of stacking above it - the actions alone used 85px of a 1152px row. */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">{filters}</div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {filters}
+          {/* Select-all lives here rather than in a header cell, because TableColumn.label is a
+              string. It therefore also covers grid view, which never had one.
+
+              Visibly labelled, not just aria-labelled: a bare checkbox sitting beside the filter
+              chips reads as one more filter. The checked state carries the select/deselect sense,
+              which is what a checkbox is for. */}
+          {visible.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+              <Checkbox checked={allVisibleSelected} onChange={toggleSelectAll} className="cursor-pointer" />
+              Select all
+            </label>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {onExport && <ButtonAction variant="secondary" label="Export" onClick={onExport} />}
           {onImport && <ButtonAction variant="secondary" label="Import" onClick={onImport} />}
@@ -227,7 +347,9 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
       )}
 
       {items.length === 0 && <p className="text-muted text-center py-12">No jobs registered yet.</p>}
-      {items.length > 0 && visible.length === 0 && <p className="text-muted text-center py-12">No jobs match the current filter.</p>}
+      {/* List view gets this from DataTable's emptyMessage; saying it twice there is worse than
+          saying it once in each place. */}
+      {viewMode === 'grid' && items.length > 0 && visible.length === 0 && <p className="text-muted text-center py-12">No jobs match the current filter.</p>}
 
       {viewMode === 'grid' ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -242,74 +364,12 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
           ))}
         </div>
       ) : (
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="text-left text-muted border-b border-border">
-              <th className="pb-3 pt-2 pr-3 w-6">
-                {/* violations-suppress: react/no-raw-input select-all checkbox - no FieldText variant for boolean without label */}
-                <input type="checkbox"
-                  checked={visible.length > 0 && visible.every(i => selected.has(i.job.id))}
-                  onChange={() => {
-                    if (visible.every(i => selected.has(i.job.id))) {
-                      setSelected(prev => { const n = new Set(prev); visible.forEach(i => n.delete(i.job.id)); return n; });
-                    } else {
-                      setSelected(prev => { const n = new Set(prev); visible.forEach(i => n.add(i.job.id)); return n; });
-                    }
-                  }}
-                  className="w-4 h-4 cursor-pointer accent-primary" />
-              </th>
-              <th className="pb-3 pt-2 font-medium">Job</th>
-              <th className="pb-3 pt-2 font-medium">Type</th>
-              <th className="pb-3 pt-2 font-medium">Schedule</th>
-              <th className="pb-3 pt-2 font-medium">Status</th>
-              <th className="pb-3 pt-2 font-medium">Last run</th>
-              <th className="pb-3 pt-2 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map(({ job, runHistory }) => {
-              const last = latestRun(runHistory);
-              return (
-                <tr key={job.id} className="border-b border-border hover:bg-muted-bg cursor-pointer transition-colors" onClick={() => onJobClick ? onJobClick(job.id) : navigate(`/jobs/${job.id}`)}>
-                  <td className="py-3 pr-3">
-                    {/* violations-suppress: react/no-raw-input row selection checkbox - no FieldText variant for boolean without label */}
-                    <input type="checkbox" checked={selected.has(job.id)} onChange={() => {}}
-                      onClick={e => { e.stopPropagation(); toggleSelect(job.id); }}
-                      className="w-4 h-4 cursor-pointer accent-primary" />
-                  </td>
-                  <td className="py-3 pr-4 text-content font-medium">{job.label}</td>
-                  <td className="py-3 pr-4"><span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>{job.type}</span></td>
-                  <td className="py-3 pr-4 font-mono text-xs text-muted">{job.schedule ?? `${job.delaySeconds ?? 0}s`}</td>
-                  <td className="py-3 pr-4"><JobStatusBadge exitCode={last?.exitCode ?? null} running={isRunActive(last)} cancelled={isRunCancelled(last)} skipped={isRunSkipped(last)} /></td>
-                  <td className="py-3 pr-4 text-xs text-muted">{last ? relativeTime(last.startedAt) : 'Never'}</td>
-                  <td className="py-3">
-                    {/* Same pair as the card footer, at the same size. Both were hand-rolled
-                        here: a 143-character link class duplicated from JobCard, and a raw
-                        button on a third padding scale. The span stops the row's click. */}
-                    <div className="flex items-center gap-2">
-                      <span onClick={e => e.stopPropagation()}>
-                        <ButtonLink
-                          to={`/jobs/${job.id}/logs`}
-                          label="Logs"
-                          icon={<FileText size={12} />}
-                          variant="secondary"
-                          size="sm"
-                        />
-                      </span>
-                      <span onClick={e => e.stopPropagation()}>
-                        <ButtonAction
-                          label="Run now"
-                          size="sm"
-                          onClick={() => { void handleTrigger(job.id); }}
-                        />
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <DataTable
+          rows={visible.map(toJobRow)}
+          columns={listColumns}
+          emptyMessage="No jobs match the current filter."
+          onRowClick={({ id }) => onJobClick ? onJobClick(id) : navigate(`/jobs/${id}`)}
+        />
       )}
       {dialog}
     </div>

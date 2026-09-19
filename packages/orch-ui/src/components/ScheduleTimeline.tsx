@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { describeMoment } from '../relative-time.js';
 
 // @formatter:off
 const DATE_HDR_CLS = 'text-xs font-semibold text-muted uppercase tracking-wide pt-3 pb-1 border-b border-border';
@@ -21,22 +22,15 @@ export interface ScheduleTimelineProps {
   onRunEarly?: (jobId: string) => void;
 }
 
-function relTime(iso: string): string {
-  const diff = new Date(iso).getTime() - Date.now();
-  if (diff < 0) {
-    return 'now';
-  }
-  const m = Math.floor(diff / 60000);
-  if (m < 60) {
-    return `in ${m}m`;
-  }
-  const h = Math.floor(m / 60);
-  if (h < 24) {
-    return `in ${h}h ${m % 60}m`;
-  }
-  return `in ${Math.floor(h / 24)}d`;
-}
-
+/*
+ * Was the last of three private relative-time functions in orch-ui, and the only future-facing one.
+ * `precise` exists in the shared module for this call site: without it the minutes go, and on a list
+ * of upcoming firings the minutes are what is being read.
+ *
+ * One wording change comes with it. The old version said "now" for anything already past, which hid
+ * a firing the daemon missed behind the same word it uses for one about to happen; describeMoment
+ * says "overdue by 5m". That is the distinction the schedule page exists to show.
+ */
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   // violations-suppress: ts/no-locale-date display-only time formatting, locale acceptable
@@ -106,7 +100,7 @@ export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineP
             <div className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-muted-bg text-sm">
               <span className="shrink-0 font-mono text-xs text-muted w-12">{fmtTime(f.ts)}</span>
               <span className="flex-1 text-content truncate">{f.label}</span>
-              <span className="shrink-0 text-xs text-muted">{relTime(f.ts)}</span>
+              <span className="shrink-0 text-xs text-muted">{describeMoment(f.ts, Date.now(), { precise: true })}</span>
               {onRunEarly && (() => {
                 const key = `${f.jobId}:${f.ts}`;
                 const st = btnState[key];
