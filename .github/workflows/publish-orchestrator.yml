@@ -20,6 +20,18 @@ permissions:
     contents: read
     packages: write
 
+# Back-to-back pushes used to run fully in parallel and compete for runners. That is a plausible
+# contributor to the flakiness seen on 2026-09-19: a macOS leg died with `spawn esbuild EAGAIN`
+# (process exhaustion, not an assertion) and an ubuntu leg ended with its `Run tests` step never
+# recording a completion and its logs returning 404.
+#
+# cancel-in-progress is deliberately NOT true on main. The `publish` job runs `npm publish`, and
+# cancelling that mid-flight risks a half-published version, which is far worse than a slow queue.
+# So main pushes serialise and pull requests cancel their own superseded runs.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
     build-and-test:
         # The published targets are win32-x64, darwin-arm64 and darwin-x64, yet this job only
@@ -183,7 +195,24 @@ jobs:
             - name: Build orch-ui
               run: npm run build --workspace=packages/orch-ui
 
+            # Same key as build-and-test, so this restores the very bytes that job already built and
+            # tested -- and since publish `needs: build-and-test`, the entry is always populated by
+            # the time this runs. This was the last 36-42s of SPA rebuild left in the pipeline.
+            #
+            # restore-only rather than the full cache action, because build-and-test has already
+            # saved this key in this same run and a save here would only warn that it exists.
+            # On a miss the build step below still runs, so a cold cache cannot block a release.
+            - name: Restore the built SPA
+              id: spa-cache
+              uses: actions/cache/restore@v4
+              with:
+                  path: packages/orch-app/dist
+                  key: spa-${{ hashFiles('package-lock.json', 'packages/orch-app/src/**', 'packages/orch-app/index.html', 'packages/orch-app/vite.config.ts', 'packages/orch-app/package.json', 'packages/orch-ui/src/**', 'packages/orch-ui/package.json') }}
+
+            # No Typecheck counterpart here, unlike build-and-test: that job has already typechecked
+            # this exact input on all three platforms, and publish cannot start until it passed.
             - name: Build orch-app
+              if: steps.spa-cache.outputs.cache-hit != 'true'
               run: npm run build --workspace=packages/orch-app
 
             - name: Copy orch-app to orch-server public

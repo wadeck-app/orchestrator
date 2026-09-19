@@ -50,10 +50,17 @@ async function waitFor(predicate, label, { timeoutMs = 20000, bail } = {}) {
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
 }
 
-/** A job that burns CPU long enough to be sampled, so the peaks are non-zero. */
-function busyJob(dir, id, seconds) {
+/**
+ * A job that stays alive long enough to be sampled while its run is still open.
+ *
+ * Idle rather than spinning: the sampler is stubbed, so nothing here reads real CPU, and a busy
+ * loop would burn a core for the job's whole lifetime alongside every other test file the runner is
+ * executing in parallel -- which is the contention that made this test flaky in the first place.
+ * It is killed in the `finally`, so the duration is a ceiling, not a cost.
+ */
+function longLivedJob(dir, id, seconds) {
   const script = path.join(dir, `${id}.js`);
-  fs.writeFileSync(script, `const t = Date.now(); while (Date.now() - t < ${seconds * 1000});`);
+  fs.writeFileSync(script, `setTimeout(() => {}, ${seconds * 1000});`);
   return {
     id, type: 'startup', delaySeconds: 0,
     command: `"${process.execPath}" "${script}"`,
@@ -72,11 +79,32 @@ describe('resource peaks are persisted while the job runs', () => {
     // permanently unsatisfiable. That is a timeout reported as "peaks never arrived" when the real
     // answer is "the job finished first", and it failed exactly that way on a loaded Windows
     // runner. It is killed in the `finally` either way, so the extra headroom costs nothing.
-    registry.add(busyJob(dir, 'peaky', 90));
+    registry.add(longLivedJob(dir, 'peaky', 90));
+
+    /*
+     * The sampler is stubbed; everything else is real -- real spawn, real flush, real State, real
+     * file on disk. What this test is about is that peaks reach the IN-FLIGHT entry before the job
+     * exits, and that property does not depend on where the numbers came from.
+     *
+     * It used the real sampler and timed out on the Windows runner at 20s waiting for
+     * `peakCpuPct != null`. The job was still running -- the bail proves that -- so the peaks
+     * genuinely never arrived: deriving a CPU percentage needs two pidusage samples of the same pid,
+     * pidusage shells out to WMI on Windows, and flushPeaks only records a CPU figure when it is
+     * greater than zero (`peakCpuPct > 0 ? peakCpuPct : undefined`). On a contended runner that
+     * reading can legitimately come back as zero, at which point the predicate can never be
+     * satisfied no matter how long the budget is.
+     *
+     * Lowering sampleIntervalMs is NOT the fix and was tried in scheduler.test.js: shorter gaps make
+     * a zero CPU delta MORE likely, not less. The real sampler producing a non-zero percentage is
+     * covered by `a real run records a non-zero peakCpuPct in state`, which keeps the production
+     * interval and a 10s job for exactly that reason.
+     */
+    const sampleUsage = async () => ({ cpuPct: 12.5, ramMb: 64 });
 
     // Flush aggressively so the test does not have to wait out the 10s production interval.
     const sched = new Scheduler(registry, state, {
       configDir: dir, liveness: async () => false, peakFlushMs: 100,
+      sampleUsage, sampleIntervalMs: 50,
     });
     let pid;
     try {
@@ -85,9 +113,11 @@ describe('resource peaks are persisted while the job runs', () => {
       pid = state.get('peaky').pid;
 
       // The point of the test: figures on disk while the run is still open.
-      // Both fields, because they do not arrive together -- pidusage needs two samples of a pid to
-      // derive a CPU percentage, so the first flush carries RAM alone. Waiting on RAM only would
-      // pass without ever proving the CPU peak gets persisted.
+      // Both fields are required, not just RAM. With the real sampler they did not even arrive
+      // together -- a CPU percentage needs two pidusage samples of the same pid, so the first flush
+      // carried RAM alone -- and waiting on RAM only would pass without ever proving the CPU peak
+      // gets persisted. That asymmetry is gone with a stubbed sampler, but the assertion is what
+      // stops it coming back if the flush ever drops a field again.
       await waitFor(() => {
         const entry = state.get('peaky');
         return entry != null && entry.exitCode === null
@@ -97,7 +127,7 @@ describe('resource peaks are persisted while the job runs', () => {
           const entry = state.get('peaky');
           return entry != null && entry.exitCode !== null
             ? `the run closed with exitCode ${entry.exitCode} before the peaks landed, so the job ` +
-              `did not outlive the wait - raise the busyJob duration rather than suspecting the sampler`
+              `did not outlive the wait - raise the longLivedJob duration rather than suspecting the sampler`
             : undefined;
         },
       });
