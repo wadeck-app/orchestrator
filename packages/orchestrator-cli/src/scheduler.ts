@@ -245,6 +245,7 @@ export class Scheduler extends EventEmitter {
     this._spawn     = options.spawn     ?? ((cmd, cwd, env, _jobId) => {
       const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
       const [bin, ...args] = parts;
+      // violations-suppress: shared/no-out-of-repo-path a job with no configured cwd runs from the user's home, like a shell would -- the repo is not where a user's job belongs
       return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
     });
     this._liveness  = options.liveness  ?? checkLiveness;
@@ -254,6 +255,7 @@ export class Scheduler extends EventEmitter {
     // needed to pin the date.
     this._now       = options.now       ?? (() => new Date(this._time.now()));
     this._configDir = options.configDir ?? (
+      // violations-suppress: shared/no-out-of-repo-path the documented config dir; both a constructor option and ORCH_CONFIG_DIR override it
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
     this._events    = options.eventPublisher ?? new EventPublisher();
@@ -1186,7 +1188,7 @@ export class Scheduler extends EventEmitter {
     // An explicit wait from the caller overrides the job's scheduling mode for this run only.
     if (!waitForExit && job.triggerMode !== 'wait') {
       done.catch((err: unknown) => {
-        const reason = err instanceof Error ? err.message : String(err);
+        const reason = getErrorMessage(err);
         jobLogger.write(`[error] Job promise rejected (fire-and-forget): ${reason}`);
       });
       return { pid };

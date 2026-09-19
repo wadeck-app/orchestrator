@@ -251,7 +251,9 @@ describe('JobForm sends what the daemon requires', () => {
     saveButton().click();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    const sent = onSubmit.mock.calls[0]![0] as Record<string, unknown>;
+    // Named rather than Record<string, unknown>: these two fields being absent is the assertion,
+    // so they belong in the type instead of being looked up on an index signature.
+    const sent = onSubmit.mock.calls[0]![0] as { activeFrom?: unknown; activeUntil?: unknown };
     expect(sent.activeFrom).toBeUndefined();
     expect(sent.activeUntil).toBeUndefined();
   });

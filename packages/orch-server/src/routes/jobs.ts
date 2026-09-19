@@ -16,9 +16,22 @@ function newestRun(entries: HealthRunEntry[] | undefined): HealthRunEntry | null
   return entries.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
 }
 
+/**
+ * Only what these handlers actually touch: one method from each collaborator.
+ *
+ * Structural rather than the concrete classes, because `DaemonProxy` carries private state that a
+ * plain object cannot satisfy -- so every test had to write `{ send } as any`, and that cast was
+ * hiding how narrow the real coupling is. A real DaemonProxy and IdleTimer still satisfy this, so
+ * nothing at the call sites changes.
+ */
+export interface JobsRouteDeps {
+  proxy: Pick<DaemonProxy, 'send'>;
+  idleTimer: Pick<IdleTimer, 'reset'>;
+}
+
 export async function jobsRoutes(
   fastify: FastifyInstance,
-  opts: { proxy: DaemonProxy; idleTimer: IdleTimer }
+  opts: JobsRouteDeps
 ): Promise<void> {
   const { proxy, idleTimer } = opts;
 

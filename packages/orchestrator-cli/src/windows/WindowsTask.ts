@@ -4,6 +4,7 @@ import path from 'node:path';
 import os   from 'node:os';
 import { VbsLauncher } from './VbsLauncher.js';
 
+// violations-suppress: shared/no-out-of-repo-path wscript.exe lives at a fixed OS location; resolving it relatively would be wrong, not more portable
 const WSCRIPT_EXE = 'C:\\Windows\\System32\\wscript.exe';
 
 interface WindowsTaskOptions {

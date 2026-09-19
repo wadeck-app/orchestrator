@@ -1,4 +1,5 @@
 import type { DailyLogger } from './logger.js';
+import { getErrorMessage } from './fsUtil.js';
 
 const QUEUE_URL = 'http://localhost:47910';
 
@@ -13,7 +14,7 @@ export class EventPublisher {
       body: JSON.stringify({ event, payload }),
       signal: AbortSignal.timeout(2000),
     }).catch((err: unknown) => {
-      const reason = err instanceof Error ? err.message : String(err);
+      const reason = getErrorMessage(err);
       this._logger?.write(`[event-publisher] Failed to publish "${event}": ${reason}`);
     });
   }

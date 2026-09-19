@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { EventEmitter } from 'node:events';
+import { getErrorMessage } from './fsUtil.js';
 
 // IPC protocol - Node -> Go (stdin):
 //   { type: 'init',     menu: MenuSnapshot }
@@ -152,7 +153,7 @@ export class TrayProcess {
       });
     });
     this._sendQueue = next.catch((err: unknown) => {
-      const reason = err instanceof Error ? err.message : String(err);
+      const reason = getErrorMessage(err);
       // Log via console as tray-process is remote process; errors here typically mean tray-go crashed
       console.error(`[tray-process] send() failed: ${reason}`);
     });

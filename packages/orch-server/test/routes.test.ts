@@ -6,10 +6,25 @@ import { jobsRoutes } from '../src/routes/jobs.js';
 import { DaemonProxy, DaemonUnavailableError } from '../src/daemon-proxy.js';
 import { IdleTimer } from '../src/idle-timer.js';
 
+/**
+ * The edit-job payload these tests assert on.
+ *
+ * Named rather than `Record<string, unknown>`: the fields ARE the daemon contract this suite
+ * exists to pin down -- `{ id, updates, unset }` and specifically NOT a flattened body -- so
+ * spelling them out is what makes a wrong shape a type error rather than an undefined lookup.
+ */
+interface EditJobPayload {
+  id?: string;
+  updates?: unknown;
+  unset?: unknown;
+  command?: unknown;
+  label?: unknown;
+}
+
 describe('Jobs API Routes', () => {
   let app: FastifyInstance;
-  let mockProxy: DaemonProxy;
-  let idleTimer: IdleTimer;
+  let mockProxy: Pick<DaemonProxy, 'send'>;
+  let idleTimer: Pick<IdleTimer, 'reset'>;
 
   beforeEach(async () => {
     app = fastify();
@@ -31,14 +46,14 @@ describe('Jobs API Routes', () => {
           case 'get-uptime':
             return { job1: 99.5, job2: 100 };
           case 'get-job':
-            if ((payload as any)?.id === 'job1') {
+            if ((payload as { id?: string })?.id === 'job1') {
               return { id: 'job1', type: 'cron', command: 'echo 1' };
             }
             throw new Error('Job not found');
           case 'add-job':
             return { id: 'new-job', type: 'cron', command: 'echo new' };
           case 'edit-job':
-            return { id: (payload as any)?.id, command: 'updated' };
+            return { id: (payload as { id?: string })?.id, command: 'updated' };
           case 'remove-job':
             return { removed: true };
           case 'trigger-job':
@@ -46,7 +61,7 @@ describe('Jobs API Routes', () => {
           case 'skip-next-firing':
             return { skipped: true };
           case 'kill-job':
-            if ((payload as any)?.id === 'job1') {
+            if ((payload as { id?: string })?.id === 'job1') {
               return { killed: true };
             }
             return { killed: false };
@@ -54,11 +69,11 @@ describe('Jobs API Routes', () => {
             throw new Error(`Unknown command: ${cmd}`);
         }
       },
-    } as any;
+    };
 
     idleTimer = {
       reset: () => {},
-    } as any;
+    };
 
     await app.register(jobsRoutes, { proxy: mockProxy, idleTimer });
     await app.ready();
@@ -168,10 +183,10 @@ describe('Jobs API Routes', () => {
     // object". Saving from the web UI did nothing at all. The test above passed throughout, because
     // the mock answers whatever it is sent: it exercised the route, never the contract.
     it('sends the body as `updates`, the shape the daemon actually reads', async () => {
-      let sent: Record<string, unknown> | undefined;
-      (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
+      let sent: EditJobPayload | undefined;
+      mockProxy.send = async (cmd, payload) => {
         if (cmd === 'edit-job') {
-          sent = payload as Record<string, unknown>;
+          sent = payload as EditJobPayload;
         }
         return { id: 'job1', command: 'updated' };
       };
@@ -195,10 +210,10 @@ describe('Jobs API Routes', () => {
     // working directory has to say so out loud. `unset` travels beside `updates`, never inside it:
     // inside, the daemon would take it for a job field and validation would reject the whole edit.
     it('lifts `unset` out of the body and passes it beside `updates`', async () => {
-      let sent: Record<string, unknown> | undefined;
-      (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
+      let sent: EditJobPayload | undefined;
+      mockProxy.send = async (cmd, payload) => {
         if (cmd === 'edit-job') {
-          sent = payload as Record<string, unknown>;
+          sent = payload as EditJobPayload;
         }
         return { id: 'job1' };
       };
@@ -215,10 +230,10 @@ describe('Jobs API Routes', () => {
     });
 
     it('sends no `unset` when the body has none', async () => {
-      let sent: Record<string, unknown> | undefined;
-      (mockProxy as unknown as { send: DaemonProxy['send'] }).send = async (cmd, payload) => {
+      let sent: EditJobPayload | undefined;
+      mockProxy.send = async (cmd, payload) => {
         if (cmd === 'edit-job') {
-          sent = payload as Record<string, unknown>;
+          sent = payload as EditJobPayload;
         }
         return { id: 'job1' };
       };
@@ -346,8 +361,8 @@ describe('GET /api/health counting', () => {
         }
         throw new Error(`Unknown command: ${cmd}`);
       },
-    } as any;
-    await app.register(jobsRoutes, { proxy, idleTimer: { reset: () => {} } as any });
+    };
+    await app.register(jobsRoutes, { proxy, idleTimer: { reset: () => {} } });
     await app.ready();
   });
 

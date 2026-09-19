@@ -5,12 +5,14 @@ import { exec } from 'node:child_process';
 import type { Job } from './types.js';
 
 function expandTilde(p: string): string {
+  // violations-suppress: shared/no-out-of-repo-path expanding a user's own `~/` is this function's entire purpose
   return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
 }
 
 function orchConfigDir(): string {
   const xdg = process.env['XDG_CONFIG_HOME'];
   return process.env['ORCH_CONFIG_DIR']
+    // violations-suppress: shared/no-out-of-repo-path the documented config dir; ORCH_CONFIG_DIR and XDG_CONFIG_HOME both take precedence
     ?? (xdg ? path.join(xdg, 'orchestrator') : path.join(os.homedir(), '.config', 'orchestrator'));
 }
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { RuntimeEntry, StateData } from './types.js';
-import { atomicWriteJson, readJsonFile } from './fsUtil.js';
+import { atomicWriteJson, readJsonFile, getErrorMessage } from './fsUtil.js';
 
 const MAX_HISTORY = 20;
 
@@ -68,7 +68,7 @@ export class State {
     } catch (e) {
       // On load failure, start with empty cache
       this._cache = {};
-      const err = e instanceof Error ? e.message : String(e);
+      const err = getErrorMessage(e);
       try { process.stderr.write(`[State] Failed to load state: ${err}, starting with empty cache\n`); } catch { /* EPIPE */ }
     }
   }
@@ -77,7 +77,7 @@ export class State {
     try {
       atomicWriteJson(this._file, { jobs: this._cache });
     } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
+      const err = getErrorMessage(e);
       try { process.stderr.write(`[State] Failed to flush: ${err}\n`); } catch { /* EPIPE */ }
       throw e;
     }

@@ -42,7 +42,7 @@ export function readJsonFile<T>(filePath: string): T | null {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T;
   } catch (e) {
-    const err = e instanceof Error ? e.message : String(e);
+    const err = getErrorMessage(e);
     // Log at debug level (via process.stderr) rather than warning level
     // to avoid spamming when file simply doesn't exist (ENOENT)
     if (!err.includes('ENOENT')) {

@@ -2,6 +2,7 @@
 
 import fs   from 'node:fs';
 import path from 'node:path';
+import { getErrorMessage } from './fsUtil.js';
 
 const MAX_KEEP_DAYS = 30;
 const HARD_CAP_DAYS = 120;
@@ -24,7 +25,7 @@ export class RunLogger {
       this._fd = fs.openSync(this._file, 'a');
     } catch (e) {
       this._fd = -1;
-      const err = e instanceof Error ? e.message : String(e);
+      const err = getErrorMessage(e);
       this._writeError = `Failed to open log file: ${err}`;
       try { process.stderr.write(`[RunLogger] ${this._writeError}\n`); } catch { /* EPIPE */ }
     }
@@ -38,7 +39,7 @@ export class RunLogger {
       try {
         fs.writeSync(this._fd, entry);
       } catch (e) {
-        const err = e instanceof Error ? e.message : String(e);
+        const err = getErrorMessage(e);
         if (!this._writeError) {
           this._writeError = err;
           try { process.stderr.write(`[RunLogger] Write failed: ${err}\n`); } catch { /* EPIPE */ }
@@ -85,7 +86,7 @@ export class DailyLogger {
     try {
       fs.mkdirSync(logDir, { recursive: true });
     } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
+      const err = getErrorMessage(e);
       this._writeError = `Failed to create log dir: ${err}`;
       try { process.stderr.write(`[DailyLogger] ${this._writeError}\n`); } catch { /* EPIPE */ }
     }
@@ -101,7 +102,7 @@ export class DailyLogger {
       try {
         fs.writeSync(this._fd, entry);
       } catch (e) {
-        const err = e instanceof Error ? e.message : String(e);
+        const err = getErrorMessage(e);
         if (!this._writeError) {
           this._writeError = err;
           try { process.stderr.write(`[DailyLogger] Write failed: ${err}\n`); } catch { /* EPIPE */ }
@@ -129,7 +130,7 @@ export class DailyLogger {
       this._fd = fs.openSync(file, 'a');
     } catch (e) {
       this._fd = null;
-      const err = e instanceof Error ? e.message : String(e);
+      const err = getErrorMessage(e);
       if (!this._writeError) {
         this._writeError = err;
         try { process.stderr.write(`[DailyLogger] Failed to rotate: ${err}\n`); } catch { /* EPIPE */ }

@@ -94,8 +94,8 @@ export interface JobFormPayload extends Partial<Job> {
 }
 
 export function getErrorMessage(e: unknown): string {
-  // violations-suppress: ts/no-err-message-direct this IS the instanceof-guarded safe accessor - the one place in orch-ui where .message access is correct
   if (e instanceof Error) {
+    // violations-suppress: ts/no-err-message-direct this IS the instanceof-guarded safe accessor - the one place in orch-ui where .message access is correct
     return e.message;
   }
   return String(e);

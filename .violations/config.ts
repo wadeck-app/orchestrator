@@ -33,6 +33,19 @@ export default {
         'packages/orch-ui/src/components/FieldNumber.tsx',
       ],
     },
+    // Test files use 'C:/tmp' and 'C:/work' as job `cwd` DATA -- string payloads asserted on, never
+    // resolved on disk -- plus Windows path literals for the VBS launcher's quoting rules. The
+    // rule's premise ("silently fails in CI") does not apply to a value nothing opens.
+    // Production uses of os.homedir() are suppressed individually instead, since each one is a
+    // deliberate decision worth reading.
+    'shared/no-out-of-repo-path': {
+      $exclude: [
+        '**/test/**',
+        '**/*.test.ts',
+        '**/*.test.tsx',
+        '**/*.test.js',
+      ],
+    },
     // Package src/index.ts are public API surfaces, not internal barrel imports
     'ts/no-barrel-index': {
       $exclude: [

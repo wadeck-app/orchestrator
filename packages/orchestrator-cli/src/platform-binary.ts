@@ -7,6 +7,7 @@
 // the node_modules chain the way Node does and is therefore layout-independent.
 import path from 'node:path';
 import fs   from 'node:fs';
+import { getErrorMessage } from './fsUtil.js';
 
 const PLATFORM_PKG: Record<string, string> = {
   'win32-x64':    '@wadeck-app/orchestrator-cli-win32-x64',
@@ -91,7 +92,7 @@ export function stageBinary(source: string, configDir: string, stamp: string): s
   try {
     sourceSize = fs.statSync(source).size;
   } catch (err) {
-    throw new Error(`Cannot stage the native binary: ${source} is not readable (${describe(err)}).`);
+    throw new Error(`Cannot stage the native binary: ${source} is not readable (${getErrorMessage(err)}).`);
   }
 
   try {
@@ -111,7 +112,7 @@ export function stageBinary(source: string, configDir: string, stamp: string): s
     fs.renameSync(partial, target);
   } catch (err) {
     throw new Error(
-      `Cannot stage the native binary to ${target} (${describe(err)}).\n\n`
+      `Cannot stage the native binary to ${target} (${getErrorMessage(err)}).\n\n`
       + `It is copied out of node_modules on purpose: npm cannot update a package while one of its `
       + `binaries is running, so orch must not execute this file from where npm installed it `
       + `(${source}).`,
@@ -147,10 +148,6 @@ export function pruneStagedBinaries(configDir: string, keepStamp: string): numbe
     }
   }
   return removed;
-}
-
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /** Go launcher binary: the process that supervises the daemon. */

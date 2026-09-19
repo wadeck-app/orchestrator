@@ -65,6 +65,7 @@ export function buildMacArgs(configDir: string): string[] {
 }
 
 function macPlistPath(): string {
+  // violations-suppress: shared/no-out-of-repo-path launchd only reads per-user agents from ~/Library/LaunchAgents; the location is macOS's, not ours
   return path.join(os.homedir(), 'Library', 'LaunchAgents', `${LAUNCH_AGENT_LABEL}.plist`);
 }
 

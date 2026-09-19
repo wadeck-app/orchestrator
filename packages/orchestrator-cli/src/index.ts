@@ -67,6 +67,7 @@ function resolveConfigDir(): string {
     return (
       configDirFromArgv(process.argv.slice(2))
       ?? process.env['ORCH_CONFIG_DIR']
+      // violations-suppress: shared/no-out-of-repo-path the documented config dir, and both an argv flag and ORCH_CONFIG_DIR already override it
       ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
   } catch (e) {

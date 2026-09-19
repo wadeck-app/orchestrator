@@ -25,6 +25,7 @@ const { parseDuration } = require('@wadeck-app/shared-cli/Duration') as typeof i
 const { cliVersionCommand, cliUpdateCommand, cliLogsCommand, warnUnknownArgs } = require('@wadeck-app/shared-cli/CliMetaCommands') as typeof import('@wadeck-app/shared-cli/CliMetaCommands');
 
 const DEFAULT_CONFIG_DIR =
+  // violations-suppress: shared/no-out-of-repo-path ~/.config/orchestrator IS this product's config dir, and ORCH_CONFIG_DIR is already the env override the rule asks for
   process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator');
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
