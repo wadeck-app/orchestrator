@@ -89,9 +89,30 @@ not mount, so a migrated row click would have been silently dead.
 
 ## Still open
 
-- **Root `package.json` was bumped to dsl-ui `-082` in the same commit as another session's
-  `violations-rules` devDependency.** The lockfile is shared and could not be split; worth a look.
-- Nothing else from this plan. Every item is closed above.
+Nothing from this plan. Every item is closed above.
+
+Two things a reader should know rather than rediscover:
+
+- **`d9065a4` bumped root `package.json` to dsl-ui `-082` alongside another session's
+  `violations-rules` devDependency.** The lockfile is shared and could not be split. Verified fine:
+  `npm ci` runs in CI and passed on `d9065a4` and every push since. The root had to be bumped too --
+  with CalVer prereleases `^...-080` is an effective pin, so leaving it would have disagreed with the
+  workspaces.
+- **Consolidating relative-time changed two visible strings.** The audit log reads "112m ago" where it
+  used to read "1h ago", because `formatApproxDuration` only switches to hours at 2h; and a past
+  firing on the schedule page reads "overdue by 5m" instead of "now". Both are the shared module's
+  documented behaviour, now applied uniformly, which was the point.
+
+## Verification done, so it need not be repeated
+
+Browser-checked on the dev dashboard, not just unit-tested: the confirm dialog, a bulk delete
+reaching the registry and the grid refreshing at once, bulk disable/enable from the migrated list
+view, a row click navigating through `onRowClick`, both migrated tables with every column, the
+schedule page keeping "in 14h 11m", the audit page, and a blocked kill leaving the banner up and
+raising an error toast.
+
+`violations check` is at 0 -- but measured against another session's in-flight rule set, which has
+three local rules deleted. Re-run once that lands.
 
 ## Environment facts
 
