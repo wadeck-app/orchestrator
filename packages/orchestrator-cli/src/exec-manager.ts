@@ -34,20 +34,32 @@ export class ExecManager {
   private readonly _pids = new Map<string, import('node:child_process').ChildProcess>();
   private readonly _configDir: string;
   private readonly _events: EventPublisher;
-  private readonly _cleanupTimer: ReturnType<typeof setInterval>;
-
   constructor(configDir: string, events?: EventPublisher) {
     this._configDir = configDir;
     this._events = events ?? new EventPublisher();
-    this._cleanupTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [id, run] of this._runs) {
-        if (run.finishedAt && now - new Date(run.finishedAt).getTime() > run.ttlMs) {
-          this._runs.delete(id);
-          this._pids.delete(id);
-        }
+  }
+
+  /**
+   * Drops finished runs past their TTL.
+   *
+   * Called when the map is read or written rather than from a timer. This used to be a
+   * setInterval(60s) armed in the constructor, which ran for the daemon's whole life to sweep a map
+   * that is empty unless someone ran `orch exec` - and orch's own purpose is to be the one thing on
+   * the machine that owns timers, so spending one on a minute-by-minute sweep of usually nothing was
+   * the wrong trade.
+   *
+   * Nothing observes an expired run except through this class, so pruning late is unobservable: an
+   * entry now disappears on the first read after its TTL instead of within a minute of it. That is
+   * the whole behavioural difference.
+   */
+  private _prune(): void {
+    const now = Date.now();
+    for (const [id, run] of this._runs) {
+      if (run.finishedAt && now - new Date(run.finishedAt).getTime() > run.ttlMs) {
+        this._runs.delete(id);
+        this._pids.delete(id);
       }
-    }, 60_000);
+    }
   }
 
   fireExec(command: string, opts: ExecOptions = {}): { runId: string; pid: number | null; status: 'running' } {
@@ -64,6 +76,9 @@ export class ExecManager {
       logs: [],
       ttlMs: 3_600_000,
     };
+    // Pruned on the way in too, so a long-lived daemon that is never read cannot accumulate
+    // finished runs indefinitely.
+    this._prune();
     this._runs.set(runId, run);
 
     const tmpDir = ensureTmpDir(this._configDir, runId);
@@ -129,8 +144,15 @@ export class ExecManager {
     return { runId, pid: run.pid, status: 'running' };
   }
 
-  get(runId: string): ExecRun | undefined { return this._runs.get(runId); }
-  list(): ExecRun[] { return Array.from(this._runs.values()); }
+  get(runId: string): ExecRun | undefined {
+    this._prune();
+    return this._runs.get(runId);
+  }
+
+  list(): ExecRun[] {
+    this._prune();
+    return Array.from(this._runs.values());
+  }
 
   kill(runId: string): boolean {
     const run = this._runs.get(runId);
@@ -153,12 +175,11 @@ export class ExecManager {
   }
 
   /**
-   * Stops the cleanup timer and kills anything still running. Returns once the trees are gone,
-   * so a caller that needs a clean slate (daemon shutdown, a test teardown) can await it;
-   * callers that do not care may ignore the promise.
+   * Kills anything still running. Returns once the trees are gone, so a caller that needs a clean
+   * slate (daemon shutdown, a test teardown) can await it; callers that do not care may ignore the
+   * promise.
    */
   async stop(): Promise<void> {
-    clearInterval(this._cleanupTimer);
     const running = Array.from(this._runs.entries())
       .filter(([, run]) => run.status === 'running')
       .map(([runId]) => runId);
@@ -174,7 +195,6 @@ export class ExecManager {
    * the very trees this class was changed to reap.
    */
   stopSync(): void {
-    clearInterval(this._cleanupTimer);
     for (const [runId, run] of this._runs) {
       if (run.status !== 'running') continue;
       const pid = this._pids.get(runId)?.pid;

@@ -338,29 +338,38 @@ describe('ExecManager', () => {
 
     // Previously ended by fetching the run into an unused variable under a comment about being
     // timing-sensitive, so it asserted nothing at all and passed whatever cleanup did.
-    test('cleanup timer removes old runs after TTL', async () => {
+    /*
+     * Pruning happens when the map is read or written, not on a timer.
+     *
+     * It used to be a setInterval(60s) armed in the constructor, running for the daemon's whole life
+     * to sweep a map that is empty unless someone ran `orch exec`. These tests reached into
+     * `_cleanupTimer._onTimeout` to fire it, which is how a test ends up coupled to a timer's
+     * internals; they now ask the only question that matters - does an expired run come back.
+     */
+    test('an expired run is gone on the next read', async () => {
       const { runId } = manager.fireExec('echo test', { timeout: 0 });
       const run = await waitForFinished(manager, runId);
+      assert.ok(manager.get(runId), 'precondition: a fresh run is tracked');
 
-      // Age the run past its TTL rather than waiting an hour for it.
+      // Aged past its TTL rather than waiting an hour for it.
       run.finishedAt = new Date(Date.now() - (run.ttlMs + 60_000)).toISOString();
-      assert.ok(manager.get(runId), 'precondition: the run is still tracked before cleanup');
 
-      // Fire the interval callback directly: it is unref'd and only runs once a minute.
-      const fire = manager._cleanupTimer?._onTimeout;
-      assert.equal(typeof fire, 'function', 'no cleanup callback to fire: the timer contract changed');
-      fire();
-
-      assert.equal(manager.get(runId), undefined, 'an expired run survived cleanup');
+      assert.equal(manager.get(runId), undefined, 'an expired run survived');
+      assert.equal(manager.list().find(r => r.runId === runId), undefined, 'and it is still listed');
     });
 
-    test('cleanup keeps runs that are still within their TTL', async () => {
+    // The point of the change is that nothing is armed. A regression here would silently restore a
+    // wake-up every minute for the daemon's whole life, and no other assertion would notice.
+    test('no timer is armed for it', () => {
+      assert.equal(manager._cleanupTimer, undefined,
+        'a cleanup interval is back: pruning is meant to happen on access');
+    });
+
+    test('a run within its TTL survives being read', async () => {
       const { runId } = manager.fireExec('echo test', { timeout: 0 });
       await waitForFinished(manager, runId);
 
-      manager._cleanupTimer._onTimeout();
-
-      assert.ok(manager.get(runId), 'a fresh run was evicted: cleanup is not honouring the TTL');
+      assert.ok(manager.get(runId), 'a fresh run was evicted: pruning is not honouring the TTL');
     });
   });
 
