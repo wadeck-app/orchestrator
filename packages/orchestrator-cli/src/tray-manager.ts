@@ -55,7 +55,7 @@ export class TrayManager extends EventEmitter {
   private readonly _log:      DailyLogger;
   private _updateStatus: UpdateStatus = 'idle';
   private _latestVersion: string | null = null;
-  // Transient version label shown during check ("Checking...", "Up to date"); null → show version string
+  // Transient version label shown during check ("Checking...", "Up to date"); null -> show version string
   private _versionLabel: string | null = null;
   private _versionLabelTimer: ReturnType<typeof setTimeout> | null = null;
 

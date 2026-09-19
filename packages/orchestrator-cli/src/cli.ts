@@ -435,9 +435,9 @@ Schedule format (cron jobs): standard 5-field cron -- min hour day month weekday
 
 Liveness strategies (skip firing if target is already alive):
   none       Always fire -- no liveness check (default)
-  portFile   Read <portFile>, check if its PID is alive → skip if alive
-  pidFile    Find PID file by job id → skip if PID is alive
-  command    Run <command> → skip if it exits 0
+  portFile   Read <portFile>, check if its PID is alive -> skip if alive
+  pidFile    Find PID file by job id -> skip if PID is alive
+  command    Run <command> -> skip if it exits 0
 
 Manual execution:
   orch trigger <id> [--wait]   Fire a job immediately
@@ -1340,7 +1340,7 @@ Use --wait to block until the command finishes.`);
         process.stderr.write(`Error: ${result.error ?? 'unknown error'}\n`);
         process.exitCode = 1;
       } else {
-        process.stdout.write(`✓ tray action "${subCmd}" triggered\n`);
+        process.stdout.write(`[ok] tray action "${subCmd}" triggered\n`);
       }
       return;
     }

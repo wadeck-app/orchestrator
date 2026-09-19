@@ -42,7 +42,7 @@ On startup, for each cron job with `missedFiring: catch-up`, the scheduler compa
 Catch-up jobs fire with staggered delays to avoid simultaneous load (e.g. after hibernation):
 - Job 1 fires after `catchUpInitialDelaySeconds`
 - Job 2 fires after `catchUpInitialDelaySeconds + catchUpStaggerSeconds`
-- Job N fires after `catchUpInitialDelaySeconds + (N-1) × catchUpStaggerSeconds`
+- Job N fires after `catchUpInitialDelaySeconds + (N-1) x catchUpStaggerSeconds`
 
 Only the **most recent** missed firing is caught up per job -- multiple missed days do not accumulate.
 

@@ -56,7 +56,7 @@ const OS_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * @registryTags schedule timeline cron firings
  */
 export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineProps): React.ReactElement {
-  // key = `${jobId}:${ts}` → 'pending'|'ok'|'error'
+  // key = `${jobId}:${ts}` -> 'pending'|'ok'|'error'
   const [btnState, setBtnState] = useState<Record<string, 'pending'|'ok'|'error'>>({});
 
   const handleRunEarly = useCallback(async (jobId: string, key: string) => {
@@ -118,9 +118,10 @@ export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineP
                   ? 'shrink-0 text-xs px-2 py-0.5 rounded border border-border text-muted opacity-50 cursor-wait'
                   : 'shrink-0 text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
                 return (
+                  // violations-suppress: react/no-raw-button run-early affordance is a compact inline chip inside a timeline row; Button has no variant that fits, same reason as the other chip buttons in this repo
                   <button className={cls} disabled={st === 'pending'}
                     onClick={() => handleRunEarly(f.jobId, key)}>
-                    {st === 'ok' ? '✓ Triggered' : st === 'error' ? '✗ Error' : st === 'pending' ? 'Running...' : 'Run early'}
+                    {st === 'ok' ? 'Triggered' : st === 'error' ? 'Error' : st === 'pending' ? 'Running...' : 'Run early'}
                   </button>
                 );
               })()}

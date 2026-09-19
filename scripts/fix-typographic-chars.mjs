@@ -22,6 +22,15 @@ const REPLACEMENTS = [
   ['’', "'"],   // ' right single quote
   ['“', '"'],   // " left double quote
   ['”', '"'],   // " right double quote
+  // Symbols, for shared/no-emoji. Only the ones with an unambiguous ASCII reading: an arrow always
+  // means "becomes", a multiplication sign always means times. Status glyphs are deliberately NOT
+  // here -- a tick is `[ok]` in terminal output and an icon component in the UI, and only whoever
+  // owns the string knows which.
+  ['→', '->'],  // rightwards arrow
+  ['←', '<-'],  // leftwards arrow
+  ['↑', '^'],   // upwards arrow
+  ['↓', 'v'],   // downwards arrow
+  ['×', 'x'],   // multiplication sign
 ];
 
 const args = process.argv.slice(2);

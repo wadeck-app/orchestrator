@@ -7,7 +7,7 @@ Dashboard binds to 127.0.0.1 only. No auth in v1/v2/v3.
 Web server and tray are child processes - daemon survives their restart. CLI daemon never crashes due to dashboard or tray failures.
 
 ## P3: Jobs are simple scripts, not flows
-A job runs ONE command. Dependencies between 2 jobs are supported (B after A). If you need graph dependencies, branching, or parallel fan-out → use a workflow engine (Prefect, Temporal, n8n). Orchestrator is not a flow engine.
+A job runs ONE command. Dependencies between 2 jobs are supported (B after A). If you need graph dependencies, branching, or parallel fan-out -> use a workflow engine (Prefect, Temporal, n8n). Orchestrator is not a flow engine.
 
 ## P4: Event-driven architecture
 All significant job lifecycle events (started, completed, failed, recovered, anomaly) are pushed to the queue daemon. Notifications, webhooks, and UI real-time updates are subscribers - never direct calls from the scheduler.

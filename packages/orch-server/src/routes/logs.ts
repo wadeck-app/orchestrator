@@ -8,7 +8,7 @@ const JOB_ID_RE = /^[a-z0-9-]+$/i;
 const POLL_INTERVAL_MS = 500;
 
 /**
- * Returns all log files for a job, sorted oldest→newest.
+ * Returns all log files for a job, sorted oldest->newest.
  * Supports both formats:
  *   - per-run:  <jobId>-YYYY-MM-DDTHH-MM-SS.log  (new)
  *   - daily:    <jobId>-YYYY-MM-DD.log             (legacy)

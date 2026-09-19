@@ -1,7 +1,7 @@
 # Orchestrator - Out of Scope
 
 ## Flows and complex dependencies
-Job A → Job B is supported. DAGs, fan-out, branching, conditional execution → use a flow engine.
+Job A -> Job B is supported. DAGs, fan-out, branching, conditional execution -> use a flow engine.
 
 ## Authentication
 Dashboard is local-only. No login, no multi-user.
