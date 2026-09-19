@@ -72,7 +72,7 @@ export interface TreeUsage {
 /** Injection seam for the tests; production passes nothing and gets pidtree + pidusage. */
 interface TreeDeps {
   tree:  (pid: number) => Promise<number[]>;
-  usage: (pid: number) => Promise<{ cpu: number; memory: number; elapsed: number }>;
+  usage: (pid: number) => Promise<{ cpu: number; memory: number; elapsed: number; ppid: number }>;
 }
 
 /**
@@ -111,22 +111,38 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
     }
   }));
 
-  // The root is the reference, and without it there is nothing to attribute usage to: the job has
-  // exited. Judging the others against it is what keeps strangers out -- pidtree walks
-  // ParentProcessId, and a pid is reused once its process dies, so a live unrelated process can
-  // still name a dead pid that has since been recycled onto one of ours. A descendant cannot predate
-  // its ancestor, so anything older than the root was not started by this job.
+  // Without the root there is nothing to attribute usage to: the job has exited.
   const root = samples.find(s => s !== null && s.pid === rootPid);
   if (!root) return null;
-  const oldestAllowed = root.sample.elapsed + TREE_AGE_TOLERANCE_MS;
 
-  let cpuPct   = 0;
-  let ramBytes = 0;
-  for (const s of samples) {
-    if (s === null) continue;
-    if (s.pid !== rootPid && s.sample.elapsed > oldestAllowed) continue;
-    cpuPct   += s.sample.cpu;
-    ramBytes += s.sample.memory;
+  // The tree is rebuilt link by link rather than trusted as given. pidtree walks ParentProcessId, and
+  // a pid is reused the moment its process dies, so the parent a process claims may be a pid that has
+  // since been recycled onto one of ours -- which is how strangers arrive. Two things have to hold for
+  // a link to be real: the claimed parent is itself part of the job, and the child did not start
+  // before it. Age alone would not do, since a stranger hanging off a recycled DESCENDANT pid is
+  // younger than the root.
+  const byPid = new Map<number, { cpu: number; memory: number; elapsed: number; ppid: number }>();
+  for (const s of samples) if (s !== null) byPid.set(s.pid, s.sample);
+
+  let cpuPct   = root.sample.cpu;
+  let ramBytes = root.sample.memory;
+  const accepted = new Map([[rootPid, root.sample.elapsed]]);
+  let frontier = [rootPid];
+  while (frontier.length > 0) {
+    const next: number[] = [];
+    for (const [pid, sample] of byPid) {
+      if (accepted.has(pid)) continue;
+      // Only against the pids accepted on the previous round, so one pass adds one generation and a
+      // cycle in the claimed parent links cannot loop forever.
+      if (!frontier.includes(sample.ppid)) continue;
+      const parentElapsed = accepted.get(sample.ppid)!;
+      if (sample.elapsed > parentElapsed + TREE_AGE_TOLERANCE_MS) continue;
+      accepted.set(pid, sample.elapsed);
+      cpuPct   += sample.cpu;
+      ramBytes += sample.memory;
+      next.push(pid);
+    }
+    frontier = next;
   }
   return { cpuPct, ramMb: ramBytes / 1024 / 1024 };
 }

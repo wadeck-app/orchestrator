@@ -18,9 +18,15 @@ const { sampleProcessTree } = require('../src/scheduler');
 
 const MB = 1024 * 1024;
 
-/** pidusage-shaped sample. `elapsed` is milliseconds since that process started. */
-function usage({ cpu, mb, elapsed }) {
-  return { cpu, memory: mb * MB, elapsed };
+const ROOT = 1000;
+
+/**
+ * pidusage-shaped sample. `elapsed` is milliseconds since that process started, `ppid` the parent it
+ * claims -- which is the field the recycled-pid artefact corrupts. Defaults to a direct child of the
+ * root, since most fixtures here are about age rather than about the shape of the tree.
+ */
+function usage({ cpu, mb, elapsed, ppid = ROOT }) {
+  return { cpu, memory: mb * MB, elapsed, ppid };
 }
 
 /** Injects a fake tree walk and a fake sampler, keyed by pid. */
@@ -34,8 +40,6 @@ function deps(pids, samples) {
     },
   };
 }
-
-const ROOT = 1000;
 
 describe('a process older than the root is not part of the job', () => {
   test('a stranger is left out of the total', async () => {
@@ -79,6 +83,47 @@ describe('a process older than the root is not part of the job', () => {
     const result = await sampleProcessTree(ROOT, deps([ROOT, 1001], {
       [ROOT]: usage({ cpu: 1, mb: 10, elapsed: 4_000 }),
       1001:   usage({ cpu: 2, mb: 20, elapsed: 4_300 }),
+    }));
+
+    assert.equal(result.cpuPct, 3);
+  });
+});
+
+// Age alone is not enough, and another session was right to say so. If a descendant of ours exits and
+// its pid is handed to an unrelated process, that process's own children name the recycled pid as
+// their parent -- and they are YOUNGER than our root, so no age test can tell them apart. What does
+// is that the link itself has to hold: a pid belongs to the job only if the parent it claims is
+// itself part of the job and older than it.
+describe('a young process hanging off a recycled descendant pid', () => {
+  test('is left out, because the parent it claims is not in the job', async () => {
+    const result = await sampleProcessTree(ROOT, deps([ROOT, 1001, 1002], {
+      [ROOT]: usage({ cpu: 4, mb: 40, elapsed: 60_000 }),
+      // 1001 is gone -- it is the pid that got recycled, so it cannot be sampled at all.
+      // 1002 is a child of whatever holds 1001 now, and it started well after our root.
+      1002: usage({ cpu: 90, mb: 800, elapsed: 3_000, ppid: 1001 }),
+    }));
+
+    assert.equal(result.cpuPct, 4, 'a young stranger was charged to the job');
+    assert.equal(result.ramMb, 40);
+  });
+
+  test('a genuine grandchild through a live child is kept', async () => {
+    const result = await sampleProcessTree(ROOT, deps([ROOT, 1001, 1002], {
+      [ROOT]: usage({ cpu: 1, mb: 10, elapsed: 60_000 }),
+      1001:   usage({ cpu: 2, mb: 20, elapsed: 50_000, ppid: ROOT }),
+      1002:   usage({ cpu: 4, mb: 40, elapsed: 40_000, ppid: 1001 }),
+    }));
+
+    assert.equal(result.cpuPct, 7, 'a real grandchild was dropped');
+    assert.equal(result.ramMb, 70);
+  });
+
+  test('a child older than the parent it claims is still refused', async () => {
+    const result = await sampleProcessTree(ROOT, deps([ROOT, 1001, 1002], {
+      [ROOT]: usage({ cpu: 1, mb: 10, elapsed: 60_000 }),
+      1001:   usage({ cpu: 2, mb: 20, elapsed: 50_000, ppid: ROOT }),
+      // Claims 1001 as its parent while having started 10 minutes before it.
+      1002:   usage({ cpu: 99, mb: 999, elapsed: 600_000, ppid: 1001 }),
     }));
 
     assert.equal(result.cpuPct, 3);
