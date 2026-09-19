@@ -16,7 +16,8 @@ for (const file of files) {
   const res = spawnSync(
     process.execPath,
     ['--test', '--require', 'tsx/cjs', path.join('test', file)],
-    { cwd: path.join(import.meta.dirname, '..'), encoding: 'utf8' },
+    // windowsHide: a script meant to be run repeatedly must not flash 54 console windows.
+    { cwd: path.join(import.meta.dirname, '..'), encoding: 'utf8', windowsHide: true },
   );
   results.push({ file, ms: Date.now() - started, code: res.status });
 }

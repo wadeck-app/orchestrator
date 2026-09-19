@@ -1586,7 +1586,8 @@ export const JobCardEntry: ComponentRegistryEntry = {
 		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onClick']
 		const selected = resolveExpressionValue(node['selected'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['selected']
 		const onSelect = resolveExpressionValue(node['onSelect'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onSelect']
-		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} consecutiveFailures={consecutiveFailures} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} selected={selected} onSelect={onSelect} />
+		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['nowMs']
+		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} consecutiveFailures={consecutiveFailures} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} selected={selected} onSelect={onSelect} nowMs={nowMs} />
 	},
 }
 
@@ -1711,11 +1712,12 @@ export const MutationFeedbackEntry: ComponentRegistryEntry = {
 }
 
 export const NextFireCountdownEntry: ComponentRegistryEntry = {
-	name: 'NextFireCountdown', category: 'atomic', tags: ["countdown","schedule"],
+	name: 'NextFireCountdown', category: 'atomic', tags: ["countdown","schedule","window"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/NextFireCountdown.js').NextFireCountdownProps['job']
-		return <NextFireCountdown job={job} />
+		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../../../orch-ui/src/components/NextFireCountdown.js').NextFireCountdownProps['nowMs']
+		return <NextFireCountdown job={job} nowMs={nowMs} />
 	},
 }
 

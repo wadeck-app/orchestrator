@@ -1,16 +1,26 @@
 import React from 'react';
 import { Badge } from '@wadeck-app/dsl-ui';
 
-/** The six run outcomes this app shows. */
-export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never';
+/**
+ * The states this app shows for a job in a list.
+ *
+ * Six are run outcomes. `pending` is not: it describes the job rather than a run, for a cron job whose
+ * active window has not opened yet. That job is enabled and correctly doing nothing, and it used to
+ * show "Never run" -- true, and indistinguishable from a job that is broken.
+ */
+export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never' | 'pending';
 
 /**
- * Which design-system variant each outcome maps to.
+ * Which design-system variant each state maps to.
  *
  * Running is info rather than warning: warning is spent on Cancelled, and a run in flight is
  * not a problem. Cancelled keeps amber, being the one outcome that asks for attention
  * without being a failure. Skipped is neutral by design: the run asks for nothing, so it must
  * not borrow danger's red nor success's green.
+ *
+ * Pending is neutral for the same reason, and deliberately not `info`: info is Running, and a job
+ * waiting for Monday must not look like one executing now. Neutral is the honest reading -- nothing is
+ * wrong and nothing is happening -- with the label carrying the difference from `never`.
  */
 export const JOB_STATUS_VARIANT: Record<JobStatusKind, 'success' | 'danger' | 'warning' | 'info' | 'default'> = {
   running:   'info',
@@ -19,6 +29,7 @@ export const JOB_STATUS_VARIANT: Record<JobStatusKind, 'success' | 'danger' | 'w
   cancelled: 'warning',
   skipped:   'default',
   never:     'default',
+  pending:   'default',
 };
 
 /**

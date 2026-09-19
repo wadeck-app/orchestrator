@@ -23,6 +23,15 @@ export interface Job {
    * the dashboard came back 500.
    */
   delayMs?: number;
+  /**
+   * `once` only: the moment `delayMs` is measured from, ISO. The job fires at scheduledAt + delayMs.
+   *
+   * It was absent from this type while being present on the wire, so the dashboard had `delayMs` and
+   * nothing to measure it from and could only say the bare word "Once" -- it could not tell a job due
+   * in three hours from one whose moment passed last week. The daemon defaults it at creation, so it
+   * is only missing on jobs written before the field existed.
+   */
+  scheduledAt?: string;
   command: string;
   cwd?: string | null;
   enabled: boolean;

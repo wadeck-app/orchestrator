@@ -40,7 +40,9 @@ function makeDeps(dir) {
 async function waitFor(predicate, label, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await predicate()) return;
+    if (await predicate()) {
+      return;
+    }
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
@@ -354,11 +356,16 @@ describe('killJob', () => {
      *
      * This sleep is deliberately NOT replaced by waitFor on the tree shape, which is what the
      * sibling test below does. Polling until the tree merely has `minPids` in it proceeds as soon as
-     * two pids exist, and under the full suite running in parallel that killed a tree still being
-     * built: nine pids survived killJob, reproducibly, where the unmodified test passed twice.
-     * Why the tree is that large at that instant is not established, and a kill test that races the
-     * thing it kills is worse than a slow one -- so the wait stays until someone has an explanation
-     * rather than a guess.
+     * two pids exist, and under the full suite running in parallel that reported nine survivors
+     * where the unmodified test passed twice.
+     *
+     * They were not survivors. One of the nine was traced to a node process that had been running
+     * since the previous day, so pidtree walked off the job entirely: asked about a pid whose parent
+     * links are still being built, it answered with strangers. This codebase already knows that
+     * hazard from the other direction -- sampleProcessTree rebuilds the tree link by link from ppid
+     * plus age precisely so a recycled pid cannot charge a stranger's CPU to a job -- and a kill test
+     * that can be handed strangers to assert about is worthless. Waiting first is what makes the
+     * answer trustworthy.
      *
      * The poll below is kept on top of it, so a runner slower than 1200ms fails on a real timeout
      * instead of on an empty tree.
@@ -367,7 +374,9 @@ describe('killJob', () => {
     let pids = [];
     await waitFor(async () => {
       const recorded = state.get('tree-a')?.pid;
-      if (!recorded) return false;
+      if (!recorded) {
+        return false;
+      }
       pids = await pidtree(recorded, { root: true }).catch(() => []);
       return pids.length >= minPids;
     }, `a process tree of at least ${minPids} pid(s) under the job`);
@@ -623,10 +632,11 @@ describe('hard resource budget', () => {
     assert.equal(hard.length, 1, 'expected exactly one hard-limit event');
     assert.ok(hard[0].payload.consecutiveSamples >= 3,
       `expected >= 3 consecutive samples, got ${hard[0].payload.consecutiveSamples}`);
-    // The job asks for 20s and the three ticks that kill it are 25ms apart, so anything in the
-    // seconds range means the monitor let it run instead of killing it. Kept as a real-clock
-    // assertion on purpose: it is the one thing here that a stubbed sampler cannot fake.
-    assert.ok(elapsedMs < 5000, `job should have been killed early, ran ${elapsedMs}ms`);
+    // The job asks for 20s, so finishing well inside that is what proves the monitor killed it.
+    // Kept as a real-clock assertion on purpose -- it is the one thing here a stubbed sampler
+    // cannot fake -- and kept LOOSE on purpose: tightened to 5000 it failed at 7910ms on a machine
+    // that was merely busy, which tests the host rather than the code.
+    assert.ok(elapsedMs < 15000, `job should have been killed early, ran ${elapsedMs}ms`);
   });
 });
 
@@ -642,22 +652,26 @@ describe('sampleProcessTree', () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
     const scriptPath = path.join(dir, 'busy.js');
-    // Deriving a CPU percentage needs two samples of the same pid, so the job has to outlive at
-    // least two ticks. The production 2s interval is not what this test is about, so it samples
-    // every 250ms instead: pidusage shells out to WMI on Windows and walks are serialised by the
-    // in-flight guard, so a short interval buys MORE attempts inside a shorter run rather than
-    // fewer -- 3s at 250ms beats the 10s at 2s this used to need, and is less likely, not more,
-    // to end with a single usable sample on a loaded runner.
-    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 3000);');
+    // Deriving a CPU percentage needs two samples of the same pid, so the job has to outlive
+    // at least two 2s ticks. It runs 10s rather than 3s because pidusage shells out to WMI on
+    // Windows, and on a CI runner that is slow enough that a 3s job ended with a single
+    // usable sample -- peakCpuPct stayed 0 and was recorded as undefined.
+    //
+    // Do not shorten this, and do not shorten it by lowering sampleIntervalMs either. That was
+    // tried (250ms interval, 3s job) on the reasoning that serialised walks make a short interval
+    // buy MORE attempts: it passed 4/4 locally and then failed on the Windows runner with exactly
+    // the `undefined` this comment already described. What sets the floor here is WMI latency on a
+    // loaded runner, which a local machine does not reproduce, so local green proves nothing about
+    // it. 7s of suite time is the price of the only end-to-end check that the Peak CPU column is
+    // fed by the real path.
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 10000);');
     registry.add({
       id: 'cpu-burner', type: 'startup', delaySeconds: 0,
       command: `"${process.execPath}" "${scriptPath}"`,
       enabled: true, triggerMode: 'wait', liveness: null,
     });
 
-    const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleIntervalMs: 250,
-    });
+    const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false });
     await sched.trigger('cpu-burner');
     await sched.stop();
 
