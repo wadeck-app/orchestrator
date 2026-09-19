@@ -60,21 +60,38 @@ Delete. Confirming actually removed the job from the registry and the grid refre
 `agent-browser` worked this time; the first `open` call takes >180s and looks hung, but the session is
 live afterwards -- snapshot it rather than retrying `open`.
 
-## 3. dsl-view: tests are not typechecked
+## ~~3. dsl-view: tests are not typechecked~~ -- DONE `0d335ac` (dsl-view)
 
-`build` is `tsc --build && tsc-alias && npm run typecheck:stories`; `tsconfig.stories.json` excludes
-`*.test.ts(x)`. Test files therefore carry pre-existing type debt and a broken test type never fails
-the build. Adding a `tsconfig.tests.json` will surface that debt -- expect to fix it, not just wire it.
+`tsconfig.tests.json` in both packages, wired into `build`. 29 errors surfaced, 3 of them real:
+`DataTable.test.tsx` passed `actionsVisible`, a prop DataTable has never had (and one case asserted
+the absence of a class it never emits, so it could not fail); `IconButton.test.tsx` had its
+`@ts-expect-error` on the `it(` line instead of the JSX. The rest were interfaces where
+`T extends Record<string, unknown>` needs a type alias, plus missing node types.
 
-## 4. Design backlog
+## ~~4. Design backlog~~ -- DONE `cb19839`, `d9065a4`, dsl-view `5722299`
 
-| Item | Where |
+| Item | Outcome |
 |---|---|
-| Two hand-rolled tables to `DataTable` | `JobCardGrid`, `RunHistory` |
-| Four duplicated `formatDuration` | `RunHistory`, `RunningInlineDetail`, `RunningBannerDetail`, `RunningAlertDetail` |
-| Two `alert()` calls | `RunningBannerDetail`, `LogViewer` -- same objection as `confirm()` |
-| Two spinners | |
-| Relative-time consolidation | `src/relative-time.ts` exists and is used by the new code; `ScheduleTimeline`, `AuditEntryRow` and `JobCard.relativeTime` still have their own |
+| Two tables to `DataTable` | Both migrated. Selection stayed in `JobCardGrid` -- DataTable's is internal-only, so handing it over splits the bulk UI per view mode. Select-all moved to the toolbar (`TableColumn.label` is a string). |
+| Four `formatDuration` | Three were identical -> `formatElapsed`. RunHistory's was never a duplicate -> renamed `formatFinishedDuration`. |
+| Two `alert()` | `notify` on the existing `useConfirm`, one dialog slot per component. |
+| Two spinners | dsl-ui `Spinner`, which has the role and accessible name the raw divs lacked. |
+| Relative-time | All three consolidated. ScheduleTimeline needed `describeMoment(..., { precise: true })` to keep "in 3h 20m". |
+
+`onRowClick` had to be added to dsl-ui's DataTable: `navigateTo` needs a RouterContext orch-app does
+not mount, so a migrated row click would have been silently dead.
+
+## Found while doing the above
+
+- **A failed kill was reported as a success** on every job-detail variant (`cb19839`). `killNow` cast
+  the synchronous `publishOutput` to a promise, so control always reached `setJustKilled`.
+- **The resource-monitor skip guard was disarmed by its own escape hatch** (`c591b40`).
+
+## Still open
+
+- **Root `package.json` was bumped to dsl-ui `-082` in the same commit as another session's
+  `violations-rules` devDependency.** The lockfile is shared and could not be split; worth a look.
+- Nothing else from this plan. Every item is closed above.
 
 ## Environment facts
 

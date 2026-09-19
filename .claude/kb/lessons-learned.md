@@ -273,6 +273,14 @@ exit-code claim was dropped for lack of sources in this checkout.
 
 ---
 
+### Commit messages: subject, why, non-obvious constraint. Nothing else.
+
+**Problem:** Five commits in a row shipped 10-25 line messages restating what the diff already says, after reading a plan whose own "Environment facts" said exactly this rule and warned that the long messages earlier in the history are not the model to copy.
+**Fix:** Subject line, then two or three lines of *why*. Rationale that long belongs in a code comment next to the code it explains, or in this file - not in `git log`.
+**Context:** Detail in a commit message is write-only: nobody greps `git log` for the reason a checkbox moved to the toolbar, they read the comment above it. Length also hides the one thing a message must carry, which is why the change was made at all. Applies to PR bodies too.
+
+---
+
 ### A DSL `$output` override that injects unconditionally makes the component's own handler dead code
 
 **Problem:** Bulk Enable/Disable/Run/Delete in the dashboard did nothing at all -- no confirmation, no request, no error. `registry-overrides.ts` injected all eight `JobCardGrid` callbacks whenever the node carried an `$id`, but `job-list.yaml` declares four outputs and has no bulk brains, so the clicks published into a namespace nothing read.
