@@ -7,10 +7,10 @@ Supersedes `2026-09-19_orch-remaining-work.md`, whose items 1-4 and half of 5 ar
 
 | | |
 |---|---|
-| orchestrator HEAD | `781ea82`, CI green on three OS |
+| orchestrator HEAD | `c591b40`, CI green on three OS + publish |
 | published CLI | `2026.9.19-376-61788a72` |
 | published dsl-ui / dsl-renderer | `2026.9.19-080-964f4490` (from `C:\Workspace_Tooling\dsl-view`) |
-| tests | 680 CLI, 292 orch-ui, 228 orch-app, 60 orch-server |
+| tests | 681 CLI, 296 orch-ui, 233 orch-app, 60 orch-server |
 | violations | orchestrator 3 (none from this work), dsl-view 252 |
 
 ## Done, for context
@@ -24,6 +24,9 @@ Supersedes `2026-09-19_orch-remaining-work.md`, whose items 1-4 and half of 5 ar
 | 4. Daemon clears a stale `config.dashboard` | `bc9b8eb` |
 | 5a. `CompactSelect` + log run selector | `964f449` (dsl-view), `83b81ac` |
 | 6a. Five native `confirm()` to `ConfirmDialog` | `61788a7` |
+| 1. Bulk actions did nothing in the dashboard | `5bfaff9` |
+| 2. `ConfirmDialog` seen in a browser | (verification only, in `5bfaff9`) |
+| Resource-monitor skip guard disarmed by one stalled walk | `c591b40` |
 
 ## Contention -- read first
 
@@ -35,23 +38,27 @@ Another session (`orch-owner1`) works in this same tree and is running a violati
   (`152f239`).
 - Never leave files staged across a pause (a bypass dialog counts).
 
-## 1. Bulk delete does nothing in the dashboard -- **investigate first**
+## ~~1. Bulk delete does nothing in the dashboard~~ -- DONE `5bfaff9`
 
-Selecting a job and clicking bulk Delete published the event and nothing happened: the registry still
-held all four jobs, with no confirmation and no error. `registry-overrides.ts:77` always injects
-`onBulkDelete`, so `JobCardGrid`'s own delete path (and its confirmation) is unreachable in the DSL
-app -- the brain owns it. Whether the brain has a delete at all is unverified.
+Confirmed and fixed. `job-list.yaml` declared four `$outputs` and no bulk brains while
+`registry-overrides.ts` injected eight callbacks, so all four bulk actions published into a namespace
+nothing read. The overrides now inject only declared events; `JobCardGrid` asks before delegating; a
+new `onAfterBulk` output reloads the job source instead of leaving deleted cards up for 30s.
 
-Same shape for `onKill` (`registry-overrides.ts:48`, `:84`), so three of the four kill confirmations
-are also dead in the dashboard. Only `LogViewer`'s kill is live, since it owns its fetch.
+**The note about `onKill` was wrong.** All three `Running*Detail` variants already `ask()` first and
+then call `onKill`, which is the correct layering -- the kill confirmations were never dead. Delete in
+those variants is also fine: the visible button sets `confirmDelete`, and `handleDelete` is only
+reachable from "Yes, delete".
 
-This is the highest-value remaining item: a destructive action that silently does nothing.
+A bulk action cannot be one `$http` brain -- a brain takes a single URL -- so the fan-out has to stay
+in the component. That is why `onAfterBulk` exists rather than four bulk brains.
 
-## 2. `ConfirmDialog` is test-verified only
+## ~~2. `ConfirmDialog` is test-verified only~~ -- DONE
 
-8 hook tests plus 292 orch-ui tests pass, but the dialog was never seen in a browser -- `agent-browser`
-kept dropping its session (`Browser not launched`, `os error 10060`). Confirm it renders before
-trusting it. `LogViewer`'s kill is the one reachable path in the dashboard.
+Seen rendering in a real browser on the dev dashboard: styled, in-app, dimmed backdrop, Cancel +
+Delete. Confirming actually removed the job from the registry and the grid refreshed within ~3s.
+`agent-browser` worked this time; the first `open` call takes >180s and looks hung, but the session is
+live afterwards -- snapshot it rather than retrying `open`.
 
 ## 3. dsl-view: tests are not typechecked
 
@@ -108,3 +115,11 @@ the build. Adding a `tsconfig.tests.json` will surface that debt -- expect to fi
   misbehave until those two are injected.
 - **Poll CI after every push**, including one that only touches docs. `f96cfa3` was pushed unpolled
   and was red.
+- **The resource monitor's skip guard was disarmed by its own escape hatch**, because `.finally`
+  cleared `samplingSince` unconditionally and the overtaken walk cleared its successor's marker. Fixed
+  in `c591b40` with a per-walk id. This was the Windows-only flake in "a sample is skipped while the
+  previous one is still in flight" -- a real bug, not host noise. 10 green runs then red on an
+  unrelated commit; do not write a CI failure off as flake without forcing the condition locally.
+- **A DSL `$output` override must filter on what the node declares.** Injecting a callback the page
+  never declared removes the component's own behaviour instead of adding one. See
+  `registry-overrides.test.tsx`.

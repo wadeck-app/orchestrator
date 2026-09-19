@@ -270,3 +270,19 @@ exit-code claim was dropped for lack of sources in this checkout.
 **Problem:** `scheduler.ts` arms the sampling timer through `this._time.every` but reads the wall clock directly for the stall window (`samplingSince`, ~line 969) and the peak-flush throttle (`peakFlushedAt`, ~lines 926/930/983). Under `FakeTime` the ticks advance and those comparisons do not.
 **Fix:** Until those reads go through `this._time.now()`, test the monitor with an injected `sampleUsage` plus a short real `sampleIntervalMs` -- not `FakeTime`.
 **Context:** Found independently by two reviews. It is why the resource-budget tests use a real 25ms interval rather than stating elapsed time like `deadlines.test.js` does. Related trap in the same area: `samplingStallMs` is `sampleIntervalMs * 3` and the sampler must outlast the interval for an overlap test to mean anything, so the ratio is bounded below 3 by construction -- there is no "safe" constant. Assert that an overlap happened *before the stall window was due*, rather than that overlap never happened, or a merely busy runner fails the test for the host's reasons.
+
+---
+
+### A DSL `$output` override that injects unconditionally makes the component's own handler dead code
+
+**Problem:** Bulk Enable/Disable/Run/Delete in the dashboard did nothing at all -- no confirmation, no request, no error. `registry-overrides.ts` injected all eight `JobCardGrid` callbacks whenever the node carried an `$id`, but `job-list.yaml` declares four outputs and has no bulk brains, so the clicks published into a namespace nothing read.
+**Fix:** Inject only the event names the node declares under `$outputs`, so an undeclared one falls through to the component's own implementation. Guarded by `registry-overrides.test.tsx`.
+**Context:** Every one of these components reads "the callback prop is defined" as "the page owns this action" and skips its own fetch. So injecting an undeclared callback does not add a behaviour, it removes one. `publishOutput` writes into a state bag and no brain subscribing is not an error, which is why this was silent. Corollary for layering: a confirmation is the component's concern and the mutation is the brain's -- ask *before* delegating, or the dialog is dead code on any page that owns the output.
+
+---
+
+### Clearing an in-flight marker in `.finally` lets an overtaken async walk disarm its successor's guard
+
+**Problem:** The resource monitor's skip guard held only until the first stalled sample. `samplingSince` was cleared unconditionally when a walk settled, so the walk the stall escape had overtaken cleared the marker belonging to its still-outstanding successor -- and from then on every tick started another walk. Overlapping walks counted as consecutive `hardBreaches`, which kills a job early.
+**Fix:** Tag each walk with an incrementing id and clear the marker only when `walk === currentWalk`.
+**Context:** Surfaced as a Windows-only flake in "a sample is skipped while the previous one is still in flight", which only caught it when a runner happened to stretch a walk past the stall window on its own -- 10 green runs in a row, then red on an unrelated commit. Forcing the stall in the test makes the cascade deterministic on any host: 11 premature overlaps at ~62ms before the fix, none after. When an escape hatch is bounded by "one outstanding operation", the marker must identify *which* operation owns it; a bare timestamp cannot.
