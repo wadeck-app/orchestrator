@@ -631,16 +631,37 @@ describe('hard resource budget', () => {
     registry.add(busyJob(dir, 'inflight', 800));
 
     /*
-     * 100ms on a 50ms tick: slower than the interval, so ticks arrive while a walk is outstanding
-     * and overlap happens unless something prevents it - but well inside the stall window
-     * (3 intervals = 150ms), so the escape hatch for a hung walk is not what is being measured here.
-     * At 250ms it would trip that escape and overlap legitimately.
+     * 100ms on a 50ms tick: slower than the interval, so ticks arrive while a walk is outstanding and
+     * overlap happens unless something prevents it.
+     *
+     * What is asserted is the guard's actual rule, not `maxInFlight === 1`. The scheduler is allowed
+     * to start a second walk once the outstanding one has been running for 3 intervals -- that is the
+     * deliberate escape hatch for a walk that never settles. A flat "never two at once" therefore
+     * asserts something the code does not promise, and it failed on the Windows runner for exactly
+     * that reason: a 100ms sampler against a 150ms window is only 1.5x of margin, so when the host
+     * stretched the sampler's timer past 150ms the escape fired legitimately and the test called it a
+     * bug. Widening the numbers only moves that threshold, because the window is a multiple of the
+     * interval and the sampler has to outlast the interval for the test to mean anything.
+     *
+     * So an overlap counts as a violation only when it happens BEFORE the escape is due. Removing the
+     * guard from the scheduler still fails this immediately -- a second walk would start on the very
+     * next tick, ~50ms in, far inside the window -- while a merely busy host does not.
      */
+    // Mirrors samplingStallMs in scheduler.ts, which is sampleIntervalMs * 3.
+    const SAMPLE_INTERVAL_MS = 50;
+    const STALL_MS = SAMPLE_INTERVAL_MS * 3;
     let inFlight = 0;
+    let outstandingSince = 0;
     let maxInFlight = 0;
+    const prematureOverlaps = [];
     const sampleUsage = async () => {
+      if (inFlight > 0) {
+        const heldForMs = Date.now() - outstandingSince;
+        if (heldForMs < STALL_MS) prematureOverlaps.push(heldForMs);
+      }
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
+      outstandingSince = Date.now();
       await new Promise(r => setTimeout(r, 100));
       inFlight--;
       // Under budget: this test is about overlap, not about killing.
@@ -648,12 +669,18 @@ describe('hard resource budget', () => {
     };
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50,
+      configDir: dir, liveness: async () => false, sampleUsage,
+      sampleIntervalMs: SAMPLE_INTERVAL_MS,
     });
     await sched.trigger('inflight');
     await sched.stop();
 
-    assert.equal(maxInFlight, 1, `samples must not overlap, saw ${maxInFlight} at once`);
+    assert.deepStrictEqual(prematureOverlaps, [],
+      `a walk was started while another had been running for only ${prematureOverlaps.join(', ')}ms,`
+      + ` inside the ${STALL_MS}ms stall window -- the skip guard is not holding`);
+    // Guards the other direction: if no tick ever landed during a walk, nothing above was exercised
+    // and the assertion passed vacuously.
+    assert.ok(maxInFlight >= 1, 'the sampler was never called');
   });
 
   test('a sustained breach kills the job and reports the sample count', async () => {
