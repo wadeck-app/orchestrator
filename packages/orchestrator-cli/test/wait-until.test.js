@@ -79,6 +79,49 @@ describe('waiting for a moment further away than a timer can express', () => {
     assert.equal(time.pending, 0, 'a cancelled wait left a timer armed');
   });
 
+  /*
+   * The property that decides the slice size, asked the way a laptop user would: the lid closes with
+   * days to go and opens after the moment has passed.
+   *
+   * A timer counts monotonic time and does not include the suspend, so the slice armed before the lid
+   * closed still owes its full remaining time in AWAKE seconds. The lateness is therefore bounded by
+   * the slice, not by the length of the sleep - which is why the slice is a minute and not a day.
+   */
+  test('a deadline slept through fires within one slice of waking', () => {
+    const time = new FakeTime();
+    let firedAt = null;
+    const deadline = time.now() + 7 * DAY;
+    waitUntil(time, deadline, () => { firedAt = time.now(); });
+
+    // suspend, not advance: the wall clock moves and the armed timer does not, which is what a
+    // closed lid does. advance() moves both together and cannot express this at all.
+    time.suspend(9 * DAY);
+    assert.equal(firedAt, null, 'a suspended machine ran a timer');
+    const wokeAt = time.now();
+    assert.ok(wokeAt > deadline, 'the sleep did not span the deadline, so this proves nothing');
+
+    // Two days of awake time, far more than it should need. Advancing by exactly one slice instead
+    // would make this pass for ANY slice size - the assertion would be measuring the knob it is
+    // supposed to be judging.
+    time.advance(2 * DAY);
+
+    // Measured from WAKING, not from the deadline: nothing can fire while the machine is off, so the
+    // two days it spent past the deadline are not the timer's to give back. What IS the timer's is how
+    // long it makes the user wait once the machine is usable again.
+    //
+    // The budget is stated as a promise about the product - a job is late by about a minute, the
+    // finest thing cron can express - not as MAX_TIMER_CHUNK_MS. Written against the constant this
+    // would hold at any slice size, including the one day that fails the promise.
+    const LATENESS_BUDGET_MS = 2 * 60_000;
+    assert.notEqual(firedAt, null, 'never fired, two days after the machine woke');
+    const lateMinutes = Math.round((firedAt - wokeAt) / 60_000);
+    assert.ok(
+      firedAt - wokeAt <= LATENESS_BUDGET_MS,
+      `fired ${lateMinutes} minutes after the machine woke: the slice armed before it slept still ` +
+      'owed that long in awake time, so the slice is too coarse',
+    );
+  });
+
   // The point of re-deriving from the clock rather than counting down slices. A machine that sleeps
   // does not advance a timer by the time it spent suspended, so a countdown would finish late by
   // exactly that long.
@@ -89,9 +132,11 @@ describe('waiting for a moment further away than a timer can express', () => {
     waitUntil(time, deadline, () => { fired++; });
 
     // One slice elapses, then the clock jumps past the deadline - the shape of waking from sleep.
+    // Written against the slice rather than a hard-coded day, so tightening the slice cannot make
+    // this test wrong about the thing it asserts.
     time.advance(MAX_TIMER_CHUNK_MS);
-    assert.equal(fired, 0);
-    time.advance(39 * DAY);
+    assert.equal(fired, 0, 'fired after one slice, with the deadline still 40 days out');
+    time.advance(40 * DAY);
 
     assert.equal(fired, 1, 'still waiting after the deadline passed');
     assert.equal(time.now() >= deadline, true);

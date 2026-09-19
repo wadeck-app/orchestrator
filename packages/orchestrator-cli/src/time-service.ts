@@ -43,11 +43,24 @@ export const systemTime: TimeService = {
 /**
  * The longest single timer this codebase arms.
  *
- * A timer delay above 2^31-1 ms (~24.85 days) is clamped by the runtime to 1ms, so a job asked to
- * wait two months fired on the NEXT TICK - silently, because nothing reports the clamp. One day is
- * far below that ceiling and keeps the re-arm count trivial: a year is 365 wake-ups.
+ * Two constraints, and the tighter one wins.
+ *
+ * The ceiling: a delay above 2^31-1 ms (~24.85 days) is clamped by the runtime to 1ms, so a job
+ * asked to wait two months fired on the NEXT TICK - silently, because nothing reports the clamp.
+ *
+ * The one that actually sets this value: a timer counts monotonic time, which does NOT include time
+ * the machine spent suspended. So a slice armed before the lid closes still owes its full remaining
+ * time in AWAKE seconds when the machine wakes, and the deadline may have passed days ago. The
+ * lateness is therefore bounded by the slice, not by the sleep - and on a laptop, sleeping across a
+ * deadline is the normal case, not the edge case. node-cron takes the same approach with a one-day
+ * cap, which is fine for a heartbeat it is allowed to miss and not for a job that must fire.
+ *
+ * One minute is the scheduler's own resolution: cron cannot express anything finer, so a job late by
+ * under a minute is indistinguishable from on time, and a job late by up to a day is not. The cost
+ * is one closure per minute while a wait is outstanding, against a daemon that already samples
+ * running jobs every two seconds.
  */
-export const MAX_TIMER_CHUNK_MS = 86_400_000;
+export const MAX_TIMER_CHUNK_MS = 60_000;
 
 /**
  * The delay a runtime timer cannot exceed: 2^31-1 ms, about 24.85 days.
@@ -144,6 +157,23 @@ export class FakeTime implements TimeService {
   /** How many timers are armed. A leak shows up here rather than as a slow test. */
   get pending(): number {
     return this._scheduled.filter(s => !s.cancelled).length;
+  }
+
+  /**
+   * The machine sleeps: the wall clock moves, the timers do not.
+   *
+   * `advance` moves both together, which is time passing while awake and cannot express a suspend at
+   * all - so a test written with it says nothing about the case it looks like it covers. A real timer
+   * counts monotonic time, which excludes the suspend, so every armed timer still owes its full
+   * remaining time in awake seconds afterwards: that is why each due time moves forward with the
+   * clock here rather than staying put.
+   *
+   * This is the case that decides how long a slice may be - see MAX_TIMER_CHUNK_MS.
+   */
+  suspend(ms: number): void {
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    this._now += ms;
+    for (const s of this._scheduled) s.dueAt += ms;
   }
 
   /**
