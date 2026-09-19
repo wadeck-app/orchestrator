@@ -186,12 +186,42 @@ export const REGISTRY_NOTICE =
   + 'Use `orch add` / `orch edit` / `orch remove` / `orch enable` / `orch disable`, or the web UI. '
   + 'Run `orch --help` for the full list.';
 
+/**
+ * How long a spent `once` job is kept, and how many of them at most.
+ *
+ * Two bounds rather than one because they answer different questions: the age bound is "how far back
+ * does the audit go", the count bound is "how big can this file get". Whichever is reached first wins,
+ * so a burst of fifty one-off jobs in a week does not push the registry past a readable size, and a
+ * single job a year ago does not linger forever.
+ */
+export interface OnceRetention {
+  onceRetentionDays: number;
+  onceRetentionMaxJobs: number;
+}
+
+export const ONCE_RETENTION_DEFAULTS: OnceRetention = {
+  onceRetentionDays:    360,
+  onceRetentionMaxJobs: 50,
+};
+
+export interface RegistryOptions extends Partial<OnceRetention> {
+  /** Injected so the retention window can be tested without waiting a year. */
+  now?: () => number;
+}
+
 export class Registry {
   private readonly _file: string;
+  private readonly _retention: OnceRetention;
+  private readonly _now: () => number;
   private _jobs: Job[] | null = null;
 
-  constructor(filePath: string) {
+  constructor(filePath: string, options: RegistryOptions = {}) {
     this._file = filePath;
+    this._retention = {
+      onceRetentionDays:    options.onceRetentionDays    ?? ONCE_RETENTION_DEFAULTS.onceRetentionDays,
+      onceRetentionMaxJobs: options.onceRetentionMaxJobs ?? ONCE_RETENTION_DEFAULTS.onceRetentionMaxJobs,
+    };
+    this._now = options.now ?? (() => Date.now());
   }
 
   private _read(): RegistryData {
@@ -229,13 +259,75 @@ export class Registry {
   load(): RegistryData {
     const data = this._read();
     this._jobs = data.jobs ?? [];
+    // Here as well as on markSpent, because the age bound passes with time rather than with an event:
+    // a daemon that was off for a year would otherwise serve a backlog no bound had ever been applied
+    // to, and keep serving it until the next once job happened to fire.
+    const kept = this._pruneSpent(this._jobs);
+    const pruned = kept.length !== this._jobs.length;
+    this._jobs = kept;
     // Also rewrites when the notice is absent or stale, so it reaches registries that already exist
     // instead of waiting for someone to add a job. Self-limiting: once written, the comparison
     // matches and nothing happens on later loads.
-    if (!fs.existsSync(this._file) || data._README !== REGISTRY_NOTICE) {
+    if (pruned || !fs.existsSync(this._file) || data._README !== REGISTRY_NOTICE) {
       this._write({ version: SUPPORTED_VERSION, jobs: this._jobs });
     }
     return { version: SUPPORTED_VERSION, jobs: [...this._jobs] };
+  }
+
+  /**
+   * Records that a `once` job has had its firing, and applies the retention bounds.
+   *
+   * Replaces the `remove()` this used to be. The job stays listed so the audit, the run history in
+   * state.json and the dashboard's "Past once" view all still have something to point at; `spent` is
+   * what stops the scheduler arming it again.
+   *
+   * `spentAt` is only set the first time. A spent job can still be triggered by hand -- that is a new
+   * run of the same command, not a re-spending -- and moving the timestamp would rewrite when the job
+   * was actually consumed.
+   */
+  markSpent(id: string): void {
+    this._ensure();
+    const idx = this._jobs!.findIndex((j) => j.id === id);
+    if (idx === -1) throw new Error(`Job not found: "${id}"`);
+    const job = this._jobs![idx]!;
+    // Loud rather than a no-op: nothing else has a single firing to spend, so asking for it on a cron
+    // job is a caller bug, and silently ignoring it would hide a job that never gets consumed.
+    if (job.type !== 'once') {
+      throw new Error(`Job "${id}" is not a once job (type: ${job.type}) -- only a once job can be spent`);
+    }
+    this._jobs![idx] = {
+      ...job,
+      spent:   true,
+      spentAt: job.spentAt ?? new Date(this._now()).toISOString(),
+    };
+    this._jobs = this._pruneSpent(this._jobs!);
+    this._write({ version: SUPPORTED_VERSION, jobs: this._jobs });
+  }
+
+  /**
+   * Drops spent `once` jobs beyond either retention bound, newest kept first.
+   *
+   * Only spent once jobs are eligible: an unspent one is a firing still to come, whatever its
+   * scheduled moment, and cron and startup jobs have no end at all. A spent job with no `spentAt`
+   * predates the field and is treated as the oldest thing in the file.
+   */
+  private _pruneSpent(jobs: Job[]): Job[] {
+    const cutoff = this._now() - this._retention.onceRetentionDays * 86_400_000;
+    const spentAtMs = (job: Job): number => {
+      const ms = job.spentAt !== undefined ? new Date(job.spentAt).getTime() : NaN;
+      return Number.isNaN(ms) ? -Infinity : ms;
+    };
+
+    const survivors = new Set(
+      jobs
+        .filter((j) => j.type === 'once' && j.spent === true)
+        .filter((j) => spentAtMs(j) >= cutoff)
+        .sort((a, b) => spentAtMs(b) - spentAtMs(a))
+        .slice(0, Math.max(0, this._retention.onceRetentionMaxJobs))
+        .map((j) => j.id),
+    );
+
+    return jobs.filter((j) => !(j.type === 'once' && j.spent === true) || survivors.has(j.id));
   }
 
   list(): Job[] {

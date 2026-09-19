@@ -47,6 +47,17 @@ export interface Job {
   slaWindowMinutes?: number;
   secrets?: string[];
   dryRunSupported?: boolean;
+  /**
+   * `once` only: the job has already had its single firing.
+   *
+   * A spent job used to be deleted from the registry, so the dashboard never saw one. It is kept now
+   * (bounded by onceRetentionDays / onceRetentionMaxJobs in config.yml), which means every list has to
+   * decide whether it is looking at the future or the past: without filtering on this, the job grid
+   * would fill with one-off jobs that have nothing left to do.
+   */
+  spent?: boolean;
+  /** When the firing that spent the job happened, ISO. Set with `spent` and never moved after. */
+  spentAt?: string;
 }
 
 /**

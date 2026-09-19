@@ -35,6 +35,23 @@ export function describeMoment(at: string | number, now: number): string {
 }
 
 /**
+ * How long ago a moment was: "14d ago".
+ *
+ * The past-tense counterpart of describeMoment, for things that have already happened -- a spent once
+ * job's firing. Running it through describeMoment instead produced "overdue by 14d", which says the
+ * job is late when in fact it is finished.
+ */
+export function describeAgo(at: string | number, now: number): string {
+  const atMs = typeof at === 'number' ? at : new Date(at).getTime();
+  if (Number.isNaN(atMs)) return 'at an unrecorded time';
+  const elapsedMs = now - atMs;
+  // A moment in the future here means a clock that moved or a timestamp written by another machine.
+  // Saying "in 3h" is at least true; "-3h ago" would not be.
+  if (elapsedMs < 0) return describeMoment(atMs, now);
+  return `${formatSeconds(elapsedMs)} ago`;
+}
+
+/**
  * A duration in the largest unit that keeps it readable.
  *
  * "in 1209600s" is technically the answer and practically unreadable; a fortnight should say so.

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, Moon, Sun } from 'lucide-react';
 import { IconButton } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunFailed, latestRun, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
@@ -27,7 +27,16 @@ export function NavBar(): React.ReactElement {
 
   useEffect(() => {
     const load = (): void => {
-      fetch('/api/jobs').then(r => r.json()).then((items: { job: { enabled: boolean }; runHistory: RuntimeEntry[] }[]) => {
+      fetch('/api/jobs').then(r => r.json()).then((all: { job: Job; runHistory: RuntimeEntry[] }[]) => {
+        /*
+         * Spent `once` jobs are dropped first, because this counter has to agree with the job grid
+         * beside it: with four cron jobs listed and four already-fired once jobs hidden, "8 jobs"
+         * contradicts what the user can count on screen and reads as jobs missing from the grid.
+         *
+         * It also keeps the failure badge from being held open for good by a one-off job whose single
+         * run failed - there is no next run that could ever clear it.
+         */
+        const items   = all.filter(i => !(i.job.type === 'once' && i.job.spent === true));
         const total   = items.length;
         const running = items.filter(i => isRunActive(latestRun(i.runHistory))).length;
         // Shares the one classifier rather than re-deriving it from exitCode, which is how this

@@ -161,11 +161,16 @@ async function main(): Promise<void> {
   try {
     daemonLog.write(`daemon starting (pid=${process.pid})`);
 
-    const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'));
+    // Before the registry: it needs the retention bounds, and a misread config line has to reach the
+    // daemon log rather than being swallowed -- see loadDaemonConfig.
+    const daemonCfg   = loadDaemonConfig(CONFIG_DIR, (msg) => daemonLog.write(`config: ${msg}`));
+    const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'), {
+      onceRetentionDays:    daemonCfg.onceRetentionDays,
+      onceRetentionMaxJobs: daemonCfg.onceRetentionMaxJobs,
+    });
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
     const audit       = new AuditLogger(CONFIG_DIR);
     const events      = new EventPublisher();
-    const daemonCfg      = loadDaemonConfig(CONFIG_DIR);
     const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
     const scheduler      = new Scheduler(registry, state, {
       configDir: CONFIG_DIR,

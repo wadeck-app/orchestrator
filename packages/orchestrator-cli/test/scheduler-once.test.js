@@ -88,24 +88,24 @@ describe('once jobs -- fires exactly once', () => {
     await sched.stop();
 
     assert.equal(spawnCount, 1);
-    // The job should be gone from registry now
-    assert.equal(registry.get(job.id), null, 'job should have been removed');
+    // The job stays, marked spent: that mark is what stops the second firing.
+    assert.equal(registry.get(job.id).spent, true, 'job should have been marked spent');
   });
 });
 
 // ---------------------------------------------------------------------------
-// once job is removed from registry after execution
+// once job is marked spent after execution, rather than deleted
 // ---------------------------------------------------------------------------
 
-describe('once jobs -- auto-removal', () => {
-  test('removes job from registry after firing', async () => {
+describe('once jobs -- marked spent', () => {
+  test('marks the job spent after firing, keeping its definition', async () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
 
     const job = makeOnceJob({ scheduledAt: new Date(Date.now() - 10000).toISOString(), delayMs: 5000 });
     registry.add(job);
 
-    assert.notEqual(registry.get(job.id), null, 'job should exist before start');
+    assert.equal(registry.get(job.id).spent, undefined, 'a job should not start out spent');
 
     const spawn = () => fakeChild(0);
     const sched = new Scheduler(registry, state, { spawn, liveness: async () => false });
@@ -113,7 +113,10 @@ describe('once jobs -- auto-removal', () => {
     await new Promise(r => setImmediate(r));
     await sched.stop();
 
-    assert.equal(registry.get(job.id), null, 'job should be removed after firing');
+    const after = registry.get(job.id);
+    assert.notEqual(after, null, 'job should still exist after firing');
+    assert.equal(after.spent, true, 'job should be marked spent after firing');
+    assert.notEqual(after.spentAt, undefined, 'spentAt should record when it was consumed');
   });
 });
 
@@ -162,7 +165,7 @@ describe('once jobs -- restart re-arming', () => {
     await sched.stop();
 
     assert.equal(spawnCount, 1, 'should have fired once after remaining delay');
-    assert.equal(registry.get(job.id), null, 'job should be removed after firing');
+    assert.equal(registry.get(job.id).spent, true, 'job should be marked spent after firing');
   });
 });
 

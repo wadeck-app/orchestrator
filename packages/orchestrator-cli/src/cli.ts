@@ -7,7 +7,7 @@ import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
-import { onceScheduleDisplay, describeMoment } from './once-schedule.js';
+import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
 function readDashboardFile(filePath: string): string | null {
@@ -341,8 +341,10 @@ Daemon lifecycle:
   orch uninstall               Remove from OS startup
 
 Job inspection:
-  orch list [--verbose] [--json]
-                               List all jobs; --verbose adds last run + exit code
+  orch list [--verbose] [--past] [--json]
+                               List all jobs; --verbose adds last run + exit code.
+                               Past "once" jobs (already fired) are hidden unless
+                               --past is given; see onceRetentionDays in config.yml
   orch show <id> [--json]      Show full job detail
                                JSON fields: id, type, label, command, schedule,
                                delaySeconds, cwd, enabled, triggerMode, missedFiring,
@@ -608,14 +610,38 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
     case 'list': {
       const verbose = has(rest, '--verbose');
-      const [jobs, stateMap] = await Promise.all([
+      const showPast = has(rest, '--past');
+      const [allJobs, stateMap] = await Promise.all([
         send('list-jobs') as Promise<Array<Record<string, unknown>>>,
         verbose
           ? (send('list-state') as Promise<Record<string, Array<Record<string, unknown>>>>)
           : Promise.resolve({} as Record<string, Array<Record<string, unknown>>>),
       ]);
-      if (!jobs?.length) {
-        output(forceJson || !process.stdout.isTTY ? [] : 'No jobs registered.', forceJson);
+      /*
+       * A spent once job is kept in the registry now rather than deleted, so without this the list
+       * would carry a line for every one-off job ever run - up to the retention bound of fifty - and
+       * the jobs that still have a firing ahead of them would be lost among them.
+       *
+       * Filtered before the JSON branch, not only in the rendering, so `orch list` means the same
+       * thing to an agent as it does to a person. Both get the past with `--past`.
+       */
+      const jobs = (allJobs ?? []).filter((j) => showPast || j['spent'] !== true);
+      const hiddenPast = (allJobs?.length ?? 0) - jobs.length;
+      // Said, not left to be discovered: a job the user knows they created and cannot find in the
+      // list reads as data loss. Only on the human path, so the JSON stays parseable.
+      const pastNote = (): void => {
+        if (hiddenPast === 0) return;
+        console.log(
+          `\n${hiddenPast} past once job${hiddenPast === 1 ? '' : 's'} hidden (already fired). `
+          + `Show with: orch list --past`,
+        );
+      };
+      if (!jobs.length) {
+        // "No jobs registered." would be a lie when the registry holds jobs this view is hiding, and
+        // it is the exact wording a user would read as "my jobs are gone".
+        const empty = hiddenPast > 0 ? 'No jobs left to fire.' : 'No jobs registered.';
+        output(forceJson || !process.stdout.isTTY ? [] : empty, forceJson);
+        if (!forceJson && process.stdout.isTTY) pastNote();
         break;
       }
       if (forceJson || !process.stdout.isTTY) {
@@ -625,13 +651,17 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       for (const j of jobs) {
         let scheduleDisplay: string;
         if (j['type'] === 'once') {
-          // Says "overdue by X" rather than clamping to "in 0s", which read as "about to fire" for a
-          // job whose moment had passed - the state that means the daemon was down when it was due.
-          scheduleDisplay = onceScheduleDisplay(
-            j['scheduledAt'] === undefined ? undefined : String(j['scheduledAt']),
-            j['delayMs'] === undefined ? undefined : Number(j['delayMs']),
-            Date.now(),
-          );
+          // A spent job has no countdown left; "overdue by 14d" would describe a moment it has
+          // already acted on, which reads as a job that is late rather than one that is finished.
+          scheduleDisplay = j['spent'] === true
+            ? `fired ${describeAgo(j['spentAt'] === undefined ? NaN : String(j['spentAt']), Date.now())}`
+            // Says "overdue by X" rather than clamping to "in 0s", which read as "about to fire" for a
+            // job whose moment had passed - the state that means the daemon was down when it was due.
+            : onceScheduleDisplay(
+              j['scheduledAt'] === undefined ? undefined : String(j['scheduledAt']),
+              j['delayMs'] === undefined ? undefined : Number(j['delayMs']),
+              Date.now(),
+            );
         } else {
           scheduleDisplay = j['schedule'] != null ? String(j['schedule']) : String(j['delaySeconds']) + 's';
         }
@@ -645,6 +675,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         }
         console.log(line + extra);
       }
+      pastNote();
       break;
     }
 
@@ -661,7 +692,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       const rows = await send('list-timers') as Array<{
         jobId: string; type: string; enabled: boolean; armed: string | null;
         dueAt: string | null; windowEndsAt: string | null; nextFiring: string | null;
-        windowState: string | null; problem: string | null;
+        windowState: string | null; spent: boolean; problem: string | null;
       }>;
 
       if (forceJson || !process.stdout.isTTY) {
@@ -675,10 +706,16 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
       for (const r of rows) {
         const due  = r.dueAt ?? r.nextFiring;
-        const when = due !== null ? `${due} (${describeMoment(due, Date.now())})` : 'nothing scheduled';
+        // A spent once job has nothing scheduled and that is correct, so it says which of the two
+        // "nothing armed" states it is in. Both lines used to read "not armed / nothing scheduled",
+        // which is the same words for a finished job and for one the scheduler had lost track of.
+        const when = r.spent
+          ? 'already fired'
+          : due !== null ? `${due} (${describeMoment(due, Date.now())})` : 'nothing scheduled';
         // violations-suppress: shared/no-emoji local/no-unicode-symbol CLI terminal indicator - marks the armed/not-armed state the way `orch list` marks enabled/disabled
         const mark = r.problem === null ? '✓' : '✗';
-        console.log(`${mark} ${r.jobId.padEnd(24)} ${r.type.padEnd(8)} ${(r.armed ?? 'not armed').padEnd(14)} ${when}`);
+        const armedCol = r.spent ? 'spent' : (r.armed ?? 'not armed');
+        console.log(`${mark} ${r.jobId.padEnd(24)} ${r.type.padEnd(8)} ${armedCol.padEnd(14)} ${when}`);
         if (r.windowState !== null && r.windowState !== 'active') {
           console.log(`    window: ${r.windowState}`);
         }
@@ -692,11 +729,17 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         }
       }
       const broken = rows.filter(r => r.problem !== null).length;
+      // Spent jobs counted apart, because they are not armed and saying "all N armed as configured"
+      // over a list containing them would be untrue of exactly the lines the reader can see.
+      const spentCount = rows.filter(r => r.spent).length;
+      const spentNote = spentCount === 0
+        ? ''
+        : ` ${spentCount} past once job(s) already fired.`;
       // Stated rather than left to be counted: a clean run should say so, and a dirty one should not
       // need the reader to scan for crosses.
       console.log(broken === 0
-        ? `\nAll ${rows.length} job(s) armed as configured.`
-        : `\n${broken} of ${rows.length} job(s) will not fire as configured (see "problem" above).`);
+        ? `\nAll ${rows.length - spentCount} job(s) armed as configured.${spentNote}`
+        : `\n${broken} of ${rows.length} job(s) will not fire as configured (see "problem" above).${spentNote}`);
       break;
     }
 

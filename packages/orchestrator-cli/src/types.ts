@@ -73,6 +73,20 @@ export interface Job {
    * .claude/guiding-principles.md.
    */
   skipExitCodes?: number[];
+  /**
+   * A `once` job has had its single firing. Absent means it is still waiting for it.
+   *
+   * A spent job used to be deleted outright, which made the audit trail lie by omission: `job.added`
+   * recorded `type: once` and then the job was simply gone, indistinguishable from one a user removed
+   * by hand -- and the run history in state.json pointed at an id the registry no longer knew.
+   *
+   * Kept instead, bounded by the retention policy in registry.ts so the file cannot grow without
+   * limit. Every reader that arms or reports on a job must treat this as terminal: the scheduler does
+   * not arm it, and `orch timers` does not call it a problem.
+   */
+  spent?: boolean;
+  /** When the firing that spent the job happened. Set once, with `spent`, and never moved after. */
+  spentAt?: string;
 }
 
 /**
@@ -92,9 +106,9 @@ export interface Job {
  * orch-ui consumes and rendered as-is. They fall back to their creation-time value instead.
  *
  * The rule is mechanical, so a new Job field does not land in a grey area: every optional field of
- * Job is here, and only the required ones are absent -- id, type, command, enabled, a cron's
- * schedule, a once job's delayMs and scheduledAt -- because clearing one of those would write a job
- * the scheduler cannot fire. Add a field to Job, add it here.
+ * Job is here, except the ones listed in REQUIRED_FIELDS -- clearing one of those would write a job
+ * the scheduler cannot fire -- and the ones in DAEMON_OWNED_FIELDS, which no user ever set. Add a
+ * field to Job, add it to exactly one of the three.
  */
 export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown)> = {
   cwd:                'delete',
@@ -121,15 +135,34 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
 const REQUIRED_FIELDS = new Set(['id', 'type', 'command', 'enabled', 'schedule', 'delayMs', 'scheduledAt']);
 
 /**
+ * Job fields the daemon writes and the user does not, so the error can say so instead of "unknown".
+ *
+ * A name the user can see in `orch show` and in registry.json but cannot unset needs to explain which
+ * of the two it is: a typo, or a field that is simply not theirs. "Unknown job field" would send them
+ * looking for a spelling mistake that is not there.
+ *
+ * Clearing `spent` is not merely disallowed for tidiness -- a once job whose moment has long passed
+ * would be re-armed by the next daemon start and run again, which is precisely what the type promises
+ * will not happen.
+ */
+const DAEMON_OWNED_FIELDS = new Set(['spent', 'spentAt']);
+
+/**
  * Explains why `field` cannot be cleared, and lists what can be -- the caller typed a name and needs
  * to know which one to type instead. Returns null when the field is unsettable, i.e. all is well.
  */
 export function unsettableFieldError(field: string): string | null {
   if (UNSETTABLE_FIELDS[field]) return null;
   const valid = Object.keys(UNSETTABLE_FIELDS).join(', ');
-  const reason = REQUIRED_FIELDS.has(field)
-    ? `"${field}" is required to run the job and cannot be unset.`
-    : `Unknown job field "${field}".`;
+  let reason: string;
+  if (REQUIRED_FIELDS.has(field)) {
+    reason = `"${field}" is required to run the job and cannot be unset.`;
+  } else if (DAEMON_OWNED_FIELDS.has(field)) {
+    reason = `"${field}" is set by the daemon when a once job fires, not by you, and cannot be unset. `
+      + `To run the same command again, add a new job (orch add once ...).`;
+  } else {
+    reason = `Unknown job field "${field}".`;
+  }
   return `${reason}\n\nFields that can be unset: ${valid}`;
 }
 

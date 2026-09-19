@@ -144,12 +144,25 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
     const last = latestRun(runHistory);
     const q = search.toLowerCase();
     const matchSearch = !q || job.label.toLowerCase().includes(q) || job.command.toLowerCase().includes(q);
-    const matchFilter =
-      filter === 'all'     ||
-      (filter === 'cron'    && job.type === 'cron')    ||
-      (filter === 'startup' && job.type === 'startup') ||
-      (filter === 'once'    && job.type === 'once')    ||
-      (filter === 'failed'  && isRunFailed(last));
+    /*
+     * A spent `once` job has already had its single firing. It stays in the registry for the audit
+     * trail rather than being deleted, which means it arrives here and has to be kept out of every
+     * view that is about work still to come - otherwise the grid fills with up to fifty cards showing
+     * a "next run" that happened weeks ago, and "Failed" keeps a permanent red card for a one-off job
+     * that cannot be fixed by waiting for its next run.
+     *
+     * Checked once, before the filters, so a filter added later cannot forget it.
+     */
+    const isPast = job.type === 'once' && job.spent === true;
+    const matchFilter = filter === 'past-once'
+      ? isPast
+      : !isPast && (
+        filter === 'all'     ||
+        (filter === 'cron'    && job.type === 'cron')    ||
+        (filter === 'startup' && job.type === 'startup') ||
+        (filter === 'once'    && job.type === 'once')    ||
+        (filter === 'failed'  && isRunFailed(last))
+      );
     return matchSearch && matchFilter;
   });
 

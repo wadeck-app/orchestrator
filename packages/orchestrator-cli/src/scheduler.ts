@@ -97,6 +97,13 @@ export interface TimerReport {
   nextFiring: string | null;
   windowState: WindowState | null;
   /**
+   * A `once` job has already had its firing. False for every other type.
+   *
+   * Reported because it is the difference between the two ways a once job can have nothing armed:
+   * finished, or never scheduled. Without it `orch timers` shows an identical line for both.
+   */
+  spent: boolean;
+  /**
    * Why nothing will happen, when that is the case. Null when intent and reality agree.
    *
    * This is the field worth reading first: every "it was configured and never fired" bug in this
@@ -353,13 +360,20 @@ export class Scheduler extends EventEmitter {
    * before moving on; when a timer is set there is nothing to wait for and it resolves immediately.
    */
   private async _scheduleOnce(job: Job): Promise<void> {
+    /*
+     * A spent job is kept in the registry now rather than deleted, so "it is still listed" no longer
+     * means "it is still to fire". Without this guard every daemon start would re-arm a job whose
+     * moment is months past, find it overdue, and run it - once per restart, forever.
+     */
+    if (job.spent === true) return;
+
     const elapsed   = this._now().getTime() - new Date(job.scheduledAt!).getTime();
     const remaining = job.delayMs! - elapsed;
-    // Removed either way: a once job is spent when its moment passes. If the liveness check
+    // Marked either way: a once job is spent when its moment passes. If the liveness check
     // skipped it, the thing it was meant to bring up is already up, so its purpose is served.
     if (remaining <= 0) {
       await this._maybeSpawn(job);
-      this._registry.remove(job.id);
+      this._registry.markSpent(job.id);
       return;
     }
     // waitUntil, not after(remaining): a timer clamps a delay above ~24.85 days to 1ms, so a once
@@ -368,7 +382,9 @@ export class Scheduler extends EventEmitter {
     this._deadlines.set(job.id, 'once', this._time.now() + remaining, () => {
       void (async () => {
         await this._maybeSpawn(job);
-        this._registry.remove(job.id);
+        // Removed while it waited or while it ran -- `orch remove` is allowed at any moment. Nothing
+        // to mark then, and an unhandled rejection here would take the daemon down with it (P-1).
+        if (this._registry.get(job.id) !== null) this._registry.markSpent(job.id);
       })();
     });
   }
@@ -538,6 +554,7 @@ export class Scheduler extends EventEmitter {
         windowEndsAt: windowEnd ? iso(windowEnd.dueAt) : null,
         nextFiring,
         windowState,
+        spent: job.type === 'once' && job.spent === true,
         problem: this._timerProblem(job, acting?.kind ?? null, windowState, nextFiring),
       };
     });
@@ -570,6 +587,19 @@ export class Scheduler extends EventEmitter {
       return armed === null
         ? null
         : `disabled, yet a ${armed} timer is still armed -- it should have been cancelled`;
+    }
+    /*
+     * A spent once job has nothing left to arm, and that is the correct state rather than a fault.
+     *
+     * Before spent jobs were kept, "a once job in the registry with nothing armed" could only mean the
+     * scheduler had missed it, so the fallback below was right. Now it also describes every job that
+     * has already run, and telling the user "enabled but NOTHING is armed for it: it will never fire"
+     * about a job that fired successfully last Tuesday would bury the lines that do matter.
+     */
+    if (job.type === 'once' && job.spent === true) {
+      return armed === null
+        ? null
+        : `already fired, yet a ${armed} timer is still armed -- it would run a second time`;
     }
     if (armed !== null) {
       // A cron task that is running but whose expression yields no next firing will never fire.
@@ -610,12 +640,16 @@ export class Scheduler extends EventEmitter {
      * Running a once job is what consumes it, whoever asked.
      *
      * This used to fire and leave the armed timer alone, so the job ran again when its moment
-     * arrived: a job whose type is "once" ran twice, in silence. The scheduled firing has always
-     * removed it from the registry, and a manual firing is the same event arriving early - so it
-     * takes the same path, unscheduled first so the timer cannot outlive the job.
+     * arrived: a job whose type is "once" ran twice, in silence. The scheduled firing marks it spent,
+     * and a manual firing is the same event arriving early - so it takes the same path, unscheduled
+     * first so the timer cannot outlive the job.
      *
-     * Reported back rather than done quietly: the job disappearing from the list is a side effect
-     * the user did not ask for, and unexplained it reads as a bug.
+     * Reported back rather than done quietly: the job leaving the default views is a side effect the
+     * user did not ask for, and unexplained it reads as a bug.
+     *
+     * An already-spent job is not excluded. Asking for it by hand is an explicit "run this command
+     * again", which is a new run of the same definition rather than a second consumption -- markSpent
+     * keeps the original spentAt for exactly that reason.
      */
     const consumed = job.type === 'once';
     if (consumed) this.unscheduleJob(job.id);
@@ -624,7 +658,7 @@ export class Scheduler extends EventEmitter {
 
     // After the fire, mirroring the scheduled path, so a `wait` trigger still has its job in place
     // while it runs.
-    if (consumed) this._registry.remove(job.id);
+    if (consumed && this._registry.get(job.id) !== null) this._registry.markSpent(job.id);
 
     return { ...result, ...(consumed ? { consumed: true } : {}) };
   }

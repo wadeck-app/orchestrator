@@ -16,8 +16,8 @@ const { FakeTime } = require('../src/time-service');
  * `orch trigger` on a once job used to run it AND leave its timer armed, so the job ran a second
  * time when its moment arrived. A job whose type is "once" ran twice, and nothing said so.
  *
- * Running a once job is what consumes it, whoever asked - the scheduled firing has always removed it
- * from the registry, and a manual firing is the same event arriving early.
+ * Running a once job is what consumes it, whoever asked - the scheduled firing marks it spent, and a
+ * manual firing is the same event arriving early.
  */
 
 const dirs = [];
@@ -78,14 +78,19 @@ describe('a once job triggered by hand is consumed', () => {
     await sched.stop();
   });
 
-  test('the job is gone from the registry, as it is after a scheduled firing', async () => {
+  // Marked spent rather than deleted: the definition stays for the audit and the "Past once" view,
+  // and `spent` is what stops it being armed again. See once-retention.test.js for the retention
+  // bounds that eventually drop it.
+  test('the job is marked spent, as it is after a scheduled firing', async () => {
     const { registry, sched, time } = makeEnv();
     registry.add(onceJob(time, HOUR));
     await sched.start();
 
     await sched.trigger('o1', { kind: 'manual' });
 
-    assert.equal(registry.get('o1'), null, 'the job outlived the run that consumed it');
+    const job = registry.get('o1');
+    assert.notEqual(job, null, 'the job was deleted rather than marked spent');
+    assert.equal(job.spent, true, 'the run that consumed it left no mark');
     await sched.stop();
   });
 

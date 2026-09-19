@@ -97,14 +97,18 @@ describe('a once job fires at its delay, not before', () => {
     await sched.stop();
   });
 
-  test('is removed from the registry after firing', async () => {
+  // Marked spent rather than removed, so the audit and the run history still have a definition to
+  // point at. `spent` is what keeps it from being armed a second time.
+  test('is marked spent after firing', async () => {
     const { registry, sched, time } = makeEnv();
     registry.add(onceJob(1000, new Date(time.now()).toISOString()));
 
     await sched.start();
     await time.advanceAsync(2000, 500);
 
-    assert.equal(registry.list().find(j => j.id === 'o'), undefined);
+    const job = registry.list().find(j => j.id === 'o');
+    assert.notEqual(job, undefined, 'the job was deleted rather than marked spent');
+    assert.equal(job.spent, true);
     await sched.stop();
   });
 
