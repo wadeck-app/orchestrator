@@ -26,6 +26,26 @@ function makeDeps(dir) {
   return { registry, state };
 }
 
+/**
+ * Waits for a condition instead of sleeping for however long it is guessed to take.
+ *
+ * The tests below need a shell to have spawned its descendant before there is a tree to look at, and
+ * each waited a flat 1200ms/700ms for it. A fixed sleep is both slower than the wait usually needs to
+ * be and shorter than a loaded runner sometimes needs, so it costs real time on every run and still
+ * fails on the runs it is there to protect. Fails with a named reason rather than a bare timeout.
+ *
+ * It does not replace every such sleep: see killJob's, which is load-bearing for a reason that is
+ * not yet understood and is kept.
+ */
+async function waitFor(predicate, label, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.fail(`timed out after ${timeoutMs}ms waiting for ${label}`);
+}
+
 function fakeChild(exitCode = 0) {
   const child = new EventEmitter();
   child.pid = 12345;
@@ -324,17 +344,36 @@ describe('killJob', () => {
 
     const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false });
     void sched.trigger('tree-a');
-    // Give the shell time to start its descendant, otherwise there is no tree to kill.
-    await new Promise(resolve => setTimeout(resolve, 1200));
 
-    const pid = state.get('tree-a').pid;
-    assert.ok(pid, 'expected a recorded pid');
-    const pids = await pidtree(pid, { root: true });
     // cmd.exe always stays around as a parent, so Windows must show a real tree. POSIX
     // shells often exec the command in place for a single command, collapsing the tree to
     // one pid -- asserting 2 there would fail in CI for the wrong reason.
     const minPids = process.platform === 'win32' ? 2 : 1;
-    assert.ok(pids.length >= minPids, `expected at least ${minPids} pid(s), got ${pids.length}`);
+    /*
+     * Give the shell time to start its descendant, otherwise there is no tree to kill.
+     *
+     * This sleep is deliberately NOT replaced by waitFor on the tree shape, which is what the
+     * sibling test below does. Polling until the tree merely has `minPids` in it proceeds as soon as
+     * two pids exist, and under the full suite running in parallel that killed a tree still being
+     * built: nine pids survived killJob, reproducibly, where the unmodified test passed twice.
+     * Why the tree is that large at that instant is not established, and a kill test that races the
+     * thing it kills is worse than a slow one -- so the wait stays until someone has an explanation
+     * rather than a guess.
+     *
+     * The poll below is kept on top of it, so a runner slower than 1200ms fails on a real timeout
+     * instead of on an empty tree.
+     */
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    let pids = [];
+    await waitFor(async () => {
+      const recorded = state.get('tree-a')?.pid;
+      if (!recorded) return false;
+      pids = await pidtree(recorded, { root: true }).catch(() => []);
+      return pids.length >= minPids;
+    }, `a process tree of at least ${minPids} pid(s) under the job`);
+
+    const pid = state.get('tree-a').pid;
+    assert.ok(pid, 'expected a recorded pid');
 
     assert.deepStrictEqual(await sched.killJob('tree-a'), { killed: true });
 
@@ -392,16 +431,25 @@ describe('hard resource budget', () => {
     const { registry, state } = makeDeps(dir);
     const events = [];
     seedTinyBaseline(state, 'burst');
-    registry.add(busyJob(dir, 'burst', 2500));
+    registry.add(busyJob(dir, 'burst', 800));
+
+    // The burst is stated by the sampler rather than left to arithmetic on the clock. This used to
+    // run a 2.5s job on the production 2s interval and rely on it finishing before a third tick --
+    // so it asserted "2 breaches do not kill" only as long as the host kept up, and a slow runner
+    // would have turned a passing rule into a spurious kill.
+    let calls = 0;
+    const sampleUsage = async () => (++calls <= 2
+      ? { cpuPct: 5000, ramMb: 5000 }
+      : { cpuPct: 0.0001, ramMb: 0.0001 });
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     await sched.trigger('burst');
     await sched.stop();
 
-    // Samples land at ~0s and ~2s: two breaches, below the 3 required to kill.
+    assert.ok(calls > 3, `expected the burst to be followed by calmer samples, got ${calls}`);
     assert.equal(state.get('burst').exitCode, 0, 'job should have finished on its own');
     assert.equal(events.filter(e => e.topic === 'job.resource_hard_limit').length, 0,
       'no hard-limit kill should be emitted for a short burst');
@@ -417,8 +465,12 @@ describe('hard resource budget', () => {
     seedTinyBaseline(state, 'loud');
     registry.add(busyJob(dir, 'loud', 20000));
 
+    // Always over budget, so the kill lands on the third tick. The interval is injected only to
+    // stop the test waiting 6s of real time for a rule that does not depend on how long a tick is.
+    const sampleUsage = async () => ({ cpuPct: 5000, ramMb: 5000 });
+
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     await sched.trigger('loud');
@@ -452,10 +504,12 @@ describe('hard resource budget', () => {
     // 400ms sampler against the production 2s interval, which can never overlap - it passed with the
     // guard removed, and was worth nothing.
     let calls = 0;
-    const sampleUsage = async () => {
+    const outstanding = [];
+    const sampleUsage = () => {
       calls++;
-      await new Promise(r => setTimeout(r, 250));
-      return { cpuPct: 5000, ramMb: 5000 };
+      const walk = new Promise(r => setTimeout(r, 250)).then(() => ({ cpuPct: 5000, ramMb: 5000 }));
+      outstanding.push(walk);
+      return walk;
     };
 
     const sched = new Scheduler(registry, state, {
@@ -467,7 +521,11 @@ describe('hard resource budget', () => {
     // Let the walks that were still in flight when the kill landed resolve. Without this the
     // duplicate event arrives AFTER the assertion reads the array, and the test passes by being too
     // early rather than by the guard working.
-    await new Promise(r => setTimeout(r, 600));
+    // Awaited on the walks themselves rather than on a 600ms guess: a sleep sized to "probably long
+    // enough" is the same bet the guard exists to remove, and it would hide the duplicate again the
+    // day a runner is slower than the number chosen here.
+    await Promise.allSettled(outstanding);
+    await new Promise(resolve => setImmediate(resolve));
 
     const hard = events.filter(e => e.topic === 'job.resource_hard_limit');
     assert.equal(hard.length, 1, `expected exactly one kill event, got ${hard.length}`);
@@ -486,7 +544,9 @@ describe('hard resource budget', () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
     seedTinyBaseline(state, 'hung');
-    registry.add(busyJob(dir, 'hung', 3000));
+    // 800ms is ~16 ticks and well past the 3-tick stall window, so recovery has plenty of room:
+    // the old 3000ms was the child's lifetime, not anything this test needed.
+    registry.add(busyJob(dir, 'hung', 800));
 
     let started = 0;
     const sampleUsage = () => {
@@ -511,7 +571,9 @@ describe('hard resource budget', () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
     seedTinyBaseline(state, 'inflight');
-    registry.add(busyJob(dir, 'inflight', 3000));
+    // Long enough for ticks to keep arriving while a 100ms walk is outstanding, which is the whole
+    // point; the old 3000ms just made the test wait for a child it was not measuring.
+    registry.add(busyJob(dir, 'inflight', 800));
 
     /*
      * 100ms on a 50ms tick: slower than the interval, so ticks arrive while a walk is outstanding
@@ -546,8 +608,10 @@ describe('hard resource budget', () => {
     seedTinyBaseline(state, 'sustained');
     registry.add(busyJob(dir, 'sustained', 20000));
 
+    const sampleUsage = async () => ({ cpuPct: 5000, ramMb: 5000 });
+
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     const startedMs = Date.now();
@@ -559,7 +623,10 @@ describe('hard resource budget', () => {
     assert.equal(hard.length, 1, 'expected exactly one hard-limit event');
     assert.ok(hard[0].payload.consecutiveSamples >= 3,
       `expected >= 3 consecutive samples, got ${hard[0].payload.consecutiveSamples}`);
-    assert.ok(elapsedMs < 15000, `job should have been killed early, ran ${elapsedMs}ms`);
+    // The job asks for 20s and the three ticks that kill it are 25ms apart, so anything in the
+    // seconds range means the monitor let it run instead of killing it. Kept as a real-clock
+    // assertion on purpose: it is the one thing here that a stubbed sampler cannot fake.
+    assert.ok(elapsedMs < 5000, `job should have been killed early, ran ${elapsedMs}ms`);
   });
 });
 
@@ -575,18 +642,22 @@ describe('sampleProcessTree', () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);
     const scriptPath = path.join(dir, 'busy.js');
-    // Deriving a CPU percentage needs two samples of the same pid, so the job has to outlive
-    // at least two 2s ticks. It runs 10s rather than 3s because pidusage shells out to WMI on
-    // Windows, and on a CI runner that is slow enough that a 3s job ended with a single
-    // usable sample -- peakCpuPct stayed 0 and was recorded as undefined.
-    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 10000);');
+    // Deriving a CPU percentage needs two samples of the same pid, so the job has to outlive at
+    // least two ticks. The production 2s interval is not what this test is about, so it samples
+    // every 250ms instead: pidusage shells out to WMI on Windows and walks are serialised by the
+    // in-flight guard, so a short interval buys MORE attempts inside a shorter run rather than
+    // fewer -- 3s at 250ms beats the 10s at 2s this used to need, and is less likely, not more,
+    // to end with a single usable sample on a loaded runner.
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 3000);');
     registry.add({
       id: 'cpu-burner', type: 'startup', delaySeconds: 0,
       command: `"${process.execPath}" "${scriptPath}"`,
       enabled: true, triggerMode: 'wait', liveness: null,
     });
 
-    const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false });
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false, sampleIntervalMs: 250,
+    });
     await sched.trigger('cpu-burner');
     await sched.stop();
 
@@ -623,17 +694,22 @@ describe('sampleProcessTree', () => {
     const child = spawn(`"${process.execPath}" "${scriptPath}" && exit 0`, { shell: true, windowsHide: true, stdio: 'ignore' });
     try {
       assert.ok(child.pid, 'expected the wrapper to have a pid');
-      await new Promise(resolve => setTimeout(resolve, 700));
-
-      const tree = await sampleProcessTree(child.pid);
-      assert.ok(tree !== null, 'expected the tree to be sampleable while the job runs');
 
       // Guard against the assertion going vacuous again if a shell ever collapses the tree.
       const pidtreeMod = require('pidtree');
       const listPids = typeof pidtreeMod === 'function' ? pidtreeMod : pidtreeMod.default;
-      const treePids = await listPids(child.pid, { root: true });
+      // Waited on rather than slept for: the descendant is what the comparison needs, so the tree
+      // having appeared is the condition, and 700ms was only ever a guess at it.
+      let treePids = [];
+      await waitFor(async () => {
+        treePids = await listPids(child.pid, { root: true }).catch(() => []);
+        return treePids.length >= 2;
+      }, 'the shell to spawn its descendant');
       assert.ok(treePids.length >= 2,
         `expected a wrapper plus a descendant, got ${treePids.length} pid(s): the RAM comparison would be vacuous`);
+
+      const tree = await sampleProcessTree(child.pid);
+      assert.ok(tree !== null, 'expected the tree to be sampleable while the job runs');
 
       // Read the wrapper on its own for the comparison. Surface a real message if it has gone:
       // pidusage throws a bare ENOENT, which says nothing about the job having outrun the test.
