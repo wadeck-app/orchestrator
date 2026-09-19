@@ -8,6 +8,7 @@ import { ButtonAction } from '@wadeck-app/dsl-ui/dist/components/controls/Button
 import { CheckboxGroup } from '@wadeck-app/dsl-ui/dist/components/controls/CheckboxGroup.js'
 import { ChipButton } from '@wadeck-app/dsl-ui/dist/components/controls/ChipButton.js'
 import { ColorPicker } from '@wadeck-app/dsl-ui/dist/components/controls/ColorPicker.js'
+import { CompactSelect } from '@wadeck-app/dsl-ui/dist/components/controls/CompactSelect.js'
 import { DeleteButton } from '@wadeck-app/dsl-ui/dist/components/controls/DeleteButton.js'
 import { IconButton } from '@wadeck-app/dsl-ui/dist/components/controls/IconButton.js'
 import { InviteTokenWidget } from '@wadeck-app/dsl-ui/dist/components/controls/InviteTokenWidget.js'
@@ -196,6 +197,27 @@ export const ColorPickerEntry: ComponentRegistryEntry = {
 			)
 		}
 		return <ColorPickerWithContext />
+	},
+}
+
+export const CompactSelectEntry: ComponentRegistryEntry = {
+	name: 'CompactSelect', category: 'atomic', tags: ["select","compact","toolbar"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const options = resolveExpressionValue(node['options'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CompactSelect.js').CompactSelectProps['options']
+		const ariaLabel = resolveExpressionValue(node['ariaLabel'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CompactSelect.js').CompactSelectProps['ariaLabel']
+		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CompactSelect.js').CompactSelectProps['placeholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/controls/CompactSelect.js').CompactSelectProps['disabled']
+		function CompactSelectWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<CompactSelect options={options} ariaLabel={ariaLabel} placeholder={placeholder} disabled={disabled} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <CompactSelectWithContext />
 	},
 }
 
@@ -1858,6 +1880,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	CheckboxGroupEntry,
 	ChipButtonEntry,
 	ColorPickerEntry,
+	CompactSelectEntry,
 	DeleteButtonEntry,
 	IconButtonEntry,
 	InviteTokenWidgetEntry,

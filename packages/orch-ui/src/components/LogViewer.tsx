@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { X, ArrowDown, Pause, ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
-import { ButtonAction, ChipButton, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
@@ -56,7 +56,6 @@ const CONTAINER_FILL_CLS = `${CONTAINER_BASE_CLS} ${LOG_FILL_HEIGHT_CLASS}`;
 const LOG_HEADER_CLS     = 'flex items-center gap-2 px-3 py-1.5 bg-surface text-muted text-xs rounded-t';
 const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-bg text-green-400 font-mono text-sm p-4 rounded-b';
 // The console green stays literal: it is the terminal's own ink, not a themed surface.
-const RUN_SELECT_CLS     = 'bg-muted-bg border border-border text-content rounded px-2 py-0.5 text-xs focus:outline-none mr-2';
 // @formatter:on
 // violations-suppress-end: tailwind/no-raw-color-class,tailwind/no-inline-classname
 
@@ -313,25 +312,27 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
       {/* violations-suppress-start: tailwind/no-raw-color-class terminal palette - intentional dark theme separate from app theme tokens */}
       <div className={LOG_HEADER_CLS}>
         {runs.length > 0 && (
-          /* violations-suppress: react/no-raw-input run selector - dark terminal palette incompatible with FieldText light-mode classes */
-          <select
-            // While nothing is pinned the control shows the run the live tail is on, so it never
-            // reads as a blank choice - but the value it carries is '' , which is what keeps the
-            // stream unpinned.
-            value={selectedRun}
-            onChange={e => handleSelectRun(e.target.value)}
-            className={RUN_SELECT_CLS}
-            aria-label="Which run to show"
-          >
-            {/* The way back to the live tail. Pinning without one is a trap: the reader leaves the
-                tail and cannot return without editing the URL. */}
-            <option value="">
-              {latestRunName ? `Live - ${fmtRunName(latestRunName, 0, runs.length)}` : 'Live'}
-            </option>
-            {runs.map((r, i) => (
-              <option key={r.name} value={r.name}>{fmtRunName(r.name, i, runs.length)}</option>
-            ))}
-          </select>
+          /*
+           * dsl-ui's CompactSelect, not a raw select. The suppression this replaces claimed the
+           * terminal palette was incompatible with the design system, which was not so: the classes
+           * here were semantic tokens all along and the pane is already inside a ThemeScope, so tokens
+           * resolve against the terminal theme. What was genuinely missing was a compact label-less
+           * select - PageSizeSelect is locked to pagination and FieldSelect renders a visible label.
+           *
+           * The placeholder IS the way back to the live tail: it carries '', which is what keeps the
+           * stream unpinned, while showing the run the tail is on so it never reads as a blank choice.
+           * Pinning with no way back is a trap - the reader leaves the tail and cannot return without
+           * editing the URL.
+           */
+          <span className="mr-2">
+            <CompactSelect
+              value={selectedRun}
+              onChange={handleSelectRun}
+              ariaLabel="Which run to show"
+              placeholder={latestRunName ? `Live - ${fmtRunName(latestRunName, 0, runs.length)}` : 'Live'}
+              options={runs.map((r, i) => ({ value: r.name, label: fmtRunName(r.name, i, runs.length) }))}
+            />
+          </span>
         )}
         <span className="flex-1">
           {connected
