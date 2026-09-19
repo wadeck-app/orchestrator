@@ -42,6 +42,7 @@ import { FieldAsyncSelect } from '@wadeck-app/dsl-ui/dist/components/form/FieldA
 import { FieldAutocomplete } from '@wadeck-app/dsl-ui/dist/components/form/FieldAutocomplete.js'
 import { FieldDate } from '@wadeck-app/dsl-ui/dist/components/form/FieldDate.js'
 import { FieldDateRange } from '@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js'
+import { FieldDateTime } from '@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js'
 import { FieldMultiSelect } from '@wadeck-app/dsl-ui/dist/components/form/FieldMultiSelect.js'
 import { FieldNumber } from '@wadeck-app/dsl-ui/dist/components/form/FieldNumber.js'
 import { FieldReadOnly } from '@wadeck-app/dsl-ui/dist/components/form/FieldReadOnly.js'
@@ -660,12 +661,14 @@ export const FieldDateEntry: ComponentRegistryEntry = {
 		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['placeholder']
 		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['disabled']
 		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['dateFormat']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDate.js').FieldDateProps['error']
 		function FieldDateWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
 			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
 			return (
-				<FieldDate label={label} description={description} isDateDisabled={isDateDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} value={formData?.[bind] ? new Date(String(formData?.[bind])) : null} onChange={(v) => onChange?.(bind, v)} />
+				<FieldDate label={label} description={description} isDateDisabled={isDateDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} required={required} error={error} value={formData?.[bind] ? new Date(String(formData?.[bind])) : null} onChange={(v) => onChange?.(bind, v)} />
 			)
 		}
 		return <FieldDateWithContext />
@@ -685,15 +688,49 @@ export const FieldDateRangeEntry: ComponentRegistryEntry = {
 		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['placeholder']
 		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['disabled']
 		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['dateFormat']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateRange.js').FieldDateRangeProps['error']
 		function FieldDateRangeWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
 			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
 			return (
-				<FieldDateRange label={label} description={description} isDisabled={isDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} value={(formData?.[bind] as { from: Date | null; to: Date | null } | undefined) ?? { from: new Date(), to: null }} onChange={(v) => onChange?.(bind, v)} />
+				<FieldDateRange label={label} description={description} isDisabled={isDisabled} minDate={minDate} maxDate={maxDate} placeholder={placeholder} disabled={disabled} dateFormat={dateFormat} required={required} error={error} value={(formData?.[bind] as { from: Date | null; to: Date | null } | undefined) ?? { from: new Date(), to: null }} onChange={(v) => onChange?.(bind, v)} />
 			)
 		}
 		return <FieldDateRangeWithContext />
+	},
+}
+
+export const FieldDateTimeEntry: ComponentRegistryEntry = {
+	name: 'FieldDateTime', category: 'atomic', tags: ["field","date","time","datetime"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const bind = node['bind'] as string
+		const label = resolveExpressionValue(node['label'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['label']
+		const description = resolveExpressionValue(node['description'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['description']
+		const isDateDisabled = resolveExpressionValue(node['isDateDisabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['isDateDisabled']
+		const minDate = resolveExpressionValue(node['minDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['minDate']
+		const maxDate = resolveExpressionValue(node['maxDate'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['maxDate']
+		const datePlaceholder = resolveExpressionValue(node['datePlaceholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['datePlaceholder']
+		const timePlaceholder = resolveExpressionValue(node['timePlaceholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['timePlaceholder']
+		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['disabled']
+		const dateFormat = resolveExpressionValue(node['dateFormat'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['dateFormat']
+		const is12Hour = resolveExpressionValue(node['is12Hour'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['is12Hour']
+		const minuteStep = resolveExpressionValue(node['minuteStep'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['minuteStep']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['error']
+		const open = resolveExpressionValue(node['open'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['open']
+		const onOpenChange = resolveExpressionValue(node['onOpenChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldDateTime.js').FieldDateTimeProps['onOpenChange']
+		function FieldDateTimeWithContext() {
+			const formCtx = useFormContext()
+			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
+			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
+			return (
+				<FieldDateTime label={label} description={description} isDateDisabled={isDateDisabled} minDate={minDate} maxDate={maxDate} datePlaceholder={datePlaceholder} timePlaceholder={timePlaceholder} disabled={disabled} dateFormat={dateFormat} is12Hour={is12Hour} minuteStep={minuteStep} required={required} error={error} open={open} onOpenChange={onOpenChange} value={formData?.[bind] ? new Date(String(formData?.[bind])) : null} onChange={(v) => onChange?.(bind, v)} />
+			)
+		}
+		return <FieldDateTimeWithContext />
 	},
 }
 
@@ -866,12 +903,14 @@ export const FieldTimeEntry: ComponentRegistryEntry = {
 		const minuteStep = resolveExpressionValue(node['minuteStep'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['minuteStep']
 		const placeholder = resolveExpressionValue(node['placeholder'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['placeholder']
 		const disabled = resolveExpressionValue(node['disabled'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['disabled']
+		const required = resolveExpressionValue(node['required'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['required']
+		const error = resolveExpressionValue(node['error'], ctx) as import('@wadeck-app/dsl-ui/dist/components/form/FieldTime.js').FieldTimeProps['error']
 		function FieldTimeWithContext() {
 			const formCtx = useFormContext()
 			const formData = formCtx?.formData ?? (ctx['formData'] ?? ctx['row']) as Record<string, unknown> | undefined
 			const onChange = formCtx?.onChange ?? ctx['onChange'] as ((key: string, v: unknown) => void) | undefined
 			return (
-				<FieldTime label={label} description={description} is12Hour={is12Hour} minuteStep={minuteStep} placeholder={placeholder} disabled={disabled} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
+				<FieldTime label={label} description={description} is12Hour={is12Hour} minuteStep={minuteStep} placeholder={placeholder} disabled={disabled} required={required} error={error} value={String(formData?.[bind] ?? '')} onChange={(v) => onChange?.(bind, v)} />
 			)
 		}
 		return <FieldTimeWithContext />
@@ -1853,6 +1892,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	FieldAutocompleteEntry,
 	FieldDateEntry,
 	FieldDateRangeEntry,
+	FieldDateTimeEntry,
 	FieldMultiSelectEntry,
 	FieldNumberEntry,
 	FieldReadOnlyEntry,

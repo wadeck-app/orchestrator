@@ -159,8 +159,34 @@ describe('JobForm sends what the daemon requires', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  // A `once` job needs delayMs > 0 as well. That was the second 500, hiding behind the first.
-  it('sends a positive delayMs for a once job', async () => {
+  /*
+   * A `once` job needs delayMs > 0 as well. That was the second 500, hiding behind the first.
+   *
+   * The form asks for the moment now rather than a number of seconds, so the moment has to be chosen:
+   * it no longer defaults to one second from now, which was a value nobody meant and which made a
+   * mis-saved job fire immediately. scheduledAt goes with it -- see the comment on the submit path for
+   * why sending delayMs alone would fire at the wrong time on an edit.
+   */
+  it('sends a positive delayMs and a fresh scheduledAt for a once job', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderNewForm(onSubmit);
+
+    fill(/^Id/, 'one-shot');
+    fill(/^Label/, 'One shot');
+    fill(/^Command/, 'node --version');
+    fill(/^Type/, 'once');
+    fill(/^Run at/, 'Dec 31, 2099');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = onSubmit.mock.calls[0]![0] as { delayMs?: number; type?: string; scheduledAt?: string };
+    expect(sent.type).toBe('once');
+    expect(Number.isInteger(sent.delayMs)).toBe(true);
+    expect(sent.delayMs).toBeGreaterThan(0);
+    expect(Number.isFinite(Date.parse(sent.scheduledAt ?? ''))).toBe(true);
+  });
+
+  it('refuses to create a once job with no moment, rather than inventing one', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderNewForm(onSubmit);
 
@@ -170,11 +196,8 @@ describe('JobForm sends what the daemon requires', () => {
     fill(/^Type/, 'once');
     saveButton().click();
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    const sent = onSubmit.mock.calls[0]![0] as { delayMs?: number; type?: string };
-    expect(sent.type).toBe('once');
-    expect(Number.isInteger(sent.delayMs)).toBe(true);
-    expect(sent.delayMs).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByText(/A moment is required/i)).toBeInTheDocument());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   /*

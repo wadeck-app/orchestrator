@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { getErrorMessage, type Job, type JobFormPayload, type MissedFiring, type LivenessConfig, type LivenessStrategy, type UnsettableJobField } from '../types.js';
 import { describeCron } from '../cron-describe.js';
-import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldNumber, FieldSelect, FieldText, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
@@ -82,7 +82,7 @@ interface FormErrors {
   label?: string;
   command?: string;
   schedule?: string;
-  onceDelay?: string;
+  onceMoment?: string;
   activePeriod?: string;
 }
 
@@ -157,12 +157,21 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
   const [triggerMode, setTriggerMode] = useState<TriggerMode>(initial?.triggerMode ?? 'fire-and-forget');
   const [schedule, setSchedule] = useState(initial?.schedule ?? '');
   const [delaySeconds, setDelaySeconds] = useState(initial?.delaySeconds ?? 0);
-  // Separate from `delaySeconds`, which belongs to `startup` and may legitimately be 0. A `once` job
-  // must carry a POSITIVE delayMs or the daemon refuses it, so this one starts at a valid value
-  // rather than being coerced up at submit time behind the user's back.
-  const [onceDelaySeconds, setOnceDelaySeconds] = useState(
-    initial?.delayMs !== undefined && initial.delayMs > 0 ? Math.round(initial.delayMs / 1000) : 1
-  );
+  /*
+   * A `once` job's firing as an absolute moment, which is how a user decides it: "tomorrow at 09:00",
+   * not "in 75600 seconds". The daemon stores `scheduledAt + delayMs`, and the conversion happens on
+   * submit -- see the comment there, which is where the interesting part is.
+   *
+   * Seeded from the job's own two fields so editing shows the moment it already has, rather than an
+   * empty field or a delay measured from a different origin.
+   */
+  const [onceMoment, setOnceMoment] = useState<Date | null>(() => {
+    if (initial?.scheduledAt === undefined || initial.delayMs === undefined) {
+      return null;
+    }
+    const base = new Date(initial.scheduledAt).getTime();
+    return Number.isFinite(base) ? new Date(base + initial.delayMs) : null;
+  });
   const [missedFiring, setMissedFiring] = useState<MissedFiring>(initial?.missedFiring ?? 'skip');
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(initial?.timeoutSeconds ?? 300);
   // Seeded from the job so editing shows the window it already has, rather than an empty field that
@@ -214,8 +223,14 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         e.id = `Id must be ${MAX_ID_LENGTH} characters or fewer`;
       }
     }
-    if (type === 'once' && !(onceDelaySeconds >= 1)) {
-      e.onceDelay = 'Delay must be at least 1 second';
+    if (type === 'once') {
+      // Said here rather than let the save come back as a 500 carrying the registry's wording: the
+      // daemon refuses delayMs <= 0, and a moment in the past cannot produce a positive one.
+      if (onceMoment === null) {
+        e.onceMoment = 'A moment is required';
+      } else if (onceMoment.getTime() <= Date.now()) {
+        e.onceMoment = 'The moment must be in the future';
+      }
     }
     // The daemon refuses a window that can never fire. Named here so the message points at the field
     // rather than arriving as a 500 from the registry.
@@ -284,10 +299,20 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       // Switching the type takes this field off the form. Without this the patch keeps a delay that
       // now belongs to no type, and `orch show` still reports it.
       else clearIfWasConfigured('delaySeconds', initial?.delaySeconds);
-      // Required by the daemon for this type, and never sent before, so every `once` job created
-      // from the dashboard was rejected.
-      if (type === 'once') {
-        data.delayMs = onceDelaySeconds * 1000;
+      /*
+       * A once job fires at `scheduledAt + delayMs`, so an absolute moment has to be sent as BOTH.
+       *
+       * Re-stamping scheduledAt is the load-bearing half. On an edit the stored scheduledAt is the
+       * job's original creation time, so sending a delayMs measured from now while leaving it alone
+       * would make the daemon fire at `originalScheduledAt + newDelayMs` -- days away from the moment
+       * the user picked, silently. Both fields move together or neither means anything.
+       *
+       * Validation above guarantees a future moment, so delayMs is a positive integer here.
+       */
+      if (type === 'once' && onceMoment !== null) {
+        const now = Date.now();
+        data.scheduledAt = new Date(now).toISOString();
+        data.delayMs = onceMoment.getTime() - now;
       }
 
       // Liveness
@@ -472,12 +497,13 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       )}
 
       {type === 'once' && (
-        <FieldNumber
-          label="Run after (seconds)"
-          value={onceDelaySeconds}
-          onChange={numericSetter(setOnceDelaySeconds)}
-          min={1}
-          error={errors?.onceDelay}
+        <FieldDateTime
+          label="Run at"
+          description="The single moment this job fires."
+          value={onceMoment}
+          onChange={setOnceMoment}
+          minDate={new Date()}
+          error={errors?.onceMoment}
           required
         />
       )}
