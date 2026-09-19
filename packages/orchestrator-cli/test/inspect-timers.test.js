@@ -52,7 +52,7 @@ function makeEnv() {
     },
     eventPublisher: { publish: () => {} },
   });
-  return { registry, sched, time };
+  return { registry, state, sched, time, dir };
 }
 
 const iso = (ms) => new Date(ms).toISOString();
@@ -87,6 +87,100 @@ function report(rows, id) {
   assert.notEqual(row, undefined, `no report for "${id}"`);
   return row;
 }
+
+/*
+ * orch exists to be the one thing on a machine that owns timers for other applications. It used to
+ * own a pile of its own: a node-cron task per cron job, plus a timer each for a once job, a window
+ * start, a window end, a retry. These hold it to one.
+ */
+describe('the whole daemon arms one timer', () => {
+  test('a registry full of mixed jobs arms exactly one', async () => {
+    const env = makeEnv();
+    const now = env.time.now();
+    for (let i = 0; i < 4; i++) {
+      env.registry.add(cronJob({ id: `cron${i}`, schedule: `${i} * * * *` }));
+    }
+    env.registry.add(cronJob({ id: 'pending', activeFrom: iso(now + 7 * DAY) }));
+    env.registry.add(cronJob({ id: 'closing', activeUntil: iso(now + 7 * DAY) }));
+    for (let i = 0; i < 3; i++) {
+      env.registry.add({
+        id: `once${i}`, type: 'once', command: 'echo once', label: 'O', enabled: true,
+        triggerMode: 'fire-and-forget', liveness: null, missedFiring: 'skip',
+        delayMs: (i + 1) * HOUR, scheduledAt: iso(now),
+      });
+    }
+    env.registry.add({
+      id: 'startup', type: 'startup', delaySeconds: 300, command: 'echo up', label: 'S',
+      enabled: true, triggerMode: 'fire-and-forget', liveness: null,
+    });
+
+    await env.sched.start();
+    try {
+      // Ten jobs, eleven deadlines (the closing one holds a cron occurrence AND its window end).
+      assert.ok(env.sched.inspectTimers().length === 10, 'not every job was reported');
+      assert.equal(env.sched.armedTimers, 1, 'one timer per job is exactly what this replaces');
+    } finally {
+      await env.sched.stop();
+    }
+  });
+
+  test('stopping disarms it', async () => {
+    const env = makeEnv();
+    env.registry.add(cronJob());
+    await env.sched.start();
+    assert.equal(env.sched.armedTimers, 1);
+
+    await env.sched.stop();
+
+    assert.equal(env.sched.armedTimers, 0, 'a stopped scheduler is still armed');
+  });
+
+  // A firing re-arms for the next occurrence, so the count must not grow with each one.
+  test('firings do not accumulate timers', async () => {
+    const env = makeEnv();
+    env.registry.add(cronJob({ schedule: '0 * * * *' }));
+    await env.sched.start();
+    try {
+      await env.time.advanceAsync(5 * HOUR, 10 * MINUTE);
+
+      assert.equal(env.sched.armedTimers, 1, 'each firing left a timer behind');
+    } finally {
+      await env.sched.stop();
+    }
+  });
+
+  /*
+   * The cron occurrence is on the injected clock now, not node-cron's own. Two hours of an hourly
+   * schedule must be two firings - not none, which is what a schedule still driven by the real clock
+   * would give here, and not three, which is what re-arming from the wrong instant would give.
+   */
+  test('an hourly job fires once per hour of the test clock', async () => {
+    const env = makeEnv();
+    const spawned = [];
+    const sched = new Scheduler(env.registry, env.state, {
+      configDir: env.dir,
+      time: env.time,
+      liveness: async () => false,
+      spawn: (cmd) => {
+        spawned.push(cmd);
+        const c = new EventEmitter();
+        c.pid = 1;
+        process.nextTick(() => c.emit('close', 0));
+        return c;
+      },
+      eventPublisher: { publish: () => {} },
+    });
+    env.registry.add(cronJob({ schedule: '0 * * * *' }));
+    await sched.start();
+    try {
+      await env.time.advanceAsync(2 * HOUR + MINUTE, 5 * MINUTE);
+
+      assert.equal(spawned.length, 2, `fired ${spawned.length} times in two hours`);
+    } finally {
+      await sched.stop();
+    }
+  });
+});
 
 describe('inspectTimers reports what is armed against what is configured', () => {
   test('an enabled cron job is armed as cron, with its next firing', async () => {

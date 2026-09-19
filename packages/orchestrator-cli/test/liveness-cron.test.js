@@ -19,6 +19,7 @@ const { EventEmitter } = require('node:events');
 const { Registry }  = require('../src/registry');
 const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
+const { FakeTime }  = require('../src/time-service');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'orch-livecron-'));
@@ -53,33 +54,68 @@ const names = (events) => events.map((e) => e.event);
 
 const LIVE = { strategy: 'command', command: 'tasklist' };
 
+/*
+ * The recurring path, driven by a clock the test owns.
+ *
+ * These two used to arm a SIX-field schedule - "every second", which node-cron accepted - and then
+ * sleep 1500ms in real time. Two problems with that, both of which the single-timer refactor exposed:
+ * the registry refuses six fields (CRON_RE is anchored on five), so the tests exercised a schedule no
+ * user can configure; and they spent 3 seconds of wall clock proving something about a decision.
+ *
+ * A five-field schedule advanced on a FakeTime is the same assertion about the shape users actually
+ * have, and it is instant.
+ */
 describe('a cron job honours its liveness check', () => {
-  // The recurring path. A 6-field schedule fires every second, which node-cron accepts, so this
-  // exercises the real cron task rather than a stand-in for it.
-  test('the recurring task does not fire while the target is alive', async () => {
-    const { sched, spawned } = makeSched([], true);
+  const HOURLY = { schedule: '0 * * * *', command: 'npm run scrape' };
 
-    sched._scheduleCron({
-      id: 'wa', type: 'cron', schedule: '* * * * * *', command: 'npm run scrape',
+  function armHourly(alive) {
+    const time = new FakeTime();
+    const env = makeSched([], alive, { time });
+    env.sched._scheduleCron({
+      id: 'wa', type: 'cron', ...HOURLY,
       enabled: true, triggerMode: 'fire-and-forget', liveness: LIVE, label: 'wa',
     });
-    await new Promise((r) => setTimeout(r, 1500));
+    return { ...env, time };
+  }
+
+  test('the recurring task does not fire while the target is alive', async () => {
+    const { sched, spawned, time } = armHourly(true);
+
+    // Two occurrences' worth, so this cannot pass by never reaching one.
+    await time.advanceAsync(2 * 60 * 60_000, 10 * 60_000);
     await sched.stop();
 
     assert.deepEqual(spawned, [], 'the cron fired on top of a run that was already going');
   });
 
   test('the recurring task does fire when the target is not alive', async () => {
-    const { sched, spawned } = makeSched([], false);
+    const { sched, spawned, time } = armHourly(false);
 
-    sched._scheduleCron({
-      id: 'wa', type: 'cron', schedule: '* * * * * *', command: 'npm run scrape',
-      enabled: true, triggerMode: 'fire-and-forget', liveness: LIVE, label: 'wa',
-    });
-    await new Promise((r) => setTimeout(r, 1500));
+    await time.advanceAsync(2 * 60 * 60_000, 10 * 60_000);
     await sched.stop();
 
     assert.ok(spawned.length > 0, 'the liveness check now blocks a cron that should have run');
+  });
+
+  // The guard that makes the rewrite above safe rather than merely different: our matcher reads five
+  // fields positionally, so a six-field expression would be read as minute-hour-dom-mon-dow and mean
+  // something else. Refused out loud instead.
+  test('a six-field schedule is refused rather than misread', async () => {
+    const { sched, spawned, time } = (() => {
+      const t = new FakeTime();
+      const env = makeSched([], false, { time: t });
+      env.sched._scheduleCron({
+        id: 'wa', type: 'cron', schedule: '* * * * * *', command: 'npm run scrape',
+        enabled: true, triggerMode: 'fire-and-forget', liveness: LIVE, label: 'wa',
+      });
+      return { ...env, time: t };
+    })();
+
+    await time.advanceAsync(2 * 60 * 60_000, 10 * 60_000);
+    await sched.stop();
+
+    assert.deepEqual(spawned, [], 'a six-field schedule was read as something it is not');
+    assert.equal(sched.armedTimers, 0, 'a timer was armed for a schedule that cannot be honoured');
   });
 
   // The catch-up path: a missed firing replayed at daemon start.

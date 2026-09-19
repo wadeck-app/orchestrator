@@ -52,14 +52,32 @@ function makeEnv() {
   return { registry, sched, time, spawned, events };
 }
 
-// Every minute, so a day of simulated time produces plenty of firings to count.
+/*
+ * Daily, deliberately. Every one of these tests is about the window DECISION - pending, active,
+ * expired - and none counts firings; the two that touch `spawned` assert that nothing ran.
+ *
+ * It used to be '* * * * *', on the reasoning that a day of simulated time would produce plenty of
+ * firings. That held only while node-cron drove itself on the real clock and never fired here at all.
+ * Now the cron occurrence is a deadline on the test's own clock, so a per-minute schedule advanced
+ * over the sixty days these tests cover means 86400 real firings - which is how this file went from
+ * milliseconds to timing out at five minutes.
+ */
 function cronJob(window = {}) {
   return {
-    id: 'c', type: 'cron', schedule: '* * * * *', command: 'echo tick', label: 'C',
+    id: 'c', type: 'cron', schedule: '0 3 * * *', command: 'echo tick', label: 'C',
     enabled: true, triggerMode: 'fire-and-forget', liveness: null, missedFiring: 'skip',
     ...window,
   };
 }
+
+/*
+ * A schedule with one occurrence a year, for the tests that advance months or a year.
+ *
+ * Those assert a window DECISION, not firings, and every firing they provoke writes a log file and a
+ * state entry for real: a year advanced day by day at one firing a day took 24 seconds of disk I/O to
+ * prove something about an interval. One occurrence a year proves it just as well.
+ */
+const YEARLY = '0 3 1 1 *';
 
 function iso(ms) {
   return new Date(ms).toISOString();
@@ -236,7 +254,7 @@ describe('a window that closed while the daemon was down', () => {
 describe('a job with no window is unaffected', () => {
   test('stays active and enabled indefinitely', async () => {
     const { registry, sched, time } = makeEnv();
-    registry.add(cronJob());
+    registry.add(cronJob({ schedule: YEARLY }));
 
     await sched.start();
     await time.advanceAsync(365 * DAY, DAY);
@@ -279,7 +297,7 @@ describe('a window further out than a timer can express', () => {
 
   test('a job active for two months is not disabled immediately', async () => {
     const { registry, sched, time } = makeEnv();
-    registry.add(cronJob({ activeUntil: iso(time.now() + 60 * DAY) }));
+    registry.add(cronJob({ schedule: YEARLY, activeUntil: iso(time.now() + 60 * DAY) }));
     await sched.start();
 
     await time.advanceAsync(HOUR, MINUTE);
