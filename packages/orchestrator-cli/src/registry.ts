@@ -21,7 +21,9 @@ const VALID_TRIGGER_MODES = new Set(TRIGGER_MODES);
 const VALID_MISSED_FIRING = new Set(MISSED_FIRINGS);
 const VALID_LIVENESS      = new Set(LIVENESS_STRATEGIES);
 
-function validateJob(job: Partial<Job>): void {
+// Exported so the rules can be tested as rules. Reaching them only through add() means a test has
+// to build a registry and a temp config dir to ask whether a delay is acceptable.
+export function validateJob(job: Partial<Job>): void {
   if (!job.id || typeof job.id !== 'string')           throw new Error('Job id must be a non-empty string');
   if (job.id.length > 128)                             throw new Error('Job id must be 128 chars or fewer');
   if (job.id.includes('\x00'))                         throw new Error('Job id must not contain null bytes');
@@ -65,6 +67,8 @@ function validateJob(job: Partial<Job>): void {
   if (job.type === 'once') {
     if (job.delayMs === undefined) throw new Error('Once job requires a delayMs field');
     if (!Number.isInteger(job.delayMs) || job.delayMs <= 0) throw new Error(`delayMs must be a positive integer (got: ${job.delayMs})`);
+    // Deliberately no upper bound. A timer's 2^31-1 ms ceiling is the scheduler's problem to solve,
+    // not a rule to hand the user - see waitUntil in time-service.ts.
   }
 
   if (job.triggerMode !== undefined && !VALID_TRIGGER_MODES.has(job.triggerMode)) {

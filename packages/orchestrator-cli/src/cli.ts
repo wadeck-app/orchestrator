@@ -7,6 +7,7 @@ import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
+import { onceScheduleDisplay } from './once-schedule.js';
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
 function readDashboardFile(filePath: string): string | null {
@@ -624,8 +625,13 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       for (const j of jobs) {
         let scheduleDisplay: string;
         if (j['type'] === 'once') {
-          const remainingMs = (new Date(String(j['scheduledAt'])).getTime() + Number(j['delayMs'])) - Date.now();
-          scheduleDisplay = `in ${Math.max(0, Math.round(remainingMs / 1000))}s`;
+          // Says "overdue by X" rather than clamping to "in 0s", which read as "about to fire" for a
+          // job whose moment had passed - the state that means the daemon was down when it was due.
+          scheduleDisplay = onceScheduleDisplay(
+            j['scheduledAt'] === undefined ? undefined : String(j['scheduledAt']),
+            j['delayMs'] === undefined ? undefined : Number(j['delayMs']),
+            Date.now(),
+          );
         } else {
           scheduleDisplay = j['schedule'] != null ? String(j['schedule']) : String(j['delaySeconds']) + 's';
         }

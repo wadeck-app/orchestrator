@@ -21,7 +21,7 @@ import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 import { isFailure } from './state.js';
-import { systemTime, type TimeService, type Timer } from './time-service.js';
+import { systemTime, waitUntil, type TimeService, type Timer } from './time-service.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
@@ -77,25 +77,55 @@ export interface TreeUsage {
  * sampled independently because a descendant can exit between the tree walk and the
  * sample, and one dead pid must not discard the readings of its siblings.
  */
-export async function sampleProcessTree(rootPid: number): Promise<TreeUsage | null> {
+/** Injection seam for the tests; production passes nothing and gets pidtree + pidusage. */
+interface TreeDeps {
+  tree:  (pid: number) => Promise<number[]>;
+  usage: (pid: number) => Promise<{ cpu: number; memory: number; elapsed: number }>;
+}
+
+/**
+ * Both figures come from separate calls against a clock of finite resolution, so a child spawned in
+ * the same instant as its parent can measure a hair older. Refusing it would drop real descendants.
+ */
+const TREE_AGE_TOLERANCE_MS = 1_000;
+
+export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps>): Promise<TreeUsage | null> {
+  const tree  = deps?.tree  ?? ((pid: number) => pidtree(pid, { root: true }));
+  const usage = deps?.usage ?? ((pid: number) => pidusage(pid));
+
   let pids: number[];
   try {
-    pids = await pidtree(rootPid, { root: true });
+    pids = await tree(rootPid);
   } catch {
     // The walk fails once the root is gone; still try the root, it may just have no children.
     pids = [rootPid];
   }
-  const samples = await Promise.allSettled(pids.map(p => pidusage(p)));
+
+  const samples = await Promise.all(pids.map(async (pid) => {
+    try {
+      return { pid, sample: await usage(pid) };
+    } catch {
+      return null;
+    }
+  }));
+
+  // The root is the reference, and without it there is nothing to attribute usage to: the job has
+  // exited. Judging the others against it is what keeps strangers out -- pidtree walks
+  // ParentProcessId, and a pid is reused once its process dies, so a live unrelated process can
+  // still name a dead pid that has since been recycled onto one of ours. A descendant cannot predate
+  // its ancestor, so anything older than the root was not started by this job.
+  const root = samples.find(s => s !== null && s.pid === rootPid);
+  if (!root) return null;
+  const oldestAllowed = root.sample.elapsed + TREE_AGE_TOLERANCE_MS;
+
   let cpuPct   = 0;
   let ramBytes = 0;
-  let sampled  = 0;
   for (const s of samples) {
-    if (s.status !== 'fulfilled') continue;
-    cpuPct   += s.value.cpu;
-    ramBytes += s.value.memory;
-    sampled++;
+    if (s === null) continue;
+    if (s.pid !== rootPid && s.sample.elapsed > oldestAllowed) continue;
+    cpuPct   += s.sample.cpu;
+    ramBytes += s.sample.memory;
   }
-  if (sampled === 0) return null;
   return { cpuPct, ramMb: ramBytes / 1024 / 1024 };
 }
 
@@ -263,7 +293,10 @@ export class Scheduler extends EventEmitter {
       this._registry.remove(job.id);
       return;
     }
-    this._timeouts.set(job.id, this._time.after(remaining, () => {
+    // waitUntil, not after(remaining): a timer clamps a delay above ~24.85 days to 1ms, so a once
+    // job scheduled further out than that used to fire on the next tick. The moment is absolute, so
+    // it is also the same value a restart re-derives from the registry.
+    this._timeouts.set(job.id, waitUntil(this._time, this._time.now() + remaining, () => {
       this._timeouts.delete(job.id);
       void (async () => {
         await this._maybeSpawn(job);
@@ -309,7 +342,9 @@ export class Scheduler extends EventEmitter {
       }
       if (state === 'pending') {
         const until = msUntilStart(job, this._time.now())!;
-        this._timeouts.set(job.id, this._time.after(until, () => {
+        // A period may start months out, which is past a timer's ceiling: as a single timer this
+        // armed the cron task on the next tick, so the job ran through a window that had not opened.
+        this._timeouts.set(job.id, waitUntil(this._time, this._time.now() + until, () => {
           this._timeouts.delete(job.id);
           // Re-read: the job may have been edited or disabled while it waited.
           const current = this._registry.get(job.id);
@@ -324,7 +359,9 @@ export class Scheduler extends EventEmitter {
       // which for a weekly job could be six days late, and for a job that never fires again, never.
       const remaining = msUntilEnd(job, this._time.now());
       if (remaining !== null) {
-        this._windowTimers.set(job.id, this._time.after(remaining, () => {
+        // Same ceiling: "active for two months" expired on the next tick as a single timer, which
+        // disabled the job immediately instead of at the end of its window.
+        this._windowTimers.set(job.id, waitUntil(this._time, this._time.now() + remaining, () => {
           this._windowTimers.delete(job.id);
           const current = this._registry.get(job.id);
           if (current) {

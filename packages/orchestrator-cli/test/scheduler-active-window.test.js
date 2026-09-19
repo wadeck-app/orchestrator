@@ -247,6 +247,51 @@ describe('a job with no window is unaffected', () => {
   });
 });
 
+/*
+ * A window measured in months, which is past what a single timer can express.
+ *
+ * A timer delay above 2^31-1 ms (~24.85 days) is clamped by the runtime to 1ms. Both window timers
+ * were single timers, so a period starting in two months opened on the NEXT TICK and a job "active
+ * for two months" expired on the next tick - each the opposite of what was configured, and silent,
+ * because nothing reports the clamp. The windows in the tests above are all 7 days, which is why the
+ * bug lived under a green suite.
+ *
+ * FakeTime reproduces the clamp, so these fail against a single timer rather than passing on a fake
+ * that is more capable than the real one.
+ */
+describe('a window further out than a timer can express', () => {
+  test('a period starting in two months does not open immediately', async () => {
+    const { registry, sched, time } = makeEnv();
+    registry.add(cronJob({ activeFrom: iso(time.now() + 60 * DAY) }));
+    await sched.start();
+
+    // The clamp would have opened it here.
+    await time.advanceAsync(HOUR, MINUTE);
+    assert.equal(sched.windowStateOf('c'), 'pending', 'the window opened on the next tick');
+
+    await time.advanceAsync(59 * DAY, 12 * HOUR);
+    assert.equal(sched.windowStateOf('c'), 'pending', 'opened a day early');
+
+    await time.advanceAsync(DAY, HOUR);
+    assert.equal(sched.windowStateOf('c'), 'active');
+    await sched.stop();
+  });
+
+  test('a job active for two months is not disabled immediately', async () => {
+    const { registry, sched, time } = makeEnv();
+    registry.add(cronJob({ activeUntil: iso(time.now() + 60 * DAY) }));
+    await sched.start();
+
+    await time.advanceAsync(HOUR, MINUTE);
+    assert.equal(registry.get('c').enabled, true, 'expired on the next tick');
+    assert.equal(sched.windowStateOf('c'), 'active');
+
+    await time.advanceAsync(60 * DAY, 12 * HOUR);
+    assert.equal(registry.get('c').enabled, false, 'never expired');
+    await sched.stop();
+  });
+});
+
 describe('the window is refused when it can never fire', () => {
   test('rejects an end before the start', () => {
     const { registry, time } = makeEnv();

@@ -40,6 +40,71 @@ export const systemTime: TimeService = {
   },
 };
 
+/**
+ * The longest single timer this codebase arms.
+ *
+ * A timer delay above 2^31-1 ms (~24.85 days) is clamped by the runtime to 1ms, so a job asked to
+ * wait two months fired on the NEXT TICK - silently, because nothing reports the clamp. One day is
+ * far below that ceiling and keeps the re-arm count trivial: a year is 365 wake-ups.
+ */
+export const MAX_TIMER_CHUNK_MS = 86_400_000;
+
+/**
+ * The delay a runtime timer cannot exceed: 2^31-1 ms, about 24.85 days.
+ *
+ * Anything larger is clamped to 1ms and fires at once. FakeTime reproduces that, so a test can fail
+ * on it - without it the fake is more capable than the thing it stands in for, and every long wait
+ * looks correct in tests and misfires in production.
+ */
+export const TIMER_CEILING_MS = 2_147_483_647;
+
+/**
+ * Runs `fn` at an absolute moment, however far away.
+ *
+ * Waits in bounded slices and re-derives the remaining time from the clock on every slice, which
+ * buys three things a single long timer cannot have:
+ *
+ *  - Delays beyond a timer's 2^31-1 ms ceiling work, instead of firing immediately.
+ *  - A clock that jumps - NTP correction, the machine waking from sleep - is absorbed at the next
+ *    slice rather than making the job late by however long the jump was. Timers count elapsed
+ *    monotonic time, which does not include time the machine spent suspended.
+ *  - The deadline is an absolute moment, which is what the registry persists, so a restart and a
+ *    re-arm take the same path.
+ *
+ * A deadline already in the past fires as soon as possible rather than being skipped: whether that
+ * counts as overdue is the caller's question, not the timer's.
+ */
+export function waitUntil(time: TimeService, deadlineMs: number, fn: () => void): Timer {
+  let current: Timer | null = null;
+  let cancelled = false;
+
+  const arm = (): void => {
+    if (cancelled) return;
+    const remaining = deadlineMs - time.now();
+    if (remaining <= 0) {
+      current = time.after(0, () => { if (!cancelled) fn(); });
+      return;
+    }
+    current = time.after(Math.min(remaining, MAX_TIMER_CHUNK_MS), arm);
+  };
+
+  arm();
+
+  return {
+    cancel: () => {
+      cancelled = true;
+      current?.cancel();
+      current = null;
+    },
+  };
+}
+
+/** What a runtime timer would actually do with this delay. */
+function clampDelay(ms: number): number {
+  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  return ms > TIMER_CEILING_MS ? 1 : ms;
+}
+
 interface Scheduled {
   id: number;
   dueAt: number;
@@ -136,8 +201,10 @@ export class FakeTime implements TimeService {
     const entry: Scheduled = {
       id: this._nextId++,
       // Negative and NaN delays are "as soon as possible" for the real timers, and a NaN due time
-      // would compare false against everything and never run.
-      dueAt: this._now + (Number.isFinite(ms) && ms > 0 ? ms : 0),
+      // would compare false against everything and never run. A delay above the runtime's ceiling
+      // is clamped to 1ms exactly as the real timer clamps it: a fake that quietly honours a 60-day
+      // setTimeout makes every long wait pass in tests and misfire in production.
+      dueAt: this._now + clampDelay(ms),
       everyMs,
       fn,
       cancelled: false,
