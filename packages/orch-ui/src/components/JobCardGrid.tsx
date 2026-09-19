@@ -7,6 +7,7 @@ import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { relativeTime } from './JobCard.js';
+import { useConfirm } from '../use-confirm.js';
 
 // Extends the shared shape rather than redeclaring it: a second exported interface with the
 // same name but an extra field meant the type you got depended on which file you imported
@@ -92,6 +93,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { ask, dialog } = useConfirm();
 
   const toggleView = () => {
     const next = viewMode === 'grid' ? 'list' : 'grid';
@@ -138,15 +140,22 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
     if (onBulkTrigger) { onBulkTrigger(ids); setSelected(new Set()); return; }
     await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/trigger`, { method: 'POST' }))); setSelected(new Set());
   }, [selected, onBulkTrigger]);
-  const handleBulkDelete  = useCallback(async () => {
+  // Asks in the app's own dialog rather than the browser's. A native confirm() blocks the page and
+  // cannot be styled, which for "delete N jobs" is the moment the reader most needs to be sure what
+  // they are looking at. See useConfirm.
+  const handleBulkDelete = useCallback(() => {
     const ids = [...selected];
     if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
-    if (!window.confirm(`Delete ${selected.size} job(s)?`)) {
-      return;
-    }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })));
-    setSelected(new Set());
-  }, [selected, onBulkDelete]);
+    ask({
+      title: `Delete ${ids.length} job${ids.length === 1 ? '' : 's'}?`,
+      message: 'Their definitions are removed. Run history and logs are not.',
+      confirmLabel: 'Delete',
+      onConfirm: () => {
+        void Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })))
+          .then(() => setSelected(new Set()));
+      },
+    });
+  }, [selected, onBulkDelete, ask]);
 
   if (!items) {
     return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
@@ -289,6 +298,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
           </tbody>
         </table>
       )}
+      {dialog}
     </div>
   );
 }

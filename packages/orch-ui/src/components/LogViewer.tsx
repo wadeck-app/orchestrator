@@ -5,6 +5,7 @@ import { ButtonAction, ChipButton, CompactSelect, SearchBar, ThemeScope } from '
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
+import { useConfirm } from '../use-confirm.js';
 
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
@@ -172,6 +173,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   // were reading different variables.
   const [autoScroll, setAutoScroll] = useState(true);
   const [killing, setKilling] = useState(false);
+  const { ask, dialog } = useConfirm();
   const [widePane, toggleWidePane] = useWidePane();
   const containerRef = useRef<HTMLPreElement>(null);
 
@@ -257,10 +259,19 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
     setAutoScroll(atBottom);
   };
 
-  const handleKillJob = async (): Promise<void> => {
-    if (!confirm(`Kill running job "${jobId}"?`)) {
-      return;
-    }
+  // Asks, then kills. The gate used to be a bare confirm(), which blocks the page and cannot be
+  // styled -- inside a terminal pane it also arrives in the browser's chrome, nothing like what the
+  // reader is looking at. See useConfirm.
+  const handleKillJob = (): void => {
+    ask({
+      title: `Kill running job "${jobId}"?`,
+      message: 'The process and its children stop immediately. The run is recorded as cancelled.',
+      confirmLabel: 'Kill',
+      onConfirm: () => { void killNow(); },
+    });
+  };
+
+  const killNow = async (): Promise<void> => {
     setKilling(true);
     try {
       const res = await fetch(`${apiBase}/api/jobs/${jobId}/kill`, { method: 'POST' });
@@ -424,6 +435,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
           ))}
       </pre>
       {/* violations-suppress-end: tailwind/no-raw-color-class */}
+      {dialog}
     </ThemeScope>
   );
 }

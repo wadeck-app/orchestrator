@@ -5,6 +5,7 @@ import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
+import { useConfirm } from '../use-confirm.js';
 
 // @formatter:off
 // violations-suppress: tailwind/no-raw-color-class blue running banner -- no semantic token for info/running state
@@ -47,6 +48,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
+  const { ask, dialog } = useConfirm();
   const [justKilled, setJustKilled] = useState(false);
 
   const currentRun = latestRun(runHistory);
@@ -68,11 +70,20 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
     await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
   };
 
-  const handleKill = async () => {
+  // Asks, then kills. The gate used to be a native confirm(), which blocks the page and cannot be
+  // styled -- on a kill prompt that is exactly when the reader should be able to tell they are still
+  // in the dashboard. See useConfirm.
+  const handleKill = (): void => {
     const pid = currentRun?.pid;
-    if (!window.confirm(`Kill this process?${pid != null ? ` (PID ${pid})` : ''}`)) {
-      return;
-    }
+    ask({
+      title: 'Kill this process?',
+      message: pid != null ? `PID ${pid}. The job stops immediately.` : 'The job stops immediately.',
+      confirmLabel: 'Kill',
+      onConfirm: () => { void killNow(); },
+    });
+  };
+
+  const killNow = async (): Promise<void> => {
     setKilling(true);
     try {
       if (onKill) {
@@ -140,6 +151,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onTrigger, onKill,
               <ButtonCancel onCancel={() => setConfirmDelete(false)} />
             </div>}
       </div>
+      {dialog}
     </div>
   );
 }
