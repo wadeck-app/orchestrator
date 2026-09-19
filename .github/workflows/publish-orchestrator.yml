@@ -34,6 +34,11 @@ jobs:
             matrix:
                 os: [ubuntu-latest, windows-latest, macos-latest]
         runs-on: ${{ matrix.os }}
+        # Fixed paths so one cache key works on all three runners, where `go env GOCACHE` otherwise
+        # points somewhere different per OS.
+        env:
+            GOCACHE: ${{ github.workspace }}/.gocache
+            GOMODCACHE: ${{ github.workspace }}/.gomodcache
         defaults:
             run:
                 # windows-latest defaults to PowerShell, where the POSIX steps below (mkdir -p,
@@ -49,10 +54,14 @@ jobs:
                   node-version: '24'
                   registry-url: 'https://npm.pkg.github.com'
                   scope: '@wadeck-app'
+                  cache: npm
 
+            # Patch-pinned: a new Go patch changes every native binary's hash, which republishes the
+            # three platform packages on its own and moves the exact pin a rollback needs. Bumping
+            # this is deliberate, and republishes them once.
             - uses: actions/setup-go@v5
               with:
-                  go-version: '1.26'
+                  go-version: '1.26.8'
 
             - name: Install dependencies
               run: npm install --prefer-offline
@@ -79,6 +88,18 @@ jobs:
 
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli
+
+            # 57s uncached, 2.2s warm. Three local builds -- warm, cold and a third -- gave identical
+            # hashes, so the cache cannot change what gets published.
+            # setup-go's own cache is unusable here: it keys on a go.sum that lives in node_modules,
+            # which does not exist yet when setup-go runs.
+            - name: Cache the Go build
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ${{ github.workspace }}/.gocache
+                      ${{ github.workspace }}/.gomodcache
+                  key: go-${{ runner.os }}-1.26.8-${{ hashFiles('packages/orchestrator-cli/package.json') }}
 
             - name: Build Go launchers
               run: npm run build-launcher --workspace=packages/orchestrator-cli
@@ -115,6 +136,9 @@ jobs:
         needs: build-and-test
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         runs-on: ubuntu-latest
+        env:
+            GOCACHE: ${{ github.workspace }}/.gocache
+            GOMODCACHE: ${{ github.workspace }}/.gomodcache
         steps:
             - uses: actions/checkout@v5
               with:
@@ -125,10 +149,14 @@ jobs:
                   node-version: '24'
                   registry-url: 'https://npm.pkg.github.com'
                   scope: '@wadeck-app'
+                  cache: npm
 
+            # Patch-pinned: a new Go patch changes every native binary's hash, which republishes the
+            # three platform packages on its own and moves the exact pin a rollback needs. Bumping
+            # this is deliberate, and republishes them once.
             - uses: actions/setup-go@v5
               with:
-                  go-version: '1.26'
+                  go-version: '1.26.8'
 
             - name: Install dependencies
               run: npm install --prefer-offline
@@ -155,6 +183,18 @@ jobs:
 
             - name: Build TypeScript
               run: npm run build --workspace=packages/orchestrator-cli
+
+            # 57s uncached, 2.2s warm. Three local builds -- warm, cold and a third -- gave identical
+            # hashes, so the cache cannot change what gets published.
+            # setup-go's own cache is unusable here: it keys on a go.sum that lives in node_modules,
+            # which does not exist yet when setup-go runs.
+            - name: Cache the Go build
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ${{ github.workspace }}/.gocache
+                      ${{ github.workspace }}/.gomodcache
+                  key: go-${{ runner.os }}-1.26.8-${{ hashFiles('packages/orchestrator-cli/package.json') }}
 
             - name: Build Go launchers
               run: npm run build-launcher --workspace=packages/orchestrator-cli
