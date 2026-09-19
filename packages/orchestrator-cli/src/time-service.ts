@@ -43,24 +43,32 @@ export const systemTime: TimeService = {
 /**
  * The longest single timer this codebase arms.
  *
- * Two constraints, and the tighter one wins.
+ * It exists for ONE reason: a delay above 2^31-1 ms (~24.85 days) is clamped by the runtime to 1ms,
+ * so a job asked to wait two months fired on the NEXT TICK - silently, because nothing reports the
+ * clamp. A day is far below that, and matches what node-cron already does for its own heartbeat
+ * (`getDelay`, maxDelay = 86400000), so the project has one waking rule rather than two.
  *
- * The ceiling: a delay above 2^31-1 ms (~24.85 days) is clamped by the runtime to 1ms, so a job
- * asked to wait two months fired on the NEXT TICK - silently, because nothing reports the clamp.
+ * It is NOT a sleep detector, and it was briefly set to one minute on the assumption that it had to
+ * be. That assumption was wrong on the platforms this ships to, and the sources are worth recording
+ * because the mistake is easy to repeat:
  *
- * The one that actually sets this value: a timer counts monotonic time, which does NOT include time
- * the machine spent suspended. So a slice armed before the lid closes still owes its full remaining
- * time in AWAKE seconds when the machine wakes, and the deadline may have passed days ago. The
- * lateness is therefore bounded by the slice, not by the sleep - and on a laptop, sleeping across a
- * deadline is the normal case, not the edge case. node-cron takes the same approach with a one-day
- * cap, which is fine for a heartbeat it is allowed to miss and not for a job that must fire.
+ *   Windows  QueryPerformanceCounter (libuv src/win/util.c). Microsoft documents it as returning
+ *            "the total number of ticks that have occurred since the Windows operating system was
+ *            started, INCLUDING the time when the machine was in a sleep state such as standby,
+ *            hibernate, or connected standby". Suspend is counted.
+ *   macOS    mach_continuous_time() (libuv src/unix/darwin.c), chosen deliberately in libuv
+ *            4685be2 because mach_absolute_time() "can jump backward in time when the machine is
+ *            suspended". Suspend is counted.
+ *   Linux    CLOCK_MONOTONIC (libuv src/unix/linux.c), which does NOT count suspend. CLOCK_BOOTTIME
+ *            would, and libuv uses it only in uv_uptime.
  *
- * One minute is the scheduler's own resolution: cron cannot express anything finer, so a job late by
- * under a minute is indistinguishable from on time, and a job late by up to a day is not. The cost
- * is one closure per minute while a wait is outstanding, against a daemon that already samples
- * running jobs every two seconds.
+ * So on Windows and macOS a long timer already fires at the right wall-clock moment across a sleep,
+ * and Linux - the one platform where it would not - has no native package here (win32-x64,
+ * darwin-arm64, darwin-x64). Re-deriving the remaining time once a day is left in because it costs
+ * nothing and bounds the error if someone moves the system clock by hand, which no clock source
+ * follows.
  */
-export const MAX_TIMER_CHUNK_MS = 60_000;
+export const MAX_TIMER_CHUNK_MS = 86_400_000;
 
 /**
  * The delay a runtime timer cannot exceed: 2^31-1 ms, about 24.85 days.
@@ -157,23 +165,6 @@ export class FakeTime implements TimeService {
   /** How many timers are armed. A leak shows up here rather than as a slow test. */
   get pending(): number {
     return this._scheduled.filter(s => !s.cancelled).length;
-  }
-
-  /**
-   * The machine sleeps: the wall clock moves, the timers do not.
-   *
-   * `advance` moves both together, which is time passing while awake and cannot express a suspend at
-   * all - so a test written with it says nothing about the case it looks like it covers. A real timer
-   * counts monotonic time, which excludes the suspend, so every armed timer still owes its full
-   * remaining time in awake seconds afterwards: that is why each due time moves forward with the
-   * clock here rather than staying put.
-   *
-   * This is the case that decides how long a slice may be - see MAX_TIMER_CHUNK_MS.
-   */
-  suspend(ms: number): void {
-    if (!Number.isFinite(ms) || ms <= 0) return;
-    this._now += ms;
-    for (const s of this._scheduled) s.dueAt += ms;
   }
 
   /**
