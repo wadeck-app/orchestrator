@@ -26,3 +26,10 @@ packages/orchestrator-cli/server/public/
 # nobody wrote into every commit and made the two files drift.
 .claude/lessons-learned.md
 .claude/lessons-recommendations.md
+# Session scratch: browser screenshots taken to verify a change, and the message file `git commit -F`
+# needs because the commit guardrail rejects heredocs. Useful while working, worthless afterwards, and
+# eight of them had accumulated untracked before anyone noticed.
+.claude/tmp-*
+# Bypass state, written only by the guardrails plugin after the user approves. Machine-local by
+# definition, and committing it would hand another checkout someone else's approvals.
+.claude/w-guardrails/
