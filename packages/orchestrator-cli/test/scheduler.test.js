@@ -685,6 +685,69 @@ describe('hard resource budget', () => {
     assert.ok(maxInFlight >= 1, 'the sampler was never called');
   });
 
+  /*
+   * The escape hatch is meant to fire ONCE for a walk that stalls, not to disarm the guard.
+   *
+   * It did the latter. `samplingSince` was cleared unconditionally when a walk settled, so the walk
+   * that had been overtaken cleared the marker belonging to its own successor -- which was still
+   * outstanding. From that moment the guard was open and every tick started another walk, so
+   * overlapping samples counted as consecutive `hardBreaches` again and several could reach the kill
+   * branch: exactly the two bugs the in-flight check exists to prevent.
+   *
+   * The pre-existing overlap test only caught this when a runner happened to stretch a walk past the
+   * stall window on its own, which is why it read as Windows CI flake. Here the stall is forced, so
+   * the cascade is deterministic on any host.
+   */
+  test('one stalled walk does not disarm the skip guard for the rest of the run', async () => {
+    const dir = tmpDir();
+    const { registry, state } = makeDeps(dir);
+    seedTinyBaseline(state, 'stalled');
+    registry.add(busyJob(dir, 'stalled', 1200));
+
+    const SAMPLE_INTERVAL_MS = 50;
+    const STALL_MS = SAMPLE_INTERVAL_MS * 3;
+    // Comfortably past the stall window, so the escape is certain rather than load-dependent.
+    const STALLED_WALK_MS = STALL_MS * 4;
+    let calls = 0;
+    /*
+     * The newest outstanding walk, which is the one that owns the guard.
+     *
+     * Deliberately not a plain in-flight count. Once the escape has fired, the overtaken walk is
+     * still in flight and by definition has already outlasted the window, so overlapping IT is the
+     * escape working as designed. Counting that as a violation is what made the older overlap test
+     * read as noise.
+     */
+    let newest = null;
+    const prematureOverlaps = [];
+    const sampleUsage = async () => {
+      if (newest !== null && !newest.settled) {
+        const heldForMs = Date.now() - newest.startedAt;
+        if (heldForMs < STALL_MS) {
+          prematureOverlaps.push(heldForMs);
+        }
+      }
+      // Only the first walk stalls. Everything after it is slower than the tick but well inside the
+      // window, so a guard that is still armed skips and a guard that is not overlaps every tick.
+      const walk = { id: ++calls, startedAt: Date.now(), settled: false };
+      newest = walk;
+      await new Promise(r => setTimeout(r, walk.id === 1 ? STALLED_WALK_MS : 100));
+      walk.settled = true;
+      return { cpuPct: 0.001, ramMb: 0.001 };
+    };
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, liveness: async () => false, sampleUsage,
+      sampleIntervalMs: SAMPLE_INTERVAL_MS,
+    });
+    await sched.trigger('stalled');
+    await sched.stop();
+
+    assert.ok(calls > 2, `the stall and the walks after it must both happen, only ${calls} walks ran`);
+    assert.deepStrictEqual(prematureOverlaps, [],
+      `after one stalled walk, walks started while another had been running for only`
+      + ` ${prematureOverlaps.join(', ')}ms -- inside the ${STALL_MS}ms window, so the guard was disarmed`);
+  });
+
   test('a sustained breach kills the job and reports the sample count', async () => {
     const dir = tmpDir();
     const { registry, state } = makeDeps(dir);

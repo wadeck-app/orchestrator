@@ -998,13 +998,28 @@ export class Scheduler extends EventEmitter {
        * the kill path is separately guarded against firing twice.
        */
       const samplingStallMs = this._sampleIntervalMs * 3;
+      /*
+       * Identifies the walk that currently owns `samplingSince`.
+       *
+       * Needed because the escape hatch above is meant to fire once for a stalled walk, not to
+       * disarm the guard. Clearing `samplingSince` unconditionally let the OVERTAKEN walk clear the
+       * marker belonging to its own successor, which was still outstanding - so from the first stall
+       * onwards the guard was open and every tick started another walk. That is both of the bugs
+       * this block exists to prevent: overlapping walks counting as consecutive `hardBreaches`, and
+       * more than one reaching the kill branch.
+       */
+      let currentWalk = 0;
       const sample = (): void => {
         if (child.killed) { resourceTimer?.cancel(); return; }
         if (samplingSince !== null && Date.now() - samplingSince < samplingStallMs) {
           return;
         }
+        const walk = ++currentWalk;
         samplingSince = Date.now();
-        this._sampleUsage(pid!).finally(() => { samplingSince = null; }).then(usage => {
+        this._sampleUsage(pid!).finally(() => {
+          // A walk that was overtaken leaves the marker to whoever overtook it.
+          if (walk === currentWalk) { samplingSince = null; }
+        }).then(usage => {
           // Every pid in the tree vanished between the walk and the sample: the job is
           // finishing. Keep the timer -- the exit handler owns clearing it.
           if (usage === null) {
