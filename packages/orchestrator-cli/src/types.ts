@@ -204,6 +204,12 @@ export type OrchestratorCommands = {
   'ack-failures':  (payload?: unknown) => Record<string, never>;
   'list-audit':    (payload?: unknown) => Array<{ ts: string; event: string; [key: string]: unknown }>;
   'get-schedule':           (payload?: unknown) => Array<{ jobId: string; label: string; next: string[] }>;
+  /** What the scheduler has armed, per job, next to what the registry asks for. See inspectTimers. */
+  'list-timers':            (payload?: unknown) => Array<{
+    jobId: string; type: string; enabled: boolean;
+    armed: string | null; dueAt: string | null; windowEndsAt: string | null;
+    nextFiring: string | null; windowState: string | null; problem: string | null;
+  }>;
   'get-uptime':             (payload?: unknown) => Record<string, number | null>;
   'get-resource-baseline':  (payload?: unknown) => { cpuPct: number; ramMb: number } | null;
   'dry-run-job':   (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }>;

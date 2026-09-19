@@ -190,6 +190,15 @@ export function makeCommands(
         }));
     },
 
+    /*
+     * What is actually armed, beside what the registry asks for.
+     *
+     * Deliberately not filtered the way get-schedule is: this exists to expose the jobs whose intent
+     * and reality disagree, and every one of those would be filtered out by an `enabled && schedule`
+     * guard. A job that is silently not armed is exactly the one to show.
+     */
+    'list-timers': () => scheduler.inspectTimers(),
+
     'dry-run-job': (p) => {
       const { id } = p as { id: string };
       return scheduler.dryRun(id);

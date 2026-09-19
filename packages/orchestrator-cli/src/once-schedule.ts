@@ -17,7 +17,19 @@ export function onceScheduleDisplay(
     return 'unscheduled';
   }
 
-  const remainingMs = base + delayMs - now;
+  return describeMoment(base + delayMs, now);
+}
+
+/**
+ * How far off a moment is, in words: "in 3h", "overdue by 5m".
+ *
+ * Shared with `orch timers`, so a countdown reads the same wherever the CLI prints one. A moment that
+ * cannot be parsed says so rather than rendering as "in NaNs".
+ */
+export function describeMoment(at: string | number, now: number): string {
+  const atMs = typeof at === 'number' ? at : new Date(at).getTime();
+  if (Number.isNaN(atMs)) return 'unscheduled';
+  const remainingMs = atMs - now;
   if (remainingMs >= 0) return `in ${formatSeconds(remainingMs)}`;
   return `overdue by ${formatSeconds(-remainingMs)}`;
 }

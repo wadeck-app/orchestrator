@@ -69,6 +69,52 @@ export interface TreeUsage {
   ramMb:  number;
 }
 
+/** What an armed timer is waiting for. Reported by inspectTimers(). */
+export type ArmedKind = 'startup-delay' | 'once' | 'window-start' | 'window-end';
+
+/**
+ * An armed timer and the moment it is armed for.
+ *
+ * The deadline is kept beside the handle rather than derived on demand, because the whole point is
+ * to be able to answer "what is actually armed, and for when" - and a job that looks configured
+ * while nothing is armed for it is the hardest failure in this daemon to notice. A timer that only
+ * knows how to cancel itself cannot answer that question.
+ */
+interface ArmedTimer {
+  timer: Timer;
+  kind:  ArmedKind;
+  dueAt: number;
+}
+
+/** One job's intent, as configured, next to what the scheduler has actually armed for it. */
+export interface TimerReport {
+  jobId:   string;
+  type:    string;
+  enabled: boolean;
+  /** 'cron' when a cron task is running, the armed kind for a timer, or null when nothing is armed. */
+  armed:   'cron' | ArmedKind | null;
+  /** When the armed timer is due, ISO. Null for a cron task, whose next firing is `nextFiring`. */
+  dueAt:   string | null;
+  /**
+   * When the active period closes and the job is disabled, ISO, when a timer is armed for it.
+   *
+   * Reported separately rather than folded into `armed`, because a cron job inside a window has BOTH
+   * a cron task and this: collapsing them into one field hid the window entirely, and "why did my job
+   * disable itself" is the question that needs it.
+   */
+  windowEndsAt: string | null;
+  /** Next firing of a cron expression, computed from the expression, ISO. */
+  nextFiring: string | null;
+  windowState: WindowState | null;
+  /**
+   * Why nothing will happen, when that is the case. Null when intent and reality agree.
+   *
+   * This is the field worth reading first: every "it was configured and never fired" bug in this
+   * project has been a disagreement between the registry and what was armed.
+   */
+  problem: string | null;
+}
+
 /** Injection seam for the tests; production passes nothing and gets pidtree + pidusage. */
 interface TreeDeps {
   tree:  (pid: number) => Promise<number[]>;
@@ -159,7 +205,7 @@ export class Scheduler extends EventEmitter {
   private readonly _events:    EventPublisher;
   private readonly _secrets:   SecretsManager;
   private readonly _cronTasks = new Map<string, ReturnType<typeof cron.schedule>>();
-  private readonly _timeouts  = new Map<string, Timer>();
+  private readonly _timeouts  = new Map<string, ArmedTimer>();
   private readonly _activeChildren = new Map<string, ChildProcess>();
   private readonly _killedByUser   = new Set<string>();
   private readonly _skippedJobs    = new Map<string, number>();
@@ -172,7 +218,7 @@ export class Scheduler extends EventEmitter {
   private readonly _retryTimers    = new Map<string, Timer>();
   /** Timers that close an active window, kept apart from _timeouts so a pending start and a pending
    *  end can both be armed for the same job without one cancelling the other. */
-  private readonly _windowTimers   = new Map<string, Timer>();
+  private readonly _windowTimers   = new Map<string, ArmedTimer>();
   private readonly _retryCounters  = new Map<string, number>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
@@ -260,10 +306,14 @@ export class Scheduler extends EventEmitter {
         if (delay === 0) {
           await this._maybeSpawn(job);
         } else {
-          this._timeouts.set(job.id, this._time.after(delay, () => {
-            this._timeouts.delete(job.id);
-            void this._maybeSpawn(job);
-          }));
+          this._timeouts.set(job.id, {
+            kind: 'startup-delay',
+            dueAt: this._time.now() + delay,
+            timer: this._time.after(delay, () => {
+              this._timeouts.delete(job.id);
+              void this._maybeSpawn(job);
+            }),
+          });
         }
       }
 
@@ -314,13 +364,17 @@ export class Scheduler extends EventEmitter {
     // waitUntil, not after(remaining): a timer clamps a delay above ~24.85 days to 1ms, so a once
     // job scheduled further out than that used to fire on the next tick. The moment is absolute, so
     // it is also the same value a restart re-derives from the registry.
-    this._timeouts.set(job.id, waitUntil(this._time, this._time.now() + remaining, () => {
-      this._timeouts.delete(job.id);
-      void (async () => {
-        await this._maybeSpawn(job);
-        this._registry.remove(job.id);
-      })();
-    }));
+    this._timeouts.set(job.id, {
+      kind: 'once',
+      dueAt: this._time.now() + remaining,
+      timer: waitUntil(this._time, this._time.now() + remaining, () => {
+        this._timeouts.delete(job.id);
+        void (async () => {
+          await this._maybeSpawn(job);
+          this._registry.remove(job.id);
+        })();
+      }),
+    });
   }
 
   /**
@@ -362,14 +416,18 @@ export class Scheduler extends EventEmitter {
         const until = msUntilStart(job, this._time.now())!;
         // A period may start months out, which is past a timer's ceiling: as a single timer this
         // armed the cron task on the next tick, so the job ran through a window that had not opened.
-        this._timeouts.set(job.id, waitUntil(this._time, this._time.now() + until, () => {
-          this._timeouts.delete(job.id);
-          // Re-read: the job may have been edited or disabled while it waited.
-          const current = this._registry.get(job.id);
-          if (current) {
-            this.scheduleJob(current);
-          }
-        }));
+        this._timeouts.set(job.id, {
+          kind: 'window-start',
+          dueAt: this._time.now() + until,
+          timer: waitUntil(this._time, this._time.now() + until, () => {
+            this._timeouts.delete(job.id);
+            // Re-read: the job may have been edited or disabled while it waited.
+            const current = this._registry.get(job.id);
+            if (current) {
+              this.scheduleJob(current);
+            }
+          }),
+        });
         return;
       }
       this._scheduleCron(job);
@@ -379,13 +437,17 @@ export class Scheduler extends EventEmitter {
       if (remaining !== null) {
         // Same ceiling: "active for two months" expired on the next tick as a single timer, which
         // disabled the job immediately instead of at the end of its window.
-        this._windowTimers.set(job.id, waitUntil(this._time, this._time.now() + remaining, () => {
-          this._windowTimers.delete(job.id);
-          const current = this._registry.get(job.id);
-          if (current) {
-            this._expireJob(current);
-          }
-        }));
+        this._windowTimers.set(job.id, {
+          kind: 'window-end',
+          dueAt: this._time.now() + remaining,
+          timer: waitUntil(this._time, this._time.now() + remaining, () => {
+            this._windowTimers.delete(job.id);
+            const current = this._registry.get(job.id);
+            if (current) {
+              this._expireJob(current);
+            }
+          }),
+        });
       }
       return;
     }
@@ -418,12 +480,12 @@ export class Scheduler extends EventEmitter {
     }
     const handle = this._timeouts.get(id);
     if (handle) {
-      handle.cancel();
+      handle.timer.cancel();
       this._timeouts.delete(id);
     }
     const windowTimer = this._windowTimers.get(id);
     if (windowTimer) {
-      windowTimer.cancel();
+      windowTimer.timer.cancel();
       this._windowTimers.delete(id);
     }
   }
@@ -464,11 +526,92 @@ export class Scheduler extends EventEmitter {
   async stop(): Promise<void> {
     for (const task of this._cronTasks.values()) task.stop();
     this._cronTasks.clear();
-    for (const handle of this._timeouts.values()) handle.cancel();
+    for (const handle of this._timeouts.values()) handle.timer.cancel();
     this._timeouts.clear();
+    // Window timers were left armed: stop() cancelled every other kind, so a stopped scheduler could
+    // still expire a job days later, writing to a registry nobody was watching. Found by having to
+    // enumerate these maps for inspectTimers.
+    for (const handle of this._windowTimers.values()) handle.timer.cancel();
+    this._windowTimers.clear();
     for (const t of this._retryTimers.values()) t.cancel();
     this._retryTimers.clear();
     this._retryCounters.clear();
+  }
+
+  /**
+   * What the scheduler has actually armed, per job, beside what the registry asks for.
+   *
+   * Exists because every "it was configured and never fired" bug in this daemon has been a
+   * disagreement between those two, and there was no way to see it: the registry said cron, the
+   * dashboard said cron, and nothing was armed. A job added at runtime was never scheduled, a once
+   * job past a timer's ceiling fired immediately, a window beyond 24 days opened at once - each one
+   * needed a code reading to find, and each one would have been one line of this output.
+   *
+   * Read `problem` first. Null there means intent and reality agree.
+   */
+  inspectTimers(): TimerReport[] {
+    const now = this._time.now();
+    const iso = (ms: number): string => new Date(ms).toISOString();
+
+    return this._registry.list().map((job): TimerReport => {
+      const armedTimer = this._timeouts.get(job.id);
+      const windowEnd  = this._windowTimers.get(job.id);
+      const hasCronTask = this._cronTasks.has(job.id);
+      const windowState = job.type === 'cron' ? windowStateAt(job, now) : null;
+
+      const nextFiring = job.type === 'cron' && job.schedule
+        ? (getNextFirings(job.schedule, 1, new Date(now))[0]?.toISOString() ?? null)
+        : null;
+
+      // The cron task is the primary mechanism when there is one; the window timer is reported
+      // alongside it rather than instead of it.
+      const armed: TimerReport['armed'] = hasCronTask ? 'cron' : (armedTimer?.kind ?? null);
+
+      return {
+        jobId: job.id,
+        type: job.type,
+        enabled: job.enabled,
+        armed,
+        dueAt: armedTimer ? iso(armedTimer.dueAt) : null,
+        windowEndsAt: windowEnd ? iso(windowEnd.dueAt) : null,
+        nextFiring,
+        windowState,
+        problem: this._timerProblem(job, armed, windowState, nextFiring),
+      };
+    });
+  }
+
+  /**
+   * Why a job will not fire, in the user's words, or null.
+   *
+   * Only states that are genuinely wrong are reported. A disabled job with nothing armed is correct,
+   * and so is a cron job waiting for its window to open with a window-start timer set: saying
+   * something about those would bury the one line that matters.
+   */
+  private _timerProblem(
+    job: Job,
+    armed: TimerReport['armed'],
+    windowState: WindowState | null,
+    nextFiring: string | null,
+  ): string | null {
+    if (!job.enabled) {
+      return armed === null
+        ? null
+        : `disabled, yet a ${armed} timer is still armed -- it should have been cancelled`;
+    }
+    if (armed !== null) {
+      // A cron task that is running but whose expression yields no next firing will never fire.
+      if (armed === 'cron' && nextFiring === null) {
+        return `schedule ${JSON.stringify(job.schedule)} has no next firing within a year, so this never runs`;
+      }
+      return null;
+    }
+    if (job.type === 'startup') return null;           // fires once at daemon start, nothing to arm
+    if (windowState === 'expired') {
+      return 'its active period has ended -- enabled but nothing armed; re-enable it to resume';
+    }
+    return `enabled but NOTHING is armed for it: it will never fire. ` +
+      `Check the daemon log, then re-save the job (orch edit ${job.id} --label ${JSON.stringify(job.label ?? job.id)}) to re-arm it.`;
   }
 
   async dryRun(id: string): Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }> {
@@ -487,10 +630,31 @@ export class Scheduler extends EventEmitter {
    * on -- the ones that did not need the flag -- and returned immediately on every other job while
    * printing that it had finished.
    */
-  async trigger(id: string, source: TriggerSource = { kind: 'manual' }, wait = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
+  async trigger(id: string, source: TriggerSource = { kind: 'manual' }, wait = false): Promise<{ pid: number | null; consumed?: boolean } | { exitCode: number | null; consumed?: boolean }> {
     const job = this._registry.get(id);
     if (!job) throw new Error(`Job not found: "${id}"`);
-    return this._fire(job, source, wait);
+
+    /*
+     * Running a once job is what consumes it, whoever asked.
+     *
+     * This used to fire and leave the armed timer alone, so the job ran again when its moment
+     * arrived: a job whose type is "once" ran twice, in silence. The scheduled firing has always
+     * removed it from the registry, and a manual firing is the same event arriving early - so it
+     * takes the same path, unscheduled first so the timer cannot outlive the job.
+     *
+     * Reported back rather than done quietly: the job disappearing from the list is a side effect
+     * the user did not ask for, and unexplained it reads as a bug.
+     */
+    const consumed = job.type === 'once';
+    if (consumed) this.unscheduleJob(job.id);
+
+    const result = await this._fire(job, source, wait);
+
+    // After the fire, mirroring the scheduled path, so a `wait` trigger still has its job in place
+    // while it runs.
+    if (consumed) this._registry.remove(job.id);
+
+    return { ...result, ...(consumed ? { consumed: true } : {}) };
   }
 
   /**

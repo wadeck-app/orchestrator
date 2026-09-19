@@ -7,7 +7,7 @@ import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
-import { onceScheduleDisplay } from './once-schedule.js';
+import { onceScheduleDisplay, describeMoment } from './once-schedule.js';
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
 function readDashboardFile(filePath: string): string | null {
@@ -648,6 +648,58 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       break;
     }
 
+    /*
+     * What the daemon has actually armed, beside what the registry asks for.
+     *
+     * Added because every "it was configured and never fired" bug in this project needed someone to
+     * read the scheduler's source to find, and each one would have been one line here. `problem` is
+     * the field to read first; everything else is context for it.
+     *
+     * JSON when piped, which is how an agent will call it.
+     */
+    case 'timers': {
+      const rows = await send('list-timers') as Array<{
+        jobId: string; type: string; enabled: boolean; armed: string | null;
+        dueAt: string | null; windowEndsAt: string | null; nextFiring: string | null;
+        windowState: string | null; problem: string | null;
+      }>;
+
+      if (forceJson || !process.stdout.isTTY) {
+        output(rows, forceJson);
+        break;
+      }
+      if (rows.length === 0) {
+        console.log('No jobs registered.');
+        break;
+      }
+
+      for (const r of rows) {
+        const due  = r.dueAt ?? r.nextFiring;
+        const when = due !== null ? `${due} (${describeMoment(due, Date.now())})` : 'nothing scheduled';
+        // violations-suppress: shared/no-emoji local/no-unicode-symbol CLI terminal indicator - marks the armed/not-armed state the way `orch list` marks enabled/disabled
+        const mark = r.problem === null ? '✓' : '✗';
+        console.log(`${mark} ${r.jobId.padEnd(24)} ${r.type.padEnd(8)} ${(r.armed ?? 'not armed').padEnd(14)} ${when}`);
+        if (r.windowState !== null && r.windowState !== 'active') {
+          console.log(`    window: ${r.windowState}`);
+        }
+        // The other timer a cron job can carry. Without it, "why did my job disable itself" has no
+        // answer in this output.
+        if (r.windowEndsAt !== null) {
+          console.log(`    active period ends: ${r.windowEndsAt} (${describeMoment(r.windowEndsAt, Date.now())})`);
+        }
+        if (r.problem !== null) {
+          console.log(`    problem: ${r.problem}`);
+        }
+      }
+      const broken = rows.filter(r => r.problem !== null).length;
+      // Stated rather than left to be counted: a clean run should say so, and a dirty one should not
+      // need the reader to scan for crosses.
+      console.log(broken === 0
+        ? `\nAll ${rows.length} job(s) armed as configured.`
+        : `\n${broken} of ${rows.length} job(s) will not fire as configured (see "problem" above).`);
+      break;
+    }
+
     case 'show': {
       const [id] = rest;
       const job = await send('get-job', { id });
@@ -905,10 +957,13 @@ Use --wait to block until the command finishes.`);
     case 'run': {
       const [id, ...trigRest] = rest;
       const wait = has(trigRest, '--wait');
-      const data = await send('trigger-job', { id, wait }) as { exitCode?: number; pid?: number };
-      console.log(wait
+      const data = await send('trigger-job', { id, wait }) as { exitCode?: number; pid?: number; consumed?: boolean };
+      // Said out loud: running a once job consumes it, so it leaves the job list. Unexplained, a job
+      // vanishing right after the user triggered it reads as a bug rather than as the type working.
+      const consumedNote = data.consumed === true ? ' Once job: consumed, it will not fire again.' : '';
+      console.log((wait
         ? `Job "${id}" finished (exit ${data.exitCode ?? '?'}).`
-        : `Job "${id}" triggered (pid ${data.pid ?? '?'}).`);
+        : `Job "${id}" triggered (pid ${data.pid ?? '?'}).`) + consumedNote);
       break;
     }
 
