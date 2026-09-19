@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFile } from 'node:child_process';
 import { getErrorMessage } from './fsUtil.js';
+import { classifyDashboard } from './dashboard-pidfile.js';
 
 const KILL_TIMEOUT_MS = 3000;
 
@@ -27,16 +28,74 @@ export class DashboardManager {
     this._log = onLog ?? ((msg) => { try { process.stderr.write(`[dashboard] ${msg}\n`); } catch { /* ignore */ } });
   }
 
+  private get _dashboardFile(): string {
+    return path.join(this._configDir, 'config.dashboard');
+  }
+
+  /** The file's contents, or null when it does not exist -- the shape classifyDashboard takes. */
+  private _readDashboardFile(): string | null {
+    try {
+      return fs.readFileSync(this._dashboardFile, 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Clears `config.dashboard` when it names a dashboard that is not serving.
+   *
+   * Called at daemon startup. The dashboard is on-demand and shuts itself down when idle (P-3), so the
+   * normal end of its life leaves a file naming a pid that is gone -- and nothing on the daemon's path
+   * cleaned it. `classifyDashboard` was wired into cli.ts's `server start/stop/status` only, so a stale
+   * file self-healed if you happened to run `orch server start` and otherwise sat there: one was found
+   * naming pid 77244 from the previous evening, with the daemon's own fallback able to say only
+   * "cannot open browser: port unknown" about it.
+   *
+   * A `running` file is deliberately left alone. A dashboard started by a previous daemon and still
+   * serving is reachable, and deleting its file would orphan a live server: nothing would know its
+   * port, the tray could not open it, and the next start would bind a second one.
+   *
+   * Announced rather than silent, because a file disappearing is the kind of thing someone later wants
+   * explained. Idempotent, so calling it twice is harmless.
+   */
+  sweepStaleFile(): void {
+    const state = classifyDashboard(this._readDashboardFile());
+    if (state.kind === 'stopped' || state.kind === 'running') {
+      return;
+    }
+    const detail = state.kind === 'stale'
+      ? `port ${state.info.port}, pid ${state.info.pid} is gone`
+      : 'unreadable contents';
+    try {
+      fs.unlinkSync(this._dashboardFile);
+      this._log(`[dashboard] cleared stale config.dashboard (${detail})`);
+    } catch (e) {
+      // Worth saying: a file that cannot be removed will keep pointing at nothing, and the next
+      // `orch server start` will be the one to trip over it.
+      this._log(`[dashboard] could not clear stale config.dashboard (${detail}): ${getErrorMessage(e)}`);
+    }
+  }
+
   private _killStaleFromFile(): void {
     try {
-      const filePath = path.join(this._configDir, 'config.dashboard');
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const info = JSON.parse(raw) as DashboardPortInfo;
-      if (!info.pid) {
+      const filePath = this._dashboardFile;
+      // Through classifyDashboard, so "is this dashboard actually serving" is decided in one place.
+      // This used to parse the file and probe the pid itself, which is the duplication that let the
+      // daemon's path and the CLI's path disagree about the same file.
+      const state = classifyDashboard(this._readDashboardFile());
+      if (state.kind === 'stopped') {
         return;
       }
-      // Check if the process is still alive
-      try { process.kill(info.pid, 0); } catch { return; /* already dead */ }
+      if (state.kind === 'corrupt') {
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+        return;
+      }
+      const info = state.info;
+      if (state.kind === 'stale') {
+        // Nothing to kill, but the file must still go so the new server can write a fresh port.
+        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+        return;
+      }
       // Kill the orphaned dashboard process tree
       if (process.platform === 'win32') {
         // windowsHide because this one is NOT user-facing, unlike the two `start` calls below that

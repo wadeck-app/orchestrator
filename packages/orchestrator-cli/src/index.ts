@@ -208,6 +208,15 @@ async function main(): Promise<void> {
     try {
       const serverBinary = findOrchServerBinary();
       dashboardManager = new DashboardManager(CONFIG_DIR, serverBinary, (msg) => daemonLog.write(msg));
+      /*
+       * The dashboard is on-demand and shuts itself down when idle (P-3), so the normal end of its life
+       * leaves config.dashboard naming a pid that is gone. Nothing on this path cleaned it: the CLI's
+       * `server start/stop/status` classify the file, the daemon never did, so a stale entry survived
+       * every restart and the daemon could only report "cannot open browser: port unknown" about it.
+       *
+       * A file naming a live dashboard is left in place -- see sweepStaleFile.
+       */
+      dashboardManager.sweepStaleFile();
     } catch {
       // orch-server not built yet -- dashboard unavailable
     }
