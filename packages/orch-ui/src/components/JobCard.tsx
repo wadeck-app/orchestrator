@@ -92,11 +92,17 @@ export const TYPE_BADGE_BASE = 'inline-flex items-center px-1.5 py-0.5 rounded t
 export function relativeTime(isoDate: string): string {
   const diffMs = Date.now() - new Date(isoDate).getTime();
   const s = Math.floor(diffMs / 1000);
-  if (s < 60)  return 'just now';
+  if (s < 60)  {
+    return 'just now';
+  }
   const m = Math.floor(s / 60);
-  if (m < 60)  return `${m}m ago`;
+  if (m < 60)  {
+    return `${m}m ago`;
+  }
   const h = Math.floor(m / 60);
-  if (h < 24)  return `${h}h ago`;
+  if (h < 24)  {
+    return `${h}h ago`;
+  }
   const d = Math.floor(h / 24);
   return `${d}d ago`;
 }
@@ -138,9 +144,15 @@ function jobListBadge(job: Job, runHistory: RuntimeEntry[], nowMs: number): Reac
 function successStreak(runHistory: RuntimeEntry[]): number {
   let streak = 0;
   for (const e of runHistory) {
-    if (isRunSkipped(e)) continue;
-    if (e.exitCode === 0) streak++;
-    else break;
+    if (isRunSkipped(e)) {
+      continue;
+    }
+    if (e.exitCode === 0) {
+      streak++;
+    }
+    else {
+      break;
+    }
   }
   return streak;
 }

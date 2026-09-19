@@ -108,9 +108,15 @@ function numericSetter(set: (n: number) => void): (v: string | number) => void {
  * or an empty collection is not.
  */
 function wasConfigured(value: unknown): boolean {
-  if (value === null || value === undefined || value === '') return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') return Object.keys(value).length > 0;
+  if (value === null || value === undefined || value === '') {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === 'object') {
+    return Object.keys(value).length > 0;
+  }
   return true;
 }
 
@@ -135,9 +141,13 @@ function periodToPayload(period: DateRange): { activeFrom?: string; activeUntil?
 }
 
 function parseCron(expr: string): string | null {
-  if (!expr.trim()) return null;
+  if (!expr.trim()) {
+    return null;
+  }
   const parts = expr.trim().split(/\s+/);
-  if (parts.length < 5 || parts.length > 6) return 'Must have 5 or 6 parts (min hour dom mon dow [year])';
+  if (parts.length < 5 || parts.length > 6) {
+    return 'Must have 5 or 6 parts (min hour dom mon dow [year])';
+  }
   return null;
 }
 
@@ -238,12 +248,20 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         && activePeriod.to.getTime() <= activePeriod.from.getTime()) {
       e.activePeriod = 'The end of the period must be after its start';
     }
-    if (!label.trim()) e.label = 'Label is required';
-    if (!command.trim()) e.command = 'Command is required';
+    if (!label.trim()) {
+      e.label = 'Label is required';
+    }
+    if (!command.trim()) {
+      e.command = 'Command is required';
+    }
     if (type === 'cron') {
       const cronErr = parseCron(schedule);
-      if (cronErr) e.schedule = cronErr;
-      else if (!schedule.trim()) e.schedule = 'Schedule is required for cron jobs';
+      if (cronErr) {
+        e.schedule = cronErr;
+      }
+      else if (!schedule.trim()) {
+        e.schedule = 'Schedule is required for cron jobs';
+      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -251,7 +269,9 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate()) {
+      return;
+    }
     setLoading(true);
     try {
       const data: JobFormPayload = { label: label.trim(), type, command: command.trim(), triggerMode, missedFiring };
@@ -272,12 +292,20 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
        */
       const unset: UnsettableJobField[] = [];
       const clearIfWasConfigured = (field: UnsettableJobField, previous: unknown): void => {
-        if (!isCreating && wasConfigured(previous)) unset.push(field);
+        if (!isCreating && wasConfigured(previous)) {
+          unset.push(field);
+        }
       };
 
-      if (cwd.trim()) data.cwd = cwd.trim();
-      else clearIfWasConfigured('cwd', initial?.cwd);
-      if (type === 'cron' && schedule.trim()) data.schedule = schedule.trim();
+      if (cwd.trim()) {
+        data.cwd = cwd.trim();
+      }
+      else {
+        clearIfWasConfigured('cwd', initial?.cwd);
+      }
+      if (type === 'cron' && schedule.trim()) {
+        data.schedule = schedule.trim();
+      }
       if (type === 'cron') {
         const period = periodToPayload(activePeriod);
         Object.assign(data, period);
@@ -295,10 +323,14 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         clearIfWasConfigured('activeFrom', initial?.activeFrom);
         clearIfWasConfigured('activeUntil', initial?.activeUntil);
       }
-      if (type === 'startup') data.delaySeconds = delaySeconds;
+      if (type === 'startup') {
+        data.delaySeconds = delaySeconds;
+      }
       // Switching the type takes this field off the form. Without this the patch keeps a delay that
       // now belongs to no type, and `orch show` still reports it.
-      else clearIfWasConfigured('delaySeconds', initial?.delaySeconds);
+      else {
+        clearIfWasConfigured('delaySeconds', initial?.delaySeconds);
+      }
       /*
        * A once job fires at `scheduledAt + delayMs`, so an absolute moment has to be sent as BOTH.
        *
@@ -318,8 +350,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       // Liveness
       if (livenessStrategy !== 'none') {
         const liveness: LivenessConfig = { strategy: livenessStrategy };
-        if (livenessStrategy === 'portFile' && livenessPort.trim()) liveness.portFile = livenessPort.trim();
-        if (livenessStrategy === 'command' && livenessCommand.trim()) liveness.command = livenessCommand.trim();
+        if (livenessStrategy === 'portFile' && livenessPort.trim()) {
+          liveness.portFile = livenessPort.trim();
+        }
+        if (livenessStrategy === 'command' && livenessCommand.trim()) {
+          liveness.command = livenessCommand.trim();
+        }
         data.liveness = liveness;
       } else {
         data.liveness = null;
@@ -327,8 +363,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
 
       // timeout. 0 is a value to the daemon, not an absence, so zeroing the box has to unset the
       // field rather than store a job that times out immediately.
-      if (timeoutSeconds > 0) data.timeoutSeconds = timeoutSeconds;
-      else clearIfWasConfigured('timeoutSeconds', initial?.timeoutSeconds);
+      if (timeoutSeconds > 0) {
+        data.timeoutSeconds = timeoutSeconds;
+      }
+      else {
+        clearIfWasConfigured('timeoutSeconds', initial?.timeoutSeconds);
+      }
 
       // onExitCode
       const validPairs = exitCodePairs.filter(p => p.code.trim() && p.msg.trim());
@@ -348,24 +388,42 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
 
       // tags
       const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean);
-      if (tags.length > 0) data.tags = tags;
-      else clearIfWasConfigured('tags', initial?.tags);
+      if (tags.length > 0) {
+        data.tags = tags;
+      }
+      else {
+        clearIfWasConfigured('tags', initial?.tags);
+      }
 
       // v3 fields. Emptying these was a silent no-op until the daemon accepted them in `unset`.
-      if (dependsOn.trim()) data.dependsOn = dependsOn.trim();
-      else clearIfWasConfigured('dependsOn', initial?.dependsOn);
+      if (dependsOn.trim()) {
+        data.dependsOn = dependsOn.trim();
+      }
+      else {
+        clearIfWasConfigured('dependsOn', initial?.dependsOn);
+      }
       // These two carry their "off" state in a value the daemon keeps -- 0 and false are values, not
       // emptiness -- so the previous state is narrowed to what the form treats as configured.
       // Otherwise a job saved twice with the SLA already at 0 would send a pointless unset each time.
-      if (slaWindowMinutes > 0) data.slaWindowMinutes = slaWindowMinutes;
-      else clearIfWasConfigured('slaWindowMinutes', initial?.slaWindowMinutes || undefined);
+      if (slaWindowMinutes > 0) {
+        data.slaWindowMinutes = slaWindowMinutes;
+      }
+      else {
+        clearIfWasConfigured('slaWindowMinutes', initial?.slaWindowMinutes || undefined);
+      }
       // Unticking the box has to remove the flag; omitting it would leave dry-run enabled.
-      if (dryRunSupported) data.dryRunSupported = true;
-      else clearIfWasConfigured('dryRunSupported', initial?.dryRunSupported || undefined);
+      if (dryRunSupported) {
+        data.dryRunSupported = true;
+      }
+      else {
+        clearIfWasConfigured('dryRunSupported', initial?.dryRunSupported || undefined);
+      }
 
       // Only when there is something to clear: an empty array would still reach the daemon and read
       // as an edit that clears nothing.
-      if (unset.length > 0) data.unset = unset;
+      if (unset.length > 0) {
+        data.unset = unset;
+      }
 
       setSubmitError(null);
       await onSubmit(data);

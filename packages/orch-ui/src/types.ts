@@ -95,7 +95,9 @@ export interface JobFormPayload extends Partial<Job> {
 
 export function getErrorMessage(e: unknown): string {
   // violations-suppress: ts/no-err-message-direct this IS the instanceof-guarded safe accessor - the one place in orch-ui where .message access is correct
-  if (e instanceof Error) return e.message;
+  if (e instanceof Error) {
+    return e.message;
+  }
   return String(e);
 }
 
@@ -128,7 +130,9 @@ export interface RuntimeEntry {
 // could leave a finished entry at the head, and older histories still contain
 // exitCode:null orphans from runs whose completion was never recorded.
 export function latestRun(entries: RuntimeEntry[] | undefined): RuntimeEntry | null {
-  if (!entries || entries.length === 0) return null;
+  if (!entries || entries.length === 0) {
+    return null;
+  }
   return entries.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
 }
 
@@ -149,12 +153,16 @@ export function isRunSkipped(entry: RuntimeEntry | null): boolean {
 
 // Finished without an exit code (killed by signal), or explicitly cancelled.
 export function isRunCancelled(entry: RuntimeEntry | null): boolean {
-  if (entry === null || isRunActive(entry) || isRunSkipped(entry)) return false;
+  if (entry === null || isRunActive(entry) || isRunSkipped(entry)) {
+    return false;
+  }
   return entry.cancelledByUser === true || entry.exitCode === null;
 }
 
 // Only a real non-zero exit code is a failure: null means killed, not failed.
 export function isRunFailed(entry: RuntimeEntry | null): boolean {
-  if (isRunSkipped(entry)) return false;
+  if (isRunSkipped(entry)) {
+    return false;
+  }
   return entry !== null && entry.exitCode != null && entry.exitCode !== 0;
 }

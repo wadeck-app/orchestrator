@@ -39,7 +39,11 @@ export class DashboardManager {
       try { process.kill(info.pid, 0); } catch { return; /* already dead */ }
       // Kill the orphaned dashboard process tree
       if (process.platform === 'win32') {
-        try { execSync(`taskkill /f /t /pid ${info.pid}`, { stdio: 'ignore' }); } catch { /* ignore */ }
+        // windowsHide because this one is NOT user-facing, unlike the two `start` calls below that
+        // are deliberately visible: it reaps an orphaned dashboard on the way to starting a new one,
+        // and execSync goes through cmd.exe, so without it a console flashes for a kill nobody asked
+        // to watch.
+        try { execSync(`taskkill /f /t /pid ${info.pid}`, { stdio: 'ignore', windowsHide: true }); } catch { /* ignore */ }
       } else {
         try { process.kill(info.pid, 'SIGTERM'); } catch { /* ignore */ }
       }
@@ -175,7 +179,7 @@ export class DashboardManager {
       // default browser association is not set up for explorer.exe to delegate.
       // Pass url as a plain arg -- execFile does not use a shell so no extra quoting needed;
       // embedding quotes in the string causes cmd.exe start to interpret them as backslashes.
-      // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
+      // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide intentionally opens the browser as a visible window
       execFile('cmd.exe', ['/c', 'start', '', url], (err) => {
         if (err) {
           this._log(`[dashboard] open browser failed (cmd /c start "${url}"): ${getErrorMessage(err)}`);
@@ -185,7 +189,7 @@ export class DashboardManager {
         }
       });
     } else {
-      // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the browser as a visible window
+      // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide intentionally opens the browser as a visible window
       execFile('open', [url], (err) => {
         if (err) {
           this._log(`[dashboard] open browser failed (open "${url}"): ${getErrorMessage(err)}`);

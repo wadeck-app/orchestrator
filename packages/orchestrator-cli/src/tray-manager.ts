@@ -524,8 +524,8 @@ export class TrayManager extends EventEmitter {
         this._logAction('[tray] action: open-logs');
         const logsDir = path.join(this._configDir, 'logs');
         if (process.platform === 'win32') {
-          // violations-suppress: cli/daemon-spawn-no-windows-hide intentionally opens the file explorer as a visible window
           // Pass path without embedded quotes -- execFile is not a shell, quotes become literal backslashes.
+          // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide intentionally opens the file explorer as a visible window
           execFile('cmd.exe', ['/c', 'start', '', logsDir], (err) => {
             if (err) {
               const msg = getErrorMessage(err);
@@ -534,6 +534,7 @@ export class TrayManager extends EventEmitter {
             }
           });
         } else {
+          // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide macOS branch -- windowsHide has no meaning off Windows, and this opens Finder on purpose
           execFile('open', [logsDir], (err) => {
             if (err) {
               const msg = getErrorMessage(err);

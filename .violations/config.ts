@@ -5,6 +5,10 @@ export default {
   globalExclude: [
     'node_modules/**',
     'dist/**',
+    // Bundler output, gitignored like dist/ and simply missing from the line above. It accounted for
+    // 7 of the 25 windowsHide findings -- esbuild inlining third-party spawn calls, none of it ours
+    // to fix, and all of it regenerated on every build.
+    '**/dist-bundle/**',
     'packages/orch-app/src/generated/**',
     'packages/orch-server/public/**',
     'packages/orchestrator-cli/server/**',
@@ -36,9 +40,12 @@ export default {
         'packages/*/src/index.tsx',
       ],
     },
-    // Dev scripts intentionally show build output - windowsHide would suppress it
+    // Dev scripts intentionally show build output - windowsHide would suppress it.
+    // packages/*/scripts/** is the same case and was not covered: 'scripts/**' does not match
+    // packages/orchestrator-cli/scripts/build-tray-binary.ts, which is a build step whose output is
+    // the point of running it.
     'cli/daemon-spawn-no-windows-hide': {
-      $exclude: ['scripts/**'],
+      $exclude: ['scripts/**', 'packages/*/scripts/**'],
     },
     // DSL pages must decompose from dsl-ui primitives, not wrap entire pages in one monolithic component
     './.violations/rules/dsl-no-monolithic-page.ts': true,

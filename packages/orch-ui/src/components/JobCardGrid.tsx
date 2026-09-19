@@ -40,9 +40,15 @@ const BULK_BAR_CLS  = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-
 export function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
   let count = 0;
   for (const e of runHistory) {
-    if (isRunSkipped(e)) continue;
-    if (isRunFailed(e)) count++;
-    else break;
+    if (isRunSkipped(e)) {
+      continue;
+    }
+    if (isRunFailed(e)) {
+      count++;
+    }
+    else {
+      break;
+    }
   }
   return count;
 }
@@ -96,7 +102,11 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -131,7 +141,9 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const handleBulkDelete  = useCallback(async () => {
     const ids = [...selected];
     if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
-    if (!window.confirm(`Delete ${selected.size} job(s)?`)) return;
+    if (!window.confirm(`Delete ${selected.size} job(s)?`)) {
+      return;
+    }
     await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })));
     setSelected(new Set());
   }, [selected, onBulkDelete]);

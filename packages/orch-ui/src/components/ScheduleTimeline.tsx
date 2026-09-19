@@ -78,12 +78,14 @@ export function ScheduleTimeline({ firings = [], onRunEarly }: ScheduleTimelineP
     (e.next ?? []).map(ts => ({ ts, label: e.label, jobId: e.jobId }))
   ).sort((a, b) => a.ts.localeCompare(b.ts));
 
-  if (flat.length === 0) return (
-    <>
-      <p className="text-xs text-muted mb-4">Times shown in: {OS_TZ}</p>
-      <p className="text-muted text-center py-12">No upcoming cron jobs in the next 24h.</p>
-    </>
-  );
+  if (flat.length === 0) {
+    return (
+      <>
+        <p className="text-xs text-muted mb-4">Times shown in: {OS_TZ}</p>
+        <p className="text-muted text-center py-12">No upcoming cron jobs in the next 24h.</p>
+      </>
+    );
+  }
 
   let lastDate = '';
   // violations-suppress-start: tailwind/no-raw-color-class run-early button feedback states use green/red which have no semantic tokens

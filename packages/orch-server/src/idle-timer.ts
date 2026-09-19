@@ -10,7 +10,9 @@ export class IdleTimer {
   }
 
   reset(): void {
-    if (this._sseCount > 0) return;
+    if (this._sseCount > 0) {
+      return;
+    }
     this._clearTimer();
     this._startTimer();
   }
@@ -22,7 +24,9 @@ export class IdleTimer {
 
   removeSseConnection(): void {
     this._sseCount = Math.max(0, this._sseCount - 1);
-    if (this._sseCount === 0) this._startTimer();
+    if (this._sseCount === 0) {
+      this._startTimer();
+    }
   }
 
   stop(): void {

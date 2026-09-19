@@ -95,8 +95,12 @@ server.get('/api/open', async (req, reply) => {
   const url = isWinPath ? `file:///${target.replace(/\\/g, '/')}` : target;
   await new Promise<void>((resolve) => {
     if (process.platform === 'win32') {
+      // windowsHide is explicitly false, not merely absent: this endpoint exists to reveal a file or
+      // URL to the user, so the shell handler it launches has to be allowed to show itself.
+      // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide opening something for the user IS the feature
       execFile('cmd.exe', ['/c', 'start', '', url], { windowsHide: false }, () => resolve());
     } else {
+      // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide macOS branch -- windowsHide has no meaning off Windows
       execFile('open', [url], () => resolve());
     }
   });
