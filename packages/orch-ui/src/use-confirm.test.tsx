@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { useConfirm } from './use-confirm.js';
 
+// violations-suppress-start: react/no-raw-button test-harness triggers, not UI - a design-system Button here would test dsl-ui's rendering rather than the hook
+
 /*
  * Five destructive actions -- killing a running job in three places, and deleting jobs in bulk -- asked
  * for confirmation through the browser's native confirm(). It blocks the whole page, cannot be styled,
@@ -121,3 +123,5 @@ describe('useConfirm', () => {
 		expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
 	});
 });
+
+// violations-suppress-end: react/no-raw-button
