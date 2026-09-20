@@ -203,6 +203,27 @@ describe('LogViewer', () => {
   // vetoed the flag -- so scrolling up changed the badge and the veto while the button still
   // claimed following was on. The first click then only cleared that contradiction.
   describe('follow-tail toggle', () => {
+    /*
+     * The job status the chip reads, because "Live" is a claim about output arriving and not about the
+     * follow flag.
+     *
+     * These tests asserted "Live" while stubbing no fetch at all, so the component never learned
+     * whether anything was running - and they passed, because the label came from `autoScroll` alone.
+     * That is the bug: the pane said "Live" in green on a job that had exited hours earlier.
+     */
+    function stubJobStatus(running: boolean): void {
+      vi.stubGlobal('fetch', (url: string) => {
+        if (url.includes('/runs')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        // isRunActive is "no finishedAt and no exitCode".
+        const run = running
+          ? { startedAt: '2026-09-19T10:00:00Z', exitCode: null, pid: 1 }
+          : { startedAt: '2026-09-19T10:00:00Z', finishedAt: '2026-09-19T10:00:05Z', exitCode: 0, pid: 1 };
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ job: {}, runHistory: [run] }) });
+      });
+    }
+
     // jsdom gives every element zero height, so scroll position has to be imposed directly.
     function scrollPaneTo(atBottom: boolean): HTMLElement {
       const pane = document.querySelector('pre')!;
@@ -222,12 +243,24 @@ describe('LogViewer', () => {
      * Matched on either label, so the helper finds the button in both states.
      */
     function autoButton(): HTMLElement {
-      return screen.getByRole('button', { name: /Live|Paused/ });
+      return screen.getByRole('button', { name: /Live|Paused|Ended|Following/ });
     }
 
-    it('follows by default, reading Live and pressed', () => {
+    /**
+     * Renders with output actually arriving, and waits for the status poll before asserting.
+     *
+     * Without the wait the chip is still in its "status not known yet" state, which deliberately does
+     * not say Live.
+     */
+    async function renderLive(): Promise<void> {
+      stubJobStatus(true);
       vi.stubGlobal('EventSource', MockEventSource);
       renderInRouter(<LogViewer jobId="j1" />);
+      await waitFor(() => { expect(screen.getByText('Live')).toBeInTheDocument(); });
+    }
+
+    it('follows by default, reading Live and pressed', async () => {
+      await renderLive();
 
       expect(screen.getByText('Live')).toBeInTheDocument();
       expect(screen.queryByText('Paused')).toBeNull();
@@ -236,18 +269,21 @@ describe('LogViewer', () => {
 
     // Both states are coloured. The paused one used to be the chip's muted inactive grey, which reads
     // as switched off rather than paused.
-    it('is green while live and amber while paused, never grey', () => {
-      vi.stubGlobal('EventSource', MockEventSource);
-      renderInRouter(<LogViewer jobId="j1" />);
+    it('is green while live and amber while paused, never grey', async () => {
+      await renderLive();
 
       /*
        * A BACKGROUND in the hue, which only the chip's active palette sets - its inactive palette
-       * mentions the hue on hover only. Matched on the hue rather than a token name because dsl-ui
-       * spells it `bg-green-100` in one version and `bg-hue-green-bg` in the next, and the assertion is
-       * about the colour the reader sees either way.
+       * mentions the hue on hover only. Matched on the hue rather than a token name because the
+       * assertion is about the colour the reader sees either way, and dsl-ui renames the class
+       * between versions: `bg-green-100` became `bg-hue-green-bg`.  // violations-suppress: tailwind/no-raw-color-class class name quoted in prose, not applied
        *
-       * Not asserted by the absence of `text-muted`: that comes from the ghost button underneath and
-       * is present in both states.
+       * It used to say here that the absence of `text-muted` was unusable as an assertion, because the
+       * ghost button underneath carried it in both states. That WAS the ChipButton bug: ghost's
+       * `text-muted` was emitted after the palette's `text-hue-*` and so won, and every coloured chip
+       * in the design system rendered grey. Fixed in dsl-ui by a `chip` variant that sets no colour,
+       * and pinned there by ChipButton's own tests -- the background is still the clearer assertion to
+       * make from here, but it is no longer the only one available.
        */
       expect(autoButton().className).toMatch(/bg-\S*green/);
 
@@ -256,9 +292,8 @@ describe('LogViewer', () => {
       expect(autoButton().className).toMatch(/bg-\S*yellow/);
     });
 
-    it('scrolling up pauses, and the button agrees rather than still claiming to follow', () => {
-      vi.stubGlobal('EventSource', MockEventSource);
-      renderInRouter(<LogViewer jobId="j1" />);
+    it('scrolling up pauses, and the button agrees rather than still claiming to follow', async () => {
+      await renderLive();
 
       scrollPaneTo(false);
 
@@ -267,9 +302,8 @@ describe('LogViewer', () => {
       expect(autoButton().getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('resumes on the FIRST click after scrolling up', () => {
-      vi.stubGlobal('EventSource', MockEventSource);
-      renderInRouter(<LogViewer jobId="j1" />);
+    it('resumes on the FIRST click after scrolling up', async () => {
+      await renderLive();
 
       const pane = scrollPaneTo(false);
       expect(screen.getByText('Paused')).toBeInTheDocument();
@@ -282,9 +316,8 @@ describe('LogViewer', () => {
       expect(pane.scrollTop).toBe(pane.scrollHeight);
     });
 
-    it('scrolling back to the bottom resumes on its own', () => {
-      vi.stubGlobal('EventSource', MockEventSource);
-      renderInRouter(<LogViewer jobId="j1" />);
+    it('scrolling back to the bottom resumes on its own', async () => {
+      await renderLive();
 
       scrollPaneTo(false);
       expect(screen.getByText('Paused')).toBeInTheDocument();
@@ -294,9 +327,8 @@ describe('LogViewer', () => {
       expect(autoButton().getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('one click pauses from the following state', () => {
-      vi.stubGlobal('EventSource', MockEventSource);
-      renderInRouter(<LogViewer jobId="j1" />);
+    it('one click pauses from the following state', async () => {
+      await renderLive();
 
       act(() => { autoButton().click(); });
 
@@ -304,9 +336,8 @@ describe('LogViewer', () => {
       expect(autoButton().getAttribute('aria-pressed')).toBe('false');
     });
 
-    it('badge and button never disagree across a sequence of interactions', () => {
-      vi.stubGlobal('EventSource', MockEventSource);
-      renderInRouter(<LogViewer jobId="j1" />);
+    it('badge and button never disagree across a sequence of interactions', async () => {
+      await renderLive();
 
       const check = (label: string): void => {
         const paused = screen.queryByText('Paused') !== null;
@@ -321,6 +352,93 @@ describe('LogViewer', () => {
       act(() => { autoButton().click(); });   check('after click 2');
       scrollPaneTo(true);                     check('after scrolling to bottom');
       act(() => { autoButton().click(); });   check('after click 3');
+    });
+
+    /*
+     * "Live" is a claim about output arriving, so it must not appear when none is.
+     *
+     * Reported from the dashboard: the chip read "Live" in green on a job that had exited hours
+     * earlier. The label was derived from the follow flag alone, which says whether the pane scrolls
+     * itself - a different question. Nothing pinned this, and the tests above even asserted "Live"
+     * while telling the component nothing about the job.
+     */
+    describe('the label does not claim output is arriving when it is not', () => {
+      it('reads Ended, not Live, once the job has finished', async () => {
+        stubJobStatus(false);
+        vi.stubGlobal('EventSource', MockEventSource);
+        renderInRouter(<LogViewer jobId="j1" />);
+
+        await waitFor(() => { expect(screen.getByText('Ended')).toBeInTheDocument(); });
+        expect(screen.queryByText('Live')).toBeNull();
+      });
+
+      // Grey, not green: the colour is the other half of the claim.
+      it('drops the green fill when nothing is arriving', async () => {
+        stubJobStatus(false);
+        vi.stubGlobal('EventSource', MockEventSource);
+        renderInRouter(<LogViewer jobId="j1" />);
+
+        await waitFor(() => { expect(screen.getByText('Ended')).toBeInTheDocument(); });
+        expect(autoButton().className).not.toMatch(/bg-\S*green/);
+      });
+
+      /*
+       * "Not known yet" is not "not running". `isJobRunning` started as `false`, so the chip announced
+       * Ended for the moment before the first status response - the same false signal, inverted.
+       */
+      it('claims neither state before the job status has arrived', () => {
+        stubJobStatus(true);
+        vi.stubGlobal('EventSource', MockEventSource);
+        renderInRouter(<LogViewer jobId="j1" />);
+
+        // Synchronous, so the status fetch has not resolved.
+        expect(screen.queryByText('Live')).toBeNull();
+        expect(screen.queryByText('Ended')).toBeNull();
+        expect(screen.getByText('Following')).toBeInTheDocument();
+      });
+
+      // A pinned run is a finished file however busy the job is now, so this needs no status at all.
+      it('reads Ended on a pinned historical run even while the job is running', async () => {
+        vi.stubGlobal('fetch', (url: string) => {
+          if (url.includes('/runs')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([
+              { name: '2026-09-18T10-00-00', file: 'j1-2026-09-18T10-00-00.log', sizeBytes: 10 },
+            ]) });
+          }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({
+            job: {}, runHistory: [{ startedAt: '2026-09-19T10:00:00Z', exitCode: null, pid: 1 }],
+          }) });
+        });
+        vi.stubGlobal('EventSource', MockEventSource);
+        renderInRouter(<LogViewer jobId="j1" />);
+
+        // The job IS running, so the live tail would say Live.
+        await waitFor(() => { expect(screen.getByText('Live')).toBeInTheDocument(); });
+
+        const select = await screen.findByRole('combobox');
+        await act(async () => {
+          fireEvent.change(select, { target: { value: '2026-09-18T10-00-00' } });
+        });
+
+        expect(screen.getByText('Ended')).toBeInTheDocument();
+        expect(screen.queryByText('Live')).toBeNull();
+      });
+
+      // The follow preference survives, so output resuming picks up where the reader left it.
+      it('still toggles following while nothing is arriving', async () => {
+        stubJobStatus(false);
+        vi.stubGlobal('EventSource', MockEventSource);
+        renderInRouter(<LogViewer jobId="j1" />);
+
+        await waitFor(() => { expect(screen.getByText('Ended')).toBeInTheDocument(); });
+        expect(autoButton().getAttribute('aria-pressed')).toBe('true');
+
+        act(() => { autoButton().click(); });
+
+        expect(autoButton().getAttribute('aria-pressed')).toBe('false');
+        // Still Ended: the toggle changes following, not whether output arrives.
+        expect(screen.getByText('Ended')).toBeInTheDocument();
+      });
     });
   });
 });

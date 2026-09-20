@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { X, ArrowDown, Pause, ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
+import { X, ArrowDown, Pause, Square, ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
 import { ButtonAction, ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
@@ -164,7 +164,14 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   const [selectedRun, setSelectedRun] = useState<string>(searchParams.get('run') ?? '');
   // What the selector shows while nothing is pinned: the newest run is what the live tail is on.
   const [latestRunName, setLatestRunName] = useState<string>('');
-  const [isJobRunning, setIsJobRunning] = useState(false);
+  /*
+   * `null` until the first status response: "not known yet" is not the same answer as "not running".
+   *
+   * Conflating them made the chip below claim "Ended" for the moment before the first poll returned,
+   * on a job that was in fact running - the same false signal it exists to avoid, pointing the other
+   * way. Anything reading this has to decide what to do with `null` rather than get `false` by default.
+   */
+  const [isJobRunning, setIsJobRunning] = useState<boolean | null>(null);
   // Single source of truth for following the tail. It used to be three: this flag, a `paused`
   // state derived from the scroll position, and a `userScrolledUp` ref that silently vetoed the
   // flag. Scrolling up set the veto and the label without touching the flag, so the button still
@@ -176,6 +183,18 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
   const { ask, notify, dialog } = useConfirm();
   const [widePane, toggleWidePane] = useWidePane();
   const containerRef = useRef<HTMLPreElement>(null);
+
+  /*
+   * Whether the pane can still receive output, which is a different question from whether it is
+   * scrolling itself. Three-valued, because "not known yet" must not be reported as either.
+   *
+   * A pinned run is a finished file however busy the job is now, so that answer needs no status at
+   * all. Only the live tail has to wait for the poll.
+   *
+   * The chip below used to read `autoScroll` alone, and so announced "Live" in green on a job that had
+   * exited hours earlier and on a historical run the reader had pinned.
+   */
+  const logIsLive: boolean | null = selectedRun !== '' ? false : isJobRunning;
 
   const handleSelectRun = (name: string): void => {
     setSelectedRun(name);
@@ -363,13 +382,18 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
               loading={killing}
             />
           )}
-          {/* One control, and it IS the state indicator: green "Live" while following the tail, amber
-              "Paused" when not. There used to be a separate amber badge beside it saying Paused while
-              the button still read "Auto", which is how the two came to disagree - the badge and the
-              button were reading different variables. Saying it once means they cannot.
+          {/* One control, and it IS the state indicator: green "Live" while output is arriving and the
+              pane is following it, amber "Paused" when the reader has stopped following, grey "Ended"
+              when there is nothing arriving at all. There used to be a separate amber badge beside it
+              saying Paused while the button still read "Auto", which is how the two came to disagree -
+              the badge and the button were reading different variables. Saying it once means they
+              cannot.
 
               "Live" rather than "Auto" because it names what the reader sees - the pane is showing the
-              log as it arrives - where "Auto" named the mechanism.
+              log as it arrives - where "Auto" named the mechanism. Which is exactly why it must not be
+              shown for a log that is not arriving: it read "Live" in green on a job that had exited
+              hours earlier, and on a historical run the reader had pinned. A state indicator that
+              names something untrue is worse than no indicator.
 
               The colour comes from ChipButton's own palettes, which resolve hue tokens, so it is
               correct inside the terminal's ThemeScope rather than a hard-coded yellow.
@@ -377,21 +401,35 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
               ChipButton carries aria-pressed itself, which keeps the state readable rather than only
               visible, and is the only thing a test can hold it to. */}
           <ChipButton
-            // Always `active`, because both states are a filled chip - a chip's inactive palette is
+            // Always `active`, because every state is a filled chip - a chip's inactive palette is
             // the muted grey one, so `active={autoScroll}` would drop the amber and leave Paused
             // looking switched off rather than paused. The colour carries the state.
             active
-            color={autoScroll ? 'green' : 'yellow'}
+            // No hue unless we know output is arriving: the default palette is the grey one, which is
+            // what "this log is not moving" should look like beside a green one that is. `null` - the
+            // status not yet in - takes the same grey, because green would be a guess.
+            color={logIsLive === true ? (autoScroll ? 'green' : 'yellow') : undefined}
             // The real toggle state, overriding the one ChipButton derives from `active`. Without this
             // the control would report itself as permanently pressed, which is the accessibility half
             // of the bug where the badge and the button disagreed.
             aria-pressed={autoScroll}
             shape="square"
             onClick={handleAutoScrollToggle}
-            title={autoScroll ? 'Following the log - click to pause' : 'Paused - click to follow the log'}
+            title={logIsLive === true
+              ? (autoScroll ? 'Following the log - click to pause' : 'Paused - click to follow the log')
+              : logIsLive === false
+              ? `Nothing is arriving${selectedRun ? ' on this run' : ' - the job is not running'}. Following is ${autoScroll ? 'on' : 'off'} for when it resumes.`
+              : `Checking whether the job is running. Following is ${autoScroll ? 'on' : 'off'}.`}
           >
-            {autoScroll ? <ArrowDown size={12} /> : <Pause size={12} />}
-            {autoScroll ? 'Live' : 'Paused'}
+            {logIsLive === true && autoScroll && <ArrowDown size={12} />}
+            {logIsLive === true && !autoScroll && <Pause size={12} />}
+            {logIsLive === false && <Square size={12} />}
+            {/* `null` carries no icon: every glyph here would be a claim about a state not yet known. */}
+            {logIsLive === true ? (autoScroll ? 'Live' : 'Paused')
+              : logIsLive === false ? 'Ended'
+              // Names the follow setting only, which is the one thing that IS known before the status
+              // lands. "Live" here would be the guess this whole branch exists to avoid.
+              : (autoScroll ? 'Following' : 'Paused')}
           </ChipButton>
           {/* Width, remembered per reader. A log line is long, and the reading column that suits the
               rest of the dashboard is the one place it works against you - but it stays a preference,

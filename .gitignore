@@ -30,6 +30,8 @@ packages/orchestrator-cli/server/public/
 # needs because the commit guardrail rejects heredocs. Useful while working, worthless afterwards, and
 # eight of them had accumulated untracked before anyone noticed.
 .claude/tmp-*
+# Single-use codemods, kept out of the tree once they have run. The durable ones have real names.
+scripts/tmp-*
 # Bypass state, written only by the guardrails plugin after the user approves. Machine-local by
 # definition, and committing it would hand another checkout someone else's approvals.
 .claude/w-guardrails/
