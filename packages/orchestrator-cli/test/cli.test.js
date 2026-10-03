@@ -402,6 +402,130 @@ describe('orch logs (top-level)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// orch logs --job <id>
+//
+// RunLogger (src/logger.ts) writes one file per execution --
+// logs/jobs/<id>/<id>-<startedAt>.log -- not one aggregate file per day.
+// `orch logs --job` must assemble today's runs from those per-run files,
+// oldest first, and must not misreport --job/--tail values as unknown args.
+// ---------------------------------------------------------------------------
+
+describe('orch logs --job', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+
+  function writeJobRunLog(dir, jobId, startedAt, content) {
+    const jobLogDir = path.join(dir, 'logs', 'jobs', jobId);
+    fs.mkdirSync(jobLogDir, { recursive: true });
+    const compact = startedAt.replace(/:/g, '-').slice(0, 19);
+    fs.writeFileSync(path.join(jobLogDir, `${jobId}-${compact}.log`), content);
+  }
+
+  function captureStdout() {
+    const written = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk) => { written.push(chunk); return true; };
+    return { written, restore: () => { process.stdout.write = origWrite; } };
+  }
+
+  function captureStderr() {
+    const written = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (chunk) => { written.push(chunk); return true; };
+    return { written, restore: () => { process.stderr.write = origWrite; } };
+  }
+
+  test('prints a per-job message and exits 0 when no run happened today', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-job-nofile-'));
+    const out = captureStdout();
+    try {
+      const { exitCode } = await run(['logs', '--job', 'codex-update'], { deps: { configDir: dir } });
+      assert.equal(exitCode, 0, 'orch logs --job must exit 0 with helpful message when no run today');
+      const text = out.written.join('');
+      // stdout.isTTY is false under the test runner, so output is JSON-encoded and quotes
+      // around the job id come back escaped (\") rather than literal (").
+      assert.ok(text.includes('No logs for job'), 'must mention the missing-logs message');
+      assert.ok(text.includes('codex-update'), 'must mention the specific job id');
+      assert.ok(text.includes('today'), 'must mention the missing-logs message');
+    } finally {
+      out.restore();
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  test('concatenates every run of today, oldest first, from the per-run log files', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-job-multi-'));
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      // Written out of chronological order to prove the result is sorted, not insertion order.
+      writeJobRunLog(dir, 'codex-update', `${today}T14:37:57`, '[2026-01-01 14:37:57] run three\n');
+      writeJobRunLog(dir, 'codex-update', `${today}T13:49:46`, '[2026-01-01 13:49:46] run one\n');
+      writeJobRunLog(dir, 'codex-update', `${today}T14:11:14`, '[2026-01-01 14:11:14] run two\n');
+
+      const out = captureStdout();
+      let exitCode;
+      try {
+        ({ exitCode } = await run(['logs', '--job', 'codex-update'], { deps: { configDir: dir } }));
+      } finally {
+        out.restore();
+      }
+      const text = out.written.join('');
+      assert.equal(exitCode, 0);
+      const posOne   = text.indexOf('run one');
+      const posTwo   = text.indexOf('run two');
+      const posThree = text.indexOf('run three');
+      assert.ok(posOne !== -1 && posTwo !== -1 && posThree !== -1, 'all three runs must be present');
+      assert.ok(posOne < posTwo && posTwo < posThree, 'runs must appear oldest first, not file-write order');
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  test('--job and --tail values are not reported as unknown arguments', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-job-tail-'));
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      writeJobRunLog(dir, 'codex-update', `${today}T14:37:57`, '[2026-01-01 14:37:57] only line\n');
+
+      const out = captureStdout();
+      const err = captureStderr();
+      try {
+        await run(['logs', '--job', 'codex-update', '--tail', '5'], { deps: { configDir: dir } });
+      } finally {
+        out.restore();
+        err.restore();
+      }
+      assert.equal(err.written.join(''), '', 'must not warn about --job/--tail values as unknown arguments');
+      assert.ok(out.written.join('').includes('only line'), 'must still print the log content');
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  test('--tail limits to the last N lines across the concatenated per-run content', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logs-job-tailn-'));
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      writeJobRunLog(dir, 'codex-update', `${today}T13:00:00`, '[2026-01-01 13:00:00] oldest\n');
+      writeJobRunLog(dir, 'codex-update', `${today}T14:00:00`, '[2026-01-01 14:00:00] newest\n');
+
+      const out = captureStdout();
+      try {
+        await run(['logs', '--job', 'codex-update', '--tail', '1'], { deps: { configDir: dir } });
+      } finally {
+        out.restore();
+      }
+      const text = out.written.join('');
+      assert.ok(text.includes('newest'), '--tail 1 must keep the last line');
+      assert.ok(!text.includes('oldest'), '--tail 1 must drop everything before the last line');
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // --version, --pid, --help (Decision #20)
 // ---------------------------------------------------------------------------
 

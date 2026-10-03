@@ -45,7 +45,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/static": "^8.0.0",
-    "@wadeck-app/shared-cli": "^2026.8.31-022-55ef14e0",
+    "@wadeck-app/shared-cli": "^2026.10.3-035-1e4adce3",
     "@wadeck-app/shared-updater": "^2026.9.1-014-558289d8",
     "@wadeck-app/singleton-daemon-kit": "2026.9.15-090-0627f245",
     "fastify": "^5.0.0",

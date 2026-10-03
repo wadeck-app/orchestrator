@@ -196,7 +196,10 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
  *
  * The whole reason `--timeout` appeared to do nothing: an unrecognised flag was dropped without a
  * word, and the command still reported success. shared-cli's warnUnknownArgs cannot be used here --
- * it inspects every argument, so it would flag the VALUES of legitimate flags as unknown.
+ * it only warns and continues, so a typo'd flag on `add`/`edit` would again be silently accepted
+ * (same class of bug) instead of failing the command. It also always needs a hardcoded value-flags
+ * list; this function derives which flags take a value from JOB_FIELD_FLAGS, which `add` and `edit`
+ * already maintain, so new fields stay correct here for free.
  */
 function rejectUnknownFlags(argv: string[], extra: string[], cmdName: string): void {
   const known = new Set([...JOB_FIELD_FLAGS.map(f => f.flag), ...extra]);
@@ -1354,42 +1357,38 @@ Use --wait to block until the command finishes.`);
       const tailFlag = flag(rest, '--tail');
       const sinceFlag = flag(rest, '--since');
       const jsonFlag = has(rest, '--json');
-      warnUnknownArgs(rest, [...followFlags, '--job', '--tail', '--since', '--json'], 'orch logs');
+      warnUnknownArgs(
+        rest,
+        [...followFlags, '--job', '--tail', '--since', '--json'],
+        'orch logs',
+        new Set(['--job', '--tail', '--since']),
+      );
       const follow = has(rest, '--follow') || has(rest, '-f');
       const tailLines = tailFlag ? parseInt(tailFlag, 10) : undefined;
       const json = jsonFlag || !process.stdout.isTTY;
 
-      const today   = new Date().toISOString().slice(0, 10);
-      let logFile: string;
-      if (jobFlag) {
-        logFile = path.join(configDir, 'logs', 'jobs', jobFlag, `${jobFlag}-${today}.log`);
-      } else {
-        logFile = path.join(configDir, 'logs', 'daemon', `daemon-${today}.log`);
-      }
-
       const fsLogs  = require('node:fs') as typeof import('node:fs');
-      if (!fsLogs.existsSync(logFile)) {
-        const msg = jobFlag
-          ? `No logs for job "${jobFlag}" today`
-          : `No daemon logs for today`;
-        process.stdout.write(json ? JSON.stringify({ message: msg }) + '\n' : msg + '\n');
-        if (!follow) {
-          return;
-        }
-      }
+      const today   = new Date().toISOString().slice(0, 10);
 
-      const parseLines = (content: string): string[] => {
-        let lines = content.split('\n').filter(l => l);
-        if (tailLines !== undefined) {
-          lines = lines.slice(Math.max(0, lines.length - tailLines));
+      // Job logs are written one file per run -- `<jobId>-<startedAt>.log` (see RunLogger) --
+      // not one aggregate file per day, so the day's logs must be assembled from every run file
+      // that started today, oldest first.
+      const jobLogDir = jobFlag ? path.join(configDir, 'logs', 'jobs', jobFlag) : undefined;
+      const todaysJobLogFiles = (): string[] => {
+        if (!jobLogDir || !fsLogs.existsSync(jobLogDir)) {
+          return [];
         }
-        return lines;
+        return fsLogs.readdirSync(jobLogDir)
+          .filter(f => f.startsWith(`${jobFlag}-${today}`) && f.endsWith('.log'))
+          .sort()
+          .map(f => path.join(jobLogDir, f));
       };
 
-      let offset = 0;
-      if (fsLogs.existsSync(logFile)) {
-        const content = fsLogs.readFileSync(logFile, 'utf8');
-        const lines = parseLines(content);
+      const logFile = jobFlag
+        ? undefined
+        : path.join(configDir, 'logs', 'daemon', `daemon-${today}.log`);
+
+      const printLines = (lines: string[]): void => {
         if (json) {
           for (const line of lines) {
             const match = line.match(/\[([\d-: ]+)\] (.*)/);
@@ -1405,43 +1404,84 @@ Use --wait to block until the command finishes.`);
             process.stdout.write('\n');
           }
         }
-        offset = Buffer.byteLength(content, 'utf8');
+      };
+
+      const parseLines = (content: string): string[] => {
+        let lines = content.split('\n').filter(l => l);
+        if (tailLines !== undefined) {
+          lines = lines.slice(Math.max(0, lines.length - tailLines));
+        }
+        return lines;
+      };
+
+      let offset = 0;
+      let watchedFile: string | undefined;
+      if (jobFlag) {
+        const files = todaysJobLogFiles();
+        if (files.length === 0) {
+          const msg = `No logs for job "${jobFlag}" today`;
+          process.stdout.write(json ? JSON.stringify({ message: msg }) + '\n' : msg + '\n');
+        } else {
+          const content = files.map(f => fsLogs.readFileSync(f, 'utf8')).join('');
+          printLines(parseLines(content));
+          watchedFile = files[files.length - 1];
+          offset = fsLogs.statSync(watchedFile).size;
+        }
+      } else {
+        if (!fsLogs.existsSync(logFile!)) {
+          const msg = `No daemon logs for today`;
+          process.stdout.write(json ? JSON.stringify({ message: msg }) + '\n' : msg + '\n');
+        } else {
+          const content = fsLogs.readFileSync(logFile!, 'utf8');
+          printLines(parseLines(content));
+          offset = Buffer.byteLength(content, 'utf8');
+        }
+        watchedFile = logFile;
       }
+
       if (!follow) {
         return;
       }
+
+      const tailFile = (file: string): void => {
+        const size = fsLogs.statSync(file).size;
+        if (size <= offset) {
+          return;
+        }
+        const buf = Buffer.alloc(size - offset);
+        const fd  = fsLogs.openSync(file, 'r');
+        fsLogs.readSync(fd, buf, 0, buf.length, offset);
+        fsLogs.closeSync(fd);
+        offset = size;
+        printLines(buf.toString('utf8').split('\n').filter(l => l));
+      };
+
       await new Promise<void>((resolve) => {
-        fsLogs.watchFile(logFile, { interval: 250 }, () => {
-          if (!fsLogs.existsSync(logFile)) {
-            return;
-          }
-          const size = fsLogs.statSync(logFile).size;
-          if (size <= offset) {
-            return;
-          }
-          const buf = Buffer.alloc(size - offset);
-          const fd  = fsLogs.openSync(logFile, 'r');
-          fsLogs.readSync(fd, buf, 0, buf.length, offset);
-          fsLogs.closeSync(fd);
-          offset = size;
-          const newLines = buf.toString('utf8').split('\n').filter(l => l);
-          if (json) {
-            for (const line of newLines) {
-              const match = line.match(/\[([\d-: ]+)\] (.*)/);
-              if (match) {
-                console.log(JSON.stringify({ timestamp: match[1], message: match[2] }));
-              } else {
-                console.log(JSON.stringify({ message: line }));
-              }
+        if (jobFlag) {
+          // Each run writes a brand-new file (no single file to grow), so follow has to watch
+          // the job's log directory and switch to whichever file is newest after each change.
+          const dirWatcher = fsLogs.watch(jobLogDir!, { persistent: true }, () => {
+            const files = todaysJobLogFiles();
+            const latest = files[files.length - 1];
+            if (!latest) {
+              return;
             }
-          } else {
-            process.stdout.write(newLines.join('\n'));
-            if (newLines.length > 0) {
-              process.stdout.write('\n');
+            if (latest !== watchedFile) {
+              watchedFile = latest;
+              offset = 0;
             }
-          }
-        });
-        process.on('SIGINT', () => { fsLogs.unwatchFile(logFile); resolve(); });
+            tailFile(watchedFile);
+          });
+          process.on('SIGINT', () => { dirWatcher.close(); resolve(); });
+        } else {
+          fsLogs.watchFile(watchedFile!, { interval: 250 }, () => {
+            if (!fsLogs.existsSync(watchedFile!)) {
+              return;
+            }
+            tailFile(watchedFile!);
+          });
+          process.on('SIGINT', () => { fsLogs.unwatchFile(watchedFile!); resolve(); });
+        }
       });
       return;
     }
