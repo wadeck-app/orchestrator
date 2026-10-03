@@ -15,6 +15,9 @@ import { activeWindowError } from './active-window.js';
  */
 const CRON_RE = /^(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)$/;
 
+// Same regex as the logs route's path-traversal guard -- see the comment on JOB_ID_RE there.
+const JOB_ID_RE = /^[a-z0-9-]+$/i;
+
 // Use Sets from enums for validation (single source of truth)
 const VALID_TYPES         = new Set(JOB_TYPES);
 const VALID_TRIGGER_MODES = new Set(TRIGGER_MODES);
@@ -32,6 +35,12 @@ export function validateJob(job: Partial<Job>): void {
   }
   if (job.id.includes('\x00'))                         {
     throw new Error('Job id must not contain null bytes');
+  }
+  // Matches the logs route's path-traversal guard (P-7: /^[a-z0-9-]+$/i, not to be relaxed).
+  // Caught here, at creation, so a job never ends up with a working schedule and a log pane
+  // stuck on "invalid-job-id".
+  if (!JOB_ID_RE.test(job.id))                         {
+    throw new Error(`Job id must contain only letters, digits, and hyphens (got: "${job.id}")`);
   }
   if (!job.type || !VALID_TYPES.has(job.type))         {
     throw new Error(`Job type must be "cron", "startup", or "once" (got: ${job.type})`);

@@ -232,3 +232,13 @@ export function refreshStartupEntry(configDir: string): StartupResult | null {
   }
   return enableStartup(configDir);
 }
+
+/**
+ * Whether it's safe to delete staged binaries from stamps other than the current one.
+ *
+ * Not safe when the registry/plist refresh failed: it still names the OLD stamp (the write
+ * never happened), and deleting that stamp would break login with no way to self-repair.
+ */
+export function shouldPruneStaleBinaries(startupRefresh: StartupResult | null): boolean {
+  return startupRefresh === null || startupRefresh.ok;
+}

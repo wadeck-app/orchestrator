@@ -19,7 +19,7 @@ import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
-import { refreshStartupEntry } from './startup.js';
+import { refreshStartupEntry, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 
@@ -132,9 +132,8 @@ async function main(): Promise<void> {
   // writePreStartLog() already called at module level -- no duplicate call needed.
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   cleanTmpDir(path.join(CONFIG_DIR, 'tmp'), { maxAgeDays: 7, maxSizeMb: 100 });
-  // Copies of the native binaries from versions this install no longer uses. Best-effort: an older
-  // launcher may still be running from its own copy, and a running image cannot be deleted.
-  pruneStaleStagedBinaries(CONFIG_DIR);
+  // Stale binary cleanup moved below refreshStartupEntry: deleting the old stamp before the
+  // login entry is repointed at the new one could leave login pointing at a deleted path.
 
   // Init updateManager before try/finally so scheduleUpdate fires even on crash paths.
   // @wadeck-app/shared-cli is ESM-only - use dynamic import() from a CJS module context.
@@ -312,11 +311,22 @@ async function main(): Promise<void> {
     });
     await trayManager.start();
 
-    // Re-point the start-at-login entry at the current install paths. An nvm/node upgrade
-    // or an npm prefix change moves the launcher and would otherwise leave a dead entry.
-    const startupRefresh = refreshStartupEntry(CONFIG_DIR);
-    if (startupRefresh && !startupRefresh.ok) {
-      daemonLog.write(`start-at-login refresh failed: ${startupRefresh.error}`);
+    // Re-point the start-at-login entry at the current install paths. Wrapped: staging the new
+    // binary can throw before enableStartup's own try/catch, and that must not crash the daemon.
+    let startupRefresh: ReturnType<typeof refreshStartupEntry> = null;
+    try {
+      startupRefresh = refreshStartupEntry(CONFIG_DIR);
+      if (startupRefresh && !startupRefresh.ok) {
+        daemonLog.write(`start-at-login refresh failed: ${startupRefresh.error}`);
+      }
+    } catch (e) {
+      daemonLog.write(`start-at-login refresh crashed: ${getErrorMessage(e)}`);
+      startupRefresh = { ok: false, error: getErrorMessage(e) };
+    }
+
+    // Only prune once nothing still needs the old stamp -- see shouldPruneStaleBinaries.
+    if (shouldPruneStaleBinaries(startupRefresh)) {
+      pruneStaleStagedBinaries(CONFIG_DIR);
     }
 
     // Read and log any update state written by the background updater on previous run.

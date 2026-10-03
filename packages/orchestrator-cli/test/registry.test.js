@@ -112,6 +112,30 @@ describe('add()', () => {
     assert.throws(() => reg.add({ ...JOB_CRON, id: '' }), /id/i);
   });
 
+  // The logs route (orch-server/src/routes/logs.ts) rejects any jobId outside
+  // /^[a-z0-9-]+$/i as a path-traversal guard (P-7, do not relax). A job id that fails that
+  // guard builds and schedules fine, but its own log pane returns "invalid-job-id" forever --
+  // reproduced on job id "claude update". Catching it here, at creation, is the actionable
+  // error; the logs route staying strict is the security boundary.
+  test('throws on job id containing a space', () => {
+    const dir = tmpDir();
+    const reg = makeRegistry(dir);
+    assert.throws(() => reg.add({ ...JOB_STARTUP, id: 'claude update' }), /letters, digits, and hyphens/i);
+  });
+
+  test('throws on job id containing other non-alphanumeric characters', () => {
+    const dir = tmpDir();
+    const reg = makeRegistry(dir);
+    assert.throws(() => reg.add({ ...JOB_STARTUP, id: 'claude_update!' }), /letters, digits, and hyphens/i);
+  });
+
+  test('accepts a job id with letters, digits, and hyphens', () => {
+    const dir = tmpDir();
+    const reg = makeRegistry(dir);
+    reg.add({ ...JOB_STARTUP, id: 'claude-update-2' });
+    assert.equal(reg.load().jobs[0].id, 'claude-update-2');
+  });
+
   test('throws on invalid cron expression', () => {
     const dir = tmpDir();
     const reg = makeRegistry(dir);
