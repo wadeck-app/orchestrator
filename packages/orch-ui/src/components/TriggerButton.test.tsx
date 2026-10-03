@@ -85,7 +85,7 @@ describe('TriggerButton geometry comes from the design system', () => {
     const btn = screen.getByRole('button');
     // dsl-ui's button base; absent from the previous hand-rolled class string.
     expect(btn.className).toContain('justify-center');
-    expect(btn.className).toContain('focus:ring-2');
+    expect(btn.className).toContain('focus-visible:ring-2');
   });
 
   it('sets no padding or font size of its own', () => {
