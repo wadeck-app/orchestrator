@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { X, ArrowDown, Pause, Square, ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
+import { X, ArrowDown, Pause, Square, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
 import { ButtonAction, ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
@@ -370,7 +370,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
             ? matchCount !== null ? `${matchCount} / ${lines.length} lines` : `${lines.length} lines`
             : 'Connecting...'}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {isJobRunning && (
             <ButtonAction
               label={killing ? 'Killing...' : 'Kill'}
@@ -382,76 +382,81 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
               loading={killing}
             />
           )}
-          {/* One control, and it IS the state indicator: green "Live" while output is arriving and the
-              pane is following it, amber "Paused" when the reader has stopped following, grey "Ended"
-              when there is nothing arriving at all. There used to be a separate amber badge beside it
-              saying Paused while the button still read "Auto", which is how the two came to disagree -
-              the badge and the button were reading different variables. Saying it once means they
-              cannot.
+          {/* Button group for status and view controls */}
+          <div className="flex items-center gap-1.5">
+            {/* One control, and it IS the state indicator: green "Live" while output is arriving and the
+                pane is following it, amber "Paused" when the reader has stopped following, grey "Ended"
+                when there is nothing arriving at all. There used to be a separate amber badge beside it
+                saying Paused while the button still read "Auto", which is how the two came to disagree -
+                the badge and the button were reading different variables. Saying it once means they
+                cannot.
 
-              "Live" rather than "Auto" because it names what the reader sees - the pane is showing the
-              log as it arrives - where "Auto" named the mechanism. Which is exactly why it must not be
-              shown for a log that is not arriving: it read "Live" in green on a job that had exited
-              hours earlier, and on a historical run the reader had pinned. A state indicator that
-              names something untrue is worse than no indicator.
+                "Live" rather than "Auto" because it names what the reader sees - the pane is showing the
+                log as it arrives - where "Auto" named the mechanism. Which is exactly why it must not be
+                shown for a log that is not arriving: it read "Live" in green on a job that had exited
+                hours earlier, and on a historical run the reader had pinned. A state indicator that
+                names something untrue is worse than no indicator.
 
-              The colour comes from ChipButton's own palettes, which resolve hue tokens, so it is
-              correct inside the terminal's ThemeScope rather than a hard-coded yellow.
+                The colour comes from ChipButton's own palettes, which resolve hue tokens, so it is
+                correct inside the terminal's ThemeScope rather than a hard-coded yellow.
 
-              ChipButton carries aria-pressed itself, which keeps the state readable rather than only
-              visible, and is the only thing a test can hold it to. */}
-          <ChipButton
-            // Always `active`, because every state is a filled chip - a chip's inactive palette is
-            // the muted grey one, so `active={autoScroll}` would drop the amber and leave Paused
-            // looking switched off rather than paused. The colour carries the state.
-            active
-            // No hue unless we know output is arriving: the default palette is the grey one, which is
-            // what "this log is not moving" should look like beside a green one that is. `null` - the
-            // status not yet in - takes the same grey, because green would be a guess.
-            color={logIsLive === true ? (autoScroll ? 'green' : 'yellow') : undefined}
-            // The real toggle state, overriding the one ChipButton derives from `active`. Without this
-            // the control would report itself as permanently pressed, which is the accessibility half
-            // of the bug where the badge and the button disagreed.
-            aria-pressed={autoScroll}
-            shape="square"
-            onClick={handleAutoScrollToggle}
-            title={logIsLive === true
-              ? (autoScroll ? 'Following the log - click to pause' : 'Paused - click to follow the log')
-              : logIsLive === false
-              ? `Nothing is arriving${selectedRun ? ' on this run' : ' - the job is not running'}. Following is ${autoScroll ? 'on' : 'off'} for when it resumes.`
-              : `Checking whether the job is running. Following is ${autoScroll ? 'on' : 'off'}.`}
-          >
-            {logIsLive === true && autoScroll && <ArrowDown size={12} />}
-            {logIsLive === true && !autoScroll && <Pause size={12} />}
-            {logIsLive === false && <Square size={12} />}
-            {/* `null` carries no icon: every glyph here would be a claim about a state not yet known. */}
-            {logIsLive === true ? (autoScroll ? 'Live' : 'Paused')
-              : logIsLive === false ? 'Ended'
-              // Names the follow setting only, which is the one thing that IS known before the status
-              // lands. "Live" here would be the guess this whole branch exists to avoid.
-              : (autoScroll ? 'Following' : 'Paused')}
-          </ChipButton>
-          {/* Width, remembered per reader. A log line is long, and the reading column that suits the
-              rest of the dashboard is the one place it works against you - but it stays a preference,
-              which is why the choice is stored rather than decided here.
+                ChipButton carries aria-pressed itself, which keeps the state readable rather than only
+                visible, and is the only thing a test can hold it to. */}
+            <ChipButton
+              // Always `active`, because every state is a filled chip - a chip's inactive palette is
+              // the muted grey one, so `active={autoScroll}` would drop the amber and leave Paused
+              // looking switched off rather than paused. The colour carries the state.
+              active
+              // No hue unless we know output is arriving: the default palette is the grey one, which is
+              // what "this log is not moving" should look like beside a green one that is. `null` - the
+              // status not yet in - takes the same grey, because green would be a guess.
+              color={logIsLive === true ? (autoScroll ? 'green' : 'yellow') : undefined}
+              // The real toggle state, overriding the one ChipButton derives from `active`. Without this
+              // the control would report itself as permanently pressed, which is the accessibility half
+              // of the bug where the badge and the button disagreed.
+              aria-pressed={autoScroll}
+              shape="square"
+              onClick={handleAutoScrollToggle}
+              title={logIsLive === true
+                ? (autoScroll ? 'Following the log - click to pause' : 'Paused - click to follow the log')
+                : logIsLive === false
+                ? `Nothing is arriving${selectedRun ? ' on this run' : ' - the job is not running'}. Following is ${autoScroll ? 'on' : 'off'} for when it resumes.`
+                : `Checking whether the job is running. Following is ${autoScroll ? 'on' : 'off'}.`}
+            >
+              {logIsLive === true && autoScroll && <ArrowDown size={12} />}
+              {logIsLive === true && !autoScroll && <Pause size={12} />}
+              {logIsLive === false && <Square size={12} />}
+              {/* `null` carries no icon: every glyph here would be a claim about a state not yet known. */}
+              {logIsLive === true ? (autoScroll ? 'Live' : 'Paused')
+                : logIsLive === false ? 'Ended'
+                // Names the follow setting only, which is the one thing that IS known before the status
+                // lands. "Live" here would be the guess this whole branch exists to avoid.
+                : (autoScroll ? 'Following' : 'Paused')}
+            </ChipButton>
+            {/* Width, remembered per reader. A log line is long, and the reading column that suits the
+                rest of the dashboard is the one place it works against you - but it stays a preference,
+                which is why the choice is stored rather than decided here.
 
-              The icon names the ACTION, not the state: chevrons pushing apart while narrow, pulling
-              together while wide.
+                The icon names the current state: maximize icon when narrow (shows what clicking will do),
+                minimize icon when wide (shows what clicking will do).
 
-              `active` tracks the mode here, unlike the Live/Paused chip beside it. There both states
-              are meaningful and the colour carries which one, so it is always filled; full width is
-              plainly on or off, and the muted inactive palette says "off" correctly. */}
-          <ChipButton
-            active={widePane}
-            color="blue"
-            aria-pressed={widePane}
-            shape="square"
-            onClick={toggleWidePane}
-            title={widePane ? 'Full width - click for the fixed reading width' : 'Fixed width - click to use the full page'}
-          >
-            {widePane ? <ChevronsRightLeft size={12} /> : <ChevronsLeftRight size={12} />}
-            {widePane ? 'Narrow' : 'Wide'}
-          </ChipButton>
+                `active` tracks the mode here, unlike the Live/Paused chip beside it. There both states
+                are meaningful and the colour carries which one, so it is always filled; full width is
+                plainly on or off, and the muted inactive palette says "off" correctly. */}
+            <ChipButton
+              active={widePane}
+              color="blue"
+              aria-pressed={widePane}
+              shape="square"
+              onClick={toggleWidePane}
+              title={widePane ? 'Full width - click for the fixed reading width' : 'Fixed width - click to use the full page'}
+            >
+              {widePane ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+              {widePane ? 'Narrow' : 'Wide'}
+            </ChipButton>
+          </div>
+          {/* Subtle separator between button group and search */}
+          <div className="h-5 w-px bg-border opacity-50" />
           {/* The same SearchBar the job list uses. It brings its own search icon, clear button
               and role=search, and the scoped tokens make it terminal-dark. debounceMs 0 keeps
               filtering per keystroke, which a log tail needs. */}
@@ -460,6 +465,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
             onChange={setSearch}
             placeholder="Search..."
             debounceMs={0}
+            size="sm"
           />
         </div>
       </div>

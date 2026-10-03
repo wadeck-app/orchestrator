@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@wadeck-app/dsl-renderer": "^2026.9.20-084-71974d35",
-    "@wadeck-app/dsl-ui": "^2026.9.20-084-71974d35",
+    "@wadeck-app/dsl-ui": "^2026.10.3-085-45c50664",
     "lucide-react": "^0.400.0"
   },
   "peerDependencies": {
