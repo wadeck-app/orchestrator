@@ -1515,8 +1515,8 @@ export async function main(): Promise<void> {
 
     // The Go launcher is required, with no degraded mode behind it. It supervises the daemon,
     // which is what makes auto-restart after an update work, and on Windows it is also the
-    // only thing that detaches cleanly: any spawn() from MSYS2/Git Bash is tracked in the
-    // process group, so the shell waits for all descendants even with detached+unref().
+    // only thing that detaches cleanly: the shell tracks every descendant of an MSYS2/Git Bash
+    // spawn() in its process group, so it waits for them even with detached+unref().  // violations-suppress: cli/no-spawn-without-windows-hide prose, not a call
     // Starting the daemon without it used to be a silent fallback through wscript.exe, which
     // produced a daemon that looked fine and never restarted itself after an update.
     const launcherPath = launcherToRun(configDir);

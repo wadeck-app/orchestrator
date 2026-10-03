@@ -151,7 +151,7 @@ function isEmptyValue(value: unknown): boolean {
  *
  * Two things this fixes rather than merely tidies: every job used to carry `"cwd": null` and
  * `"liveness": null` whether or not it had either, and `orch edit j --cwd ""` stored an empty string
- * that the scheduler handed to spawn() as a working directory.
+ * that the scheduler handed to spawn() as a working directory.  // violations-suppress: cli/no-spawn-without-windows-hide prose, not a call
  *
  * Idempotent, and applied on every write, so a job written by an older daemon is reshaped as soon as
  * anything at all is saved -- no migration step, and no file where two shapes coexist.
