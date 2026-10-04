@@ -31,6 +31,7 @@ beforeEach(() => {
 		onmessage: ((e: MessageEvent) => void) | null = null;
 		onerror: (() => void) | null = null;
 		close(): void {}
+		addEventListener(): void {}
 	});
 	stubFetch(RUNS);
 });
