@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { EventEmitter } = require('node:events');
 
 const { Scheduler } = require('../src/scheduler');
 const { Registry } = require('../src/registry');
@@ -189,6 +190,84 @@ describe('resource peaks are persisted while the job runs', () => {
     const hook = src.slice(src.indexOf('onShutdown:'), src.indexOf('onShutdown:') + 800);
     assert.match(hook, /state\.shutdown\(\)/,
       'the shutdown hook no longer flushes state; pending records will be dropped on stop');
+  });
+
+  // Race condition: a sampleUsage() call that started while the job was still alive can resolve
+  // AFTER the close handler has already written finishedAt into state. clearInterval cannot retract
+  // a Promise that is already settled, so the .then() runs after close and called flushPeaks(),
+  // which overwrote finishedAt with exitCode:null — leaving the daemon thinking the job was
+  // still running and blocking auto-updates indefinitely.
+  test('late in-flight sample does not overwrite the completed entry', async () => {
+    const dir = tmpDir();
+    const registry = new Registry(path.join(dir, 'registry.json'));
+    const state = new State(path.join(dir, 'state.json'));
+
+    // Deferred sample: we control exactly when it resolves
+    let resolveSample = null;
+    const sampleUsage = () => new Promise(resolve => { resolveSample = resolve; });
+
+    // Controllable child: does NOT auto-emit close like fakeChild() does
+    const child = new EventEmitter();
+    child.pid = 99999;
+    child.stdout = null;
+    child.stderr = null;
+    child.killed = false;
+
+    const sched = new Scheduler(registry, state, {
+      configDir: dir,
+      sampleUsage,
+      sampleIntervalMs: 50,
+      peakFlushMs: 0,  // flush immediately when peakDirty so the race is deterministic
+      liveness: async () => false,
+      spawn: () => child,
+    });
+
+    registry.add({
+      id: 'race-job', type: 'startup', delaySeconds: 0,
+      command: 'irrelevant', enabled: true,
+      triggerMode: 'fire-and-forget', liveness: null,
+    });
+
+    async function waitFor(predicate, label, timeoutMs = 5000) {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        if (predicate()) return;
+        await new Promise(r => setTimeout(r, 10));
+      }
+      assert.fail(`timed out waiting for: ${label}`);
+    }
+
+    try {
+      void sched.trigger('race-job');
+
+      await waitFor(() => state.get('race-job')?.pid != null, 'job to be recorded');
+      await waitFor(() => resolveSample !== null, 'first sample to be in-flight');
+
+      // Process exits — close handler runs synchronously, records finishedAt
+      child.emit('close', 0);
+
+      await waitFor(() => state.get('race-job')?.finishedAt != null, 'finishedAt to be set');
+
+      // The in-flight sample now resolves with non-null usage — this is the race: the .then()
+      // will call flushPeaks() which would overwrite finishedAt with exitCode:null
+      const capturedResolve = resolveSample;
+      resolveSample = null;
+      capturedResolve({ cpuPct: 50, ramMb: 200 });
+
+      // Drain microtasks so the .then() and any subsequent state.record() run
+      await Promise.resolve();
+      await new Promise(r => setImmediate(r));
+      // State batches disk writes on a 500ms timer; wait for it so the assertion reads from disk
+      await new Promise(r => setTimeout(r, 600));
+
+      const entry = state.get('race-job');
+      assert.ok(entry?.finishedAt != null,
+        `finishedAt was erased by the late in-flight sample (entry: ${JSON.stringify(entry)})`);
+      assert.equal(entry.exitCode, 0,
+        `exitCode was overwritten with null by the late in-flight sample (entry: ${JSON.stringify(entry)})`);
+    } finally {
+      await sched.stop();
+    }
   });
 
   test('the baseline ignores in-flight peaks, so mid-run writes cannot skew the budget', () => {

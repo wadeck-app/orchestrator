@@ -956,8 +956,12 @@ export class Scheduler extends EventEmitter {
      */
     let peakDirty    = false;
     let peakFlushedAt = Date.now();
+    // Set to true in the close handler so that any in-flight sampleUsage() Promise that resolves
+    // after close cannot call flushPeaks() and overwrite finishedAt with exitCode:null.
+    // clearInterval cannot retract a Promise already in-flight, so this flag is the guard.
+    let jobFinished  = false;
     const flushPeaks = (): void => {
-      if (!peakDirty) {
+      if (!peakDirty || jobFinished) {
         return;
       }
       peakDirty     = false;
@@ -1104,6 +1108,7 @@ export class Scheduler extends EventEmitter {
 
     const done = new Promise<{ exitCode: number | null }>((resolve) => {
       child.on('close', (code) => {
+        jobFinished = true;
         this._activeChildren.delete(job.id);
         timeoutHandle?.cancel();
         resourceTimer?.cancel();
