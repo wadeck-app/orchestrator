@@ -5,6 +5,13 @@ import { ONCE_RETENTION_DEFAULTS } from './registry.js';
 
 export interface DaemonConfig {
   autoUpdate?: boolean;
+  /**
+   * How often the background updater actually checks npm for a new version (default: "4h").
+   * Not read by the daemon itself -- @wadeck-app/shared-updater reads this same config.yml file
+   * independently. Recognized here purely so a legitimate key doesn't trip the "unknown key"
+   * warning below; see docs/daemon-config.md.
+   */
+  checkInterval?: string;
   /** Seconds to wait after daemon start before firing the first catch-up job (default: 300) */
   catchUpInitialDelaySeconds?: number;
   /** Seconds between consecutive catch-up jobs on startup (default: 300) */
@@ -17,6 +24,7 @@ export interface DaemonConfig {
 
 const DEFAULTS: Required<DaemonConfig> = {
   autoUpdate:                  true,
+  checkInterval:               '4h',
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,
   // From the registry, so the documented default and the one a Registry built without options uses
@@ -25,13 +33,18 @@ const DEFAULTS: Required<DaemonConfig> = {
   onceRetentionMaxJobs:        ONCE_RETENTION_DEFAULTS.onceRetentionMaxJobs,
 };
 
+// Mirrors @wadeck-app/shared-updater's own parseIntervalMs regex -- kept in sync by hand since
+// daemonConfig.ts only validates the string here, it never converts it (shared-updater does that).
+const DURATION_RE = /^\d+(ms|s|m|h|d)?$/;
+
 /**
  * What each key accepts. A table rather than a chain of ifs, so the parser can also tell a typo from
  * a key it simply has not been taught -- `onceRetentionDay: 30` used to be indistinguishable from
  * "not configured", which is the worst way for a setting to fail.
  */
-const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeInt'> = {
+const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeInt' | 'duration'> = {
   autoUpdate:                 'boolean',
+  checkInterval:              'duration',
   catchUpInitialDelaySeconds: 'nonNegativeInt',
   catchUpStaggerSeconds:      'nonNegativeInt',
   onceRetentionDays:          'nonNegativeInt',
@@ -110,6 +123,15 @@ export function loadDaemonConfig(
         continue;
       }
       result.autoUpdate = val === 'true';
+      continue;
+    }
+
+    if (kind === 'duration') {
+      if (!DURATION_RE.test(val)) {
+        onWarn(`${where}: ${key} must be a duration like "30m" or "4h", found ${JSON.stringify(val)} -- using ${DEFAULTS.checkInterval}`);
+        continue;
+      }
+      result.checkInterval = val;
       continue;
     }
 

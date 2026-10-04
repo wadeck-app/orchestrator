@@ -9,6 +9,7 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `autoUpdate` | bool | `true` | Enable automatic background updates |
+| `checkInterval` | duration (`30m`, `4h`, `1d`, ...) | `4h` | How often the updater actually checks npm for a new version |
 | `catchUpInitialDelaySeconds` | int | `300` | Seconds to wait after daemon start before firing the first catch-up job |
 | `catchUpStaggerSeconds` | int | `300` | Seconds between consecutive catch-up jobs on startup |
 | `onceRetentionDays` | int | `360` | Days a spent `once` job is kept before being pruned |
@@ -26,6 +27,13 @@ config: config.yml line 7: unknown key "onceRetentionDay", ignored. Known keys: 
 ```
 
 Unknown keys are reported too: a typo used to be indistinguishable from "not configured".
+
+## Background update checks
+
+The daemon polls every 30 minutes to see if `checkInterval` has elapsed; it is not itself the
+check interval. A poll that finds `checkInterval` not yet elapsed logs
+`check skipped: last checked Xm ago, next check in ~Ym` and does nothing else. Set `checkInterval:
+30m` to make the two match.
 
 ## Past `once` jobs
 
@@ -50,6 +58,7 @@ Only the **most recent** missed firing is caught up per job -- multiple missed d
 
 ```yaml
 autoUpdate: false
+checkInterval: 30m
 catchUpInitialDelaySeconds: 300
 catchUpStaggerSeconds: 300
 onceRetentionDays: 360
