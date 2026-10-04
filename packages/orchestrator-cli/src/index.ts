@@ -363,6 +363,19 @@ async function main(): Promise<void> {
       daemonLog.write('background update check triggered (periodic, every 30m)');
       updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
     }, 30 * 60 * 1000).unref();
+
+    // Canary, independent of the update manager: proves Node's own timer subsystem is still
+    // alive in this long-running process. The 30m update-check interval went silent for 2h+ on a
+    // live daemon with no crash, no sleep/wake event, and a responsive HTTP server -- with nothing
+    // else to compare against, there was no way to tell "this interval specifically broke" from
+    // "all timers in this process stopped firing". A tick every 5m gives that comparison for free.
+    let canaryTicks = 0;
+    const canaryStartedAt = Date.now();
+    setInterval(() => {
+      canaryTicks += 1;
+      const uptimeMin = Math.round((Date.now() - canaryStartedAt) / 60_000);
+      daemonLog.write(`canary tick #${canaryTicks} (timers alive, uptime ${uptimeMin}m)`);
+    }, 5 * 60 * 1000).unref();
   } finally {
     // Fire once on crash path; no-op if already scheduled above.
     scheduleUpdate('crash-path fallback');
