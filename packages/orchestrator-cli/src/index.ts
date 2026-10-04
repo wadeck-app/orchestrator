@@ -141,11 +141,16 @@ async function main(): Promise<void> {
   const updateManager = new UpdateManager('@wadeck-app/orchestrator-cli', CONFIG_DIR);
 
   let updateScheduled = false;
-  const scheduleUpdate = (): void => {
+  // reason is log-only context for *why* this call fired -- scheduleBackgroundUpdate() itself is
+  // silent (stdio: 'ignore' on the spawned updater), so without this the daemon log never shows
+  // that a background check happened at all, only its eventual outcome (if any) in update-log.txt.
+  const scheduleUpdate = (reason: string): void => {
     if (updateScheduled) {
+      daemonLog.write(`background update check (${reason}): skipped, already scheduled this run`);
       return;
     }
     updateScheduled = true;
+    daemonLog.write(`background update check triggered (${reason})`);
     updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
   };
 
@@ -176,6 +181,13 @@ async function main(): Promise<void> {
     // Before the registry: it needs the retention bounds, and a misread config line has to reach the
     // daemon log rather than being swallowed -- see loadDaemonConfig.
     const daemonCfg   = loadDaemonConfig(CONFIG_DIR, (msg) => daemonLog.write(`config: ${msg}`));
+    // autoUpdate is read once at startup and silent otherwise -- a user who flips it has no way to
+    // confirm it took effect short of waiting for the next check (or not) to show up in the logs.
+    daemonLog.write(
+      daemonCfg.autoUpdate
+        ? 'auto-update: on (checking every 30m)'
+        : 'auto-update: off',
+    );
     const registry    = new Registry(path.join(CONFIG_DIR, 'registry.json'), {
       onceRetentionDays:    daemonCfg.onceRetentionDays,
       onceRetentionMaxJobs: daemonCfg.onceRetentionMaxJobs,
@@ -294,6 +306,7 @@ async function main(): Promise<void> {
       // Set UPDATER_FORCE so entry.ts bypasses autoUpdate:false (manual update must always work).
       const prev = process.env['UPDATER_FORCE'];
       process.env['UPDATER_FORCE'] = '1';
+      daemonLog.write('background update check triggered (tray: manual check-update)');
       updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
       if (prev === undefined) {
         delete process.env['UPDATER_FORCE'];
@@ -341,15 +354,18 @@ async function main(): Promise<void> {
       }
     }
 
-    // Schedule background update check on startup and every 4h.
+    // Schedule background update check on startup and every 30m.
     // In dev/test mode (no orchestrator-updater.cjs bundle) this is a no-op.
     // The updater: npm install -g @wadeck/orchestrator-cli@edge -> orch cli self-check -> rollback if failed.
-    scheduleUpdate();
+    scheduleUpdate('startup');
     // unref() ensures the interval never prevents the process from exiting on SIGTERM.
-    setInterval(() => updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs'), 30 * 60 * 1000).unref();
+    setInterval(() => {
+      daemonLog.write('background update check triggered (periodic, every 30m)');
+      updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
+    }, 30 * 60 * 1000).unref();
   } finally {
     // Fire once on crash path; no-op if already scheduled above.
-    scheduleUpdate();
+    scheduleUpdate('crash-path fallback');
   }
 }
 
