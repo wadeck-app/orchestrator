@@ -882,8 +882,18 @@ describe('sampleProcessTree', () => {
           + (lastWalkError ? ` The tree walk kept failing: ${lastWalkError.message}` : ''));
       }
 
-      const tree = await sampleProcessTree(child.pid);
-      assert.ok(tree !== null, 'expected the tree to be sampleable while the job runs');
+      // pidusage goes through WMI on Windows, which blips under runner load (same reason the
+      // wrapper-baseline comment above exists) -- a single failed sample must not fail a test
+      // whose job is still alive for another ~19s. Retried rather than single-shot.
+      let tree = null;
+      try {
+        await waitFor(async () => {
+          tree = await sampleProcessTree(child.pid);
+          return tree !== null;
+        }, 'the root process to be sampleable (pidusage can blip transiently under CI load)', 10000);
+      } catch {
+        assert.fail('expected the tree to be sampleable while the job runs, but pidusage kept failing for the root');
+      }
 
       // Read the wrapper on its own for the comparison. Surface a real message if it has gone:
       // pidusage throws a bare ENOENT, which says nothing about the job having outrun the test.
