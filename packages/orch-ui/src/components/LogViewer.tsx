@@ -254,6 +254,12 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
         setLines((prev) => [...prev, ev.data as string]);
       }
     };
+    // The server sends this when the live tail switches to a new run file. Clear the pane so the
+    // previous run's output is not concatenated with the new run's output.
+    es.addEventListener('run-changed', () => {
+      setLines([]);
+      setAutoScroll(true);
+    });
     es.onerror = () => { setConnected(false); };
     return () => { es.close(); };
   }, [jobId, apiBase, selectedRun]);

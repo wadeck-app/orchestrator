@@ -12,8 +12,17 @@ class MockEventSource {
   onopen:   (() => void) | null = null;
   onmessage: ((e: { data: string }) => void) | null = null;
   onerror:   (() => void) | null = null;
+  private _listeners = new Map<string, (() => void)[]>();
   constructor(public url: string) { MockEventSource.instance = this; }
   close() {}
+  addEventListener(type: string, fn: () => void) {
+    const list = this._listeners.get(type) ?? [];
+    list.push(fn);
+    this._listeners.set(type, list);
+  }
+  emit(type: string) {
+    for (const fn of this._listeners.get(type) ?? []) fn();
+  }
 }
 
 describe('LogViewer', () => {
@@ -135,6 +144,25 @@ describe('LogViewer', () => {
 
     // Without a way back, pinning would be a trap: the reader could leave the live tail and not
     // return without editing the URL.
+    it('clears the pane when the server signals a new run started', async () => {
+      stubFetch();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+      const es = MockEventSource.instance!;
+
+      act(() => {
+        es.onopen!();
+        es.onmessage!({ data: '[info] run 1 output' });
+      });
+
+      expect(screen.getByText(/run 1 output/)).toBeInTheDocument();
+
+      act(() => { es.emit('run-changed'); });
+
+      // The previous run's lines are cleared; only the new run's output will appear.
+      expect(screen.queryByText(/run 1 output/)).toBeNull();
+    });
+
     it('offers a way back to the live tail, which clears the pin', async () => {
       stubFetch();
       vi.stubGlobal('EventSource', MockEventSource);

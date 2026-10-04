@@ -102,20 +102,20 @@ export class ExecManager {
     );
 
     child.stdout?.on('data', (d: Buffer) => {
-      const line = d.toString().trimEnd();
-      run.logs.push(line);
-      if (run.logs.length > 1000) {
-        run.logs.shift();
+      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
+        const trimmed = line.trimEnd();
+        run.logs.push(trimmed);
+        if (run.logs.length > 1000) { run.logs.shift(); }
+        logger.write(trimmed);
       }
-      logger.write(line);
     });
     child.stderr?.on('data', (d: Buffer) => {
-      const line = `[stderr] ${d.toString().trimEnd()}`;
-      run.logs.push(line);
-      if (run.logs.length > 1000) {
-        run.logs.shift();
+      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
+        const entry = `[stderr] ${line.trimEnd()}`;
+        run.logs.push(entry);
+        if (run.logs.length > 1000) { run.logs.shift(); }
+        logger.write(entry);
       }
-      logger.write(line);
     });
 
     const timeoutMs = (opts.timeout ?? 300) * 1000;

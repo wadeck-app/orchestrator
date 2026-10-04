@@ -123,6 +123,10 @@ export async function logsRoutes(
           if (latestPath !== currentLogPath) {
             currentLogPath = latestPath;
             fileSize = 0;
+            // Signal the client to reset its line buffer before the new run's content arrives,
+            // so two runs are never interleaved in the same pane.
+            const newRunName = path.basename(currentLogPath, '.log').slice(jobId.length + 1);
+            reply.raw.write(`event: run-changed\ndata: ${newRunName}\n\n`);
           }
         }
         // A pinned run whose file never appeared has nothing to poll for.

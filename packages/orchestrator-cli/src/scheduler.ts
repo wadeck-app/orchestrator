@@ -1085,20 +1085,27 @@ export class Scheduler extends EventEmitter {
       sample();
     }
     child.stdout?.on('data', (d: Buffer) => {
-      jobLogger.write(d.toString().trimEnd());
+      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
+        jobLogger.write(line.trimEnd());
+      }
       try { process.stdout.write(d); } catch { /* EPIPE: launcher pipe closed */ }
     });
     child.stderr?.on('data', (d: Buffer) => {
-      jobLogger.write(`[stderr] ${d.toString().trimEnd()}`);
+      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
+        jobLogger.write(`[stderr] ${line.trimEnd()}`);
+      }
       try { process.stderr.write(d); } catch { /* EPIPE: launcher pipe closed */ }
     });
 
     // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s)
     const timeoutMs = (job.timeoutSeconds ?? 300) * 1000;
     let timeoutHandle: Timer | null = null;
+    let timedOut = false;
     if (timeoutMs > 0) {
       timeoutHandle = this._time.after(timeoutMs, () => {
+        timedOut = true;
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
+        jobLogger.write(`[job:timeout] jobId=${job.id} timeoutSeconds=${job.timeoutSeconds ?? 300}`);
         this._events.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
         // A timed-out job is one whose resource use is worth a look, so persist before killing.
         flushPeaks();
@@ -1135,9 +1142,10 @@ export class Scheduler extends EventEmitter {
           cancelledByUser: cancelledByUser || undefined,
           skipped: skipped || undefined,
         });
+        const finishedReason = timedOut ? ' reason=timeout' : cancelledByUser ? ' reason=manual-kill' : '';
         jobLogger.write(skipped
           ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
-          : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s`);
+          : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`);
         jobLogger.close();
         // `skipped` travels with the event because the systray classifies on this alone.
         this.emit('job-finished', { id: job.id, exitCode, job, skipped });
