@@ -153,6 +153,13 @@ runUpdater({
   configDir,
   currentVersion,
   strategy: 'without-daemon',
+  // The daemon already owns its own spawn cadence (index.ts's 30m setInterval) -- the
+  // cache.lastCheckedAt/checkIntervalMs gate this bypasses exists for callers with no schedule of
+  // their own (queue, the scrapers), not for us. Setting checkInterval in config.yml to match the
+  // daemon's spawn interval, instead of skipping the gate, is what let a stale build sit for days:
+  // the check finishes a few seconds after each spawn, so the next spawn is always a hair short of
+  // the gate and skips -- every other spawn, forever.
+  skipThrottle: true,
   restartDaemon: {
     portFile: join(configDir, 'config.port'),
     healthTokenFile: join(configDir, 'health_token'),

@@ -46,7 +46,7 @@
     "@fastify/cors": "^10.0.0",
     "@fastify/static": "^8.0.0",
     "@wadeck-app/shared-cli": "^2026.10.3-035-1e4adce3",
-    "@wadeck-app/shared-updater": "^2026.10.4-016-82ba1969",
+    "@wadeck-app/shared-updater": "^2026.10.10-017-4e04d240",
     "@wadeck-app/singleton-daemon-kit": "2026.10.3-092-dad1ef6b",
     "fastify": "^5.0.0",
     "node-cron": "^4.6.0",

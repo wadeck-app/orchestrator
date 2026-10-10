@@ -105,26 +105,6 @@ describe('a value the parser cannot use is reported, not swallowed', () => {
   });
 });
 
-describe('checkInterval', () => {
-  test('a missing config.yml defaults to 4h', () => {
-    assert.equal(withConfig(null).config.checkInterval, '4h');
-  });
-
-  test('a duration string is read as-is -- shared-updater, not this parser, converts it to ms', () => {
-    const { config, warnings } = withConfig('checkInterval: 30m\n');
-    assert.equal(config.checkInterval, '30m');
-    assert.deepEqual(warnings, []);
-  });
-
-  test('a value that is not a duration is reported and the default is kept', () => {
-    const { config, warnings } = withConfig('checkInterval: soon\n');
-    assert.equal(config.checkInterval, '4h');
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /checkInterval/);
-    assert.match(warnings[0], /soon/);
-  });
-});
-
 describe('autoUpdate', () => {
   test('false is read as false and true as true', () => {
     assert.equal(withConfig('autoUpdate: false\n').config.autoUpdate, false);
