@@ -717,12 +717,17 @@ describe('hard resource budget', () => {
      * escape working as designed. Counting that as a violation is what made the older overlap test
      * read as noise.
      */
+    // Real setTimeout against a real clock, not FakeTime: a loaded CI runner can fire a tick a
+    // couple ms early. Without slack, a legitimate overlap starting at e.g. 149ms (one off from a
+    // 150ms STALL_MS) read as the guard failing, when every other margin in this test is already
+    // generous on purpose -- this one boundary just had none.
+    const JITTER_TOLERANCE_MS = 10;
     let newest = null;
     const prematureOverlaps = [];
     const sampleUsage = async () => {
       if (newest !== null && !newest.settled) {
         const heldForMs = Date.now() - newest.startedAt;
-        if (heldForMs < STALL_MS) {
+        if (heldForMs < STALL_MS - JITTER_TOLERANCE_MS) {
           prematureOverlaps.push(heldForMs);
         }
       }
