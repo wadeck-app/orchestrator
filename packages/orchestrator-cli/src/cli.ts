@@ -1598,21 +1598,38 @@ export async function main(): Promise<void> {
   const waitForDaemon = (timeoutMs: number): Promise<boolean> =>
     waitForDaemonAlive(configDir, timeoutMs);
 
+  // Error codes that mean "the connection to the daemon failed", regardless of what Node's
+  // human-readable message happens to say. Checked via `err.code` rather than
+  // `msg.includes(...)`, because a connection the server reset mid-response surfaces as
+  // `Error: socket hang up` with `code: 'ECONNRESET'` -- the message itself never contains
+  // the string "ECONNRESET", so a plain substring check on the message misses it and the
+  // auto-start retry below never kicks in; the user sees the raw "socket hang up" instead.
+  const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
+  function isConnectionFailure(e: unknown): boolean {
+    const code = (e as NodeJS.ErrnoException | undefined)?.code;
+    return !!code && CONNECTION_FAILURE_CODES.has(code);
+  }
+
   // ssh-agent pattern (D25): auto-start daemon on first command that needs it,
   // wait up to 3 s, retry once. --version / --pid bypass this via early returns in runCli.
   let _autoStarted = false;
   function send(command: string, payload?: unknown): Promise<unknown> {
+    // A `wait: true` payload (trigger-job, exec) holds the HTTP connection open with zero
+    // bytes flowing until the job finishes, which can legitimately take far longer than the
+    // client's default 5s idle timeout. Disable it for these instead of guessing a bigger
+    // fixed number -- the job's own timeout/kill logic is what should end it, not the transport.
+    const isWaitPayload = typeof payload === 'object' && payload !== null && (payload as { wait?: unknown }).wait === true;
     const doSend = (): Promise<unknown> => {
       if (command === 'version') {
         return client.version() as Promise<unknown>;
       }
-      const c = client as { send(cmd: string, p?: unknown): Promise<unknown> };
-      return c.send(command, payload);
+      const c = client as { send(cmd: string, p?: unknown, opts?: { timeoutMs?: number }): Promise<unknown> };
+      return c.send(command, payload, isWaitPayload ? { timeoutMs: 0 } : undefined);
     };
 
     return doSend().catch(async (e: unknown) => {
       const msg = getErrorMessage(e);
-      const isDaemonDown = msg.includes('not running') || msg.includes('ECONNREFUSED') || msg.includes('ENOENT');
+      const isDaemonDown = msg.includes('not running') || msg.includes('ECONNREFUSED') || msg.includes('ENOENT') || isConnectionFailure(e);
       if (isDaemonDown && !_autoStarted) {
         _autoStarted = true;
         startDaemon();
@@ -1629,9 +1646,10 @@ Check logs:
         // Retry once after auto-start
         return doSend().catch((e2: unknown) => {
           const err2Msg = getErrorMessage(e2);
-          errorExit(`Daemon connection failed after auto-start: ${err2Msg}
+          const code = (e2 as NodeJS.ErrnoException | undefined)?.code;
+          errorExit(`Daemon connection failed after auto-start: ${err2Msg}${code ? ` [${code}]` : ''}
 
-Check daemon status:
+The daemon may still have started the command in the background -- check:
   orch status
   orch logs --follow`, 1);
         });

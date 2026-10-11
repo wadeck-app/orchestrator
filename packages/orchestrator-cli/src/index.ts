@@ -281,6 +281,16 @@ async function main(): Promise<void> {
           daemonLog.write(`daemon ready on 127.0.0.1:${port}`);
           console.log(`[orchestrator] daemon started on 127.0.0.1:${port} (pid ${process.pid})`);
         },
+        // Previously unwired: a command failing, or a client disconnecting mid-command, left
+        // no trace in `orch logs` -- the only record was the daemon's own "pre-start" line.
+        // That is what made the "socket hang up on first --wait after auto-start" report
+        // undiagnosable from the daemon side; this is the fix for being blind to it next time.
+        onCommand: (command: string, durationMs: number) => {
+          daemonLog.write(`command "${command}" ok (${durationMs}ms)`);
+        },
+        onCommandError: (command: string, error: Error) => {
+          daemonLog.write(`command "${command}" failed: ${error.message}`);
+        },
         onShutdown: (reason: string) => {
           daemonLog.write(`daemon shutdown: ${reason}`);
           daemonLog.close();
