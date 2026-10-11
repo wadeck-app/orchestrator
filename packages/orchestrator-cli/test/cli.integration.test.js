@@ -109,6 +109,35 @@ describe('orch cli update integration', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Bug D: a command issued while the daemon is not yet reachable must go through
+// the auto-start/DaemonNotRunningError path, not crash on a null Scheduler.
+// ---------------------------------------------------------------------------
+
+describe('orch trigger with no daemon reachable', () => {
+
+  test('fails via the auto-start path, not a null-deref in the local command fallback', async () => {
+    // No daemon is running against this temp config dir (no other test here starts one),
+    // so send() takes the "daemon unreachable" branch in the SDK client. That used to fall
+    // back to executing cli.ts's own command map locally -- built with `null as any` for the
+    // Scheduler and never meant to run -- which crashed on `null.trigger()` before auto-start
+    // was ever attempted. The fix is an empty `commands` object, so this must now reach
+    // startDaemon() instead, which fails for an unrelated, expected reason: dev mode (tsx,
+    // no bundled dist) has no daemon binary to launch.
+    const { code, stderr } = await runCli(['trigger', 'some-job', '--wait']);
+    assert.equal(code, 1, `Expected exit 1, got ${code}. stderr: ${stderr}`);
+    assert.ok(
+      !stderr.includes("Cannot read properties of null"),
+      `Local command fallback executed against a null Scheduler: ${stderr}`,
+    );
+    assert.ok(
+      stderr.includes('Cannot start'),
+      `Expected the auto-start attempt to run (and fail on no bundle in dev mode): ${stderr}`,
+    );
+  });
+
+});
+
+// ---------------------------------------------------------------------------
 // Bug C: unknown command must exit 1 (confirmed not a bug, regression guard)
 // ---------------------------------------------------------------------------
 

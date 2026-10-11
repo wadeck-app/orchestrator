@@ -1526,19 +1526,20 @@ export async function main(): Promise<void> {
   const fs = require('node:fs') as typeof import('node:fs');
   const { createDaemonClient } = require('@wadeck-app/singleton-daemon-kit') as typeof import('@wadeck-app/singleton-daemon-kit');
   const { spawn } = require('node:child_process') as typeof import('node:child_process');
-  const { makeCommands } = require('./commands.js') as typeof import('./commands.js');
-  const { Registry } = require('./registry.js') as typeof import('./registry.js');
-  const { State }    = require('./state.js')    as typeof import('./state.js');
 
   const configDir = DEFAULT_CONFIG_DIR;
 
-  // Dummy command stubs - only used for type inference by the SDK client (not executed)
-  const dummyRegistry = new Registry(path.join(configDir, 'registry.json'));
-  const dummyState    = new State(path.join(configDir, 'state.json'));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  // violations-suppress: ts/no-unsafe-type-cast dummy Scheduler cast for type inference only - never executed
-  const commands = makeCommands(dummyRegistry, dummyState, null as any, configDir);
+  // Type-only stand-in for the SDK client's `commands` option. It exists to make send()'s
+  // generics infer the right result types; it must NOT be a real command map bound to a real
+  // Scheduler, because the SDK calls these as a *local fallback* whenever the daemon is
+  // unreachable (readPortFile fails or the pid is dead) -- which, for a CLI that always wants
+  // to error/auto-start instead, is every cold-start race by construction. A real map here
+  // used to be bound to `null as any` for the Scheduler argument "for type inference only,
+  // never executed" -- false: the very first `orch trigger --wait` issued while the daemon
+  // was still starting hit this path and crashed on `null.trigger()` with no daemon-side
+  // trace at all, since the request never left the process.
+  // violations-suppress: ts/no-unsafe-type-cast empty object cast to the command map's type, for inference only -- see comment above for why it must stay empty at runtime
+  const commands = {} as import('./types.js').OrchestratorCommands;
 
   const client = createDaemonClient({ configDir, commands });
 
