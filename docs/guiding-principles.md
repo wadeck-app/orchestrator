@@ -24,5 +24,4 @@ Config errors warn. Missing required fields error. No silent fallbacks. Jobs tha
 After every feature implementation:
 - Mark `[x]` in `.claude/v3-todo.md`
 - Update spec `_index.md` decisions table
-- Update `CHANGELOG.md`
 The TODO file is the source of truth for what is done and what is pending.

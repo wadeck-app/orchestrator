@@ -136,7 +136,6 @@
 - [ ] Tag release: `v0.3.0`
 - [ ] Run full test suite: `npm test --workspaces` (169/169 pass)
 - [ ] Build binaries: `npm run build --workspaces`
-- [ ] Update CHANGELOG
 - [ ] Deploy to staging (test async batch writes, I/O protection)
 - [ ] Monitor: perf metrics, error logs, resource usage
 - [ ] Deploy to production
