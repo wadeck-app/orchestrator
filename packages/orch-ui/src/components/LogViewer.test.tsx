@@ -425,11 +425,13 @@ describe('LogViewer', () => {
         expect(screen.getByText('Following')).toBeInTheDocument();
       });
 
-      // A pinned run is a finished file however busy the job is now, so this needs no status at all.
+      // A pinned run that is NOT the newest is a finished file however busy the job is now, so this
+      // needs no status at all. Pinning the newest run is a different claim - see the test below.
       it('reads Ended on a pinned historical run even while the job is running', async () => {
         vi.stubGlobal('fetch', (url: string) => {
           if (url.includes('/runs')) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve([
+              { name: '2026-09-19T10-00-00', file: 'j1-2026-09-19T10-00-00.log', sizeBytes: 10 },
               { name: '2026-09-18T10-00-00', file: 'j1-2026-09-18T10-00-00.log', sizeBytes: 10 },
             ]) });
           }
@@ -452,6 +454,34 @@ describe('LogViewer', () => {
         expect(screen.queryByText('Live')).toBeNull();
       });
 
+      // Pinning the newest run by its own id is not the same claim as pinning an older one: the
+      // newest run file may be exactly what the job is writing to right now. Forcing Ended there
+      // reported a running job as dead the moment its run id landed in the URL.
+      it('still reads Live when the pinned run is the newest one and the job is running', async () => {
+        vi.stubGlobal('fetch', (url: string) => {
+          if (url.includes('/runs')) {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([
+              { name: '2026-09-19T10-00-00', file: 'j1-2026-09-19T10-00-00.log', sizeBytes: 10 },
+            ]) });
+          }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({
+            job: {}, runHistory: [{ startedAt: '2026-09-19T10:00:00Z', exitCode: null, pid: 1 }],
+          }) });
+        });
+        vi.stubGlobal('EventSource', MockEventSource);
+        renderInRouter(<LogViewer jobId="j1" />);
+
+        await waitFor(() => { expect(screen.getByText('Live')).toBeInTheDocument(); });
+
+        const select = await screen.findByRole('combobox');
+        await act(async () => {
+          fireEvent.change(select, { target: { value: '2026-09-19T10-00-00' } });
+        });
+
+        expect(screen.getByText('Live')).toBeInTheDocument();
+        expect(screen.queryByText('Ended')).toBeNull();
+      });
+
       // The follow preference survives, so output resuming picks up where the reader left it.
       it('still toggles following while nothing is arriving', async () => {
         stubJobStatus(false);
@@ -467,6 +497,49 @@ describe('LogViewer', () => {
         // Still Ended: the toggle changes following, not whether output arrives.
         expect(screen.getByText('Ended')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('kill action', () => {
+    function stubRunning(): void {
+      vi.stubGlobal('fetch', (url: string) => {
+        if (url.includes('/runs')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          job: {}, runHistory: [{ startedAt: '2026-09-19T10:00:00Z', exitCode: null, pid: 1 }],
+        }) });
+      });
+    }
+
+    // Kill shares the ChipButton geometry with Live/Ended and Wide rather than ButtonAction's own
+    // sizing, so the three controls in the "job is running" row render at one consistent height
+    // instead of ButtonAction's taller, differently-bordered box next to them.
+    it('renders Kill with the same chip geometry as the other action-bar controls', async () => {
+      stubRunning();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      const kill = await screen.findByRole('button', { name: /kill/i });
+      expect(kill.className).toMatch(/\bborder\b/);
+      expect(kill.className).toMatch(/\bpx-2\.5\b/);
+      expect(kill.className).toMatch(/\bpy-0\.5\b/);
+    });
+
+    it('does not render Kill once the job is not running', async () => {
+      vi.stubGlobal('fetch', (url: string) => {
+        if (url.includes('/runs')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          job: {}, runHistory: [{ startedAt: '2026-09-19T10:00:00Z', finishedAt: '2026-09-19T10:00:05Z', exitCode: 0, pid: 1 }],
+        }) });
+      });
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      await waitFor(() => { expect(screen.getByText('Ended')).toBeInTheDocument(); });
+      expect(screen.queryByRole('button', { name: /kill/i })).toBeNull();
     });
   });
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { X, ArrowDown, Pause, Square, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
-import { ButtonAction, ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
+import { X, ArrowDown, Pause, CircleOff, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
+import { ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
@@ -188,13 +188,17 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
    * Whether the pane can still receive output, which is a different question from whether it is
    * scrolling itself. Three-valued, because "not known yet" must not be reported as either.
    *
-   * A pinned run is a finished file however busy the job is now, so that answer needs no status at
-   * all. Only the live tail has to wait for the poll.
+   * A pinned run that is NOT the newest one is a finished file however busy the job is now, so
+   * that answer needs no status at all. But pinning the newest run (its own id, not the blank
+   * live-tail choice) is still the run the job may be writing to right now - forcing Ended there
+   * reported a running job as dead the moment its run id landed in the URL. Only that case still
+   * has to wait for the poll, same as the live tail.
    *
    * The chip below used to read `autoScroll` alone, and so announced "Live" in green on a job that had
    * exited hours earlier and on a historical run the reader had pinned.
    */
-  const logIsLive: boolean | null = selectedRun !== '' ? false : isJobRunning;
+  const logIsLive: boolean | null =
+    selectedRun !== '' && selectedRun !== latestRunName ? false : isJobRunning;
 
   const handleSelectRun = (name: string): void => {
     setSelectedRun(name);
@@ -377,19 +381,27 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
             : 'Connecting...'}
         </span>
         <div className="flex items-center gap-3">
-          {isJobRunning && (
-            <ButtonAction
-              label={killing ? 'Killing...' : 'Kill'}
-              icon={<X size={12} />}
-              variant="danger"
-              size="sm"
-              onClick={handleKillJob}
-              disabled={killing}
-              loading={killing}
-            />
-          )}
-          {/* Button group for status and view controls */}
+          {/* Button group for the destructive action and the status/view controls. All three are
+              ChipButton, not a mix of ChipButton and ButtonAction: ButtonAction owns its own
+              padding and height by design (dsl-ui's `size` is a fixed geometry, never a custom
+              one), so sitting it next to a chip put a 2px-taller, differently-bordered button in
+              the same row as the others. One component means one geometry, which is the point of
+              going through the design system rather than hand-tuning each control to match. */}
           <div className="flex items-center gap-1.5">
+            {isJobRunning && (
+              <ChipButton
+                active
+                color="red"
+                aria-pressed={false}
+                shape="square"
+                onClick={() => { if (!killing) { handleKillJob(); } }}
+                title={killing ? 'Killing...' : `Kill running job "${jobId}"`}
+                className={killing ? 'gap-1 opacity-50 cursor-not-allowed' : 'gap-1'}
+              >
+                <X size={12} />
+                {killing ? 'Killing...' : 'Kill'}
+              </ChipButton>
+            )}
             {/* One control, and it IS the state indicator: green "Live" while output is arriving and the
                 pane is following it, amber "Paused" when the reader has stopped following, grey "Ended"
                 when there is nothing arriving at all. There used to be a separate amber badge beside it
@@ -428,10 +440,16 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
                 : logIsLive === false
                 ? `Nothing is arriving${selectedRun ? ' on this run' : ' - the job is not running'}. Following is ${autoScroll ? 'on' : 'off'} for when it resumes.`
                 : `Checking whether the job is running. Following is ${autoScroll ? 'on' : 'off'}.`}
+              // chipBaseClass carries no icon/label gap - every other chip in this row needs it too,
+              // but this one is the only state with no icon at all (the `null` branch below), so it
+              // cannot rely on an icon's own margin and has to ask for the gap itself.
+              className="gap-1"
             >
               {logIsLive === true && autoScroll && <ArrowDown size={12} />}
               {logIsLive === true && !autoScroll && <Pause size={12} />}
-              {logIsLive === false && <Square size={12} />}
+              {/* CircleOff, not Square: an empty outline square at 12px reads as a broken image
+                  icon, not as "stopped". CircleOff is lucide's actual off/disabled glyph. */}
+              {logIsLive === false && <CircleOff size={12} />}
               {/* `null` carries no icon: every glyph here would be a claim about a state not yet known. */}
               {logIsLive === true ? (autoScroll ? 'Live' : 'Paused')
                 : logIsLive === false ? 'Ended'
@@ -456,6 +474,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
               shape="square"
               onClick={toggleWidePane}
               title={widePane ? 'Full width - click for the fixed reading width' : 'Fixed width - click to use the full page'}
+              className="gap-1"
             >
               {widePane ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
               {widePane ? 'Narrow' : 'Wide'}
