@@ -455,9 +455,10 @@ describe('JobForm clears fields the user emptied', () => {
     expect(sent).not.toHaveProperty('tags');
   });
 
-  // 0 is not "no timeout" to the daemon: isEmptyValue() keeps 0, so the body would store a job that
-  // times out instantly. Clearing the box has to mean unset.
-  it('sends timeoutSeconds in unset when the timeout is zeroed', async () => {
+  // 0 is a value: "no timeout", for a process that must stay up. Reading it as "unset" put the job
+  // back on the 300s default, so the one setting that exists for a long-running job was undone by
+  // saving the form.
+  it('sends a zero timeout as a value, not as unset', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderEditForm({ ...EXISTING_CRON, timeoutSeconds: 600 }, onSubmit);
 
@@ -467,8 +468,62 @@ describe('JobForm clears fields the user emptied', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     const sent = submitted(onSubmit);
+    expect(sent.timeoutSeconds).toBe(0);
+    expect(sent).not.toHaveProperty('unset');
+  });
+
+  // An emptied box is the absence of a choice, which is what unset means. It must not read as 0,
+  // which would silently remove the timeout.
+  it('sends timeoutSeconds in unset when the timeout box is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, timeoutSeconds: 600 }, onSubmit);
+
+    showAdvanced();
+    fill(/^Timeout/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
     expect(sent.unset).toEqual(['timeoutSeconds']);
     expect(sent).not.toHaveProperty('timeoutSeconds');
+  });
+
+  it('sends maxConcurrency when a limit is entered', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    showAdvanced();
+    fill(/^Max concurrent runs/, '1');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).maxConcurrency).toBe(1);
+  });
+
+  it('sends maxConcurrency in unset when the limit is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, maxConcurrency: 2 }, onSubmit);
+
+    showAdvanced();
+    fill(/^Max concurrent runs/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent.unset).toEqual(['maxConcurrency']);
+    expect(sent).not.toHaveProperty('maxConcurrency');
+  });
+
+  it('leaves maxConcurrency out when no limit was ever set', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const sent = submitted(onSubmit);
+    expect(sent).not.toHaveProperty('maxConcurrency');
+    expect(sent).not.toHaveProperty('unset');
   });
 
   // These three were left out when unset was first wired up, because the daemon rejected them:

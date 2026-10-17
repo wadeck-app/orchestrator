@@ -1,7 +1,7 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
 import { windowStateAt } from '../active-window.js';
 import { describeAgo } from '../relative-time.js';
 import { JobStatusPill } from './JobStatusPill.js';
@@ -14,7 +14,7 @@ export interface JobCardProps {
   runHistory: RuntimeEntry[];
   uptimePercent?: number | null;
   consecutiveFailures?: number;
-  onTrigger: (id: string) => Promise<void>;
+  onTrigger: (id: string, opts?: { force: true }) => Promise<void | TriggerRefused>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
   onClick?: () => void;
   selected?: boolean;

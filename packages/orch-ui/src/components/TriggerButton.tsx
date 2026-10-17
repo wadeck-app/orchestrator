@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle, Play, XCircle } from 'lucide-react';
 import { ButtonAction } from '@wadeck-app/dsl-ui';
-import { getErrorMessage } from '../types.js';
+import { getErrorMessage, isTriggerRefused, type TriggerRefused } from '../types.js';
 
 export interface TriggerButtonProps {
   jobId: string;
-  onTrigger: (id: string) => Promise<void>;
+  /**
+   * Resolves with a `TriggerRefused` when the job is at its limit. `force` asks to start another
+   * instance anyway; it is only passed on the click that follows a refusal.
+   */
+  onTrigger: (id: string, opts?: { force: true }) => Promise<void | TriggerRefused>;
   feedbackDurationMs?: number;
   /**
    * Compact hosts pass 'sm'. A card footer sits beside a small link, a detail page's action
@@ -14,7 +18,7 @@ export interface TriggerButtonProps {
   size?: 'sm' | 'md';
 }
 
-type Status = 'idle' | 'loading' | 'success' | 'error';
+type Status = 'idle' | 'loading' | 'success' | 'error' | 'refused';
 
 const FEEDBACK_DURATION_MS = 3_000;
 
@@ -26,7 +30,9 @@ const VARIANT_BY_STATUS = {
   loading: 'primary',
   success: 'success',
   error:   'danger',
-} as const satisfies Record<Status, 'primary' | 'success' | 'danger'>;
+  // Neither a success nor a failure, so neither colour.
+  refused: 'secondary',
+} as const satisfies Record<Status, 'primary' | 'secondary' | 'success' | 'danger'>;
 
 // ButtonAction drops the icon while loading, where the spinner takes that slot.
 const CONTENT_BY_STATUS: Record<Status, { icon?: React.ReactNode; label: string }> = {
@@ -34,6 +40,8 @@ const CONTENT_BY_STATUS: Record<Status, { icon?: React.ReactNode; label: string 
   loading: {                                  label: 'Running...' },
   success: { icon: <CheckCircle size={14} />, label: 'Triggered' },
   error:   { icon: <XCircle size={14} />,     label: 'Error' },
+  // The label is built from the refusal, which carries the count; see the render.
+  refused: { icon: <Play size={14} />,        label: 'Already running' },
 };
 
 /**
@@ -43,6 +51,7 @@ const CONTENT_BY_STATUS: Record<Status, { icon?: React.ReactNode; label: string 
 export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_DURATION_MS, size = 'md' }: TriggerButtonProps): React.ReactElement {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<TriggerRefused | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The feedback timer was only cleared on the next click, never on unmount, so a click followed by
@@ -62,12 +71,22 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
     if (resetTimer.current) {
       clearTimeout(resetTimer.current);
     }
+    // Clicking while the refusal is still showing is the answer to "run anyway?".
+    const force = status === 'refused';
     setStatus('loading');
     setErrorMsg(null);
+    setRefusal(null);
     try {
-      await onTrigger(jobId);
-      setStatus('success');
-      window.dispatchEvent(new CustomEvent('orch:job-triggered', { detail: { jobId, success: true } }));
+      const result = await onTrigger(jobId, force ? { force: true } : undefined);
+      if (isTriggerRefused(result)) {
+        setRefusal(result);
+        setStatus('refused');
+        // success:false because nothing started, refused:true so a listener can tell it from a failure.
+        window.dispatchEvent(new CustomEvent('orch:job-triggered', { detail: { jobId, success: false, refused: true } }));
+      } else {
+        setStatus('success');
+        window.dispatchEvent(new CustomEvent('orch:job-triggered', { detail: { jobId, success: true } }));
+      }
     } catch (err) {
       setErrorMsg(getErrorMessage(err));
       setStatus('error');
@@ -76,6 +95,7 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
       resetTimer.current = setTimeout(() => {
         setStatus('idle');
         setErrorMsg(null);
+        setRefusal(null);
         resetTimer.current = null;
       }, feedbackDurationMs);
     }
@@ -95,7 +115,11 @@ export function TriggerButton({ jobId, onTrigger, feedbackDurationMs = FEEDBACK_
         // Renders the spinner and disables, so no hand-rolled Loader2 or opacity is needed.
         loading={status === 'loading'}
         // The error text is the label in that state, so it needs no separate tooltip.
-        label={status === 'error' ? (errorMsg ?? 'Error') : label}
+        label={status === 'error'
+          ? (errorMsg ?? 'Error')
+          : status === 'refused' && refusal
+          ? `Already running (${refusal.running}/${refusal.maxConcurrency}) - run anyway?`
+          : label}
       />
     </span>
   );

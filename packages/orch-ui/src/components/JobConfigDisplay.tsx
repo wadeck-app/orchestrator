@@ -25,6 +25,7 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
       <div><span className={LABEL_CLS}>Trigger mode</span><p className="mt-1 text-sm text-content">{job.triggerMode}</p></div>
       {job.missedFiring && <div><span className={LABEL_CLS}>Missed firing</span><p className="mt-1 text-sm text-content">{job.missedFiring}</p></div>}
       <div><span className={LABEL_CLS}>Timeout</span><p className="mt-1 text-sm text-content">{job.timeoutSeconds === 0 ? 'Disabled' : `${job.timeoutSeconds ?? 300}s`}</p></div>
+      {job.maxConcurrency !== undefined && <div><span className={LABEL_CLS}>Max concurrent runs</span><p className="mt-1 text-sm text-content">{job.maxConcurrency}</p></div>}
     </div>
   );
 }

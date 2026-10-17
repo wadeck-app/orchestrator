@@ -59,6 +59,63 @@ describe('TriggerButton', () => {
     );
   });
 
+  // A job at its concurrency limit refuses the run. That is an outcome, not a failure: it must not
+  // read as "Triggered" (nothing started) nor as "Error" (nothing went wrong).
+  describe('when the job is already running at its limit', () => {
+    const REFUSED = { status: 'already-running', running: 1, maxConcurrency: 1 } as const;
+
+    it('says so, with the count, instead of Triggered or Error', async () => {
+      const onTrigger = vi.fn().mockResolvedValue(REFUSED);
+      render(<TriggerButton jobId="j1" onTrigger={onTrigger} feedbackDurationMs={500} />);
+
+      await userEvent.click(screen.getByRole('button'));
+
+      const btn = screen.getByRole('button');
+      expect(btn).toHaveTextContent('Already running (1/1)');
+      expect(btn).not.toHaveClass('bg-danger');
+      expect(btn).not.toHaveClass('bg-success');
+    });
+
+    it('a second click forces the run', async () => {
+      const onTrigger = vi.fn()
+        .mockResolvedValueOnce(REFUSED)
+        .mockResolvedValueOnce(undefined);
+      render(<TriggerButton jobId="j1" onTrigger={onTrigger} feedbackDurationMs={500} />);
+
+      await userEvent.click(screen.getByRole('button'));
+      await userEvent.click(screen.getByRole('button'));
+
+      expect(onTrigger).toHaveBeenNthCalledWith(1, 'j1', undefined);
+      expect(onTrigger).toHaveBeenNthCalledWith(2, 'j1', { force: true });
+      expect(screen.getByRole('button')).toHaveTextContent('Triggered');
+    });
+
+    it('does not announce a successful trigger', async () => {
+      const events: CustomEvent[] = [];
+      const listener = (e: Event): void => { events.push(e as CustomEvent); };
+      window.addEventListener('orch:job-triggered', listener);
+      const onTrigger = vi.fn().mockResolvedValue(REFUSED);
+      render(<TriggerButton jobId="j1" onTrigger={onTrigger} feedbackDurationMs={FAST_MS} />);
+
+      await userEvent.click(screen.getByRole('button'));
+      window.removeEventListener('orch:job-triggered', listener);
+
+      expect(events.map(e => e.detail)).toEqual([{ jobId: 'j1', success: false, refused: true }]);
+    });
+
+    it('reverts to idle, so the force offer does not linger', async () => {
+      const onTrigger = vi.fn().mockResolvedValue(REFUSED);
+      render(<TriggerButton jobId="j1" onTrigger={onTrigger} feedbackDurationMs={FAST_MS} />);
+
+      await userEvent.click(screen.getByRole('button'));
+
+      await waitFor(() =>
+        expect(screen.getByRole('button')).toHaveTextContent('Run now'),
+        { timeout: FAST_MS + 200 }
+      );
+    });
+  });
+
   it('is disabled during loading (double-click protection)', async () => {
     let resolve!: () => void;
     const onTrigger = vi.fn(() => new Promise<void>((r) => { resolve = r; }));

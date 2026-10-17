@@ -22,13 +22,6 @@ $brains:
     value: $outputs.jobFilterChips.onChange
     _event: $outputs.jobFilterChips.onChange
 
-  triggerJob:
-    $brain: $brains.$http.post
-    url: POST /api/jobs/{id}/trigger
-    id: $outputs.jobGrid.onTrigger
-    _event: $outputs.jobGrid.onTrigger
-    $reload: [jobs]
-
   toggleJob:
     $brain: $brains.$http.post
     url: POST /api/jobs/{id}/{action}
@@ -49,6 +42,14 @@ $brains:
   reloadAfterBulk:
     $brain: $brains.$ctx.reload
     _event: $outputs.jobGrid.onAfterBulk
+    $reload: [jobs]
+
+  # Run now is posted by the grid itself, not by a brain: a job at its concurrency limit answers 200
+  # with a body saying nothing started, which a brain cannot read and would show as a started run.
+  # The grid shows the outcome and signals here once it has settled.
+  reloadAfterTrigger:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobGrid.onAfterTrigger
     $reload: [jobs]
 
   navigateToNewJob:
@@ -89,7 +90,7 @@ sections:
         $outputs:
           onChange: [selected]
     $outputs:
-      onTrigger: [id]
+      onAfterTrigger: [_]
       onToggle: [id, action]
       onJobClick: [id]
       onAddJob: [_]

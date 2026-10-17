@@ -1664,7 +1664,6 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const filter = resolveExpressionValue(node['filter'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['filter']
 		const filters = node['filters'] as unknown[] | undefined
 		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onTrigger']
 		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onToggle']
 		const onJobClick = resolveExpressionValue(node['onJobClick'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onJobClick']
 		const onAddJob = resolveExpressionValue(node['onAddJob'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAddJob']
@@ -1673,9 +1672,10 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const onBulkTrigger = resolveExpressionValue(node['onBulkTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkTrigger']
 		const onBulkDelete = resolveExpressionValue(node['onBulkDelete'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
 		const onAfterBulk = resolveExpressionValue(node['onAfterBulk'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAfterBulk']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAfterTrigger']
 		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onTrigger={onTrigger} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onAfterTrigger={onAfterTrigger} onExport={onExport} onImport={onImport} />
 	},
 }
 
@@ -1803,13 +1803,13 @@ export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['jobId']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['runHistory']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onTrigger']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
-		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1820,13 +1820,13 @@ export const RunningBannerDetailEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['jobId']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['runHistory']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onTrigger']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
-		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1837,13 +1837,13 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['jobId']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['runHistory']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onTrigger']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
-		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onTrigger={onTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1852,8 +1852,8 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const firings = resolveExpressionValue(node['firings'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['firings']
-		const onRunEarly = resolveExpressionValue(node['onRunEarly'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['onRunEarly']
-		return <ScheduleTimeline firings={firings} onRunEarly={onRunEarly} />
+		const onAfterRunEarly = resolveExpressionValue(node['onAfterRunEarly'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['onAfterRunEarly']
+		return <ScheduleTimeline firings={firings} onAfterRunEarly={onAfterRunEarly} />
 	},
 }
 

@@ -106,12 +106,23 @@ export async function jobsRoutes(
     });
   });
 
+  // A job at its concurrency limit refuses a trigger. That is an outcome the caller needs to hear
+  // about, not an error, so it travels as a 200 with the daemon's status; a trigger that started
+  // keeps answering 204.
+  const isRefused = (result: unknown): result is { status: 'already-running' } =>
+    typeof result === 'object' && result !== null
+    && (result as { status?: unknown }).status === 'already-running';
+
   fastify.post('/api/jobs/:id/trigger', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };
+      const { force } = req.query as { force?: string };
       const ip        = req.ip;
       const userAgent = req.headers['user-agent'];
-      await proxy.send('trigger-job', { id, ip, userAgent });
+      const result = await proxy.send('trigger-job', { id, ip, userAgent, force: force === 'true' });
+      if (isRefused(result)) {
+        return reply.code(200).send(result);
+      }
       return reply.code(204).send();
     });
   });
@@ -119,9 +130,14 @@ export async function jobsRoutes(
   fastify.post('/api/jobs/:id/trigger-early', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };
+      const { force } = req.query as { force?: string };
       const ip        = req.ip;
       const userAgent = req.headers['user-agent'];
-      await proxy.send('trigger-job', { id, ip, userAgent });
+      const result = await proxy.send('trigger-job', { id, ip, userAgent, force: force === 'true' });
+      // Skipping the next firing is what running early means once it ran; nothing ran here.
+      if (isRefused(result)) {
+        return reply.code(200).send(result);
+      }
       await proxy.send('skip-next-firing', { id });
       return reply.code(204).send();
     });

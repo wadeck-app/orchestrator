@@ -5,10 +5,11 @@ $sources:
     url: GET /api/schedule
 
 $brains:
-  triggerEarly:
-    $brain: $brains.$http.post
-    url: POST /api/jobs/{jobId}/trigger-early
-    jobId: $outputs.scheduleTimeline.onRunEarly.jobId
+  # Run early is posted by the timeline itself: a job at its concurrency limit answers 200 with a body
+  # saying nothing started (and the scheduled firing is NOT skipped), which a brain cannot read.
+  reloadAfterRunEarly:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.scheduleTimeline.onAfterRunEarly
     $reload: [schedule]
 
 $type: PageContent
@@ -19,4 +20,4 @@ sections:
     $id: scheduleTimeline
     firings: $sources.schedule
     $outputs:
-      onRunEarly: [jobId]
+      onAfterRunEarly: [_]

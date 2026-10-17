@@ -56,10 +56,10 @@ describe('applyRegistryOverrides injects only declared $outputs', () => {
     const { props } = renderWith('JobCardGrid', {
       $type: 'JobCardGrid',
       $id: 'jobGrid',
-      $outputs: { onTrigger: ['id'], onToggle: ['id', 'action'], onJobClick: ['id'], onAddJob: ['_'] },
+      $outputs: { onAfterTrigger: ['_'], onToggle: ['id', 'action'], onJobClick: ['id'], onAddJob: ['_'] },
     });
 
-    expect(typeof props['onTrigger']).toBe('function');
+    expect(typeof props['onAfterTrigger']).toBe('function');
     expect(typeof props['onToggle']).toBe('function');
     expect(props['onBulkDelete']).toBeUndefined();
     expect(props['onBulkEnable']).toBeUndefined();
@@ -76,6 +76,34 @@ describe('applyRegistryOverrides injects only declared $outputs', () => {
 
     (props['onBulkDelete'] as (ids: string[]) => void)(['a', 'b']);
     expect(published).toEqual([{ id: 'jobGrid', event: 'onBulkDelete', payload: ['a', 'b'] }]);
+  });
+
+  // The grid posts the trigger itself so a refusal (a 200 body a brain cannot read) can be shown, and
+  // only asks the page to reload. A page-owned onTrigger would take that back and hide the refusal.
+  it('JobCardGrid: Run now is no longer page-owned, only the reload is', () => {
+    const { props, published } = renderWith('JobCardGrid', {
+      $type: 'JobCardGrid',
+      $id: 'jobGrid',
+      $outputs: { onTrigger: ['id'], onAfterTrigger: ['_'] },
+    });
+
+    expect(props['onTrigger']).toBeUndefined();
+    (props['onAfterTrigger'] as () => void)();
+    expect(published).toEqual([{ id: 'jobGrid', event: 'onAfterTrigger', payload: undefined }]);
+  });
+
+  it('the running-job detail variants publish onAfterTrigger and no longer onTrigger', () => {
+    for (const name of ['RunningBannerDetail', 'RunningAlertDetail', 'RunningInlineDetail']) {
+      const { props, published } = renderWith(name, {
+        $type: name,
+        $id: 'jobActions',
+        $outputs: { onTrigger: ['_'], onAfterTrigger: ['_'] },
+      });
+
+      expect(props['onTrigger']).toBeUndefined();
+      (props['onAfterTrigger'] as () => void)();
+      expect(published).toEqual([{ id: 'jobActions', event: 'onAfterTrigger', payload: undefined }]);
+    }
   });
 
   it('withOutputCallbacks entries filter the same way', () => {
@@ -101,16 +129,18 @@ describe('applyRegistryOverrides injects only declared $outputs', () => {
     }
   });
 
-  it('ScheduleTimeline filters its custom onRunEarly too', () => {
+  it('ScheduleTimeline filters its custom onAfterRunEarly too', () => {
     const undeclared = renderWith('ScheduleTimeline', { $type: 'ScheduleTimeline', $id: 'timeline' });
-    expect(undeclared.props['onRunEarly']).toBeUndefined();
+    expect(undeclared.props['onAfterRunEarly']).toBeUndefined();
 
     const declared = renderWith('ScheduleTimeline', {
       $type: 'ScheduleTimeline',
       $id: 'timeline',
-      $outputs: { onRunEarly: ['jobId'] },
+      $outputs: { onRunEarly: ['jobId'], onAfterRunEarly: ['_'] },
     });
-    (declared.props['onRunEarly'] as (jobId: string) => void)('nightly');
-    expect(declared.published).toEqual([{ id: 'timeline', event: 'onRunEarly', payload: { jobId: 'nightly' } }]);
+    // Run early is posted by the timeline itself, so the old page-owned event is gone.
+    expect(declared.props['onRunEarly']).toBeUndefined();
+    (declared.props['onAfterRunEarly'] as () => void)();
+    expect(declared.published).toEqual([{ id: 'timeline', event: 'onAfterRunEarly', payload: undefined }]);
   });
 });

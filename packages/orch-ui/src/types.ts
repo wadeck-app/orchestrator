@@ -48,7 +48,10 @@ export interface Job {
   missedFiring?: MissedFiring;
   liveness?: LivenessConfig | null;
   onExitCode?: Record<string, string>;
+  /** Default 300 where it is read. 0 means no timeout, for a process that must stay up. */
   timeoutSeconds?: number;
+  /** How many runs of this job may be alive at once. Absent means no limit. */
+  maxConcurrency?: number;
   env?: Record<string, string>;
   tags?: string[];
   dependsOn?: string;
@@ -79,7 +82,7 @@ export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
   | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
-  | 'label' | 'triggerMode'
+  | 'label' | 'triggerMode' | 'maxConcurrency'
   // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it
   // active now. Both are ordinary edits, so both must be clearable rather than only replaceable.
   | 'activeFrom' | 'activeUntil';
@@ -91,6 +94,21 @@ export type UnsettableJobField =
  */
 export interface JobFormPayload extends Partial<Job> {
   unset?: UnsettableJobField[];
+}
+
+/**
+ * What a trigger answers when the job is at its concurrency limit. Not an error: nothing went wrong,
+ * the run was simply not started.
+ */
+export interface TriggerRefused {
+  status: 'already-running';
+  running: number;
+  maxConcurrency: number;
+}
+
+export function isTriggerRefused(result: unknown): result is TriggerRefused {
+  return typeof result === 'object' && result !== null
+    && (result as { status?: unknown }).status === 'already-running';
 }
 
 export function getErrorMessage(e: unknown): string {

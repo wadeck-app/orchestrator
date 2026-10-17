@@ -2,7 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, ButtonLink, Checkbox, ColumnHelpers, DataTable, IconButton, Spinner, type TableColumn } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type RuntimeEntry } from '../types.js';
+import { postTrigger } from '../trigger-job.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
@@ -103,7 +104,6 @@ export interface JobCardGridProps {
   filters?: React.ReactNode;
   uptimeMap?: Record<string, number | null>;
   // DSL $outputs callbacks -- injected via registry-overrides when $id is declared
-  onTrigger?: (id: string) => void;
   onToggle?: (id: string, enabled: boolean) => void;
   onJobClick?: (id: string) => void;
   onAddJob?: () => void;
@@ -119,6 +119,15 @@ export interface JobCardGridProps {
    * catches up on its next poll, and for up to 30s the deleted cards are still on screen.
    */
   onAfterBulk?: () => void;
+  /**
+   * Fired once a Run now this component ran itself has settled, whether the job started or was
+   * refused for being at its concurrency limit.
+   *
+   * The page cannot own the POST: a brain sees a status, never the 200 body that says the run was
+   * refused, so a refusal on a page-owned trigger looked exactly like a started run. The component
+   * posts itself and uses this to ask the page to reload.
+   */
+  onAfterTrigger?: () => void;
   onExport?: () => void;
   onImport?: () => void;
 }
@@ -127,11 +136,11 @@ export interface JobCardGridProps {
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onTrigger, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk, onAfterTrigger }: JobCardGridProps): React.ReactElement {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const { ask, dialog } = useConfirm();
+  const { ask, notify, dialog } = useConfirm();
 
   const toggleView = () => {
     const next = viewMode === 'grid' ? 'list' : 'grid';
@@ -151,11 +160,34 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
     });
   };
 
-  const handleTrigger = useCallback(async (id: string) => {
-    if (onTrigger) { onTrigger(id); return; }
-    const res = await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
-    if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
-  }, [onTrigger]);
+  // The card's TriggerButton shows a refusal itself, so this only has to hand the result back. The
+  // page is told in `finally`: a refused or failed run can still have changed what the page shows.
+  const handleTrigger = useCallback(async (id: string, opts?: { force: true }) => {
+    try {
+      return await postTrigger(id, opts);
+    } finally {
+      onAfterTrigger?.();
+    }
+  }, [onAfterTrigger]);
+
+  // The list view's Run now is a plain button with no state of its own, so the outcome goes in the
+  // app's dialog: a refusal offers to run anyway, and a failure says what failed.
+  const handleRowTrigger = useCallback(async (id: string, label: string, opts?: { force: true }): Promise<void> => {
+    try {
+      const refused = await handleTrigger(id, opts);
+      if (refused) {
+        ask({
+          title: `"${label}" is already running`,
+          message: `${refused.running} of ${refused.maxConcurrency} allowed run${refused.maxConcurrency === 1 ? ' is' : 's are'} active, so nothing was started. Start another anyway?`,
+          confirmLabel: 'Run anyway',
+          confirmVariant: 'primary',
+          onConfirm: () => { void handleRowTrigger(id, label, { force: true }); },
+        });
+      }
+    } catch (err) {
+      notify({ title: `Could not start "${label}"`, message: getErrorMessage(err) });
+    }
+  }, [handleTrigger, ask, notify]);
 
   const handleToggle = useCallback(async (id: string, enabled: boolean) => {
     if (onToggle) { onToggle(id, enabled); return; }
@@ -176,8 +208,29 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const handleBulkTrigger = useCallback(async () => {
     const ids = [...selected];
     if (onBulkTrigger) { onBulkTrigger(ids); setSelected(new Set()); return; }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/trigger`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
-  }, [selected, onBulkTrigger, onAfterBulk]);
+    const outcomes = await Promise.allSettled(ids.map(id => postTrigger(id)));
+    setSelected(new Set());
+    onAfterBulk?.();
+    // Silent when everything started. Otherwise the count is the report: dropping the responses made
+    // "three started" and "none started" look identical.
+    const refused = outcomes.filter(o => o.status === 'fulfilled' && o.value !== undefined).length;
+    const failures = outcomes.flatMap(o => (o.status === 'rejected' ? [getErrorMessage(o.reason)] : []));
+    if (refused === 0 && failures.length === 0) {
+      return;
+    }
+    const started = outcomes.length - refused - failures.length;
+    const parts = [`${started} started`];
+    if (refused > 0) {
+      parts.push(`${refused} already running`);
+    }
+    if (failures.length > 0) {
+      parts.push(`${failures.length} failed`);
+    }
+    notify({
+      title: 'Not every job was started',
+      message: failures.length > 0 ? `${parts.join(', ')}. ${[...new Set(failures)].join('; ')}` : `${parts.join(', ')}.`,
+    });
+  }, [selected, onBulkTrigger, onAfterBulk, notify]);
   // Asks in the app's own dialog rather than the browser's. A native confirm() blocks the page and
   // cannot be styled, which for "delete N jobs" is the moment the reader most needs to be sure what
   // they are looking at. See useConfirm.
@@ -299,7 +352,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
             <ButtonLink to={`/jobs/${item.job.id}/logs`} label="Logs" icon={<FileText size={12} />} variant="secondary" size="sm" />
           </span>
           <span onClick={e => e.stopPropagation()}>
-            <ButtonAction label="Run now" size="sm" onClick={() => { void handleTrigger(item.job.id); }} />
+            <ButtonAction label="Run now" size="sm" onClick={() => { void handleRowTrigger(item.job.id, item.job.label); }} />
           </span>
         </div>
       ),

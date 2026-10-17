@@ -300,6 +300,68 @@ describe('Jobs API Routes', () => {
     });
   });
 
+  // A trigger the daemon refuses because the job is at its concurrency limit is an outcome, not an
+  // error: 200 with the status in the body, so a client can say "already running" instead of
+  // reporting a failure or, worse, a success.
+  describe('a trigger refused by the concurrency limit', () => {
+    const REFUSED = { status: 'already-running', running: 1, maxConcurrency: 1 };
+
+    function stubDaemon(sent: Array<{ cmd: string; payload: any }>): void {
+      mockProxy.send = async (cmd: string, payload?: unknown) => {
+        sent.push({ cmd, payload });
+        return cmd === 'trigger-job' ? REFUSED : { skipped: true };
+      };
+    }
+
+    it('answers 200 with the status instead of 204', async () => {
+      stubDaemon([]);
+
+      const res = await app.inject({ method: 'POST', url: '/api/jobs/job1/trigger' });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(REFUSED);
+    });
+
+    it('passes force=true through to the daemon', async () => {
+      const sent: Array<{ cmd: string; payload: any }> = [];
+      stubDaemon(sent);
+
+      await app.inject({ method: 'POST', url: '/api/jobs/job1/trigger?force=true' });
+
+      expect(sent.find(s => s.cmd === 'trigger-job')?.payload.force).toBe(true);
+    });
+
+    it('does not force by default', async () => {
+      const sent: Array<{ cmd: string; payload: any }> = [];
+      stubDaemon(sent);
+
+      await app.inject({ method: 'POST', url: '/api/jobs/job1/trigger' });
+
+      expect(sent.find(s => s.cmd === 'trigger-job')?.payload.force).toBeFalsy();
+    });
+
+    // Skipping the next firing is what "run it early" means once it ran. Nothing ran here, so the
+    // scheduled firing is still owed.
+    it('trigger-early does not skip the next firing when nothing was started', async () => {
+      const sent: Array<{ cmd: string; payload: any }> = [];
+      stubDaemon(sent);
+
+      const res = await app.inject({ method: 'POST', url: '/api/jobs/job1/trigger-early' });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(REFUSED);
+      expect(sent.map(s => s.cmd)).not.toContain('skip-next-firing');
+    });
+
+    it('a started trigger still answers 204', async () => {
+      mockProxy.send = async () => ({ status: 'started', pid: 42 });
+
+      const res = await app.inject({ method: 'POST', url: '/api/jobs/job1/trigger' });
+
+      expect(res.statusCode).toBe(204);
+    });
+  });
+
   describe('POST /api/jobs/:id/kill', () => {
     it('kills running job and returns 204', async () => {
       const res = await app.inject({

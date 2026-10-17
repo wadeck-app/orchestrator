@@ -8,10 +8,11 @@ $sources:
     poll: 30s
 
 $brains:
-  triggerJob:
-    $brain: $brains.$http.post
-    url: POST /api/jobs/{id}/trigger
-    _event: $outputs.jobActions.onTrigger
+  # Run now is posted by the component itself: a job at its concurrency limit answers 200 with a body
+  # saying nothing started, which a brain cannot read and would show as a started run.
+  reloadAfterTrigger:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobActions.onAfterTrigger
     $reload: [jobData]
 
   killJob:
@@ -57,7 +58,7 @@ sections:
     job: $sources.jobData.job
     runHistory: $sources.jobData.runHistory
     $outputs:
-      onTrigger: [_]
+      onAfterTrigger: [_]
       onKill: [_]
       onDelete: [_]
       onViewLogs: [_]

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Square } from 'lucide-react';
 import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
@@ -19,7 +20,12 @@ export interface RunningInlineDetailProps {
   job: Job;
   jobId: string;
   runHistory?: RuntimeEntry[];
-  onTrigger?: () => void;
+  /**
+   * Fired once a Run now this component ran itself has settled, started or refused. The component
+   * posts the trigger itself because a page-owned brain cannot see a refusal (a 200 body, not a
+   * status); this lets the page reload.
+   */
+  onAfterTrigger?: () => void;
   onDelete?: () => void;
   onDryRun?: () => void;
   onViewLogs?: () => void;
@@ -31,7 +37,7 @@ export interface RunningInlineDetailProps {
  * @registryCategory composite
  * @registryTags job detail running inline design-c
  */
-export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
+export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
   if (!job) {
     return null;
   }
@@ -56,9 +62,12 @@ export function RunningInlineDetail({ job, jobId, runHistory, onTrigger, onKill,
     return () => clearInterval(id);
   }, [isRunning]);
 
-  const handleTrigger = async (id: string) => {
-    if (onTrigger) { onTrigger(); return; }
-    await fetch(`/api/jobs/${id}/trigger`, { method: 'POST' });
+  const handleTrigger = async (id: string, opts?: { force: true }) => {
+    try {
+      return await postTrigger(id, opts);
+    } finally {
+      onAfterTrigger?.();
+    }
   };
 
   // Asks, then kills. The gate used to be a native confirm(), which blocks the page and cannot be

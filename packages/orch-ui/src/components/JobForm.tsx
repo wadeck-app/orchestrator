@@ -103,6 +103,23 @@ function numericSetter(set: (n: number) => void): (v: string | number) => void {
 }
 
 /**
+ * Like numericSetter, but an emptied box stays empty instead of becoming 0.
+ *
+ * For fields where 0 is a value and not an absence: timeoutSeconds 0 means "no timeout". Folding an
+ * emptied box into 0 there would remove the timeout the user never asked to remove.
+ */
+function optionalNumericSetter(set: (n: number | '') => void): (v: string | number) => void {
+  return v => {
+    if (v === '') {
+      set('');
+      return;
+    }
+    const n = typeof v === 'number' ? v : Number(v);
+    set(Number.isFinite(n) ? n : '');
+  };
+}
+
+/**
  * Whether the job already stored something in this field. Same rule as registry.ts isEmptyValue(),
  * so "was configured" means the same thing on both sides: 0 and false are values, an empty string
  * or an empty collection is not.
@@ -183,7 +200,10 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     return Number.isFinite(base) ? new Date(base + initial.delayMs) : null;
   });
   const [missedFiring, setMissedFiring] = useState<MissedFiring>(initial?.missedFiring ?? 'skip');
-  const [timeoutSeconds, setTimeoutSeconds] = useState<number>(initial?.timeoutSeconds ?? 300);
+  // '' is "not set" (the daemon's default applies); 0 is "no timeout". They must stay distinct.
+  const [timeoutSeconds, setTimeoutSeconds] = useState<number | ''>(initial?.timeoutSeconds ?? 300);
+  // '' is no limit, which is also what an absent field means.
+  const [maxConcurrency, setMaxConcurrency] = useState<number | ''>(initial?.maxConcurrency ?? '');
   // Seeded from the job so editing shows the window it already has, rather than an empty field that
   // would clear it on save.
   const [activePeriod, setActivePeriod] = useState<DateRange>({
@@ -361,13 +381,20 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         data.liveness = null;
       }
 
-      // timeout. 0 is a value to the daemon, not an absence, so zeroing the box has to unset the
-      // field rather than store a job that times out immediately.
-      if (timeoutSeconds > 0) {
+      // timeout. 0 is a value (no timeout), so only an emptied box means "not set".
+      if (timeoutSeconds !== '') {
         data.timeoutSeconds = timeoutSeconds;
       }
       else {
         clearIfWasConfigured('timeoutSeconds', initial?.timeoutSeconds);
+      }
+
+      // Concurrency limit. Empty is no limit, so an emptied box clears a limit that was set.
+      if (maxConcurrency !== '') {
+        data.maxConcurrency = maxConcurrency;
+      }
+      else {
+        clearIfWasConfigured('maxConcurrency', initial?.maxConcurrency);
       }
 
       // onExitCode
@@ -578,9 +605,17 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
           {/* Timeout */}
           <FieldNumber
             label="Timeout (seconds)"
+            description="Kill the run after this long. 0 means no timeout, for a process that must stay up."
             value={timeoutSeconds}
-            onChange={numericSetter(setTimeoutSeconds)}
+            onChange={optionalNumericSetter(setTimeoutSeconds)}
             min={0}
+          />
+          <FieldNumber
+            label="Max concurrent runs"
+            description="Empty means no limit. At the limit, a new start is skipped and recorded as already running; Run now can force one."
+            value={maxConcurrency}
+            onChange={optionalNumericSetter(setMaxConcurrency)}
+            min={1}
           />
           <FieldSelect
             label="Missed firing"

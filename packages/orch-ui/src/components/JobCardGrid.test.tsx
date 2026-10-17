@@ -16,6 +16,12 @@ function wrap(node: React.ReactNode) {
   return render(<MemoryRouter>{node}</MemoryRouter>);
 }
 
+/** What the server answers when a job is at its concurrency limit: a 200, not an error. */
+const refusal = (): Response => new Response(
+  JSON.stringify({ status: 'already-running', running: 1, maxConcurrency: 1 }),
+  { status: 200, headers: { 'content-type': 'application/json' } },
+);
+
 describe('JobCardGrid', () => {
   it('renders spinner when items is undefined', () => {
     wrap(<JobCardGrid />);
@@ -120,6 +126,61 @@ describe('JobCardGrid bulk actions', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/jobs/j1/enable', { method: 'POST' });
   });
 
+  describe('Run now on the selection', () => {
+    async function selectBoth(extra: Partial<React.ComponentProps<typeof JobCardGrid>> = {}) {
+      const user = userEvent.setup();
+      wrap(<JobCardGrid items={[
+        { job: JOB('j1', 'Job A'), runHistory: HISTORY },
+        { job: JOB('j2', 'Job B'), runHistory: HISTORY },
+      ]} {...extra} />);
+      await user.click(screen.getByLabelText('Select Job A'));
+      await user.click(screen.getByLabelText('Select Job B'));
+      // The bulk bar renders above the cards, so its button is the first "Run now".
+      return { user, runSelection: () => user.click(screen.getAllByRole('button', { name: 'Run now' })[0]!) };
+    }
+
+    it('says nothing when every job started', async () => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+      const onAfterBulk = vi.fn();
+      const { runSelection } = await selectBoth({ onAfterBulk });
+
+      await runSelection();
+
+      await waitFor(() => { expect(onAfterBulk).toHaveBeenCalled(); });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    // A fan-out that drops every response reports the same thing whether three jobs started or none
+    // did. The count is what tells the reader which.
+    it('counts the jobs that were already running', async () => {
+      vi.spyOn(globalThis, 'fetch')
+        .mockImplementationOnce(() => Promise.resolve(new Response(null, { status: 204 })))
+        .mockImplementationOnce(() => Promise.resolve(refusal()));
+      const onAfterBulk = vi.fn();
+      const { runSelection } = await selectBoth({ onAfterBulk });
+
+      await runSelection();
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('1 started, 1 already running.')).toBeInTheDocument();
+      expect(onAfterBulk).toHaveBeenCalled();
+    });
+
+    it('names a request that failed rather than counting it as started', async () => {
+      vi.spyOn(globalThis, 'fetch')
+        .mockImplementationOnce(() => Promise.resolve(new Response(null, { status: 204 })))
+        .mockImplementationOnce(() => Promise.resolve(new Response(JSON.stringify({ error: 'daemon-not-running' }), { status: 503 })));
+      const { runSelection } = await selectBoth();
+
+      await runSelection();
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/1 started, 1 failed/)).toBeInTheDocument();
+      expect(within(dialog).getByText(/daemon-not-running/)).toBeInTheDocument();
+    });
+  });
+
   it('does not reload when the page owns the enable -- the page reloads on its own', async () => {
     const onBulkEnable = vi.fn();
     const onAfterBulk = vi.fn();
@@ -129,6 +190,37 @@ describe('JobCardGrid bulk actions', () => {
 
     await waitFor(() => { expect(onBulkEnable).toHaveBeenCalledWith(['j1']); });
     expect(onAfterBulk).not.toHaveBeenCalled();
+  });
+});
+
+describe('JobCardGrid card Run now', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('triggers through its own request and tells the page to reload', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    const onAfterTrigger = vi.fn();
+    const user = userEvent.setup();
+    wrap(<JobCardGrid items={[{ job: JOB('j1', 'Job A'), runHistory: HISTORY }]} onAfterTrigger={onAfterTrigger} />);
+
+    await user.click(screen.getByRole('button', { name: 'Run now' }));
+
+    await waitFor(() => { expect(onAfterTrigger).toHaveBeenCalledTimes(1); });
+    expect(fetchMock).toHaveBeenCalledWith('/api/jobs/j1/trigger', { method: 'POST' });
+  });
+
+  // Nothing started, but the job's state may still have moved (it IS running), so the page reloads.
+  it('shows the refusal on the button and still reloads', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(refusal()));
+    const onAfterTrigger = vi.fn();
+    const user = userEvent.setup();
+    wrap(<JobCardGrid items={[{ job: JOB('j1', 'Job A'), runHistory: HISTORY }]} onAfterTrigger={onAfterTrigger} />);
+
+    await user.click(screen.getByRole('button', { name: 'Run now' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Already running \(1\/1\)/ })).toBeInTheDocument();
+    });
+    expect(onAfterTrigger).toHaveBeenCalled();
   });
 });
 
@@ -220,14 +312,50 @@ describe('JobCardGrid list view', () => {
   });
 
   it('per-row Run now triggers that job without navigating', async () => {
-    const onTrigger = vi.fn();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     const onJobClick = vi.fn();
-    const user = await inListView({ onTrigger, onJobClick });
+    const onAfterTrigger = vi.fn();
+    const user = await inListView({ onJobClick, onAfterTrigger });
 
     await user.click(screen.getAllByRole('button', { name: 'Run now' })[0]!);
 
-    expect(onTrigger).toHaveBeenCalledWith('j1');
+    await waitFor(() => { expect(onAfterTrigger).toHaveBeenCalled(); });
+    expect(fetchMock).toHaveBeenCalledWith('/api/jobs/j1/trigger', { method: 'POST' });
     expect(onJobClick).not.toHaveBeenCalled();
+  });
+
+  // The page used to own this POST through a brain, which can only see a status, never the 200 body
+  // that says the run was refused. The row triggers itself now, so the refusal has somewhere to land.
+  it('per-row Run now says so when the job is already running, and can run anyway', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(() => Promise.resolve(refusal()))
+      .mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+    const user = await inListView();
+
+    await user.click(screen.getAllByRole('button', { name: 'Run now' })[0]!);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/already running/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 of 1/)).toBeInTheDocument();
+    // Nothing started yet: the reader has not chosen to go past the limit.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Run anyway' }));
+
+    await waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(2); });
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/jobs/j1/trigger?force=true', { method: 'POST' });
+  });
+
+  it('per-row Run now reports a failed request instead of dropping it', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'daemon-not-running' }), { status: 503 }),
+    );
+    const user = await inListView();
+
+    await user.click(screen.getAllByRole('button', { name: 'Run now' })[0]!);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/daemon-not-running/)).toBeInTheDocument();
   });
 
   it('DataTable owns the empty state, so the message is not doubled', async () => {

@@ -85,7 +85,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
   }
 
   // JobCardGrid: custom overrides -- onToggle publishes {id, action} object,
-  // onTrigger/onJobClick publish the job ID string, onAddJob publishes nothing.
+  // onJobClick publishes the job ID string, onAddJob and onAfterTrigger publish nothing.
+  // Run now is not an output: the grid posts it itself, because a brain cannot see the 200 body that
+  // says the job was already running. It only signals when it has settled, so the page can reload.
   const jcg = registry['JobCardGrid'];
   if (jcg) {
     const originalJcg = jcg.render;
@@ -97,7 +99,7 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
         return originalJcg(props);
       }
       const extra = {
-        onTrigger: (jobId: string) => pub(id, 'onTrigger', jobId),
+        onAfterTrigger: () => pub(id, 'onAfterTrigger', undefined),
         onToggle: (jobId: string, enabled: boolean) => pub(id, 'onToggle', { id: jobId, action: enabled ? 'enable' : 'disable' }),
         onJobClick: (jobId: string) => pub(id, 'onJobClick', jobId),
         onAddJob: () => pub(id, 'onAddJob', undefined),
@@ -111,8 +113,9 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
     };
   }
 
-  // Design variants for running job detail
-  const outputs = ['onTrigger', 'onDelete', 'onDryRun', 'onViewLogs', 'onEdit', 'onKill'];
+  // Design variants for running job detail. Run now posts itself (see JobCardGrid above) and only
+  // signals onAfterTrigger.
+  const outputs = ['onAfterTrigger', 'onDelete', 'onDryRun', 'onViewLogs', 'onEdit', 'onKill'];
   for (const name of ['RunningBannerDetail', 'RunningAlertDetail', 'RunningInlineDetail']) {
     const entry = registry[name];
     if (entry) {
@@ -139,7 +142,8 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
     jfc.render = withOutputCallbacks(jfc.render, ['onChange']);
   }
 
-  // ScheduleTimeline: expose onRunEarly as DSL $output
+  // ScheduleTimeline: expose onAfterRunEarly as DSL $output. Run early posts itself, for the same
+  // reason as Run now: a refusal is a 200 body the brain cannot read.
   const st = registry['ScheduleTimeline'];
   if (st) {
     const originalSt = st.render;
@@ -151,7 +155,7 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
         return originalSt(props);
       }
       const extra = {
-        onRunEarly: (jobId: string) => pub(id, 'onRunEarly', { jobId }),
+        onAfterRunEarly: () => pub(id, 'onAfterRunEarly', undefined),
       };
       return originalSt({ ...props, node: { ...node, ...keepDeclared(extra, node) } });
     };
