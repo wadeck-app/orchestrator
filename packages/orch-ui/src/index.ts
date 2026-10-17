@@ -47,3 +47,4 @@ export { describeCron } from './cron-describe.js';
 export { configureOrchUi, getApiBase } from './runtime-config.js';
 export type { OrchUiConfig } from './runtime-config.js';
 export { appPath, getRouteBase } from './runtime-config.js';
+export { applyRegistryOverrides } from './registry-overrides.js';
