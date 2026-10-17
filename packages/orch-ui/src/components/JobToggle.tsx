@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Switch, Tooltip } from '@wadeck-app/dsl-ui';
 import type { Job } from '../types.js';
+import { getApiBase } from '../runtime-config.js';
 
 export interface JobToggleProps { job: Job; }
 
@@ -22,7 +23,7 @@ export function JobToggle({ job }: JobToggleProps): React.ReactElement {
     setOptimistic(next);
     setLoading(true);
     try {
-      await fetch(`/api/jobs/${job.id}/${next ? 'enable' : 'disable'}`, { method: 'POST' });
+      await fetch(`${getApiBase()}/api/jobs/${job.id}/${next ? 'enable' : 'disable'}`, { method: 'POST' });
     } catch {
       setOptimistic(!next);
     } finally {

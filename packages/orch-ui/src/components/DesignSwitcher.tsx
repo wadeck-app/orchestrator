@@ -1,4 +1,5 @@
 import React from 'react';
+import { appPath } from '../runtime-config.js';
 
 // @formatter:off
 const SWITCHER_INACTIVE = 'text-xs px-2.5 py-1 rounded border border-border text-content hover:bg-muted-bg transition-colors';
@@ -25,7 +26,7 @@ export function DesignSwitcher({ jobId, current }: DesignSwitcherProps): React.R
       {designs.map(d => (
         <a
           key={d.id}
-          href={`/jobs/${jobId}/${d.id}`}
+          href={appPath(`/jobs/${jobId}/${d.id}`)}
           className={`text-xs px-2.5 py-1 rounded border transition-colors ${
             current === d.id
               ? 'bg-primary text-on-primary border-primary font-medium text-xs px-2.5 py-1 rounded border transition-colors'
@@ -36,7 +37,7 @@ export function DesignSwitcher({ jobId, current }: DesignSwitcherProps): React.R
         </a>
       ))}
       <a
-        href={`/jobs/${jobId}`}
+        href={appPath(`/jobs/${jobId}`)}
         className={SWITCHER_INACTIVE}
       >
         Default

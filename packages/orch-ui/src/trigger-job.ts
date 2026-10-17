@@ -1,4 +1,5 @@
 import { isTriggerRefused, type TriggerRefused } from './types.js';
+import { getApiBase } from './runtime-config.js';
 
 async function postRun(
   id: string,
@@ -33,7 +34,7 @@ async function postRun(
 export function postTrigger(
   id: string,
   opts?: { force?: boolean },
-  apiBase = '',
+  apiBase = getApiBase(),
 ): Promise<void | TriggerRefused> {
   return postRun(id, 'trigger', opts, apiBase);
 }
@@ -46,7 +47,7 @@ export function postTrigger(
 export function postTriggerEarly(
   id: string,
   opts?: { force?: boolean },
-  apiBase = '',
+  apiBase = getApiBase(),
 ): Promise<void | TriggerRefused> {
   return postRun(id, 'trigger-early', opts, apiBase);
 }

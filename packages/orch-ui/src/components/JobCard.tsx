@@ -8,6 +8,7 @@ import { JobStatusPill } from './JobStatusPill.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
 import { EnableToggle } from './EnableToggle.js';
+import { appPath } from '../runtime-config.js';
 
 export interface JobCardProps {
   job: Job;
@@ -310,7 +311,7 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
         {hasLogs && (
           <span onClick={(e) => e.stopPropagation()}>
             <ButtonLink
-              to={`/jobs/${job.id}/logs`}
+              to={appPath(`/jobs/${job.id}/logs`)}
               label="Logs"
               icon={<FileText size={12} />}
               variant="secondary"

@@ -5,6 +5,7 @@ import { ColumnHelpers, DataTable, type TableColumn } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunSkipped, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { TriggerBadge } from './TriggerBadge.js';
+import { appPath } from '../runtime-config.js';
 
 export interface RunHistoryProps {
   entries: RuntimeEntry[];
@@ -126,7 +127,7 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
       label: 'Output',
       render: ({ entry }) => (
         <Link
-          to={`/jobs/${jobId}/logs?run=${encodeURIComponent(runName(entry.startedAt))}`}
+          to={appPath(`/jobs/${jobId}/logs?run=${encodeURIComponent(runName(entry.startedAt))}`)}
           className="inline-flex items-center gap-1 text-primary hover:underline"
         >
           <FileText size={12} />

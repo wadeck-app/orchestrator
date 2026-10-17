@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FailureEntry } from '../components/FailureBanner.js';
+import { getApiBase } from '../runtime-config.js';
 export type { FailureEntry } from '../components/FailureBanner.js';
 
-export function useFailures(apiBase = ''): {
+export function useFailures(apiBase = getApiBase()): {
   failures: FailureEntry[];
   acknowledgeOne: (jobId: string) => Promise<void>;
   acknowledgeAll: () => Promise<void>;

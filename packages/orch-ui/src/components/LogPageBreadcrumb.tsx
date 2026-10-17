@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { BACK_ROW_CLS, BACK_LINK_CLS } from '@wadeck-app/dsl-ui';
 import { useWidePane, widthClass } from './log-pane-width.js';
+import { appPath } from '../runtime-config.js';
 
 // One row: back link, job name, page kind. Replaces a stacked back link, a
 // text-2xl page title and a "Logs" subtitle, which together pushed the first log
@@ -43,7 +44,7 @@ export function LogPageBreadcrumb({ jobId, jobLabel }: LogPageBreadcrumbProps): 
             everyone, and it widens the hit area beyond a 14px glyph. "Back" is the wording
             BackLink uses; the two must not drift apart. The icon is decorative once the word is
             there, so it is hidden from the accessible name instead of doubling it. */}
-        <Link to={`/jobs/${jobId}`} className={`${BACK_LINK_CLS} shrink-0`}>
+        <Link to={appPath(`/jobs/${jobId}`)} className={`${BACK_LINK_CLS} shrink-0`}>
           <ArrowLeft size={14} aria-hidden="true" />
           Back
         </Link>

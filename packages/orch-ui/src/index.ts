@@ -44,3 +44,6 @@ export type { JobWithHistory } from './job-with-history.js';
 export type { Job, JobFormPayload, UnsettableJobField, RuntimeEntry, MissedFiring, LivenessConfig, LivenessStrategy } from './types.js';
 export { getErrorMessage } from './types.js';
 export { describeCron } from './cron-describe.js';
+export { configureOrchUi, getApiBase } from './runtime-config.js';
+export type { OrchUiConfig } from './runtime-config.js';
+export { appPath, getRouteBase } from './runtime-config.js';

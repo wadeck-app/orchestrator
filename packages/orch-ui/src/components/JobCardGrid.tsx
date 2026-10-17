@@ -9,6 +9,7 @@ import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { relativeTime } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { appPath, getApiBase } from '../runtime-config.js';
 
 // Extends the shared shape rather than redeclaring it: a second exported interface with the
 // same name but an extra field meant the type you got depended on which file you imported
@@ -191,19 +192,19 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
 
   const handleToggle = useCallback(async (id: string, enabled: boolean) => {
     if (onToggle) { onToggle(id, enabled); return; }
-    const res = await fetch(`/api/jobs/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
+    const res = await fetch(`${getApiBase()}/api/jobs/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
     if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
   }, [onToggle]);
 
   const handleBulkEnable  = useCallback(async () => {
     const ids = [...selected];
     if (onBulkEnable) { onBulkEnable(ids); setSelected(new Set()); return; }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/enable`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
+    await Promise.allSettled(ids.map(id => fetch(`${getApiBase()}/api/jobs/${id}/enable`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
   }, [selected, onBulkEnable, onAfterBulk]);
   const handleBulkDisable = useCallback(async () => {
     const ids = [...selected];
     if (onBulkDisable) { onBulkDisable(ids); setSelected(new Set()); return; }
-    await Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}/disable`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
+    await Promise.allSettled(ids.map(id => fetch(`${getApiBase()}/api/jobs/${id}/disable`, { method: 'POST' }))); setSelected(new Set()); onAfterBulk?.();
   }, [selected, onBulkDisable, onAfterBulk]);
   const handleBulkTrigger = useCallback(async () => {
     const ids = [...selected];
@@ -246,7 +247,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
       confirmLabel: 'Delete',
       onConfirm: () => {
         if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
-        void Promise.allSettled(ids.map(id => fetch(`/api/jobs/${id}`, { method: 'DELETE' })))
+        void Promise.allSettled(ids.map(id => fetch(`${getApiBase()}/api/jobs/${id}`, { method: 'DELETE' })))
           .then(() => { setSelected(new Set()); onAfterBulk?.(); });
       },
     });
@@ -349,7 +350,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
       render: ({ item }) => (
         <div className="flex items-center gap-2">
           <span onClick={e => e.stopPropagation()}>
-            <ButtonLink to={`/jobs/${item.job.id}/logs`} label="Logs" icon={<FileText size={12} />} variant="secondary" size="sm" />
+            <ButtonLink to={appPath(`/jobs/${item.job.id}/logs`)} label="Logs" icon={<FileText size={12} />} variant="secondary" size="sm" />
           </span>
           <span onClick={e => e.stopPropagation()}>
             <ButtonAction label="Run now" size="sm" onClick={() => { void handleRowTrigger(item.job.id, item.job.label); }} />
@@ -382,7 +383,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
         <div className="flex items-center gap-2">
           {onExport && <ButtonAction variant="secondary" label="Export" onClick={onExport} />}
           {onImport && <ButtonAction variant="secondary" label="Import" onClick={onImport} />}
-          <ButtonAction label="Add job" onClick={() => onAddJob ? onAddJob() : navigate('/jobs/new')} />
+          <ButtonAction label="Add job" onClick={() => onAddJob ? onAddJob() : navigate(appPath('/jobs/new'))} />
           <IconButton icon={viewMode === 'grid' ? <LayoutList size={16} /> : <LayoutGrid size={16} />} aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'} onClick={toggleView} variant="ghost" />
         </div>
       </div>
@@ -410,7 +411,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
             <JobCard key={item.job.id} job={item.job} runHistory={item.runHistory}
               uptimePercent={uptimeMap?.[item.job.id] ?? item.uptimePercent}
               consecutiveFailures={getConsecutiveFailures(item.runHistory)}
-              onClick={() => onJobClick ? onJobClick(item.job.id) : navigate(`/jobs/${item.job.id}`)}
+              onClick={() => onJobClick ? onJobClick(item.job.id) : navigate(appPath(`/jobs/${item.job.id}`))}
               onTrigger={handleTrigger} onToggle={handleToggle}
               selected={selected.has(item.job.id)}
               onSelect={e => { e.stopPropagation(); toggleSelect(item.job.id); }} />
@@ -421,7 +422,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
           rows={visible.map(toJobRow)}
           columns={listColumns}
           emptyMessage="No jobs match the current filter."
-          onRowClick={({ id }) => onJobClick ? onJobClick(id) : navigate(`/jobs/${id}`)}
+          onRowClick={({ id }) => onJobClick ? onJobClick(id) : navigate(appPath(`/jobs/${id}`))}
         />
       )}
       {dialog}

@@ -7,6 +7,7 @@ import { getErrorMessage, isJobRunning as jobHasOpenRun, type RuntimeEntry } fro
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
 import { useConfirm } from '../use-confirm.js';
+import { getApiBase } from '../runtime-config.js';
 
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
@@ -148,7 +149,7 @@ export interface LogViewerProps {
  * @registryCategory composite
  * @registryTags log viewer streaming sse
  */
-export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps): React.ReactElement {
+export function LogViewer({ jobId, apiBase = getApiBase(), fill = false }: LogViewerProps): React.ReactElement {
   const [lines, setLines] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [search, setSearch] = useState('');

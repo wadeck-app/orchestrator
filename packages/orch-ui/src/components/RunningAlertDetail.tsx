@@ -8,6 +8,7 @@ import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
 import { formatElapsed } from '../relative-time.js';
+import { appPath, getApiBase } from '../runtime-config.js';
 
 // @formatter:off
 // violations-suppress: tailwind/no-raw-color-class amber alert for running state -- no semantic token for warning/running state
@@ -97,7 +98,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onK
         onKill();
         return;
       }
-      const res = await fetch(`/api/jobs/${jobId}/kill`, { method: 'POST' });
+      const res = await fetch(`${getApiBase()}/api/jobs/${jobId}/kill`, { method: 'POST' });
       if (!res.ok) {
         const e = await res.json().catch(() => ({})) as { error?: string };
         setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
@@ -110,7 +111,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onK
   const handleDelete = () => {
     if (onDelete) { onDelete(); return; }
     if (!confirmDelete) { setConfirmDelete(true); return; }
-    void fetch(`/api/jobs/${jobId}`, { method: 'DELETE' }).then(() => { window.location.href = '/'; });
+    void fetch(`${getApiBase()}/api/jobs/${jobId}`, { method: 'DELETE' }).then(() => { window.location.href = appPath('/'); });
   };
 
   // After every hook: the page mounts this before its data arrives, and a return ahead of the hooks
@@ -156,10 +157,10 @@ export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onK
       <div className="flex gap-3 flex-wrap mb-4">
         {onViewLogs
           ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
-          : <ButtonLink to={`/jobs/${jobId}/logs`} label="View logs" variant="neutral" />}
+          : <ButtonLink to={appPath(`/jobs/${jobId}/logs`)} label="View logs" variant="neutral" />}
         {onEdit
           ? <ButtonAction label="Edit" variant="secondary" onClick={onEdit} />
-          : <ButtonLink to={`/jobs/${jobId}/edit`} label="Edit" variant="neutral" />}
+          : <ButtonLink to={appPath(`/jobs/${jobId}/edit`)} label="Edit" variant="neutral" />}
         {!confirmDelete
           ? <ButtonAction label="Delete" variant="danger" onClick={() => setConfirmDelete(true)} />
           : <div className="flex items-center gap-2">
