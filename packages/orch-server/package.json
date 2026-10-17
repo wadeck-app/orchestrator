@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./routes/jobs": "./src/routes/jobs.ts",
+    "./routes/logs": "./src/routes/logs.ts",
+    "./daemon-proxy": "./src/daemon-proxy.ts"
+  },
   "scripts": {
     "build": "tsc --build tsconfig.json",
     "dev": "tsx watch src/index.ts",

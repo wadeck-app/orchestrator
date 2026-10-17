@@ -40,9 +40,16 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * What these handlers use of the idle timer. Structural, like jobs.ts: the dashboard server passes
+ * its real IdleTimer, while an app-core module passes a no-op, because app-core has no idle exit
+ * to postpone.
+ */
+export type LogsIdleTimer = Pick<IdleTimer, 'reset' | 'addSseConnection' | 'removeSseConnection'>;
+
 export async function logsRoutes(
   fastify: FastifyInstance,
-  opts: { configDir: string; idleTimer: IdleTimer }
+  opts: { configDir: string; idleTimer: LogsIdleTimer }
 ): Promise<void> {
   const { configDir, idleTimer } = opts;
 
