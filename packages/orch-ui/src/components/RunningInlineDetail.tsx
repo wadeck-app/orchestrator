@@ -38,9 +38,6 @@ export interface RunningInlineDetailProps {
  * @registryTags job detail running inline design-c
  */
 export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
-  if (!job) {
-    return null;
-  }
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -109,6 +106,12 @@ export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, on
     if (!confirmDelete) { setConfirmDelete(true); return; }
     void fetch(`/api/jobs/${jobId}`, { method: 'DELETE' }).then(() => { window.location.href = '/'; });
   };
+
+  // After every hook: the page mounts this before its data arrives, and a return ahead of the hooks
+  // makes the first render call none and the next call all of them.
+  if (!job) {
+    return null;
+  }
 
   const typeBadgeCls = `${TYPE_BADGE_BASE} ${TYPE_COLORS[job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`;
 
