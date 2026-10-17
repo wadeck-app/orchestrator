@@ -102,6 +102,14 @@ export function validateJob(job: Partial<Job>): void {
     // not a rule to hand the user - see waitUntil in time-service.ts.
   }
 
+  if (job.timeoutSeconds !== undefined) {
+    if (!Number.isInteger(job.timeoutSeconds) || job.timeoutSeconds < 0) {
+      throw new Error(`timeoutSeconds must be a non-negative integer, 0 meaning no timeout (got: ${job.timeoutSeconds})`);
+    }
+    // Deliberately no upper bound: the scheduler arms this through waitUntil (time-service.ts),
+    // which absorbs any timer-ceiling overflow itself - not a rule to hand the user.
+  }
+
   if (job.triggerMode !== undefined && !VALID_TRIGGER_MODES.has(job.triggerMode)) {
     throw new Error(`triggerMode must be "fire-and-forget" or "wait" (got: ${job.triggerMode})`);
   }

@@ -21,7 +21,7 @@ import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 import { isFailure } from './state.js';
-import { systemTime, type TimeService, type Timer } from './time-service.js';
+import { systemTime, waitUntil, type TimeService, type Timer } from './time-service.js';
 import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 
@@ -1097,12 +1097,15 @@ export class Scheduler extends EventEmitter {
       try { process.stderr.write(d); } catch { /* EPIPE: launcher pipe closed */ }
     });
 
-    // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s)
+    // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s; 0 = no timeout).
     const timeoutMs = (job.timeoutSeconds ?? 300) * 1000;
     let timeoutHandle: Timer | null = null;
     let timedOut = false;
     if (timeoutMs > 0) {
-      timeoutHandle = this._time.after(timeoutMs, () => {
+      // waitUntil, not after(timeoutMs): a timer clamps a delay above ~24.85 days to 1ms, so
+      // `--timeout 31536000` (one year) used to kill the job on the next tick instead of after a
+      // year. See waitUntil in time-service.ts.
+      timeoutHandle = waitUntil(this._time, this._time.now() + timeoutMs, () => {
         timedOut = true;
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
         jobLogger.write(`[job:timeout] jobId=${job.id} timeoutSeconds=${job.timeoutSeconds ?? 300}`);

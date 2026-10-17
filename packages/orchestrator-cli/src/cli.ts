@@ -405,7 +405,8 @@ Job mutation:
   --schedule <expr>            Cron expression (cron jobs)
   --trigger-mode <mode>        fire-and-forget | wait
   --missed-firing <mode>       catch-up | skip
-  --timeout <seconds>          Kill the run after this long (default: 300)
+  --timeout <seconds>          Kill the run after this long (default: 300; 0 = no timeout,
+                               for a process that must stay up, e.g. a dev server)
   --tags <a,b>                 Comma-separated tags
   --depends-on <job-id>        Fire this job after <job-id> succeeds
   --alert-after-failures <n>   Alert after n consecutive failures (default: 3)

@@ -13,6 +13,7 @@ const { EventEmitter } = require('node:events');
 const { Registry }  = require('../src/registry');
 const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
+const { FakeTime }  = require('../src/time-service');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'orch-timeout-log-test-'));
@@ -52,17 +53,21 @@ describe('timeout logging', () => {
     const registry = new Registry(path.join(dir, 'registry.json'));
     const state    = new State(path.join(dir, 'state.json'));
     registry.load();
-    const job = { ...BASE_JOB, id: 'sync-a', timeoutSeconds: 0.001 };
+    const job = { ...BASE_JOB, id: 'sync-a', timeoutSeconds: 1 };
     registry.add(job);
 
     const child = hangingChild(1);
+    const time  = new FakeTime(Date.now());
     const sched = new Scheduler(registry, state, {
       spawn: () => child,
       liveness: async () => false,
       configDir: dir,
+      time,
     });
 
-    await sched._fire(job);
+    const fired = sched._fire(job);
+    await time.advanceAsync(1000, 100);
+    await fired;
 
     const log = readJobLog(dir, 'sync-a');
     const lines = log.split('\n').filter(Boolean);
@@ -83,22 +88,23 @@ describe('timeout logging', () => {
     const job = { ...BASE_JOB, id: 'sync-b', timeoutSeconds: 3600 };
     registry.add(job);
 
-    // Fake time service: after() fires its callback on the next tick regardless of ms,
-    // so the timeout triggers immediately without waiting 3600 seconds.
-    const fakeTime = {
-      now:   () => Date.now(),
-      after: (_, fn) => { process.nextTick(fn); return { cancel: () => {} }; },
-      every: (ms, fn) => { const h = setInterval(fn, ms); return { cancel: () => clearInterval(h) }; },
-    };
+    // A driven clock: advanceAsync below moves it past the 3600s timeout without a real wait,
+    // and (unlike a stub that fires on the next tick regardless of ms) models elapsed time
+    // correctly for waitUntil's re-arming loop in the job-timeout path.
+    // Seeded with the real clock: RunLogger prunes log files by real wall-clock age, so a FakeTime
+    // left at its distant default date would have its own just-written log file pruned on sight.
+    const time = new FakeTime(Date.now());
 
     const sched = new Scheduler(registry, state, {
       spawn: () => hangingChild(1),
       liveness: async () => false,
       configDir: dir,
-      time: fakeTime,
+      time,
     });
 
-    await sched._fire(job);
+    const fired = sched._fire(job);
+    await time.advanceAsync(3600 * 1000, 60_000);
+    await fired;
 
     const log = readJobLog(dir, 'sync-b');
     assert.ok(log.includes('[job:timeout] jobId=sync-b timeoutSeconds=3600'),
@@ -110,16 +116,20 @@ describe('timeout logging', () => {
     const registry = new Registry(path.join(dir, 'registry.json'));
     const state    = new State(path.join(dir, 'state.json'));
     registry.load();
-    const job = { ...BASE_JOB, id: 'sync-c', timeoutSeconds: 0.001 };
+    const job = { ...BASE_JOB, id: 'sync-c', timeoutSeconds: 1 };
     registry.add(job);
 
+    const time  = new FakeTime(Date.now());
     const sched = new Scheduler(registry, state, {
       spawn: () => hangingChild(1),
       liveness: async () => false,
       configDir: dir,
+      time,
     });
 
-    await sched._fire(job);
+    const fired = sched._fire(job);
+    await time.advanceAsync(1000, 100);
+    await fired;
 
     const log = readJobLog(dir, 'sync-c');
     assert.ok(log.includes('[job:finished] exitCode=1') && log.includes('reason=timeout'),

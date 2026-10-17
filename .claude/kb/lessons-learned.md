@@ -12,6 +12,14 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 
 ---
 
+### A raw `this._time.after(ms, ...)` silently clamps long user-configured durations
+
+**Problem:** The job-timeout timer in `scheduler.ts` called `this._time.after(timeoutMs, ...)` directly. Node's `setTimeout` clamps any delay above 2^31-1 ms (~24.85 days) to 1ms, so `--timeout 31536000` (one year) killed the job almost instantly instead of after a year, with no error -- reproduced with `FakeTime` in `test/job-timeout-overflow.test.js` before fixing.
+**Fix:** Route any user-configurable duration through `waitUntil` (`time-service.ts`), not a raw timer. `waitUntil` already backs `DeadlineQueue` for cron/once/retry/sla/etc.; the job-timeout path was the one caller that bypassed it. Grep for `_time.after(` when adding a new duration field.
+**Context:** Also fixed alongside this: `timeoutSeconds` accepted negative values and silently treated them the same as `0` ("no timeout") with no validation and no mention in `--help` that `0` means unlimited. `validateJob` in `registry.ts` now rejects non-integer/negative `timeoutSeconds` explicitly, and `--help` documents `0` = no timeout.
+
+---
+
 ### Spec mode: never self-approve a spec
 
 **Problem:** Marking a spec status as "Approved" without explicit user confirmation violates the spec protocol and removes the user's approval gate.

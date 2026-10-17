@@ -49,6 +49,9 @@ export interface Job {
    */
   liveness?: LivenessConfig | null;
   onExitCode?: Record<string, string>;
+  /** Default 300 (applied where this is read, not stored). 0 means no timeout -- for a process
+   * that must stay up, e.g. a dev server. No upper bound: the scheduler's job-timeout timer is
+   * armed through waitUntil (time-service.ts), which absorbs the runtime's 2^31-1 ms ceiling. */
   timeoutSeconds?: number;
   env?: Record<string, string>;
   tags?: string[];
