@@ -1,7 +1,7 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
+import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
 import { windowStateAt } from '../active-window.js';
 import { describeAgo } from '../relative-time.js';
 import { JobStatusPill } from './JobStatusPill.js';
@@ -115,10 +115,11 @@ function jobListBadge(job: Job, runHistory: RuntimeEntry[], nowMs: number): Reac
     }
     return <JobStatusPill kind="never" label="Never run" />;
   }
-  const last = latestRun(runHistory);
-  if (isRunActive(last)) {
+  // Any open run, not the newest: with several instances the newest may have ended already.
+  if (isJobRunning(runHistory)) {
     return <JobStatusPill kind="running" label="Running" />;
   }
+  const last = latestRun(runHistory);
   // Ahead of the exitCode test so a skipped last run cannot be counted into "0x failed".
   if (isRunSkipped(last)) {
     return <JobStatusPill kind="skipped" label="Skipped" />;

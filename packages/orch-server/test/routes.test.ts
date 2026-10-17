@@ -439,3 +439,56 @@ describe('GET /api/health counting', () => {
     expect(body.status).toBe('degraded');
   });
 });
+
+// With several instances alive the newest run can have ended while an older one is still going.
+// Reading only the newest said the job was idle: "ok" while a process was running.
+describe('GET /api/health with several instances of one job', () => {
+  async function healthFor(history: unknown[]): Promise<{ runningJobs: number; status: string }> {
+    const app = fastify();
+    const proxy = {
+      send: async (cmd: string) => {
+        if (cmd === 'list-jobs') {
+          return [{ id: 'a' }];
+        }
+        if (cmd === 'list-state') {
+          return { a: history };
+        }
+        throw new Error(`Unknown command: ${cmd}`);
+      },
+    };
+    await app.register(jobsRoutes, { proxy, idleTimer: { reset: () => {} } });
+    await app.ready();
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    await app.close();
+    return res.json();
+  }
+
+  it('counts the job as running while an older instance is alive', async () => {
+    const body = await healthFor([
+      { startedAt: '2026-01-01T00:05:00Z', exitCode: 0, finishedAt: '2026-01-01T00:05:30Z' },
+      { startedAt: '2026-01-01T00:00:00Z', exitCode: null },
+    ]);
+
+    expect(body.runningJobs).toBe(1);
+    expect(body.status).toBe('busy');
+  });
+
+  it('counts a job once however many instances are alive', async () => {
+    const body = await healthFor([
+      { startedAt: '2026-01-01T00:05:00Z', exitCode: null },
+      { startedAt: '2026-01-01T00:00:00Z', exitCode: null },
+    ]);
+
+    expect(body.runningJobs).toBe(1);
+  });
+
+  it('still reads idle when every run has ended', async () => {
+    const body = await healthFor([
+      { startedAt: '2026-01-01T00:05:00Z', exitCode: 0, finishedAt: '2026-01-01T00:05:30Z' },
+      { startedAt: '2026-01-01T00:00:00Z', exitCode: 0, finishedAt: '2026-01-01T00:00:30Z' },
+    ]);
+
+    expect(body.runningJobs).toBe(0);
+    expect(body.status).toBe('ok');
+  });
+});

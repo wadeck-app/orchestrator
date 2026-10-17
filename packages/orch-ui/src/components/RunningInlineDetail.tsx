@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Square } from 'lucide-react';
-import { isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
 import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
@@ -48,8 +48,9 @@ export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, on
   const [justKilled, setJustKilled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const currentRun = latestRun(runHistory);
-  const isRunning = isRunActive(currentRun) && !justKilled;
+  // The instance that is alive, not a newer one that already ended.
+  const currentRun = liveOrLatestRun(runHistory);
+  const isRunning = isJobRunning(runHistory) && !justKilled;
 
   // A new run must clear the optimistic hide, otherwise it stays hidden forever.
   useEffect(() => { setJustKilled(false); }, [currentRun?.pid]);

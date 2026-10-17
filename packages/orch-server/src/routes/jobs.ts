@@ -314,8 +314,9 @@ export async function jobsRoutes(
       ]);
       const latest = Object.values(stateData).map(newestRun);
       // Liveness is finishedAt: a run killed by signal has no exit code, so testing
-      // exitCode would report it as still running forever.
-      const runningCount = latest.filter(e => e !== null && e.finishedAt == null).length;
+      // exitCode would report it as still running forever. Jobs with ANY open run, not the newest
+      // one: with several instances alive the newest may have ended while an older one still runs.
+      const runningCount = Object.values(stateData).filter(entries => entries.some(e => e.finishedAt == null)).length;
       // A missing exit code is not a failure: null means killed, undefined means never run.
       const failureCount = latest.filter(e => e !== null && e.exitCode != null && e.exitCode !== 0).length;
       return reply.send({

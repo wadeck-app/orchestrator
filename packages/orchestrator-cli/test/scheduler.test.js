@@ -315,7 +315,7 @@ describe('killJob', () => {
     await new Promise(r => setImmediate(r));
 
     const result = await sched.killJob('manual-a');
-    assert.deepStrictEqual(result, { killed: true });
+    assert.deepStrictEqual(result, { killed: true, count: 1 });
 
     // Deliberately no assertion on which signal or syscall was used. A stub cannot observe
     // a tree kill, and demanding child.kill() here is what previously forced _killChild to
@@ -394,7 +394,7 @@ describe('killJob', () => {
         'expected the shell wrapper and the real process to be distinct pids');
     }
 
-    assert.deepStrictEqual(await sched.killJob('tree-a'), { killed: true });
+    assert.deepStrictEqual(await sched.killJob('tree-a'), { killed: true, count: 1 });
 
     // Asserted with no grace period on purpose. killJob must not resolve until the tree is down,
     // because its `killed` flag is what the CLI and the dashboard report. Any wait here also
@@ -417,7 +417,7 @@ describe('killJob', () => {
     });
 
     const result = await sched.killJob('manual-a');
-    assert.deepStrictEqual(result, { killed: false });
+    assert.deepStrictEqual(result, { killed: false, count: 0 });
   });
 });
 

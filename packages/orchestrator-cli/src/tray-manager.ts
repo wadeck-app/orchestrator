@@ -122,7 +122,11 @@ export class TrayManager extends EventEmitter {
       this._refresh();
     });
     this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job; skipped?: boolean }) => {
-      this._runningJobIds.delete(ev.id);
+      // Still running while any instance is: the first one to end must not clear the job from the
+      // tray. The slot is released before this event, so the count is already the one after.
+      if (this._scheduler.runningCount(ev.id) === 0) {
+        this._runningJobIds.delete(ev.id);
+      }
       this._onJobFinished(ev);
     });
     // Synchronous backup exit hook: ensures tray is killed even if triggerRestart()

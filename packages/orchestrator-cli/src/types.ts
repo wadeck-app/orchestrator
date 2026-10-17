@@ -60,8 +60,7 @@ export interface Job {
    * A firing that finds the job at its limit is refused and reported as a skip with reason
    * `concurrency` -- an outcome, not an error. `orch trigger --force` bypasses it.
    *
-   * Above 1 is accepted and enforced, but the scheduler still tracks one child per job for
-   * `orch kill`, so a kill only reaches the most recently started instance.
+   * `orch kill` stops every live instance of the job.
    */
   maxConcurrency?: number;
   env?: Record<string, string>;
@@ -257,7 +256,7 @@ export type OrchestratorCommands = {
   'disable-job': (payload?: unknown) => void;
   'edit-job':    (payload?: unknown) => Job;
   'trigger-job': (payload?: unknown) => Promise<TriggerResult>;
-  'kill-job':          (payload?: unknown) => Promise<{ killed: boolean }>;
+  'kill-job':          (payload?: unknown) => Promise<{ killed: boolean; count: number }>;
   'skip-next-firing':  (payload?: unknown) => Record<string, never>;
   'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;
   'list-failures': (payload?: unknown) => Array<{ jobId: string; entry: RuntimeEntry }>;

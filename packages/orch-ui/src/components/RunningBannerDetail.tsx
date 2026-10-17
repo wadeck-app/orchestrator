@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Zap } from 'lucide-react';
-import { getErrorMessage, isRunActive, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
 import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { JobToggle } from './JobToggle.js';
@@ -45,8 +45,9 @@ export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, on
   const { ask, notify, dialog } = useConfirm();
   const [justKilled, setJustKilled] = useState(false);
 
-  const currentRun = latestRun(runHistory);
-  const isRunning = isRunActive(currentRun) && !justKilled;
+  // The instance that is alive, not a newer one that already ended.
+  const currentRun = liveOrLatestRun(runHistory);
+  const isRunning = isJobRunning(runHistory) && !justKilled;
 
   // A new run must clear the optimistic hide, otherwise the banner stays hidden forever.
   useEffect(() => { setJustKilled(false); }, [currentRun?.pid]);

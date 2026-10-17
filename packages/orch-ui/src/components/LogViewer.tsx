@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { X, ArrowDown, Pause, CircleOff, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
 import { ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
-import { getErrorMessage, isRunActive, latestRun, type RuntimeEntry } from '../types.js';
+// Aliased: `isJobRunning` is already this component's state value.
+import { getErrorMessage, isJobRunning as jobHasOpenRun, type RuntimeEntry } from '../types.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
 import { useConfirm } from '../use-confirm.js';
@@ -230,7 +231,7 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
         .then(r => r.ok ? r.json() as Promise<{ job: unknown; runHistory: RuntimeEntry[] }> : null)
         .then(data => {
           if (data?.runHistory) {
-            setIsJobRunning(isRunActive(latestRun(data.runHistory)));
+            setIsJobRunning(jobHasOpenRun(data.runHistory));
           }
         })
         .catch(() => {});

@@ -226,8 +226,14 @@ export class Scheduler extends EventEmitter {
    * scheduler is waiting for, so they do not belong here.
    */
   private readonly _deadlines: DeadlineQueue;
-  private readonly _activeChildren = new Map<string, ChildProcess>();
-  private readonly _killedByUser   = new Set<string>();
+  /** Every live child of a job. More than one when maxConcurrency allows it or a trigger is forced. */
+  private readonly _activeChildren = new Map<string, Set<ChildProcess>>();
+  /**
+   * The children stopped on purpose. Per child, not per job id: with several instances alive, a
+   * per-job flag was consumed by whichever instance closed first, so the others were recorded as
+   * ordinary failures and the kill read as a crash.
+   */
+  private readonly _killedByUser   = new WeakSet<ChildProcess>();
   private readonly _skippedJobs    = new Map<string, number>();
   private readonly _catchUpInitialDelayMs: number;
   private readonly _catchUpStaggerMs:      number;
@@ -237,8 +243,8 @@ export class Scheduler extends EventEmitter {
   private readonly _sampleIntervalMs: number;
   private readonly _retryCounters  = new Map<string, number>();
   /**
-   * Live processes per job, for maxConcurrency. Counted here rather than read from _activeChildren,
-   * which holds one child per job id and so cannot answer "how many".
+   * Live processes per job, for maxConcurrency and runningCount(). A counter of its own so that the
+   * slot is released in the first `close` listener, before job-finished and the dependents it fires.
    */
   private readonly _running        = new Map<string, number>();
   /** The log of the newest live run per job: where a refused firing is written, so the reader sees it. */
@@ -359,9 +365,10 @@ export class Scheduler extends EventEmitter {
     // alive. All three carry finishedAt, and all three used to be rewritten here into "failed,
     // exit 1" on the next daemon start, which even contradicted closeOrphanedRuns' own promise that
     // an interrupted run does not read as a failure.
+    // Every open entry of the job, not the newest: with several instances a newer run that already
+    // ended would hide an older one whose process is gone, and it would stay open for good.
     for (const job of this._registry.list()) {
-      const entry = this._state.get(job.id);
-      if (entry && entry.exitCode === null && entry.finishedAt == null) {
+      for (const entry of this._state.getOpenRuns(job.id)) {
         let alive = false;
         if (entry.pid) {
           try { process.kill(entry.pid, 0); alive = true; } catch { /* dead */ }
@@ -757,23 +764,37 @@ export class Scheduler extends EventEmitter {
     child.kill('SIGTERM');
   }
 
-  async killJob(id: string): Promise<{ killed: boolean }> {
-    const child = this._activeChildren.get(id);
-    if (child && !child.killed) {
-      this._killedByUser.add(id);
-      await this._killChildAsync(child);
-      return { killed: true };
+  /** How many instances of the job are alive right now. */
+  runningCount(id: string): number {
+    return this._running.get(id) ?? 0;
+  }
+
+  /**
+   * Stops every live instance of the job and says how many it stopped. `killed` is true iff at least
+   * one was running.
+   */
+  async killJob(id: string): Promise<{ killed: boolean; count: number }> {
+    const live = [...(this._activeChildren.get(id) ?? [])].filter(child => !child.killed);
+    if (live.length > 0) {
+      for (const child of live) {
+        this._killedByUser.add(child);
+      }
+      await Promise.all(live.map(child => this._killChildAsync(child)));
+      return { killed: true, count: live.length };
     }
     // Stale state: no active child but state still shows running - clean it up.
     // Liveness is finishedAt, not exitCode: a run killed by signal has no exit code,
     // so testing exitCode would "kill" an already-cancelled run and wrongly report success.
-    const entry = this._state.get(id);
-    if (entry && entry.finishedAt == null) {
+    // Every open entry, not the newest: a newer run that already ended must not hide an older one.
+    const open = this._state.getOpenRuns(id);
+    if (open.length > 0) {
       const finishedAt = this._now().toISOString();
-      this._state.record(id, { ...entry, exitCode: 1, finishedAt, cancelledByUser: true });
-      return { killed: true };
+      for (const entry of open) {
+        this._state.record(id, { ...entry, exitCode: 1, finishedAt, cancelledByUser: true });
+      }
+      return { killed: true, count: open.length };
     }
-    return { killed: false };
+    return { killed: false, count: 0 };
   }
 
   skipNextFiring(id: string): void {
@@ -996,9 +1017,9 @@ export class Scheduler extends EventEmitter {
       startedAt,
     );
 
-    // Only the newest child per job is tracked here, so with maxConcurrency above 1 `orch kill` reaches
-    // the most recently started instance and not the others.
-    this._activeChildren.set(job.id, child);
+    const siblings = this._activeChildren.get(job.id) ?? new Set<ChildProcess>();
+    siblings.add(child);
+    this._activeChildren.set(job.id, siblings);
 
     // The slot is tied to the child's own lifetime from this line on, in a listener of its own: if
     // anything between here and the main close handler threw, the slot would otherwise never be given
@@ -1215,13 +1236,17 @@ export class Scheduler extends EventEmitter {
     const done = new Promise<{ exitCode: number | null }>((resolve) => {
       child.on('close', (code) => {
         jobFinished = true;
-        this._activeChildren.delete(job.id);
+        // Only this instance: deleting the job's whole entry made the others unreachable to kill.
+        siblings.delete(child);
+        if (siblings.size === 0 && this._activeChildren.get(job.id) === siblings) {
+          this._activeChildren.delete(job.id);
+        }
         timeoutHandle?.cancel();
         resourceTimer?.cancel();
         const rawExitCode = code ?? 1;
         const finishedAt = this._now().toISOString();
         const durationMs = Date.now() - new Date(startedAt).getTime();
-        const cancelledByUser = this._killedByUser.delete(job.id);
+        const cancelledByUser = this._killedByUser.has(child);
         // exitCode=null + finishedAt = "Cancelled" in RunHistory
         const exitCode = cancelledByUser ? null : rawExitCode;
 

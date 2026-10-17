@@ -162,6 +162,27 @@ export function isRunActive(entry: RuntimeEntry | null): boolean {
   return entry !== null && entry.finishedAt == null && entry.exitCode == null;
 }
 
+/**
+ * Whether ANY run of the job is still open.
+ *
+ * Not `isRunActive(latestRun(history))`: with several instances alive (maxConcurrency above 1, or a
+ * forced trigger) the newest run can have ended while an older one is still going, and reading only
+ * the newest said the job was idle - no Kill button, "Run now" offered, the counter one short.
+ * latestRun stays for what really means "the newest run": the last result, durations, health dots.
+ */
+export function isJobRunning(entries: RuntimeEntry[] | undefined): boolean {
+  return entries?.some(isRunActive) ?? false;
+}
+
+/**
+ * The run to describe when showing "what is happening now": the newest run still open, otherwise the
+ * newest run. A running job shows the instance that is actually alive (its pid, its elapsed time)
+ * rather than a newer one that has already finished.
+ */
+export function liveOrLatestRun(entries: RuntimeEntry[] | undefined): RuntimeEntry | null {
+  return latestRun(entries?.filter(isRunActive)) ?? latestRun(entries);
+}
+
 // A non-event: neither an outcome to celebrate nor one to alarm about. Checked first by every
 // other classifier below, because a skipped run's exitCode is indistinguishable from a real
 // failure (exit 2) or a signal kill (null) and would otherwise be reported as one.

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, Moon, Sun } from 'lucide-react';
 import { IconButton } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isJobRunning, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
@@ -38,7 +38,8 @@ export function NavBar(): React.ReactElement {
          */
         const items   = all.filter(i => !(i.job.type === 'once' && i.job.spent === true));
         const total   = items.length;
-        const running = items.filter(i => isRunActive(latestRun(i.runHistory))).length;
+        // Jobs with any open run: a job whose newest run ended may still have an older instance alive.
+        const running = items.filter(i => isJobRunning(i.runHistory)).length;
         // Shares the one classifier rather than re-deriving it from exitCode, which is how this
         // counter came to include skipped runs in the global failure badge.
         const failed  = items.filter(i => isRunFailed(latestRun(i.runHistory))).length;

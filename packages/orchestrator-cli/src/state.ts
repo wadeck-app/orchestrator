@@ -185,6 +185,21 @@ export class State {
     return latest === undefined ? null : { ...latest };
   }
 
+  /**
+   * Every run of the job still in flight, not just the newest one.
+   *
+   * With several instances alive (maxConcurrency above 1, or a forced trigger) the newest entry may
+   * be a run that already finished while an older one is still going, so "is it running" read from
+   * get() alone answers no. Open means finishedAt unset AND exitCode null, as in countActiveJobs: a
+   * cancelled or orphaned run has a null exit code too and is closed by its finishedAt.
+   */
+  getOpenRuns(id: string): RuntimeEntry[] {
+    this._ensure();
+    return (this._cache![id] ?? [])
+      .filter(e => e.finishedAt == null && e.exitCode == null)
+      .map(e => ({ ...e }));
+  }
+
   getAll(): Record<string, RuntimeEntry[]> {
     this._ensure();
     if (!fs.existsSync(this._file)) {

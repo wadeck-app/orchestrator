@@ -82,7 +82,7 @@ A firing that finds `n` runs already alive is refused, whatever started it: sche
 - `orch trigger` answers `{ status: "already-running", running, maxConcurrency }` and exits 0. `--force` starts another instance anyway.
 - A refused retry is not rescheduled; a refused `once` firing still marks the job spent.
 
-Above 1 is enforced, but `orch kill` only reaches the most recently started instance.
+`orch kill <id>` stops every live instance of the job and reports how many (`Job "x" killed (3 instances).`); each killed run is recorded as a manual kill in its own history entry and log. The job counts as running while any instance is alive, in the tray and in `/health`.
 
 ## Example
 

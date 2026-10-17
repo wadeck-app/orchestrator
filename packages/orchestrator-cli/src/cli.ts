@@ -1114,10 +1114,11 @@ Use --wait to block until the command finishes.`);
         console.error(`Unknown job "${id}". List them with: orch list`);
         process.exit(1);
       }
-      const { killed } = await send('kill-job', { id }) as { killed: boolean };
+      const { killed, count } = await send('kill-job', { id }) as { killed: boolean; count?: number };
       // Not an error: asking for a stopped job to stop is idempotent. Said out loud, though,
-      // so a script does not read silence as "killed".
-      console.log(killed ? `Job "${id}" killed.` : `Job "${id}" is not running.`);
+      // so a script does not read silence as "killed". `count` is absent from an older daemon.
+      const instances = count !== undefined && count > 1 ? ` (${count} instances)` : '';
+      console.log(killed ? `Job "${id}" killed${instances}.` : `Job "${id}" is not running.`);
       break;
     }
 
