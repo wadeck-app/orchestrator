@@ -173,7 +173,8 @@ describe('LogViewer', () => {
       // the resulting URL would pass against a control a real reader could not operate.
       const live = [...select.options].find(o => o.value === '');
       expect(live, 'no option returns to the live tail').toBeDefined();
-      expect(live!.textContent).toMatch(/live/i);
+      // Named Live only while the job runs, Latest otherwise; LogViewerRunSelect.test.tsx pins which.
+      expect(live!.textContent).toMatch(/live|latest/i);
 
       await act(async () => {
         fireEvent.change(select, { target: { value: '2026-09-18T10-00-00' } });

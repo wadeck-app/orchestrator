@@ -21,9 +21,16 @@ const RUNS = [
 	{ name: 'run-2026-09-18T19-05-00.log', size: 90 },
 ];
 
+const RUNNING = [{ startedAt: '2026-09-19T09:30:00Z', exitCode: null, pid: 1 }];
+const FINISHED = [{ startedAt: '2026-09-19T09:30:00Z', finishedAt: '2026-09-19T09:31:00Z', exitCode: 0, pid: 1 }];
+
 // The run list is internal state fetched from the API, not a prop, so the fetch is what seeds it.
-function stubFetch(runs: typeof RUNS): void {
-	vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(runs) })));
+// `history` answers the job-status poll; left out, that poll never says whether the job is running.
+function stubFetch(runs: typeof RUNS, history?: Array<Record<string, unknown>>): void {
+	vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
+		ok: true,
+		json: () => Promise.resolve(url.includes('/runs') ? runs : { job: {}, ...(history ? { runHistory: history } : {}) }),
+	})));
 }
 
 beforeEach(() => {
@@ -57,11 +64,42 @@ describe('the log run selector', () => {
 
 	// The way back to the live tail. Pinning without one is a trap: the reader leaves the tail and
 	// cannot return without editing the URL.
-	it('offers the live tail as the empty value', async () => {
+	it('offers the live tail as the empty value, called Live while the job is running', async () => {
+		stubFetch(RUNS, RUNNING);
 		await renderViewer();
-		const live = screen.getAllByRole('option')[0]!;
-		expect(live).toHaveValue('');
-		expect(live.textContent).toMatch(/Live/);
+		await waitFor(() => expect(screen.getAllByRole('option')[0]!.textContent).toMatch(/Live/));
+		expect(screen.getAllByRole('option')[0]!).toHaveValue('');
+	});
+
+	// "Live" names output that is arriving. On a job that stopped, the newest run is still the tail the
+	// reader lands on, but calling it Live says something untrue -- the same false signal the status
+	// chip beside it was fixed for.
+	it('does not call the tail Live once the job has stopped', async () => {
+		stubFetch(RUNS, FINISHED);
+		await renderViewer();
+
+		await waitFor(() => expect(screen.getAllByRole('option')[0]!.textContent).toMatch(/Latest/));
+		const tail = screen.getAllByRole('option')[0]!;
+		expect(tail).toHaveValue('');
+		expect(tail.textContent).not.toMatch(/Live/);
+	});
+
+	// Before the first status response, "not known yet" is not "running".
+	it('does not call the tail Live before the job status is known', async () => {
+		stubFetch(RUNS);
+		await renderViewer();
+
+		const tail = screen.getAllByRole('option')[0]!;
+		expect(tail).toHaveValue('');
+		expect(tail.textContent).not.toMatch(/Live/);
+	});
+
+	it('names the newest run on the tail option either way', async () => {
+		stubFetch(RUNS, FINISHED);
+		await renderViewer();
+
+		await waitFor(() => expect(screen.getAllByRole('option')[0]!.textContent).toMatch(/Latest/));
+		expect(screen.getAllByRole('option')[0]!.textContent).toContain(RUNS[0]!.name);
 	});
 
 	it('lists every run', async () => {

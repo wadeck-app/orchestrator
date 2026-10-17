@@ -361,17 +361,21 @@ export function LogViewer({ jobId, apiBase = '', fill = false }: LogViewerProps)
            * resolve against the terminal theme. What was genuinely missing was a compact label-less
            * select - PageSizeSelect is locked to pagination and FieldSelect renders a visible label.
            *
-           * The placeholder IS the way back to the live tail: it carries '', which is what keeps the
+           * The placeholder IS the way back to the tail: it carries '', which is what keeps the
            * stream unpinned, while showing the run the tail is on so it never reads as a blank choice.
            * Pinning with no way back is a trap - the reader leaves the tail and cannot return without
            * editing the URL.
+           *
+           * It says "Live" only while the job is running. The tail is the newest run either way, but
+           * "Live" names output that is arriving, and on a job that stopped (or whose status has not
+           * come back yet) that is untrue - the same false signal the status chip was fixed for.
            */
           <span className="mr-2">
             <CompactSelect
               value={selectedRun}
               onChange={handleSelectRun}
               ariaLabel="Which run to show"
-              placeholder={latestRunName ? `Live - ${fmtRunName(latestRunName, 0, runs.length)}` : 'Live'}
+              placeholder={`${isJobRunning === true ? 'Live' : 'Latest'}${latestRunName ? ` - ${fmtRunName(latestRunName, 0, runs.length)}` : ''}`}
               options={runs.map((r, i) => ({ value: r.name, label: fmtRunName(r.name, i, runs.length) }))}
             />
           </span>
