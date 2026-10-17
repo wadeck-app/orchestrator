@@ -20,7 +20,6 @@ export async function buildBackend({ outfile = path.join(packageDir, 'api-backen
     target: 'node22',
     format: 'esm',
     outfile,
-    sourcemap: true,
     logLevel: 'warning',
   });
   return outfile;

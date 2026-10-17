@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { derivePage, readOrchUiTypes, type DeriveOptions } from './derivePages.js';
+import { derivePage, type DeriveOptions } from './derivePages.js';
 
 /*
  * The module's pages are orch-app's pages, rewritten for where they are mounted. Deriving them keeps
@@ -75,17 +75,3 @@ describe('derivePage', () => {
   });
 });
 
-describe('readOrchUiTypes', () => {
-  it('lists the components generated entries import from orch-ui, and only those', () => {
-    const source = [
-      "import { Badge } from '@wadeck-app/dsl-ui/dist/components/display/Badge.js'",
-      "import { JobCardGrid } from '../../../orch-ui/src/components/JobCardGrid.js'",
-      "import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'",
-    ].join('\n');
-    expect([...readOrchUiTypes(source)].sort()).toEqual(['JobCardGrid', 'RunHistory']);
-  });
-
-  it('throws when it finds none, since an empty list would silently prefix nothing', () => {
-    expect(() => readOrchUiTypes("import { Badge } from '@wadeck-app/dsl-ui/x.js'")).toThrow(/orch-ui/);
-  });
-});

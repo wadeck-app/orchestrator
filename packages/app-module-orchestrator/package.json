@@ -17,6 +17,7 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@wadeck-app/app-core-sdk": "latest",
+    "@wadeck-app/orch-dsl-lib": "*",
     "esbuild": "*",
     "tsx": "*",
     "fastify": "^5.0.0",

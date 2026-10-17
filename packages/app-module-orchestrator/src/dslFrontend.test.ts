@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { deriveAll, DERIVED_PAGES, HANDWRITTEN_VIEWS } from './deriveAll.js';
+import { listLibTypes } from '@wadeck-app/orch-dsl-lib/libTypes';
+import { deriveAll, DERIVED_PAGES, HANDWRITTEN_VIEWS, orchAppEntriesPath } from './deriveAll.js';
 
 /*
  * dsl-frontend/ is committed, like orch-app's generated entries, so a reviewer sees the views the
@@ -29,6 +30,20 @@ describe('dsl-frontend', () => {
 
   it.each([...HANDWRITTEN_VIEWS])('%s, handwritten, exists', (name) => {
     expect(fs.existsSync(path.join(frontendDir, name))).toBe(true);
+  });
+
+  it('names only types the dsl-lib really ships, so no page asks the shell for a component that is not there', () => {
+    const shipped = new Set(listLibTypes(fs.readFileSync(orchAppEntriesPath(packageDir), 'utf8')));
+    for (const [name, content] of derived) {
+      for (const match of content.matchAll(/\$type:\s*orchestrator:(\w+)/g)) {
+        expect(shipped.has(match[1]!), `${name} uses $type orchestrator:${match[1]}, which the dsl-lib does not export`).toBe(true);
+      }
+    }
+  });
+
+  it('prefixes SearchBar: the shell\'s own copy publishes no event, so the page would never filter', () => {
+    expect(derived.get('jobs.yaml')).toContain('$type: orchestrator:SearchBar');
+    expect(derived.get('jobs.yaml')).not.toMatch(/\$type:\s*SearchBar\b/);
   });
 
   it('serves every derived page from the module, never from the root API', () => {

@@ -1,6 +1,16 @@
 {
   "version": "1.0.0",
   "backendEntryPath": "./api-backend/dist/backend.mjs",
+  "dslLib": {
+    "entry": "./dsl-lib/entries.mjs",
+    "css": "./dsl-lib/style.css",
+    "shared": {
+      "react": "^19",
+      "react-router-dom": "^7",
+      "@wadeck-app/dsl-ui": ">=2026.10.3-0",
+      "@wadeck-app/dsl-renderer": ">=2026.10.14-0"
+    }
+  },
   "extensionPoints": [
     {
       "kind": "widget",

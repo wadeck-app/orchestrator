@@ -75,7 +75,7 @@ sections:
       # dsl-ui's own search input: adds a search icon, a clear button and role=search that
       # the hand-rolled wrapper this replaced had none of. debounceMs 0 keeps the current
       # filter-per-keystroke behaviour instead of dsl-ui's 300ms default.
-      - $type: SearchBar
+      - $type: orchestrator:SearchBar
         $id: jobSearchBar
         value: $vars.search
         placeholder: Search jobs...

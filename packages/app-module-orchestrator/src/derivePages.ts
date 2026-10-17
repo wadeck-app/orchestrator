@@ -58,20 +58,3 @@ function rewriteLine(line: string, lineNo: number, opts: DeriveOptions): string 
   return line.replace(TYPE_RE, (whole, head: string, name: string) =>
     opts.orchTypes.has(name) ? `${head}${opts.moduleId}:${name}` : whole);
 }
-
-const ORCH_UI_IMPORT = /from\s+'[^']*orch-ui\/src\/components\/(\w+)\.js'/g;
-
-/**
- * The component types that come from orch-ui, read off orch-app's generated entries rather than
- * kept as a second list that would go stale the day a component is added.
- */
-export function readOrchUiTypes(entriesSource: string): Set<string> {
-  const names = new Set<string>();
-  for (const match of entriesSource.matchAll(ORCH_UI_IMPORT)) {
-    names.add(match[1]!);
-  }
-  if (names.size === 0) {
-    throw new Error('readOrchUiTypes: found no import from orch-ui/src/components in the generated entries; the file moved or its format changed, and prefixing nothing would break every page.');
-  }
-  return names;
-}
