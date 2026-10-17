@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    "./generated/entries": "./src/generated/entries.tsx",
+    "./tailwind.config": "./tailwind.config.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/patch-entries.mjs && tsc --noEmit",
