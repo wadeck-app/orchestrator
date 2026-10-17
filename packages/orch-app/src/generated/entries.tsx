@@ -1488,7 +1488,7 @@ export const DataTableEntry: ComponentRegistryEntry = {
 		const onSortDirChange = resolveExpressionValue(node['onSortDirChange'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onSortDirChange']
 		const defaultFilters = resolveExpressionValue(node['defaultFilters'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['defaultFilters']
 		const expansion = resolveExpressionValue(node['expansion'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['expansion']
-		const renderNode = resolveExpressionValue(node['renderNode'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['renderNode']
+		const renderNode = (n: unknown, extraCtx: Record<string, unknown>) => renderChildren([n], registry, { ...ctx, ...extraCtx })[0] ?? null
 		const selectable = resolveExpressionValue(node['selectable'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['selectable']
 		const batchActions = resolveExpressionValue(node['batchActions'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['batchActions']
 		const onBatchAction = resolveExpressionValue(node['onBatchAction'], ctx) as import('@wadeck-app/dsl-ui/dist/components/table/DataTable.js').DataTableProps<Record<string, unknown>>['onBatchAction']

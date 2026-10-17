@@ -6,8 +6,9 @@ const nodeModules = path.resolve(__dirname, '../../node_modules');
 
 export default defineConfig(async () => {
   const { entriesGenerator } = await import('@wadeck-app/dsl-renderer/build/entriesGenerator');
+  const { routesGenerator } = await import('@wadeck-app/dsl-renderer/build/routesGenerator');
   return {
-    plugins: [react(), entriesGenerator()],
+    plugins: [react(), entriesGenerator(), routesGenerator()],
     build: {
       outDir: 'dist',
       emptyOutDir: true,
