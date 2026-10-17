@@ -118,3 +118,28 @@ describe('autoUpdate', () => {
     assert.match(warnings[0], /autoUpdate/);
   });
 });
+
+describe('appCore', () => {
+  test('registering the app-core module is on unless switched off', () => {
+    assert.equal(withConfig(null).config.appCore, true);
+    assert.equal(withConfig('appCore: false\n').config.appCore, false);
+    assert.equal(withConfig('appCore: true\n').config.appCore, true);
+  });
+
+  test('each boolean key sets itself and only itself', () => {
+    const off = withConfig('appCore: false\n').config;
+    assert.equal(off.appCore, false);
+    assert.equal(off.autoUpdate, true, 'switching app-core off must not switch auto-update off');
+
+    const updateOff = withConfig('autoUpdate: false\n').config;
+    assert.equal(updateOff.autoUpdate, false);
+    assert.equal(updateOff.appCore, true);
+  });
+
+  test('a value that is neither is reported rather than silently read as false', () => {
+    const { config, warnings } = withConfig('appCore: no\n');
+    assert.equal(config.appCore, true, 'a typo turned the app-core registration off');
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /appCore/);
+  });
+});

@@ -6,6 +6,8 @@ import { AUDIT_DEFAULTS } from './audit.js';
 
 export interface DaemonConfig {
   autoUpdate?: boolean;
+  /** Register the dashboard as a module with app-core at every daemon start (default: true). */
+  appCore?: boolean;
   /** Seconds to wait after daemon start before firing the first catch-up job (default: 300) */
   catchUpInitialDelaySeconds?: number;
   /** Seconds between consecutive catch-up jobs on startup (default: 300) */
@@ -22,6 +24,7 @@ export interface DaemonConfig {
 
 const DEFAULTS: Required<DaemonConfig> = {
   autoUpdate:                  true,
+  appCore:                     true,
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,
   // From the registry, so the documented default and the one a Registry built without options uses
@@ -32,6 +35,8 @@ const DEFAULTS: Required<DaemonConfig> = {
   auditMaxFiles:               AUDIT_DEFAULTS.maxFiles,
 };
 
+type BooleanKey = 'autoUpdate' | 'appCore';
+
 /**
  * What each key accepts. A table rather than a chain of ifs, so the parser can also tell a typo from
  * a key it simply has not been taught -- `onceRetentionDay: 30` used to be indistinguishable from
@@ -39,6 +44,7 @@ const DEFAULTS: Required<DaemonConfig> = {
  */
 const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeInt'> = {
   autoUpdate:                 'boolean',
+  appCore:                    'boolean',
   catchUpInitialDelaySeconds: 'nonNegativeInt',
   catchUpStaggerSeconds:      'nonNegativeInt',
   onceRetentionDays:          'nonNegativeInt',
@@ -114,11 +120,15 @@ export function loadDaemonConfig(
     }
 
     if (kind === 'boolean') {
+      // Every boolean key sets itself. This branch used to write `result.autoUpdate` whatever the key
+      // was, which was invisible while autoUpdate was the only boolean and would have made a second
+      // one (appCore: false) silently switch auto-update off instead.
+      const flag = key as BooleanKey;
       if (val !== 'true' && val !== 'false') {
-        onWarn(`${where}: ${key} must be true or false, found ${JSON.stringify(val)} -- using ${DEFAULTS[key as 'autoUpdate']}`);
+        onWarn(`${where}: ${key} must be true or false, found ${JSON.stringify(val)} -- using ${DEFAULTS[flag]}`);
         continue;
       }
-      result.autoUpdate = val === 'true';
+      result[flag] = val === 'true';
       continue;
     }
 

@@ -19,6 +19,7 @@ import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
+import { registerOnStart } from './app-core-registration.js';
 import { refreshStartupEntry, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
@@ -283,6 +284,15 @@ async function main(): Promise<void> {
           activePort = port;
           daemonLog.write(`daemon ready on 127.0.0.1:${port}`);
           console.log(`[orchestrator] daemon started on 127.0.0.1:${port} (pid ${process.pid})`);
+          // Every start, so a new version's module replaces the old one in app-core. Not awaited:
+          // the daemon never waits on app-core, and registerOnStart reports into the log instead of
+          // throwing.
+          void registerOnStart({
+            enabled: daemonCfg.appCore,
+            devInstance: isDevInstance,
+            packageRoot: path.join(__dirname, '..'),
+            log: (message) => daemonLog.write(message),
+          });
         },
         // Previously unwired: a command failing, or a client disconnecting mid-command, left
         // no trace in `orch logs` -- the only record was the daemon's own "pre-start" line.

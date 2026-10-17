@@ -12,6 +12,9 @@ export default {
     'packages/orch-app/src/generated/**',
     'packages/orch-server/public/**',
     'packages/orchestrator-cli/server/**',
+    // Assembled copy of the app-core module (ci/scripts/copy-app-module.sh), built output like server/.
+    // Left in, its manifest.json would be judged as a module with the wrong folder name.
+    'packages/orchestrator-cli/app-module/**',
     'packages/orchestrator-cli/bin/**',
     // tailwind.config.ts safelist entries ARE the raw color declarations - not component usage
     'packages/orch-app/tailwind.config.ts',

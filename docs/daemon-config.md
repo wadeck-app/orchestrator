@@ -9,6 +9,7 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `autoUpdate` | bool | `true` | Enable automatic background updates |
+| `appCore` | bool | `true` | Register the dashboard as a module with app-core at every daemon start. See "app-core module" below |
 | `catchUpInitialDelaySeconds` | int | `300` | Seconds to wait after daemon start before firing the first catch-up job |
 | `catchUpStaggerSeconds` | int | `300` | Seconds between consecutive catch-up jobs on startup |
 | `onceRetentionDays` | int | `360` | Days a spent `once` job is kept before being pruned |
@@ -93,3 +94,25 @@ catchUpStaggerSeconds: 300
 onceRetentionDays: 360
 onceRetentionMaxJobs: 50
 ```
+
+## app-core module
+
+At every start the daemon tells app-core where the dashboard module lives
+(`POST /api/modules/register`), so the jobs, schedule and audit pages appear in app-core without any
+setup. It is best effort and never delays the daemon; each outcome is one line in `orch logs`:
+
+```
+app-core: module "orchestrator" registered (app-core on port 4850)
+app-core: not running, left <app-core config dir>/modules/orchestrator.json for its next start
+app-core: module "orchestrator" not registered, app-core is not installed (<dir> does not exist)
+app-core: refused module "orchestrator" (HTTP 400): <app-core's reason>. Fix the manifest it names, ...
+```
+
+- app-core's port is `APP_CORE_PORT` if set, else the port app-core wrote in its own config dir
+  (`server.port.json`), else `4850`. The config dir is `~/.config/app-core`, or `APP_CORE_CONFIG_DIR`.
+- When app-core is not running but was installed, the daemon leaves the registration in app-core's
+  `modules/` folder, which app-core reads at its next start. When app-core was never installed it
+  writes nothing at all.
+- A development instance (`ORCH_DEV_INSTANCE=1`) never registers, so a checkout cannot replace the
+  installed module in app-core.
+- `appCore: false` stops all of it.

@@ -13,6 +13,7 @@
     "dist/orchestrator-cli.cjs",
     "dist/orchestrator-updater.cjs",
     "server/",
+    "app-module/",
     "package.json"
   ],
   "scripts": {

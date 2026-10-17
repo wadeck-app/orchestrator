@@ -13,6 +13,9 @@ dist-bundle/
 # It stays in the published package: `files` in package.json wins over .gitignore,
 # verified with npm pack.
 packages/orchestrator-cli/server/public/
+# The app-core module assembled by ci/scripts/copy-app-module.sh from the built packages. It stays in the
+# published package for the same reason server/ does: `files` in package.json wins over .gitignore.
+packages/orchestrator-cli/app-module/
 .env.local
 *.log
 .idea/
