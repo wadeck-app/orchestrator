@@ -132,7 +132,7 @@ describe('Running detail views', () => {
   const VARIANTS = [
     ['RunningAlertDetail', RunningAlertDetail, /PID 11/, /PID 12/],
     ['RunningBannerDetail', RunningBannerDetail, /PID 11/, /PID 12/],
-    ['RunningInlineDetail', RunningInlineDetail, /·\s*11$/, /·\s*12$/],
+    ['RunningInlineDetail', RunningInlineDetail, /\xB7\s*11$/, /\xB7\s*12$/],
   ] as const;
 
   describe.each(VARIANTS)('%s', (_name, Detail, livePid, finishedPid) => {

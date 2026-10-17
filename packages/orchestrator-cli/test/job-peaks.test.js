@@ -195,7 +195,7 @@ describe('resource peaks are persisted while the job runs', () => {
   // Race condition: a sampleUsage() call that started while the job was still alive can resolve
   // AFTER the close handler has already written finishedAt into state. clearInterval cannot retract
   // a Promise that is already settled, so the .then() runs after close and called flushPeaks(),
-  // which overwrote finishedAt with exitCode:null — leaving the daemon thinking the job was
+  // which overwrote finishedAt with exitCode:null - leaving the daemon thinking the job was
   // still running and blocking auto-updates indefinitely.
   test('late in-flight sample does not overwrite the completed entry', async () => {
     const dir = tmpDir();
@@ -231,7 +231,9 @@ describe('resource peaks are persisted while the job runs', () => {
     async function waitFor(predicate, label, timeoutMs = 5000) {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        if (predicate()) return;
+        if (predicate()) {
+          return;
+        }
         await new Promise(r => setTimeout(r, 10));
       }
       assert.fail(`timed out waiting for: ${label}`);
@@ -243,12 +245,12 @@ describe('resource peaks are persisted while the job runs', () => {
       await waitFor(() => state.get('race-job')?.pid != null, 'job to be recorded');
       await waitFor(() => resolveSample !== null, 'first sample to be in-flight');
 
-      // Process exits — close handler runs synchronously, records finishedAt
+      // Process exits - close handler runs synchronously, records finishedAt
       child.emit('close', 0);
 
       await waitFor(() => state.get('race-job')?.finishedAt != null, 'finishedAt to be set');
 
-      // The in-flight sample now resolves with non-null usage — this is the race: the .then()
+      // The in-flight sample now resolves with non-null usage - this is the race: the .then()
       // will call flushPeaks() which would overwrite finishedAt with exitCode:null
       const capturedResolve = resolveSample;
       resolveSample = null;

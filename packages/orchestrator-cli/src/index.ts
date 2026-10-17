@@ -292,7 +292,7 @@ async function main(): Promise<void> {
           daemonLog.write(`command "${command}" ok (${durationMs}ms)`);
         },
         onCommandError: (command: string, error: Error) => {
-          daemonLog.write(`command "${command}" failed: ${error.message}`);
+          daemonLog.write(`command "${command}" failed: ${getErrorMessage(error)}`);
         },
         onShutdown: (reason: string) => {
           daemonLog.write(`daemon shutdown: ${reason}`);
