@@ -1,0 +1,30 @@
+{
+  "name": "@wadeck-app/app-module-orchestrator",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build-backend.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --bail=1",
+    "test:watch": "vitest",
+    "derive": "tsx scripts/derive-pages.ts",
+    "clean": "rimraf api-backend/dist"
+  },
+  "dependencies": {
+    "@wadeck-app/shared-cli": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@wadeck-app/app-core-sdk": "latest",
+    "esbuild": "*",
+    "tsx": "*",
+    "fastify": "^5.0.0",
+    "rimraf": "^6.0.1",
+    "typescript": "*",
+    "vitest": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

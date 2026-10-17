@@ -1,0 +1,19 @@
+# The three numbers orch-app's navbar shows, from the same /api/health the dashboard server serves.
+# Handwritten: a dashboard widget has no orch-app page to derive from.
+$sources:
+  health:
+    url: GET /api/modules/orchestrator/api/health
+    poll: 30s
+
+$type: HorizontalStack
+gap: gap-3
+items:
+  - $type: StatTile
+    label: Jobs
+    value: $sources.health.totalJobs
+  - $type: StatTile
+    label: Running
+    value: $sources.health.runningJobs
+  - $type: StatTile
+    label: Recent failures
+    value: $sources.health.recentFailures

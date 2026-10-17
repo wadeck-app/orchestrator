@@ -1,0 +1,73 @@
+$sources:
+  jobData:
+    url: GET /api/modules/orchestrator/api/jobs/{id}
+    params:
+      id: $route.id
+    poll: 30s
+
+$brains:
+  # Run now is posted by the component itself: a job at its concurrency limit answers 200 with a body
+  # saying nothing started, which a brain cannot read and would show as a started run.
+  reloadAfterTrigger:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobActions.onAfterTrigger
+    $reload: [jobData]
+
+  killJob:
+    $brain: $brains.$http.post
+    url: POST /api/modules/orchestrator/api/jobs/{id}/kill
+    _event: $outputs.jobActions.onKill
+    $reload: [jobData]
+
+  deleteJob:
+    $brain: $brains.$http.delete
+    url: DELETE /api/modules/orchestrator/api/jobs/{id}
+    _event: $outputs.jobActions.onDelete
+
+  navigateAfterDelete:
+    $brain: $brains.$ctx.navigate
+    to: /modules/orchestrator/
+    _event: $outputs.jobActions.onDelete
+
+  navigateViewLogs:
+    $brain: $brains.$ctx.navigate
+    to: /modules/orchestrator/jobs/{id}/logs
+    _event: $outputs.jobActions.onViewLogs
+
+  navigateEdit:
+    $brain: $brains.$ctx.navigate
+    to: /modules/orchestrator/jobs/{id}/edit
+    _event: $outputs.jobActions.onEdit
+
+$type: PageContent
+sections:
+  - $type: BackLink
+    to: /modules/orchestrator/
+    label: Back to jobs
+  # Reports a kill or a delete the brain could not carry out. Without it the brain's rejection
+  # reached only the console: the request failed, the page reloaded, and the reader was told nothing.
+  - $type: orchestrator:MutationFeedback
+    error: $brains.killJob.$error
+  - $type: PageHeader
+    title: $sources.jobData.job.label
+  - $type: orchestrator:RunningBannerDetail
+    $id: jobActions
+    jobId: $route.id
+    job: $sources.jobData.job
+    runHistory: $sources.jobData.runHistory
+    $outputs:
+      onAfterTrigger: [_]
+      onKill: [_]
+      onDelete: [_]
+      onViewLogs: [_]
+      onEdit: [_]
+  - $type: orchestrator:JobConfigDisplay
+    job: $sources.jobData.job
+  - $type: Section
+    title: Run history
+    items:
+      - $type: orchestrator:RunHistory
+        entries: $sources.jobData.runHistory
+        # Turns each row into a link to that run's own output. Without it a reader has to open the
+        # logs page and re-find the run in the dropdown by matching timestamps by eye.
+        jobId: $route.id

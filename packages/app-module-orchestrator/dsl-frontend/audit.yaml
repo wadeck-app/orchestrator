@@ -1,0 +1,12 @@
+$sources:
+  auditData:
+    url: GET /api/modules/orchestrator/api/audit?limit=100
+
+$type: PageContent
+sections:
+  - $type: PageHeader
+    title: Audit log
+  - $type: Section
+    items:
+      - $type: orchestrator:AuditList
+        entries: $sources.auditData

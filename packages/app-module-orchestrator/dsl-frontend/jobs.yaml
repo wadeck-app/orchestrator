@@ -1,0 +1,95 @@
+$vars:
+  search: ""
+  filter: "all"
+
+$sources:
+  jobs:
+    url: GET /api/modules/orchestrator/api/jobs
+    poll: 30s
+
+$brains:
+  updateSearch:
+    $brain: $brains.$ctx.setVar
+    varName: search
+    value: $outputs.jobSearchBar.onChange
+    _event: $outputs.jobSearchBar.onChange
+
+  updateFilter:
+    $brain: $brains.$ctx.setVar
+    varName: filter
+    value: $outputs.jobFilterChips.onChange
+    _event: $outputs.jobFilterChips.onChange
+
+  toggleJob:
+    $brain: $brains.$http.post
+    url: POST /api/modules/orchestrator/api/jobs/{id}/{action}
+    id: $outputs.jobGrid.onToggle.id
+    action: $outputs.jobGrid.onToggle.action
+    _event: $outputs.jobGrid.onToggle
+    $reload: [jobs]
+
+  navigateToJob:
+    $brain: $brains.$ctx.navigate
+    route: /modules/orchestrator/jobs/{id}
+    id: $outputs.jobGrid.onJobClick
+    _event: $outputs.jobGrid.onJobClick
+
+  # The grid runs the bulk actions itself: an $http brain takes one URL, so "delete these four" has
+  # no single-brain form. It signals here when the fan-out is done, so the list refreshes at once
+  # rather than after the next 30s poll.
+  reloadAfterBulk:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobGrid.onAfterBulk
+    $reload: [jobs]
+
+  # Run now is posted by the grid itself, not by a brain: a job at its concurrency limit answers 200
+  # with a body saying nothing started, which a brain cannot read and would show as a started run.
+  # The grid shows the outcome and signals here once it has settled.
+  reloadAfterTrigger:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobGrid.onAfterTrigger
+    $reload: [jobs]
+
+  navigateToNewJob:
+    $brain: $brains.$ctx.navigate
+    route: /modules/orchestrator/jobs/new
+    _event: $outputs.jobGrid.onAddJob
+
+$type: PageContent
+sections:
+  # Consumes the flash a save left behind. The form pages redirect here, and the navigate brain
+  # assigns window.location.href - a full page load - so the confirmation has to be picked up on
+  # arrival rather than shown before leaving.
+  - $type: orchestrator:MutationFeedback
+  - $type: PageHeader
+    title: Orchestrator Dashboard
+  - $type: orchestrator:JobCardGrid
+    $id: jobGrid
+    items: $sources.jobs
+    search: $vars.search
+    filter: $vars.filter
+    # Filters go in the grid's own toolbar, beside its actions, rather than stacking above
+    # it. As three separate sections these used 18%, 30% and 7% of the row width and cost
+    # 46px of empty band; on one row the first card rises from y=254 to y=160.
+    filters:
+      # dsl-ui's own search input: adds a search icon, a clear button and role=search that
+      # the hand-rolled wrapper this replaced had none of. debounceMs 0 keeps the current
+      # filter-per-keystroke behaviour instead of dsl-ui's 300ms default.
+      - $type: SearchBar
+        $id: jobSearchBar
+        value: $vars.search
+        placeholder: Search jobs...
+        debounceMs: 0
+        $outputs:
+          onChange: [value]
+      - $type: orchestrator:JobFilterChips
+        $id: jobFilterChips
+        selected: $vars.filter
+        $outputs:
+          onChange: [selected]
+    $outputs:
+      onAfterTrigger: [_]
+      onToggle: [id, action]
+      onJobClick: [id]
+      onAddJob: [_]
+      onAfterBulk: [_]

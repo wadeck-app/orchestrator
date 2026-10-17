@@ -1,0 +1,61 @@
+{
+  "version": "1.0.0",
+  "backendEntryPath": "./api-backend/dist/backend.mjs",
+  "extensionPoints": [
+    {
+      "kind": "widget",
+      "slot": "dashboard",
+      "label": "Orchestrator",
+      "view": { "type": "path", "value": "./dsl-frontend/status-widget.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "nav",
+      "label": "Jobs",
+      "path": "/",
+      "view": { "type": "path", "value": "./dsl-frontend/jobs.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "nav",
+      "label": "Schedule",
+      "path": "/schedule",
+      "view": { "type": "path", "value": "./dsl-frontend/schedule.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "nav",
+      "label": "Audit",
+      "path": "/audit",
+      "view": { "type": "path", "value": "./dsl-frontend/audit.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "route",
+      "label": "New job",
+      "path": "/jobs/new",
+      "view": { "type": "path", "value": "./dsl-frontend/job-new.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "route",
+      "label": "Job",
+      "path": "/jobs/:id",
+      "view": { "type": "path", "value": "./dsl-frontend/job.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "route",
+      "label": "Edit job",
+      "path": "/jobs/:id/edit",
+      "view": { "type": "path", "value": "./dsl-frontend/job-edit.yaml" }
+    },
+    {
+      "kind": "page",
+      "slot": "route",
+      "label": "Job logs",
+      "path": "/jobs/:id/logs",
+      "view": { "type": "path", "value": "./dsl-frontend/job-logs.yaml" }
+    }
+  ]
+}
