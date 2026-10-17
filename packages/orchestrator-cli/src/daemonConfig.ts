@@ -2,6 +2,7 @@ import fs   from 'node:fs';
 import path from 'node:path';
 import type { HookConfig } from '@wadeck-app/shared-cli/HookDispatcher';
 import { ONCE_RETENTION_DEFAULTS } from './registry.js';
+import { AUDIT_DEFAULTS } from './audit.js';
 
 export interface DaemonConfig {
   autoUpdate?: boolean;
@@ -13,6 +14,10 @@ export interface DaemonConfig {
   onceRetentionDays?: number;
   /** How many spent `once` jobs are kept at most (default: 50). 0 keeps none. */
   onceRetentionMaxJobs?: number;
+  /** Rotate audit.ndjson once it would pass this many bytes (default: 5 MiB). 0 turns rotation off. */
+  auditMaxBytes?: number;
+  /** How many rotated audit files are kept, the newest (default: 5). 0 keeps none. */
+  auditMaxFiles?: number;
 }
 
 const DEFAULTS: Required<DaemonConfig> = {
@@ -23,6 +28,8 @@ const DEFAULTS: Required<DaemonConfig> = {
   // cannot drift: two places spelling "360" is two places to change and one to forget.
   onceRetentionDays:           ONCE_RETENTION_DEFAULTS.onceRetentionDays,
   onceRetentionMaxJobs:        ONCE_RETENTION_DEFAULTS.onceRetentionMaxJobs,
+  auditMaxBytes:               AUDIT_DEFAULTS.maxBytes,
+  auditMaxFiles:               AUDIT_DEFAULTS.maxFiles,
 };
 
 /**
@@ -36,6 +43,8 @@ const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeIn
   catchUpStaggerSeconds:      'nonNegativeInt',
   onceRetentionDays:          'nonNegativeInt',
   onceRetentionMaxJobs:       'nonNegativeInt',
+  auditMaxBytes:              'nonNegativeInt',
+  auditMaxFiles:              'nonNegativeInt',
 };
 
 /**

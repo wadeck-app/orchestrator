@@ -16,7 +16,7 @@ import pidusage from 'pidusage';
 // a wrapper (cmd.exe / sh) that stays idle: sampling it alone reports ~0% CPU and only
 // the wrapper's own few MB of RAM. The real work happens in its descendants.
 import pidtree from 'pidtree';
-import type { Job, TriggerSource } from './types.js';
+import type { Job, TriggerResult, TriggerSource } from './types.js';
 import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -209,7 +209,7 @@ export class Scheduler extends EventEmitter {
   private readonly _time:      TimeService;
   private readonly _configDir: string;
   private readonly _tmpDir:    string;
-  private readonly _events:    EventPublisher;
+  private readonly _eventPublisher: EventPublisher;
   private readonly _secrets:   SecretsManager;
   /**
    * Every scheduled moment, behind one armed timer. See deadlines.ts.
@@ -236,6 +236,13 @@ export class Scheduler extends EventEmitter {
   private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
   private readonly _sampleIntervalMs: number;
   private readonly _retryCounters  = new Map<string, number>();
+  /**
+   * Live processes per job, for maxConcurrency. Counted here rather than read from _activeChildren,
+   * which holds one child per job id and so cannot answer "how many".
+   */
+  private readonly _running        = new Map<string, number>();
+  /** The log of the newest live run per job: where a refused firing is written, so the reader sees it. */
+  private readonly _liveLogger     = new Map<string, RunLogger>();
 
   constructor(registry: Registry, state: State, options: SchedulerOptions = {}) {
     super();
@@ -258,7 +265,7 @@ export class Scheduler extends EventEmitter {
       // violations-suppress: shared/no-out-of-repo-path the documented config dir; both a constructor option and ORCH_CONFIG_DIR override it
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
-    this._events    = options.eventPublisher ?? new EventPublisher();
+    this._eventPublisher    = options.eventPublisher ?? new EventPublisher();
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
@@ -522,7 +529,7 @@ export class Scheduler extends EventEmitter {
       return;
     }
     this._registry.disable(job.id);
-    this._events.publish('job.window_expired', {
+    this._eventPublisher.publish('job.window_expired', {
       jobId: job.id, label: job.label, activeUntil: job.activeUntil,
     });
   }
@@ -656,10 +663,30 @@ export class Scheduler extends EventEmitter {
    * on -- the ones that did not need the flag -- and returned immediately on every other job while
    * printing that it had finished.
    */
-  async trigger(id: string, source: TriggerSource = { kind: 'manual' }, wait = false): Promise<{ pid: number | null; consumed?: boolean } | { exitCode: number | null; consumed?: boolean }> {
+  async trigger(
+    id: string,
+    source: TriggerSource = { kind: 'manual' },
+    wait = false,
+    options: { force?: boolean } = {},
+  ): Promise<TriggerResult> {
     const job = this._registry.get(id);
     if (!job) {
       throw new Error(`Job not found: "${id}"`);
+    }
+
+    /*
+     * Asking by hand is not exempt from maxConcurrency, unlike liveness: the limit is the job's own
+     * statement that two instances must not coexist, and a stray double-click or a script that
+     * triggers twice is exactly what it is for. `force` is the explicit "I know, start another".
+     *
+     * Checked before the once-job consumption below, so a refused trigger does not spend the job.
+     */
+    if (options.force !== true) {
+      const full = this._atLimit(job);
+      if (full) {
+        this._refuseForConcurrency(job, full);
+        return { status: 'already-running', ...full };
+      }
     }
 
     /*
@@ -690,7 +717,10 @@ export class Scheduler extends EventEmitter {
       this._registry.markSpent(job.id);
     }
 
-    return { ...result, ...(consumed ? { consumed: true } : {}) };
+    const outcome = 'exitCode' in result
+      ? { status: 'finished' as const, exitCode: result.exitCode }
+      : { status: 'started' as const, pid: result.pid };
+    return { ...outcome, ...(consumed ? { consumed: true } : {}) };
   }
 
   /**
@@ -838,7 +868,7 @@ export class Scheduler extends EventEmitter {
           const succeeded = latest && latest.exitCode === 0 &&
             new Date(latest.startedAt).getTime() >= new Date(scheduledAt).getTime();
           if (!succeeded) {
-            this._events.publish('alert.sla_breach', {
+            this._eventPublisher.publish('alert.sla_breach', {
               jobId: current.id, label: current.label,
               scheduledAt, windowMinutes: current.slaWindowMinutes,
             });
@@ -875,8 +905,53 @@ export class Scheduler extends EventEmitter {
       this._expireOrWait(job);
       return;
     }
+    if (trigger.kind !== 'manual') {
+      const full = this._atLimit(job);
+      if (full) {
+        this._refuseForConcurrency(job, full);
+        return;
+      }
+    }
     if (await this._liveness(job)) {
       this._recordSkip(job, 'liveness');
+      return;
+    }
+    void this._fire(job, trigger);
+  }
+
+  /** Null when the job may start another run, otherwise how full it is. */
+  private _atLimit(job: Job): { running: number; maxConcurrency: number } | null {
+    if (job.maxConcurrency === undefined) {
+      return null;
+    }
+    const running = this._running.get(job.id) ?? 0;
+    return running >= job.maxConcurrency ? { running, maxConcurrency: job.maxConcurrency } : null;
+  }
+
+  /**
+   * Reports a firing refused because the job is at its maxConcurrency.
+   *
+   * Deliberately NOT _recordSkip: that writes a history entry and a log file of its own, and both
+   * are "the newest run" to the readers. The dashboard decides whether a job is running from the
+   * entry with the latest startedAt, and the live log follows the newest file -- so a skip written
+   * while a run is in flight would show that run as ended and pull the tail off its output. The
+   * refusal goes where it cannot masquerade as a run: an event (which reaches the audit trail) and
+   * a line in the log of the run that is occupying the slot.
+   */
+  private _refuseForConcurrency(job: Job, full: { running: number; maxConcurrency: number }): void {
+    this._liveLogger.get(job.id)?.write(
+      `[job:skipped] reason=concurrency -- ${full.running} of ${full.maxConcurrency} already running`,
+    );
+    this._eventPublisher.publish('job.skipped', {
+      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason: 'concurrency', ...full,
+    });
+  }
+
+  /** A firing that does not come from the schedule (retry, dependency), held to the same limit. */
+  private _fireUnlessFull(job: Job, trigger: TriggerSource): void {
+    const full = this._atLimit(job);
+    if (full) {
+      this._refuseForConcurrency(job, full);
       return;
     }
     void this._fire(job, trigger);
@@ -900,7 +975,7 @@ export class Scheduler extends EventEmitter {
     const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, at);
     jobLogger.write(`[job:skipped] reason=${reason} -- target already alive, nothing was done`);
     jobLogger.close();
-    this._events.publish('job.skipped', {
+    this._eventPublisher.publish('job.skipped', {
       jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason,
     });
   }
@@ -921,12 +996,33 @@ export class Scheduler extends EventEmitter {
       startedAt,
     );
 
+    // Only the newest child per job is tracked here, so with maxConcurrency above 1 `orch kill` reaches
+    // the most recently started instance and not the others.
     this._activeChildren.set(job.id, child);
+
+    // The slot is tied to the child's own lifetime from this line on, in a listener of its own: if
+    // anything between here and the main close handler threw, the slot would otherwise never be given
+    // back and the job could not start again until the daemon restarted. Registered first, so the main
+    // handler's dependency and retry firings already see the slot free.
+    this._running.set(job.id, (this._running.get(job.id) ?? 0) + 1);
+    this._liveLogger.set(job.id, jobLogger);
+    child.once('close', () => {
+      const left = (this._running.get(job.id) ?? 1) - 1;
+      if (left > 0) {
+        this._running.set(job.id, left);
+      } else {
+        this._running.delete(job.id);
+      }
+      if (this._liveLogger.get(job.id) === jobLogger) {
+        this._liveLogger.delete(job.id);
+      }
+    });
+
     this._state.record(job.id, {
       startedAt, exitCode: null, pid, triggeredBy: trigger,
       retryAttempt: trigger.kind === 'retry' ? trigger.attempt : undefined,
     });
-    this._events.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
+    this._eventPublisher.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
     this.emit('job-started', { id: job.id });
     jobLogger.write(`[job:started] pid=${pid} triggeredBy=${trigger.kind}`);
 
@@ -1051,7 +1147,7 @@ export class Scheduler extends EventEmitter {
             softAlertSent = true;
             const msg = `[warn] Soft resource limit exceeded (CPU: ${cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB)`;
             try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
-            this._events.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
+            this._eventPublisher.publish('job.resource_soft_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, softThreshold });
           }
           if (overHard) {
             hardBreaches++;
@@ -1065,7 +1161,7 @@ export class Scheduler extends EventEmitter {
               killing = true;
               const msg = `[warn] Hard resource limit exceeded for ${hardBreaches} consecutive samples (${over}) - killing`;
               try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
-              this._events.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
+              this._eventPublisher.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
               resourceTimer?.cancel();
               // Forced before the kill: the numbers that justified killing this job are the ones
               // most worth keeping, and clearing the timer above means no later sample will write.
@@ -1109,7 +1205,7 @@ export class Scheduler extends EventEmitter {
         timedOut = true;
         jobLogger.write(`[warn] Job ${job.id} timed out after ${job.timeoutSeconds ?? 300}s - killing process`);
         jobLogger.write(`[job:timeout] jobId=${job.id} timeoutSeconds=${job.timeoutSeconds ?? 300}`);
-        this._events.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
+        this._eventPublisher.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
         // A timed-out job is one whose resource use is worth a look, so persist before killing.
         flushPeaks();
         this._killChild(child);
@@ -1151,39 +1247,39 @@ export class Scheduler extends EventEmitter {
           : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`);
         jobLogger.close();
         // `skipped` travels with the event because the systray classifies on this alone.
-        this.emit('job-finished', { id: job.id, exitCode, job, skipped });
+        this.emit('job-finished', { id: job.id, exitCode, job, skipped, durationMs, trigger });
 
         if (cancelledByUser) {
-          this._events.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
+          this._eventPublisher.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
         } else if (skipped) {
           // No dependents and no retry: both would act on work that never happened. The retry
           // counter is left alone, since a skip says nothing about whether the last attempt failed.
-          this._events.publish('job.skipped', {
+          this._eventPublisher.publish('job.skipped', {
             jobId: job.id, label: job.label, exitCode, durationMs, reason: 'exitCode',
           });
         } else if (exitCode === 0) {
           this._retryCounters.delete(job.id);
-          this._events.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
+          this._eventPublisher.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
           // Trigger dependent jobs
           for (const dep of this._registry.list().filter(j => j.dependsOn === job.id && j.enabled)) {
-            void this._fire(dep, { kind: 'dependency', dependsOnJobId: job.id });
+            this._fireUnlessFull(dep, { kind: 'dependency', dependsOnJobId: job.id });
           }
           if (wasFailure) {
-            this._events.publish('job.recovered', { jobId: job.id, label: job.label });
+            this._eventPublisher.publish('job.recovered', { jobId: job.id, label: job.label });
           }
           // Anomaly detection: emit if duration is 3x longer than rolling average
           const avgMs = this._state.getRollingAvgDurationMs(job.id);
           if (avgMs !== null && durationMs > 3 * avgMs) {
             jobLogger.write(`[warn] Job ${job.id} took ${durationMs}ms (3x avg ${Math.round(avgMs)}ms) - anomaly detected`);
-            this._events.publish('job.anomaly', { jobId: job.id, label: job.label, durationMs, avgMs: Math.round(avgMs), multiplier: 3 });
+            this._eventPublisher.publish('job.anomaly', { jobId: job.id, label: job.label, durationMs, avgMs: Math.round(avgMs), multiplier: 3 });
           }
         } else if (exitCode !== null) {
-          this._events.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
+          this._eventPublisher.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
           // Consecutive-failure alert
           const threshold = job.alertAfterFailures ?? 3;
           const consecutive = this._state.getConsecutiveFailures(job.id);
           if (consecutive >= threshold) {
-            this._events.publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
+            this._eventPublisher.publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
           }
           // Retry on specific exit codes (extension point: hooks fire for each retry/exhaustion)
           if (job.retryOnExitCodes?.includes(exitCode)) {
@@ -1199,7 +1295,7 @@ export class Scheduler extends EventEmitter {
                 attempt: nextAttempt, totalAttempts: delays.length, delaySeconds: delays[attempts],
               }, (err: unknown) => console.error('[hook:onJobRetry]', err));
               this._deadlines.set(job.id, 'retry', this._time.now() + delayMs, () => {
-                void this._fire(job, { kind: 'retry', attempt: nextAttempt });
+                this._fireUnlessFull(job, { kind: 'retry', attempt: nextAttempt });
               });
             } else {
               this._retryCounters.delete(job.id);
@@ -1207,7 +1303,7 @@ export class Scheduler extends EventEmitter {
               void this._hookDispatcher?.dispatch('onJobExhausted' as never, {
                 jobId: job.id, label: job.label, exitCode, attempts: delays.length,
               }, (err: unknown) => console.error('[hook:onJobExhausted]', err));
-              this._events.publish('alert.retry_exhausted', { jobId: job.id, label: job.label, exitCode, attempts: delays.length });
+              this._eventPublisher.publish('alert.retry_exhausted', { jobId: job.id, label: job.label, exitCode, attempts: delays.length });
             }
           }
         }

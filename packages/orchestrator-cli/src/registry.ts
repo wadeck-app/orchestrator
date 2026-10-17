@@ -110,6 +110,15 @@ export function validateJob(job: Partial<Job>): void {
     // which absorbs any timer-ceiling overflow itself - not a rule to hand the user.
   }
 
+  if (job.maxConcurrency !== undefined) {
+    if (!Number.isInteger(job.maxConcurrency) || job.maxConcurrency < 1) {
+      throw new Error(
+        `maxConcurrency must be a whole number of at least 1 (got: ${job.maxConcurrency}). `
+        + 'To remove the limit, clear it: orch edit <id> --unset maxConcurrency',
+      );
+    }
+  }
+
   if (job.triggerMode !== undefined && !VALID_TRIGGER_MODES.has(job.triggerMode)) {
     throw new Error(`triggerMode must be "fire-and-forget" or "wait" (got: ${job.triggerMode})`);
   }

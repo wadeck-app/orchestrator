@@ -193,7 +193,10 @@ async function main(): Promise<void> {
       onceRetentionMaxJobs: daemonCfg.onceRetentionMaxJobs,
     });
     const state       = new State(path.join(CONFIG_DIR, 'state.json'));
-    const audit       = new AuditLogger(CONFIG_DIR);
+    const audit       = new AuditLogger(CONFIG_DIR, {
+      maxBytes: daemonCfg.auditMaxBytes,
+      maxFiles: daemonCfg.auditMaxFiles,
+    });
     const events      = new EventPublisher();
     const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
     const scheduler      = new Scheduler(registry, state, {

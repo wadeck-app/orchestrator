@@ -71,6 +71,7 @@ const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--missed-firing',        field: 'missedFiring',       kind: 'string'      },
   { flag: '--depends-on',           field: 'dependsOn',          kind: 'string'      },
   { flag: '--timeout',              field: 'timeoutSeconds',     kind: 'int'         },
+  { flag: '--max-concurrency',      field: 'maxConcurrency',     kind: 'int'         },
   { flag: '--alert-after-failures', field: 'alertAfterFailures', kind: 'int'         },
   { flag: '--sla-window',           field: 'slaWindowMinutes',   kind: 'int'         },
   { flag: '--tags',                 field: 'tags',               kind: 'stringList'  },
@@ -178,7 +179,8 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
     } else if (kind === 'int') {
       const n = Number(raw);
       if (!Number.isInteger(n)) {
-        throw new Error(`${name} expects a whole number of ${name === '--sla-window' ? 'minutes' : 'seconds'}, but got "${raw}".`);
+        const unit = name === '--sla-window' ? 'minutes' : name === '--max-concurrency' ? 'runs' : 'seconds';
+        throw new Error(`${name} expects a whole number of ${unit}, but got "${raw}".`);
       }
       out[field] = n;
     } else {
@@ -407,6 +409,8 @@ Job mutation:
   --missed-firing <mode>       catch-up | skip
   --timeout <seconds>          Kill the run after this long (default: 300; 0 = no timeout,
                                for a process that must stay up, e.g. a dev server)
+  --max-concurrency <n>        Refuse to start a run while n are already running (default: no limit;
+                               1 = never two at once). A refused run is a skip, not a failure
   --tags <a,b>                 Comma-separated tags
   --depends-on <job-id>        Fire this job after <job-id> succeeds
   --alert-after-failures <n>   Alert after n consecutive failures (default: 3)
@@ -428,7 +432,7 @@ Job mutation:
                                Patches the job: a flag you omit leaves that field as it was
                                [--unset <field>[,<field>...]]  Clear an option instead of changing it
                                Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
-                               env, tags, onExitCode, retryOnExitCodes, retryDelays,
+                               maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
                                skipExitCodes, liveness, label, triggerMode
                                Example: orch edit my-job --unset cwd
 
@@ -444,7 +448,9 @@ Liveness strategies (skip firing if target is already alive):
   command    Run <command> -> skip if it exits 0
 
 Manual execution:
-  orch trigger <id> [--wait]   Fire a job immediately
+  orch trigger <id> [--wait] [--force] [--json]
+                               Fire a job immediately. A job at its --max-concurrency is not
+                               started (reported, exit 0); --force starts another instance anyway
   orch kill <id>               Stop a job that is currently running
   orch terminate <id>          Alias for kill, for shells that block the word
   orch exec "<cmd>" [--wait]   Run a one-shot command via the daemon (for agent delegation)
@@ -1063,7 +1069,22 @@ Use --wait to block until the command finishes.`);
     case 'run': {
       const [id, ...trigRest] = rest;
       const wait = has(trigRest, '--wait');
-      const data = await send('trigger-job', { id, wait }) as { exitCode?: number; pid?: number; consumed?: boolean };
+      const force = has(trigRest, '--force');
+      // `force` travels only when asked for, so a daemon that predates it receives the payload it knows.
+      const data = await send('trigger-job', { id, wait, ...(force ? { force: true } : {}) }) as {
+        status?: string; exitCode?: number; pid?: number; consumed?: boolean; running?: number; maxConcurrency?: number;
+      };
+      if (forceJson) {
+        console.log(JSON.stringify(data));
+        break;
+      }
+      // Not an error and not exit 1: the job did what its maxConcurrency says, and a script chaining
+      // on `orch trigger` should not have to treat "already running" as a failure to carry on.
+      if (data.status === 'already-running') {
+        console.log(`Job "${id}" is already running (${data.running ?? '?'}/${data.maxConcurrency ?? '?'}); `
+          + 'nothing was started. Use --force to start another instance.');
+        break;
+      }
       // Said out loud: running a once job consumes it, so it leaves the job list. Unexplained, a job
       // vanishing right after the user triggered it reads as a bug rather than as the type working.
       const consumedNote = data.consumed === true ? ' Once job: consumed, it will not fire again.' : '';

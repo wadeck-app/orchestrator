@@ -13,8 +13,25 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 | `catchUpStaggerSeconds` | int | `300` | Seconds between consecutive catch-up jobs on startup |
 | `onceRetentionDays` | int | `360` | Days a spent `once` job is kept before being pruned |
 | `onceRetentionMaxJobs` | int | `50` | How many spent `once` jobs are kept at most |
+| `auditMaxBytes` | int | `5242880` | Size at which `audit.ndjson` is rotated. `0` turns rotation off |
+| `auditMaxFiles` | int | `5` | Rotated audit files kept, newest first |
 
-Integers must be whole and non-negative. `0` is valid and means "keep none".
+Integers must be whole and non-negative. `0` is valid and means "keep none", except `auditMaxBytes` where it means "never rotate".
+
+## Audit trail
+
+`<configDir>/audit.ndjson` is the live file. Past `auditMaxBytes` it is renamed `audit.<timestamp>.ndjson` and a new one starts; only the newest `auditMaxFiles` rotated files are kept, so the trail is bounded at about 30 MiB by default. The dashboard and `list-audit` read across the live and rotated files.
+
+Fields on `job.completed` and `job.skipped`:
+
+| Field | Meaning |
+|-------|---------|
+| `exitCode` | The real exit code, also for skipped runs |
+| `durationMs` | Wall-clock run time |
+| `trigger` | What started the run: `cron`, `manual`, `retry`, `dependency`, ... |
+| `reason` | `job.skipped` only: `skipExitCodes` |
+
+`orch trigger` with an empty, malformed or unknown job id is refused with an error and writes no audit entry.
 
 ## Invalid values
 
@@ -52,6 +69,20 @@ Catch-up jobs fire with staggered delays to avoid simultaneous load (e.g. after 
 - Job N fires after `catchUpInitialDelaySeconds + (N-1) x catchUpStaggerSeconds`
 
 Only the **most recent** missed firing is caught up per job -- multiple missed days do not accumulate.
+
+## Limiting concurrent runs -- `maxConcurrency`
+
+Per-job option, not a `config.yml` key. `orch add|edit <id> --max-concurrency <n>`; clear it with `orch edit <id> --unset maxConcurrency`. Absent means no limit.
+
+A firing that finds `n` runs already alive is refused, whatever started it: schedule, catch-up, retry, dependency or `orch trigger`. A refusal is a skip, not a failure:
+
+- `job.skipped` event with `reason: concurrency`, `running` and `maxConcurrency` on the event bus. Only a refused `orch trigger` reaches `audit.ndjson`, as `job.trigger_refused`; scheduled refusals are not audited.
+- A `[job:skipped] reason=concurrency` line in the log of the run holding the slot.
+- No run-history entry and no log file of its own, so the dashboard keeps showing the real run as running.
+- `orch trigger` answers `{ status: "already-running", running, maxConcurrency }` and exits 0. `--force` starts another instance anyway.
+- A refused retry is not rescheduled; a refused `once` firing still marks the job spent.
+
+Above 1 is enforced, but `orch kill` only reaches the most recently started instance.
 
 ## Example
 

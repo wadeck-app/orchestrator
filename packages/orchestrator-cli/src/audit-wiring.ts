@@ -10,6 +10,8 @@ interface JobFinishedEvent {
   exitCode: number;
   job: { label: string };
   skipped?: boolean;
+  durationMs?: number;
+  trigger?: { kind: string };
 }
 
 /**
@@ -22,8 +24,15 @@ interface JobFinishedEvent {
 export function wireAuditEvents(scheduler: EventEmitter, audit: AuditSink): void {
   scheduler.on('job-finished', (ev: JobFinishedEvent) => {
     try {
-      audit.log(ev.skipped ? 'job.skipped' : 'job.completed',
-        { jobId: ev.id, label: ev.job.label, exitCode: ev.exitCode });
+      // Optional fields are added only when known, so an entry never carries an `undefined` key.
+      audit.log(ev.skipped ? 'job.skipped' : 'job.completed', {
+        jobId: ev.id, label: ev.job.label, exitCode: ev.exitCode,
+        ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}),
+        ...(ev.trigger ? { trigger: ev.trigger.kind } : {}),
+        // The only run the scheduler reports as skipped through job-finished is one whose exit code the
+        // job declared in skipExitCodes; a liveness skip never spawns, so never reaches here.
+        ...(ev.skipped ? { reason: 'skipExitCodes' } : {}),
+      });
     } catch (err) {
       // The audit trail is a side channel. A failure to write it must not propagate into the
       // scheduler's own emit, where it would surface as an unhandled error on a job that ran fine.

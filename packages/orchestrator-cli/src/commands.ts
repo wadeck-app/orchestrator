@@ -14,6 +14,8 @@ import type { ExecManager } from './exec-manager.js';
 import { getNextFirings } from './cronNext.js';
 import { SecretsManager } from './secrets.js';
 
+// Same rule as registry.add and the logs route's path-traversal guard (P-7); do not relax it here.
+const JOB_ID_RE = /^[a-z0-9-]+$/i;
 
 /**
  * Builds the OrchestratorCommands map for use with createDaemon() and createTestDaemon().
@@ -122,12 +124,34 @@ export function makeCommands(
     },
 
     'trigger-job': (p) => {
-      const { id, ip, userAgent, wait } = p as { id: string; ip?: string; userAgent?: string; wait?: boolean };
+      const { id, ip, userAgent, wait, force } = p as { id: string; ip?: string; userAgent?: string; wait?: boolean; force?: boolean };
+      // Refused before anything is recorded: this used to audit first, so 12 550 requests naming no
+      // job at all (`"jobId":""`) went into the trail as manual triggers.
+      if (typeof id !== 'string' || !JOB_ID_RE.test(id)) {
+        throw new Error(
+          `trigger-job needs a job id made of letters, digits and "-" (got ${JSON.stringify(id)}). `
+          + 'Run `orch list` to see the available job ids.',
+        );
+      }
       const job = registry.get(id);
-      audit?.log('job.triggered_manual', { jobId: id, label: job?.label, ip, userAgent });
+      if (!job) {
+        throw new Error(`Job not found: "${id}". Run \`orch list\` to see the available job ids.`);
+      }
+      audit?.log('job.triggered_manual', { jobId: id, label: job.label, ip, userAgent });
       events?.publish('job.triggered_manual', { jobId: id, label: job?.label ?? id, ip: ip ?? null, userAgent: userAgent ?? null });
       // The CLI has always sent `wait`; it used to be dropped here, so --wait silently did nothing.
-      return scheduler.trigger(id, { kind: 'manual', ip, userAgent }, wait === true);
+      return scheduler.trigger(id, { kind: 'manual', ip, userAgent }, wait === true, { force: force === true })
+        .then((result) => {
+          // The line above records that someone asked; this records that nothing started, so the
+          // trail does not read as a run that never happened.
+          if (result.status === 'already-running') {
+            audit?.log('job.trigger_refused', {
+              jobId: id, label: job.label, reason: 'concurrency',
+              running: result.running, maxConcurrency: result.maxConcurrency, ip, userAgent,
+            });
+          }
+          return result;
+        });
     },
 
     // Awaited, not fired off: the reply's `killed` flag is what the CLI and the dashboard show,

@@ -53,6 +53,17 @@ export interface Job {
    * that must stay up, e.g. a dev server. No upper bound: the scheduler's job-timeout timer is
    * armed through waitUntil (time-service.ts), which absorbs the runtime's 2^31-1 ms ceiling. */
   timeoutSeconds?: number;
+  /**
+   * How many runs of this job may be alive at once. Absent means no limit, which is today's
+   * behaviour; 1 means "never start a second instance while one is running".
+   *
+   * A firing that finds the job at its limit is refused and reported as a skip with reason
+   * `concurrency` -- an outcome, not an error. `orch trigger --force` bypasses it.
+   *
+   * Above 1 is accepted and enforced, but the scheduler still tracks one child per job for
+   * `orch kill`, so a kill only reaches the most recently started instance.
+   */
+  maxConcurrency?: number;
   env?: Record<string, string>;
   tags?: string[];
   alertAfterFailures?: number;
@@ -118,6 +129,7 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
   delaySeconds:       'delete',
   missedFiring:       'delete',
   timeoutSeconds:     'delete',
+  maxConcurrency:     'delete',
   env:                'delete',
   tags:               'delete',
   onExitCode:         'delete',
@@ -225,6 +237,16 @@ export interface StateData {
   jobs: Record<string, RuntimeEntry[]>;
 }
 
+/**
+ * What `trigger-job` answers. `status` is the discriminant: a refused trigger is a result, not an
+ * error, so a caller chaining commands can tell "started" from "was already running" without
+ * parsing a message. A CLI older than this field never reads `status` and prints its usual line.
+ */
+export type TriggerResult =
+  | { status: 'started';  pid: number | null;      consumed?: boolean }
+  | { status: 'finished'; exitCode: number | null; consumed?: boolean }
+  | { status: 'already-running'; running: number; maxConcurrency: number };
+
 /** RPC command map for the orchestrator daemon (used with singleton-daemon-kit). */
 export type OrchestratorCommands = {
   'list-jobs':   (payload?: unknown) => Job[];
@@ -234,7 +256,7 @@ export type OrchestratorCommands = {
   'enable-job':  (payload?: unknown) => void;
   'disable-job': (payload?: unknown) => void;
   'edit-job':    (payload?: unknown) => Job;
-  'trigger-job': (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number | null }>;
+  'trigger-job': (payload?: unknown) => Promise<TriggerResult>;
   'kill-job':          (payload?: unknown) => Promise<{ killed: boolean }>;
   'skip-next-firing':  (payload?: unknown) => Record<string, never>;
   'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;

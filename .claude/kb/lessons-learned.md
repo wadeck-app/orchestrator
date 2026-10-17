@@ -12,6 +12,22 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 
 ---
 
+### A field named `_events` on an EventEmitter subclass is EventEmitter's own listener table
+
+**Problem:** `Scheduler extends EventEmitter` stored its `EventPublisher` in `this._events`, the name EventEmitter keeps its listener table under. It worked by accident (`on()` wrote listeners onto the publisher object), but removing the last listener makes EventEmitter replace `_events`, after which every `publish()` threw `this._events.publish is not a function`, from inside a child `close` handler. Reproduced in `test/scheduler-emitter.test.js` with a single `once()`.
+**Fix:** Renamed to `_eventPublisher`. Never name a field `_events`, `_eventsCount` or `_maxListeners` on an EventEmitter subclass.
+**Context:** No production code removed a listener, so it never fired; the first `once()` or `off()` would have.
+
+---
+
+### A refused run must not be written as a history entry or a log file
+
+**Problem:** The dashboard decides "is it running" from the history entry with the latest `startedAt`, and the live log follows the newest file. A skip recorded while a run is in flight (`maxConcurrency` refusal) would show that run as Ended and move the tail off its output.
+**Fix:** `_refuseForConcurrency` in `scheduler.ts` publishes a `job.skipped` event (reason `concurrency`) and writes one line into the occupying run's log. `_recordSkip` stays for firings where nothing is running.
+**Context:** A trigger refused this way answers `{ status: 'already-running' }` (HTTP 200 on the dashboard), not an error. A DSL brain exposes only `$pending` and `$error`, so a page-owned `$http.post` cannot show it; the component makes the call itself and signals the page to reload.
+
+---
+
 ### A raw `this._time.after(ms, ...)` silently clamps long user-configured durations
 
 **Problem:** The job-timeout timer in `scheduler.ts` called `this._time.after(timeoutMs, ...)` directly. Node's `setTimeout` clamps any delay above 2^31-1 ms (~24.85 days) to 1ms, so `--timeout 31536000` (one year) killed the job almost instantly instead of after a year, with no error -- reproduced with `FakeTime` in `test/job-timeout-overflow.test.js` before fixing.
