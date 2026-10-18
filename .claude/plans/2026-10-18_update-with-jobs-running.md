@@ -30,7 +30,7 @@ Done with temporary `zz-live-*` jobs (removed afterwards) and with the real app-
 
 Defects the live test found, all fixed with a test first: the process-table lookup was done once per run (about a second each on Windows), which delayed readiness and made `orch restart` start a second daemon; that second daemon closed live runs as orphaned; a run that ended in front of the daemon was never marked handled and was replayed at the next start; a retry armed while recovering was dropped by `start()`; a run whose supervisor vanished was waited on for ever; and the command was cut at every letter `s` (a lost backslash), which made the four real scrapers fail with exit 1 for the one cycle they ran supervised.
 
-Known gaps after the live test: `orch stop` leaves supervised jobs running and there is no `--kill-jobs` yet; the daemon stdout echo of job output is gone; macOS and Linux were only exercised by CI.
+Decided afterwards (D5 and D6 confirmed): `orch stop` leaves supervised jobs running, names them and says how to end them, and `orch stop --kill-jobs` ends every running job first (checked live: the real app-core server was ended, then restarted by its startup job under a supervisor); the daemon stdout echo of job output is gone; `orch status` never starts the daemon any more (a stopped daemon answers `{"running":false}` / "not running", exit 1; checked live). Still true: macOS and Linux were only exercised by CI.
 
 Confirmed by experiment: without `detachRuns()` a process that holds a supervised run never exits (test/detach-exit.test.js, with a negative control), which is the review's blocker B1 for the scheduler's own handles. Whether the rest of the real daemon exits is part of the real-update check.
 
