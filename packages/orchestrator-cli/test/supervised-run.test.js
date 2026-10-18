@@ -167,12 +167,16 @@ describe('startSupervised', () => {
 
   test('the run folder name has millisecond resolution, so two runs in one second do not collide', async () => {
     const dir = tmp();
+    // Each close is awaited as soon as its child exists: the first job ends at once and its close can be emitted
+    // while the second one is still being started, and a listener added later would wait for ever.
     const first = await startSupervised(options(dir), request(dir, scriptCommand(dir, 'process.exit(0)'), { startedAt: '2026-10-18T10:00:00.100Z' }));
+    const firstClosed = closed(first);
     const second = await startSupervised(options(dir), request(dir, scriptCommand(dir, 'process.exit(0)'), { startedAt: '2026-10-18T10:00:00.200Z' }));
+    const secondClosed = closed(second);
     children.push(first, second);
 
     assert.notEqual(first.runDir, second.runDir);
-    await Promise.all([closed(first), closed(second)]);
+    await Promise.all([firstClosed, secondClosed]);
   });
 
   // If the supervisor is killed, crashes, or cannot write its final status, status.json says "running" for ever.
