@@ -291,6 +291,9 @@ async function main(): Promise<void> {
             enabled: daemonCfg.appCore,
             devInstance: isDevInstance,
             packageRoot: path.join(__dirname, '..'),
+            // The module is copied into this config dir, so what app-core remembers outlives npm.
+            orchConfigDir: CONFIG_DIR,
+            moduleStamp: version,
             log: (message) => daemonLog.write(message),
           });
         },

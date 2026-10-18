@@ -2,10 +2,9 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import http from 'node:http';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { deadPort, fakeAppCore } from './helpers/app-core-fakes.js';
 
 /*
  * The daemon tells app-core, at every start, where its module lives. This is best effort by design --
@@ -34,29 +33,6 @@ function manifestFile() {
   const file = path.join(freshDir(`manifest-${Math.random().toString(36).slice(2)}`), 'manifest.json');
   fs.writeFileSync(file, '{}');
   return file;
-}
-
-/** A port nothing listens on: bind an ephemeral one and release it. */
-async function deadPort() {
-  const server = net.createServer();
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  await new Promise(resolve => server.close(resolve));
-  return port;
-}
-
-async function fakeAppCore(handler) {
-  const seen = [];
-  const server = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      seen.push({ method: req.method, url: req.url, body: body === '' ? undefined : JSON.parse(body) });
-      handler(req, res);
-    });
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  return { port: server.address().port, seen, close: () => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }) };
 }
 
 describe('resolveAppCorePort', () => {
@@ -261,7 +237,7 @@ describe('registerOnStart', () => {
     const appCore = await fakeAppCore((_req, res) => { res.writeHead(200); res.end('{}'); });
     const { lines, log } = collect();
     try {
-      await registerOnStart({ enabled: true, devInstance: false, packageRoot: packageWithModule(), appCoreConfigDir: freshDir('cfg-go'), env: { APP_CORE_PORT: String(appCore.port) }, log });
+      await registerOnStart({ enabled: true, devInstance: false, packageRoot: packageWithModule(), orchConfigDir: freshDir('orch-go'), moduleStamp: 'v1', appCoreConfigDir: freshDir('cfg-go'), env: { APP_CORE_PORT: String(appCore.port) }, log });
       assert.equal(appCore.seen.length, 1);
       assert.match(lines[0], /registered/);
     } finally {
@@ -271,7 +247,7 @@ describe('registerOnStart', () => {
 
   it('logs a failure instead of throwing: a daemon must not fail to start because of app-core', async () => {
     const { lines, log } = collect();
-    await assert.doesNotReject(registerOnStart({ enabled: true, devInstance: false, packageRoot: packageWithModule(), appCoreConfigDir: freshDir('cfg-badport'), env: { APP_CORE_PORT: 'not-a-port' }, log }));
+    await assert.doesNotReject(registerOnStart({ enabled: true, devInstance: false, packageRoot: packageWithModule(), orchConfigDir: freshDir('orch-bad'), moduleStamp: 'v1', appCoreConfigDir: freshDir('cfg-badport'), env: { APP_CORE_PORT: 'not-a-port' }, log }));
     assert.match(lines[0], /registration failed.*APP_CORE_PORT/s);
   });
 });

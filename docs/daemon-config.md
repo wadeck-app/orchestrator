@@ -114,6 +114,21 @@ processes counted" part says how many processes the tree walk offered against ho
 to the job: a process refused as not the job's (it predates the job, or hangs off a recycled pid) is
 the difference between a total that is the job's and one that is not.
 
+### What the baseline is made of
+
+The hard budget is built from the peaks of the job's last 10 successful runs, and only from peaks
+measured by the current method (`peakMeasure` in `state.json`, currently 2). Runs recorded before that
+are ignored, on purpose: the earlier sampler compared the age each process had when it was *queried*,
+and on Windows each process is a separate WMI query, so under load a real child queried seconds after
+its shell looked older than it and was dropped. The job was then measured as its idle shell wrapper (17
+MB for a job that weighs 130 MB). Keeping those figures would turn the first correct measurement into a
+kill, every run, with no way for the baseline to recover (only successful runs feed it).
+
+So after updating to the version that introduced `peakMeasure`, a job runs **without a hard budget until
+it has 3 successful runs measured the new way**, then gets a budget that means something. The soft
+warning follows the same baseline. Nothing to configure and nothing lost: the old peaks stay in
+`state.json` for the dashboard to show.
+
 ### Telemetry file
 
 Every sample is also kept in `<configDir>/telemetry/<jobId>.ndjson`, one JSON object per line, so a
@@ -145,6 +160,20 @@ app-core: module "orchestrator" not registered, app-core is not installed (<dir>
 app-core: refused module "orchestrator" (HTTP 400): <app-core's reason>. Fix the manifest it names, ...
 ```
 
+- **The module outlives the npm folder.** app-core remembers the path of a manifest and reloads it at
+  its own every start, and npm replaces the package folder on every update and deletes it on
+  uninstall, so registering a path inside it would register a path that dies. The daemon copies the
+  module into `<configDir>/app-module/<version>/` and registers the copy. Each start (so after every
+  `orch cli update`) it copies the current version if it is not there yet, registers it, and deletes
+  the older copies only once app-core holds the new path: accepted, or left as the file app-core reads
+  at its next start. If app-core refuses, the older copy stays, because that is still the path it
+  remembers. Same shape and same reason as the native launcher binary staged under `<configDir>/bin/`.
+- Uninstalling or updating the CLI therefore never leaves app-core pointing at a missing file. The
+  module is *not* removed by an uninstall: it belongs to app-core until you remove it there
+  (`POST /api/modules/unregister {"id":"orchestrator"}`). Until the daemon runs again its pages answer
+  `daemon-not-running`.
+- Nothing is copied on a machine without app-core, and a source checkout registers its sibling
+  `app-module-orchestrator` package in place.
 - app-core's port is `APP_CORE_PORT` if set, else the port app-core wrote in its own config dir
   (`server.port.json`), else `4850`. The config dir is `~/.config/app-core`, or `APP_CORE_CONFIG_DIR`.
 - When app-core is not running but was installed, the daemon leaves the registration in app-core's
