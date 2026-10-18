@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { LIB_EXTRA_TYPES, listLibTypes, readOrchUiTypes } from './libTypes.js';
 
 /*
- * The dsl-lib ships the components of orch-ui, plus the few dsl-ui built-ins orch-app wires to its
- * pages. This list is what the bundle exports AND what the module's pages prefix with the module id,
+ * The dsl-lib ships the components of orch-ui, plus the few dsl-ui built-ins its registry overrides wire to
+ * the pages. This list is what the bundle exports AND what the module's pages prefix with the module id,
  * so it has to be one list: two lists is how a page names a type the bundle does not contain.
  */
 describe('readOrchUiTypes', () => {

@@ -1,5 +1,4 @@
-# The three numbers orch-app's navbar shows, from the same /api/health the dashboard server serves.
-# Handwritten: a dashboard widget has no orch-app page to derive from.
+# The three numbers the navbar stats show, from the same /api/health, for the dashboard widget.
 $sources:
   health:
     url: GET /api/modules/orchestrator/api/health

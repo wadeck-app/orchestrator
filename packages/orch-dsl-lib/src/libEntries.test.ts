@@ -1,0 +1,31 @@
+// @vitest-environment jsdom
+import fs from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import { createOrchLibEntries } from './index.js';
+import { listLibTypes } from './libTypes.js';
+import { LIB_ENTRIES } from './paths.js';
+
+/*
+ * The component names the module registers as "orchestrator:<name>". Frozen here on purpose: adding or
+ * dropping a component changes every view's contract with the shell, so it must be a visible edit.
+ */
+const EXPECTED = [
+  'AuditEntryIcon', 'AuditEntryRow', 'AuditList', 'DesignSwitcher', 'EnableToggle', 'FailureOverlay', 'JobCard',
+  'JobCardGrid', 'JobConfigDisplay', 'JobFilterChips', 'JobForm', 'JobFormSection', 'JobStatusBadge', 'JobToggle',
+  'LogPageBreadcrumb', 'LogViewer', 'MutationFeedback', 'NavStats', 'NextFireCountdown', 'RunHistory',
+  'RunningAlertDetail', 'RunningBannerDetail', 'RunningInlineDetail', 'ScheduleTimeline', 'SearchBar',
+  'TriggerBadge', 'TriggerButton',
+];
+
+describe('createOrchLibEntries', () => {
+  const entries = createOrchLibEntries({ apiBase: '/api/modules/orchestrator', routeBase: '/modules/orchestrator' });
+
+  it('exports the 27 components the module has always shipped', () => {
+    expect(EXPECTED).toHaveLength(27);
+    expect(entries.map(e => e.name).sort()).toEqual(EXPECTED);
+  });
+
+  it('matches the types derived from the generated entries, so the list in index.ts cannot go stale', () => {
+    expect(entries.map(e => e.name).sort()).toEqual(listLibTypes(fs.readFileSync(LIB_ENTRIES, 'utf8')));
+  });
+});

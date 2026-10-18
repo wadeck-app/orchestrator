@@ -42,7 +42,7 @@ Non-goals:
 | Pages | job list polls `GET /api/jobs` every 30 s; job detail polls `GET /api/jobs/{id}` every 30 s | `orch-app/src/dsl/pages/job-list.yaml:7-10`, `job-detail.yaml:3-8` |
 | UI | `JobCard` uses dsl-ui `Progress` for uptime (inline, sm) and shows the status pill; `RunningBannerDetail` already ticks every 1 s and shows `formatElapsed` | `orch-ui/src/components/JobCard.tsx:286-296`, `RunningBannerDetail.tsx:53-59,140` |
 | Job config validation | `validateJob(job)` is the single place a new `Job` field is checked; `UNSETTABLE_FIELDS` must list every new optional field (comment at `types.ts:121-124`) | `registry.ts:29`, `types.ts:126-146` |
-| app-core module | reuses orch-server `jobsRoutes`/`logsRoutes` verbatim; pages are derived textually from orch-app YAML; a route must be added to `ALLOWED_ROUTES` to be published | `app-module-orchestrator/src/backend.ts:25-33`, `derivePages.ts:25-60`, `routes.ts:14-36` |
+| app-core module | reuses orch-server `jobsRoutes`/`logsRoutes` verbatim; pages are standalone YAML in `src/dsl-views/` (no longer derived from orch-app); a route must be added to `ALLOWED_ROUTES` to be published | `app-module-orchestrator/src/backend.ts:25-33`, `routes.ts:14-36` |
 | orch-ui types | orch-ui has its own `RuntimeEntry`/`Job` copy (no `orphaned`, no `retryAttempt`) | `orch-ui/src/types.ts:11,127-145` |
 
 Unknown (to verify before building): the supervisor's log/status file names and whether it keeps the `[job:started]`/`[job:finished]` markers and the `[ts]` prefix; whether `Progress` in dsl-ui supports an indeterminate state; whether a DSL `$sources` poll interval can change while a job runs; where `docs/daemon-config.md` expects new job keys documented.
@@ -150,7 +150,7 @@ API:
 - Time: the response carries `etaAt` (absolute) and `serverNow`; the client computes remaining time locally so the 30 s page poll (`job-detail.yaml:8`) is enough for the list; the detail page needs a 5 s source (or the existing 1 s UI tick in `RunningBannerDetail.tsx:53-59` with a 5 s refetch while running) - unknown whether the DSL can vary the poll interval.
 - Changing `/api/events` is not planned (not published by the module).
 
-UI (`packages/orch-ui`, consumed by `orch-app` YAML pages; the module derives its pages from the same YAML, so no module-specific page code):
+UI (`packages/orch-ui`, consumed by `orch-app` YAML pages and, through `orch-dsl-lib`, by the module's own YAML in `app-module-orchestrator/src/dsl-views/`; a new component is added to `orch-dsl-lib/src/index.ts` and `npm run entries --workspace=packages/orch-dsl-lib` regenerates its entries):
 - New `JobProgress` component: `Progress` bar + text `"42% - ends ~14:32 (in 6 min)"`; shown in `RunningBannerDetail` (under the elapsed line, `RunningBannerDetail.tsx:140`) and in `JobCard` for running jobs (next to the status pill, `JobCard.tsx:203-206`).
 - Low confidence: bar rendered striped/lighter, ETA prefixed `~`, tooltip shows `reason` and strategy id.
 - No estimate (`progress: null`): no bar; one muted line with the `reason` (for example "needs 3 completed runs, has 1"), never a blank.

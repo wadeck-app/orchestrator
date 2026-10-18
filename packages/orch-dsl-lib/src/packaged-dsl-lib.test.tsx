@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ComponentRegistryEntry } from '@wadeck-app/dsl-renderer';
 import { OUT_DIR_VAR } from './out-dir.js';
 import { listLibTypes } from './libTypes.js';
-import { ORCH_APP_ENTRIES } from './paths.js';
+import { LIB_ENTRIES } from './paths.js';
 
 /*
  * What app-core does with a module's dsl-lib: set the shared packages on a global, import the bundle,
@@ -70,7 +70,7 @@ describe('the packaged dsl-lib', () => {
   });
 
   it('exports exactly the library types: orch-ui\'s components and the wired built-ins, no other dsl-ui entry', () => {
-    const expected = listLibTypes(fs.readFileSync(ORCH_APP_ENTRIES, 'utf8'));
+    const expected = listLibTypes(fs.readFileSync(LIB_ENTRIES, 'utf8'));
     expect(entries.map(e => e.name).sort()).toEqual(expected);
     expect(entries.map(e => e.name)).toContain('JobCardGrid');
     expect(entries.map(e => e.name)).not.toContain('Badge');
@@ -82,7 +82,7 @@ describe('the packaged dsl-lib', () => {
     expect(bundleSource).toContain('__APP_CORE_SHARED__');
   });
 
-  it('wires events for SearchBar like orch-app does: the shell\'s own SearchBar publishes nothing', async () => {
+  it('wires events for SearchBar: the shell\'s own SearchBar publishes nothing', async () => {
     const searchBar = entries.find(e => e.name === 'SearchBar')!;
     const published: unknown[][] = [];
     const ctx = { $publishOutput: (...args: unknown[]) => { published.push(args); } };

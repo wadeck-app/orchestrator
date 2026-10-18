@@ -12,10 +12,10 @@ import { pathToFileURL } from 'node:url';
 import autoprefixer from 'autoprefixer';
 import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
-import baseTailwind from '@wadeck-app/orch-app/tailwind.config';
+import baseTailwind from '../tailwind.config.js';
 // @ts-expect-error - plain JS preset shipped by dsl-ui, no type declarations
 import { dslUiContent } from '@wadeck-app/dsl-ui/tailwind-preset';
-import { MODULE_STYLE_CSS, MODULE_VIEWS_DIR, ORCH_APP_CSS, ORCH_UI_SRC } from '../src/paths.js';
+import { MODULE_STYLE_CSS, MODULE_VIEWS_DIR, LIB_CSS, ORCH_UI_SRC } from '../src/paths.js';
 
 const toGlob = (p: string): string => p.replace(/\\/g, '/');
 
@@ -24,13 +24,11 @@ const toGlob = (p: string): string => p.replace(/\\/g, '/');
  * (and the module's YAML) use. The shell scans only its own sources and dsl-ui, so none of these
  * classes would exist there.
  *
- * Derived from orch-app's CSS rather than copied: no preflight (the shell has it), and the dark
- * tokens apply under the shell's `.dark` class as well as orch-app's `data-theme="dark"`.
+ * Built from src/styles/orchestrator.css and tailwind.config.ts: no preflight (the shell has it), and the
+ * dark tokens apply under the shell's `.dark` class as well as `data-theme="dark"`.
  */
 export async function buildCss(outfile: string = MODULE_STYLE_CSS): Promise<void> {
-  const source = fs.readFileSync(ORCH_APP_CSS, 'utf8')
-    .replace('@tailwind base;', '')
-    .replace(/\[data-theme="dark"\]/g, '.dark, [data-theme="dark"]');
+  const source = fs.readFileSync(LIB_CSS, 'utf8');
 
   const config = {
     ...baseTailwind,
@@ -45,7 +43,7 @@ export async function buildCss(outfile: string = MODULE_STYLE_CSS): Promise<void
       ...(dslUiContent as string[]),
     ],
   };
-  const result = await postcss([tailwindcss(config), autoprefixer]).process(source, { from: ORCH_APP_CSS, to: outfile });
+  const result = await postcss([tailwindcss(config), autoprefixer]).process(source, { from: LIB_CSS, to: outfile });
   fs.mkdirSync(path.dirname(outfile), { recursive: true });
   fs.writeFileSync(outfile, result.css);
 }

@@ -9,9 +9,11 @@ export const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.u
 export const PACKAGES_DIR = path.resolve(PACKAGE_DIR, '..');
 export const MODULE_DIR = path.join(PACKAGES_DIR, 'app-module-orchestrator');
 export const ORCH_UI_SRC = path.join(PACKAGES_DIR, 'orch-ui', 'src');
-export const ORCH_APP_ENTRIES = path.join(PACKAGES_DIR, 'orch-app', 'src', 'generated', 'entries.tsx');
-export const ORCH_APP_CSS = path.join(PACKAGES_DIR, 'orch-app', 'src', 'index.css');
-/** The module's views: the Tailwind scan reads their classes, derive-pages writes them. */
+/** Entries generated from dsl-ui and orch-ui by scripts/generate-entries.ts (committed, like any generated source). */
+export const LIB_ENTRIES = path.join(PACKAGE_DIR, 'src', 'generated', 'entries.tsx');
+/** The library's stylesheet source: the colour tokens and utilities its components use. */
+export const LIB_CSS = path.join(PACKAGE_DIR, 'src', 'styles', 'orchestrator.css');
+/** The module's views: the source of its pages, and what the Tailwind scan reads their classes from. */
 export const MODULE_VIEWS_DIR = path.join(MODULE_DIR, 'src', 'dsl-views');
 /** Where `app-core-cli package` looks for the stylesheet it copies as built. */
 export const MODULE_STYLE_CSS = path.join(MODULE_DIR, 'src', 'dsl-components', 'style.css');

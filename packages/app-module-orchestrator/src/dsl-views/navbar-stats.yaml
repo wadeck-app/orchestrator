@@ -1,3 +1,2 @@
-# The "N jobs / running / failed" figures of orch-app's navbar, for app-core's navbar slot.
-# Handwritten: a shell slot has no orch-app page to derive from.
+# The "N jobs / running / failed" figures, for app-core's navbar slot.
 $type: orchestrator:NavStats

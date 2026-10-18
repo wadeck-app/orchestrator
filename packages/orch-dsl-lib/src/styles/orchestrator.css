@@ -1,0 +1,51 @@
+/* The library's stylesheet. app-core's shell already has Tailwind's base layer and dsl-ui's palette, so
+   there is no `@tailwind base` here and no palette: only what dsl-ui does not own.
+   The dark tokens apply under the shell's `.dark` class as well as under `data-theme="dark"`. */
+@tailwind components;
+@tailwind utilities;
+
+/* Only tokens dsl-ui does not own belong here: the orchestrator's own job-domain
+   colours, plus the two button tokens the design system has no equivalent for.
+   Everything generic (primary, bg, surface, border, content, muted, success,
+   danger, warning) comes from dsl-ui's theme. */
+:root {
+  /* Hover for the primary button. dsl-ui exposes primary-solid-hover for its own
+     solid buttons; the orchestrator's buttons use --color-primary as their base, so the
+     hover has to be a step down from that rather than from the solid token. */
+  --color-primary-hover:  #2563eb;
+  --color-on-primary:     #ffffff;
+  /* Tag palette - deterministic color by hash */
+  --color-tag-1: #6366f1;
+  --color-tag-2: #0ea5e9;
+  --color-tag-3: #10b981;
+  --color-tag-4: #f59e0b;
+  --color-tag-5: #ec4899;
+  --color-tag-6: #8b5cf6;
+  /* Job type badge tokens */
+  --color-tag-cron:        #6d28d9;
+  --color-tag-cron-bg:     #ede9fe;
+  --color-tag-startup:     #0369a1;
+  --color-tag-startup-bg:  #e0f2fe;
+  --color-tag-once:        #374151;
+  --color-tag-once-bg:     #f3f4f6;
+}
+
+.dark, [data-theme="dark"] {
+  /* Lighter than the base in dark mode, where a darker hover reads as disabled. */
+  --color-primary-hover:  #93c5fd;
+  --color-on-primary:     #0f172a;
+  /* Tag palette - slightly lighter in dark mode */
+  --color-tag-1: #818cf8;
+  --color-tag-2: #38bdf8;
+  --color-tag-3: #34d399;
+  --color-tag-4: #fbbf24;
+  --color-tag-5: #f472b6;
+  --color-tag-6: #a78bfa;
+  /* Job type badge tokens - muted for dark mode */
+  --color-tag-cron:        #a78bfa;
+  --color-tag-cron-bg:     #2d1f5e;
+  --color-tag-startup:     #38bdf8;
+  --color-tag-startup-bg:  #0c2d3f;
+  --color-tag-once:        #9ca3af;
+  --color-tag-once-bg:     #1f2937;
+}

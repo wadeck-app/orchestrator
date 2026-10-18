@@ -8,10 +8,10 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
-      // orch-ui's components are imported by orch-app's generated entries through relative src paths, so
+      // orch-dsl-lib's generated entries import orch-ui's components through relative src paths, so
       // the package name must land on the same files: a second copy (dist/) would hold its own
       // configureOrchUi state and the components would keep calling /api instead of the module's API.
-      // esbuild (app-core-cli package) reads this too.
+      // orch-dsl-lib's tsconfig has the same path for its own files. esbuild (app-core-cli package) reads both.
       "@wadeck-app/orch-ui": ["../orch-ui/src/index.ts"]
     }
   },

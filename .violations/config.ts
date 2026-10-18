@@ -10,6 +10,7 @@ export default {
     // to fix, and all of it regenerated on every build.
     '**/dist-bundle/**',
     'packages/orch-app/src/generated/**',
+    'packages/orch-dsl-lib/src/generated/**',
     'packages/orch-server/public/**',
     'packages/orchestrator-cli/server/**',
     // Assembled copy of the app-core module (ci/scripts/copy-app-module.sh), built output like server/.
@@ -21,6 +22,7 @@ export default {
     'packages/*/dist-module/**',
     // tailwind.config.ts safelist entries ARE the raw color declarations - not component usage
     'packages/orch-app/tailwind.config.ts',
+    'packages/orch-dsl-lib/tailwind.config.ts',
   ],
   rules: {
     // Atomic components ARE the button/input wrappers — excluded at config level

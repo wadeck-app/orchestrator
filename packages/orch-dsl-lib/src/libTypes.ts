@@ -1,6 +1,6 @@
 /**
- * dsl-ui built-ins the library re-exports under the module's id, because orch-app wires their events
- * to its pages (registry-overrides) and the app-core shell's own copy is not wired. Today that is
+ * dsl-ui built-ins the library re-exports under the module's id, because orch-ui's registry overrides wire their
+ * events to the pages and the app-core shell's own copy is not wired. Today that is
  * SearchBar: without it, typing in the jobs page would publish nothing and the list would never filter.
  */
 export const LIB_EXTRA_TYPES: readonly string[] = ['SearchBar'];
@@ -8,7 +8,7 @@ export const LIB_EXTRA_TYPES: readonly string[] = ['SearchBar'];
 const ORCH_UI_IMPORT = /from\s+'[^']*orch-ui\/src\/components\/(\w+)\.js'/g;
 
 /**
- * The component types that come from orch-ui, read off orch-app's generated entries rather than
+ * The component types that come from orch-ui, read off the library's generated entries rather than
  * kept as a second list that would go stale the day a component is added.
  */
 export function readOrchUiTypes(entriesSource: string): Set<string> {
