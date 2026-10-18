@@ -178,7 +178,7 @@ jobs:
               # It was not slow: ExecManager.stop() never killed the process trees it started,
               # so every run leaked a node fixture, some of which ignore SIGTERM by design, and
               # the runner waited forever on children that could not exit. With the trees torn
-              # down the whole suite finishes in ~13s, so it belongs back in CI: several
+              # down the whole suite finishes in about a minute (measured 2026-10-18: 66s macOS, 69s ubuntu, 2min windows), so it belongs back in CI: several
               # regressions shipped on 2026-09-15 would have been caught here.
               timeout-minutes: 5
 

@@ -160,6 +160,11 @@ app-core: module "orchestrator" not registered, app-core is not installed (<dir>
 app-core: refused module "orchestrator" (HTTP 400): <app-core's reason>. Fix the manifest it names, ...
 ```
 
+- The registration itself (port, POST, pickup file, the wording above) is `@wadeck-app/app-core-sdk/register`,
+  shared with every other module; the daemon only decides when to call it and what to register.
+- **Beyond the pages, the module declares two shell widgets.** `navbar` shows the "N jobs / running /
+  failed" figures on every page, and `overlay` stacks the failure notifications bottom-right. Both need
+  `app-core-cli` 029 or later; an older shell ignores the slots and the figures and notifications are missing.
 - **The module outlives the npm folder.** app-core remembers the path of a manifest and reloads it at
   its own every start, and npm replaces the package folder on every update and deletes it on
   uninstall, so registering a path inside it would register a path that dies. The daemon copies the
