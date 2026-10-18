@@ -1521,6 +1521,27 @@ export class Scheduler extends EventEmitter {
     };
   }
 
+  /** Removes the folders of this job's runs that were fully handled more than ten minutes ago. */
+  private _cleanHandledRuns(jobId: string): void {
+    const root = path.join(this._configDir, 'runs', jobId);
+    let names: string[];
+    try {
+      names = fs.readdirSync(root);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      try {
+        const handledAt = fs.statSync(path.join(root, name, 'done')).mtimeMs;
+        if (Date.now() - handledAt > 10 * 60_000) {
+          fs.rmSync(path.join(root, name), { recursive: true, force: true });
+        }
+      } catch {
+        // No done marker (a run still going, or one that is to be recovered), or already gone: left alone.
+      }
+    }
+  }
+
   /** What the supervisor needs to run this job: the same command line, directory and environment as a direct spawn. */
   private _supervisedRequest(job: Job, trigger: TriggerSource, startedAt: string, env: NodeJS.ProcessEnv | undefined): SupervisedRequest {
     // Tokens re-joined with single spaces, which is what node's `shell: true` hands to the shell.
@@ -1755,6 +1776,9 @@ export class Scheduler extends EventEmitter {
     // tick, and a child that closes right after being spawned (every test double, and a command that fails
     // at once) would emit before its listeners exist.
     let child: ChildProcess;
+    if (this._supervisor !== null) {
+      this._cleanHandledRuns(job.id);
+    }
     try {
       const spawned = this._supervisor !== null
         ? this._supervisor(this._supervisedRequest(job, trigger, startedAt, jobEnv))
@@ -2035,10 +2059,17 @@ export class Scheduler extends EventEmitter {
         // exitCode=null + finishedAt = "Cancelled" in RunHistory
         const exitCode = cancelledByUser ? null : rawExitCode;
 
+        // A supervised run leaves its folder behind: what is done for its end is written there, so that the next
+        // daemon does not find it and do it all again.
+        const ledger = child instanceof SupervisedChild ? new EffectLedger(path.join(child.runDir, 'effects.json')) : undefined;
         this._finishRun(
           { job, trigger, startedAt, pid, jobLogger, telemetry, previousRunFailed },
           { exitCode, finishedAt, durationMs, cancelledByUser, timedOut, killedByResourceLimit, peakCpuPct, peakRamMb },
+          ledger === undefined ? LIVE_FINISH : { ...LIVE_FINISH, ledger },
         );
+        if (child instanceof SupervisedChild) {
+          child.markHandled();
+        }
         resolve({ exitCode });
       });
     });

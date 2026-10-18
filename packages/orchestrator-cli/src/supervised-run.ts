@@ -113,6 +113,19 @@ export class SupervisedChild extends ChildProcess {
     this._watcher.unref();
   }
 
+  /**
+   * Says that everything the end of this run called for has been done, so no later daemon does it again. The folder
+   * itself stays for a while (its status is what explains the run if something looks wrong) and is cleaned up by
+   * Scheduler when the job next starts.
+   */
+  markHandled(): void {
+    try {
+      fs.writeFileSync(path.join(this.runDir, 'done'), '');
+    } catch {
+      // The folder is gone: someone else already cleaned it, which also means the run is handled.
+    }
+  }
+
   /** Leaves the job running and stops reporting on it, for a daemon that is shutting down. */
   stopWatching(): void {
     if (this._watcher !== null) {

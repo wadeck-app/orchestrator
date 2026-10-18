@@ -147,6 +147,63 @@ describe('a supervised job', () => {
   });
 });
 
+// Seen live: a run that ended while the daemon followed it was never marked as handled, so the NEXT daemon start
+// found its folder, took it for a run that ended while it was away, and did it all again: events published a second
+// time, retry and dependents fired a second time.
+describe('a supervised run that ended in front of the daemon', () => {
+  const { runDirFor } = require('../src/supervised-run');
+
+  async function runOnce(extra = {}) {
+    const holder = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-sup-script-'));
+    const job = { id: 'job', type: 'cron', schedule: '0 8 * * *', label: 'Job', enabled: true, triggerMode: 'wait',
+      command: script(holder, 'job.js', 'process.exit(5)'), ...extra };
+    const env = makeEnv(job);
+    await env.sched._fire(job);
+    return { env, job };
+  }
+
+  test('is marked as handled, so nothing has to be done for it again', async () => {
+    const { env } = await runOnce();
+
+    const runsRoot = path.join(env.dir, 'runs', 'job');
+    const folders = fs.readdirSync(runsRoot);
+    assert.equal(folders.length, 1);
+    assert.ok(fs.existsSync(path.join(runsRoot, folders[0], 'done')), 'the run was not marked as handled');
+  });
+
+  test('is not recovered a second time by the next daemon: no new event, no new history entry', async () => {
+    const { env, job } = await runOnce();
+    const eventsBefore = env.events.length;
+    const historyBefore = JSON.stringify(env.state.getAll().job);
+    const next = new (require('../src/scheduler').Scheduler)(env.sched._registry, env.state, {
+      configDir: env.dir, liveness: async () => false, sampleUsage: async () => null,
+      eventPublisher: { publish: (event, payload) => env.events.push({ event, payload }) },
+    });
+    schedulers.push(next);
+
+    const report = await next.recoverRuns();
+
+    assert.equal(report.finalized, 0, 'a run that had been handled was handled again');
+    assert.equal(env.events.length, eventsBefore, 'its events were published a second time');
+    assert.equal(JSON.stringify(env.state.getAll().job), historyBefore);
+    assert.ok(job);
+  });
+
+  test('its folder is cleaned up once it has been handled for a while, when the job next starts', async () => {
+    const { env, job } = await runOnce();
+    const runsRoot = path.join(env.dir, 'runs', 'job');
+    const old = fs.readdirSync(runsRoot)[0];
+    const longAgo = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(path.join(runsRoot, old, 'done'), longAgo, longAgo);
+
+    await env.sched._fire(job);
+
+    assert.ok(!fs.existsSync(path.join(runsRoot, old)), 'a folder handled an hour ago is still there');
+    assert.equal(fs.readdirSync(runsRoot).length, 1, 'the run that just ended keeps its folder for now');
+    assert.ok(runDirFor);
+  });
+});
+
 describe('a job that cannot be started', () => {
   test('is a failed run with the reason in its log, not an exception', async () => {
     const job = { id: 'job', type: 'cron', schedule: '0 8 * * *', label: 'Job', enabled: true, triggerMode: 'wait', command: 'whatever' };
