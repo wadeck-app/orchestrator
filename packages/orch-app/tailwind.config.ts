@@ -13,7 +13,7 @@ export default {
   content: [
     './index.html',
     './src/**/*.{ts,tsx}',
-    '../orch-ui/src/**/*.{ts,tsx}',
+    '../dsl-lib-orch/src/**/*.{ts,tsx}',
     // Required, not optional: Tailwind reads `content` from the top-level config
     // only, so the preset cannot contribute scan paths. Without this the build
     // still succeeds and every dsl-ui component renders unstyled.

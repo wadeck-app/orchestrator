@@ -3,7 +3,7 @@ import type { RouteKey } from './adapter.js';
 /**
  * The orch-server routes this module publishes, under app-core's /api/modules/orchestrator prefix.
  *
- * What the dashboard pages and orch-ui components call, and nothing more. Left out on purpose:
+ * What the dashboard pages and dsl-lib-orch components call, and nothing more. Left out on purpose:
  * secrets and exec (no page uses them), import/export (not wired in any page), heartbeat and
  * events (they serve the dashboard server's own idle exit and an unused stream).
  *

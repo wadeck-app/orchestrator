@@ -105,7 +105,7 @@ describe('registry.edit unsets a field', () => {
 });
 
 // label, triggerMode and liveness are non-optional in the Job type the dashboard consumes: dropping
-// the key would hand orch-ui a job that does not match its own types. They go back to the value
+// the key would hand dsl-lib-orch a job that does not match its own types. They go back to the value
 // `orch add` would have given them.
 describe('registry.edit resets the fields that cannot simply disappear', () => {
   test('label falls back to the job id, like at creation', () => {

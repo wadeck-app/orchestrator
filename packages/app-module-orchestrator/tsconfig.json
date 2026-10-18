@@ -6,14 +6,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "noEmit": true,
-    "types": ["node"],
-    "paths": {
-      // orch-dsl-lib's generated entries import orch-ui's components through relative src paths, so
-      // the package name must land on the same files: a second copy (dist/) would hold its own
-      // configureOrchUi state and the components would keep calling /api instead of the module's API.
-      // orch-dsl-lib's tsconfig has the same path for its own files. esbuild (app-core-cli package) reads both.
-      "@wadeck-app/orch-ui": ["../orch-ui/src/index.ts"]
-    }
+    "types": ["node"]
   },
   "include": ["src/**/*"]
 }

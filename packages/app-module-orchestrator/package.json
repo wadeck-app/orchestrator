@@ -9,7 +9,7 @@
     "./routes": "./src/backend/routes.ts"
   },
   "scripts": {
-    "css": "npm run css --workspace=@wadeck-app/orch-dsl-lib",
+    "css": "npm run css --workspace=@wadeck-app/dsl-lib-orch",
     "check": "app-core-cli check .",
     "package": "npm run css && app-core-cli package .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -17,9 +17,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@wadeck-app/orch-dsl-lib": "*",
+    "@wadeck-app/dsl-lib-orch": "*",
     "@wadeck-app/orch-server": "*",
-    "@wadeck-app/orch-ui": "*",
     "@wadeck-app/shared-cli": "latest"
   },
   "devDependencies": {

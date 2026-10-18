@@ -1,2 +1,2 @@
 packages:
-  "@orch": "@wadeck-app/orch-ui"
+  "@orch": "@wadeck-app/dsl-lib-orch"

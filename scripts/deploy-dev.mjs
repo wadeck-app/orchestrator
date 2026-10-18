@@ -107,9 +107,8 @@ function syncDir(src, dst) {
 // which is what the header promised, silently shipped a stale bundle, and every UI change tested
 // through `node scripts/dev-server.mjs` was tested against the previous build. The dist was over an
 // hour old when this was found, and the change under test simply was not in the page.
-//
-// orch-ui first: orch-app imports it, and its registry entries are generated from orch-ui sources.
-run(npm, ['run', 'build', '-w', '@wadeck-app/orch-ui']);
+// orch-app imports the components from @wadeck-app/dsl-lib-orch sources (no build step of its own), and its registry
+// entries are generated from them.
 run(npm, ['run', 'build', '-w', '@wadeck-app/orch-app']);
 
 // 2. Build orch-server

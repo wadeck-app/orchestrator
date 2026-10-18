@@ -30,7 +30,7 @@ opts out. `terminate` exists because shell guardrails often block the word `kill
 | `packages/orchestrator-cli` | Daemon + CLI entry point |
 | `packages/orch-server` | Fastify web dashboard (child process of daemon) |
 | `packages/orch-app` | React SPA served by orch-server |
-| `packages/orch-ui` | React components consumed by orch-app |
+| `packages/dsl-lib-orch` | React domain components + the DSL library of the orchestrator app-core module; consumed by orch-app (`@wadeck-app/dsl-lib-orch/ui`) and `app-module-orchestrator` (`@wadeck-app/dsl-lib-orch`) |
 
 ## Distribution
 

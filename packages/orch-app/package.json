@@ -17,7 +17,7 @@
   "dependencies": {
     "@wadeck-app/dsl-renderer": "^2026.10.17-099-ff0571d7",
     "@wadeck-app/dsl-ui": "^2026.10.3-085-45c50664",
-    "@wadeck-app/orch-ui": "*",
+    "@wadeck-app/dsl-lib-orch": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"

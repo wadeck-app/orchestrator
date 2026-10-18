@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nodeModules = path.resolve(__dirname, '../../node_modules');
-const orchUiSrc = path.resolve(__dirname, '../orch-ui/src');
+const dslLibOrchSrc = path.resolve(__dirname, '../dsl-lib-orch/src');
 
 export default defineConfig({
   plugins: [
@@ -52,7 +52,7 @@ export default defineConfig({
       // Exact-match aliases for package roots (regex prevents prefix-matching subpath imports)
       { find: /^@wadeck-app\/dsl-renderer$/, replacement: path.join(nodeModules, '@wadeck-app/dsl-renderer/dist/index.js') },
       { find: /^@wadeck-app\/dsl-ui$/,       replacement: path.join(nodeModules, '@wadeck-app/dsl-ui/dist/index.js') },
-      { find: /^@wadeck-app\/orch-ui$/,       replacement: path.join(orchUiSrc, 'index.ts') },
+      { find: /^@wadeck-app\/dsl-lib-orch\/ui$/, replacement: path.join(dslLibOrchSrc, 'ui.ts') },
       // Subpath imports (@wadeck-app/dsl-ui/src/...) fall through to the resolveId plugin
     ],
   },
@@ -64,7 +64,7 @@ export default defineConfig({
     deps: {
       // Force Vite to process these packages so aliases and the resolve-js-to-ts
       // plugin apply to their subpath imports (.js -> .tsx resolution).
-      inline: ['@wadeck-app/dsl-ui', '@wadeck-app/dsl-renderer', '@wadeck-app/orch-ui'],
+      inline: ['@wadeck-app/dsl-ui', '@wadeck-app/dsl-renderer', '@wadeck-app/dsl-lib-orch'],
     },
   },
 });

@@ -173,7 +173,7 @@ exit-code claim was dropped for lack of sources in this checkout.
 
 **Problem:** Violations rule tests and `dsl-ui` tests exit green under `node --test --import tsx` without executing anything.
 **Fix:** Run those suites with `vitest run` and write them with vitest's `describe/it/beforeAll/afterAll`.
-**Context:** A silent pass is worse than a failure; it produced "tests pass" claims about suites that never ran. In this repo the CLI uses `node --test --require tsx/cjs` and orch-ui/orch-app/orch-server use vitest -- do not mix them.
+**Context:** A silent pass is worse than a failure; it produced "tests pass" claims about suites that never ran. In this repo the CLI uses `node --test --require tsx/cjs` and dsl-lib-orch/orch-app/orch-server use vitest -- do not mix them.
 
 ---
 

@@ -10,7 +10,7 @@ export default {
     // to fix, and all of it regenerated on every build.
     '**/dist-bundle/**',
     'packages/orch-app/src/generated/**',
-    'packages/orch-dsl-lib/src/generated/**',
+    'packages/dsl-lib-orch/src/generated/**',
     'packages/orch-server/public/**',
     'packages/orchestrator-cli/server/**',
     // Assembled copy of the app-core module (ci/scripts/copy-app-module.sh), built output like server/.
@@ -22,23 +22,23 @@ export default {
     'packages/*/dist-module/**',
     // tailwind.config.ts safelist entries ARE the raw color declarations - not component usage
     'packages/orch-app/tailwind.config.ts',
-    'packages/orch-dsl-lib/tailwind.config.ts',
+    'packages/dsl-lib-orch/tailwind.config.ts',
   ],
   rules: {
     // Atomic components ARE the button/input wrappers — excluded at config level
     // (entire file is the atomic implementation, inline suppress on every line would be noise)
     'react/no-raw-button': {
       $exclude: [
-        'packages/orch-ui/src/components/TriggerButton.tsx',
-        'packages/orch-ui/src/components/EnableToggle.tsx',
-        'packages/orch-ui/src/components/Button.tsx',
+        'packages/dsl-lib-orch/src/components/TriggerButton.tsx',
+        'packages/dsl-lib-orch/src/components/EnableToggle.tsx',
+        'packages/dsl-lib-orch/src/components/Button.tsx',
       ],
     },
     'react/no-raw-input': {
       $exclude: [
-        'packages/orch-ui/src/components/EnableToggle.tsx',
-        'packages/orch-ui/src/components/FieldText.tsx',
-        'packages/orch-ui/src/components/FieldNumber.tsx',
+        'packages/dsl-lib-orch/src/components/EnableToggle.tsx',
+        'packages/dsl-lib-orch/src/components/FieldText.tsx',
+        'packages/dsl-lib-orch/src/components/FieldNumber.tsx',
       ],
     },
     // Test files use 'C:/tmp' and 'C:/work' as job `cwd` DATA -- string payloads asserted on, never

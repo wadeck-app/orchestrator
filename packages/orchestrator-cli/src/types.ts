@@ -114,9 +114,9 @@ export interface Job {
  * fallback (`job.cwd ?? undefined`, `job.delaySeconds ?? 0`, `job.timeoutSeconds ?? 300`, `!liveness`),
  * so an absent key behaves exactly like "not configured" and `orch show` stops mentioning it.
  *
- * The two mapped to a function cannot vanish: `label` is read raw in a dozen places (orch-ui's
+ * The two mapped to a function cannot vanish: `label` is read raw in a dozen places (dsl-lib-orch's
  * `job.label.toLowerCase()` throws on undefined) and `triggerMode` is non-optional in the type
- * orch-ui consumes and rendered as-is. They fall back to their creation-time value instead.
+ * dsl-lib-orch consumes and rendered as-is. They fall back to their creation-time value instead.
  *
  * The rule is mechanical, so a new Job field does not land in a grey area: every optional field of
  * Job is here, except the ones listed in REQUIRED_FIELDS -- clearing one of those would write a job

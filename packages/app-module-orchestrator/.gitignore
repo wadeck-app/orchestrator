@@ -2,5 +2,5 @@
 dist-module
 # Local `app-core-cli dev` state.
 .app-core-dev
-# Built by `npm run css` (Tailwind over orch-ui, the views and dsl-ui) right before `package`, which copies it as is.
+# Built by `npm run css` (Tailwind over dsl-lib-orch, the views and dsl-ui) right before `package`, which copies it as is.
 src/dsl-components/style.css

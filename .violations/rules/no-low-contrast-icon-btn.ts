@@ -11,7 +11,7 @@ import fs from 'node:fs';
 export const rule: Rule = {
   id: 'tailwind/no-low-contrast-icon-btn',
   tags: 'tailwind',
-  defaultScope: ['packages/orch-ui/src/**/*.tsx', 'packages/orch-app/src/**/*.tsx'],
+  defaultScope: ['packages/dsl-lib-orch/src/**/*.tsx', 'packages/orch-app/src/**/*.tsx'],
   defaultSeverity: 'warning',
 
   async check(files: string[]): Promise<Violation[]> {

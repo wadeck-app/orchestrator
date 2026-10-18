@@ -5,7 +5,7 @@ import { ToastProvider } from '@wadeck-app/dsl-ui';
 import { appRegistry } from './registry.js';
 import { fetcher } from './fetcher.js';
 import { dslRoutes } from './generated/routes.js';
-import { FailureBanner, NavBar, useFailures } from '@wadeck-app/orch-ui';
+import { FailureBanner, NavBar, useFailures } from '@wadeck-app/dsl-lib-orch/ui';
 
 export default function App(): React.ReactElement {
   const { failures, acknowledgeOne, acknowledgeAll } = useFailures();

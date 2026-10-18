@@ -11,7 +11,7 @@ orchestrator/
   packages/
     orchestrator-cli/    daemon, CLI, scheduler, tray manager, dashboard process manager
     orch-server/         Fastify HTTP server — REST API + static SPA serving
-    orch-ui/             React domain components (JobCard, LogViewer, JobForm, etc.)
+    dsl-lib-orch/        React domain components (JobCard, LogViewer, JobForm, etc.) + DSL registry entries for the app-core module
     orch-app/            Vite SPA (pages, routes, heartbeat)
 ```
 

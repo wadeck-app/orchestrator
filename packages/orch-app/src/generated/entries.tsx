@@ -98,32 +98,32 @@ import { SearchBar } from '@wadeck-app/dsl-ui/dist/components/table/SearchBar.js
 import { ShownFetchedCounter } from '@wadeck-app/dsl-ui/dist/components/table/ShownFetchedCounter.js'
 import { SortableColumn } from '@wadeck-app/dsl-ui/dist/components/table/SortableColumn.js'
 import { StatusFilter } from '@wadeck-app/dsl-ui/dist/components/table/StatusFilter.js'
-import { AuditEntryIcon } from '../../../orch-ui/src/components/AuditEntryIcon.js'
-import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
-import { AuditList } from '../../../orch-ui/src/components/AuditList.js'
-import { DesignSwitcher } from '../../../orch-ui/src/components/DesignSwitcher.js'
-import { EnableToggle } from '../../../orch-ui/src/components/EnableToggle.js'
-import { FailureOverlay } from '../../../orch-ui/src/components/FailureOverlay.js'
-import { JobCard } from '../../../orch-ui/src/components/JobCard.js'
-import { JobCardGrid } from '../../../orch-ui/src/components/JobCardGrid.js'
-import { JobConfigDisplay } from '../../../orch-ui/src/components/JobConfigDisplay.js'
-import { JobFilterChips } from '../../../orch-ui/src/components/JobFilterChips.js'
-import { JobForm } from '../../../orch-ui/src/components/JobForm.js'
-import { JobFormSection } from '../../../orch-ui/src/components/JobFormSection.js'
-import { JobStatusBadge } from '../../../orch-ui/src/components/JobStatusBadge.js'
-import { JobToggle } from '../../../orch-ui/src/components/JobToggle.js'
-import { LogPageBreadcrumb } from '../../../orch-ui/src/components/LogPageBreadcrumb.js'
-import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
-import { MutationFeedback } from '../../../orch-ui/src/components/MutationFeedback.js'
-import { NavStats } from '../../../orch-ui/src/components/NavStats.js'
-import { NextFireCountdown } from '../../../orch-ui/src/components/NextFireCountdown.js'
-import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
-import { RunningAlertDetail } from '../../../orch-ui/src/components/RunningAlertDetail.js'
-import { RunningBannerDetail } from '../../../orch-ui/src/components/RunningBannerDetail.js'
-import { RunningInlineDetail } from '../../../orch-ui/src/components/RunningInlineDetail.js'
-import { ScheduleTimeline } from '../../../orch-ui/src/components/ScheduleTimeline.js'
-import { TriggerBadge } from '../../../orch-ui/src/components/TriggerBadge.js'
-import { TriggerButton } from '../../../orch-ui/src/components/TriggerButton.js'
+import { AuditEntryIcon } from '../../../dsl-lib-orch/src/components/AuditEntryIcon.js'
+import { AuditEntryRow } from '../../../dsl-lib-orch/src/components/AuditEntryRow.js'
+import { AuditList } from '../../../dsl-lib-orch/src/components/AuditList.js'
+import { DesignSwitcher } from '../../../dsl-lib-orch/src/components/DesignSwitcher.js'
+import { EnableToggle } from '../../../dsl-lib-orch/src/components/EnableToggle.js'
+import { FailureOverlay } from '../../../dsl-lib-orch/src/components/FailureOverlay.js'
+import { JobCard } from '../../../dsl-lib-orch/src/components/JobCard.js'
+import { JobCardGrid } from '../../../dsl-lib-orch/src/components/JobCardGrid.js'
+import { JobConfigDisplay } from '../../../dsl-lib-orch/src/components/JobConfigDisplay.js'
+import { JobFilterChips } from '../../../dsl-lib-orch/src/components/JobFilterChips.js'
+import { JobForm } from '../../../dsl-lib-orch/src/components/JobForm.js'
+import { JobFormSection } from '../../../dsl-lib-orch/src/components/JobFormSection.js'
+import { JobStatusBadge } from '../../../dsl-lib-orch/src/components/JobStatusBadge.js'
+import { JobToggle } from '../../../dsl-lib-orch/src/components/JobToggle.js'
+import { LogPageBreadcrumb } from '../../../dsl-lib-orch/src/components/LogPageBreadcrumb.js'
+import { LogViewer } from '../../../dsl-lib-orch/src/components/LogViewer.js'
+import { MutationFeedback } from '../../../dsl-lib-orch/src/components/MutationFeedback.js'
+import { NavStats } from '../../../dsl-lib-orch/src/components/NavStats.js'
+import { NextFireCountdown } from '../../../dsl-lib-orch/src/components/NextFireCountdown.js'
+import { RunHistory } from '../../../dsl-lib-orch/src/components/RunHistory.js'
+import { RunningAlertDetail } from '../../../dsl-lib-orch/src/components/RunningAlertDetail.js'
+import { RunningBannerDetail } from '../../../dsl-lib-orch/src/components/RunningBannerDetail.js'
+import { RunningInlineDetail } from '../../../dsl-lib-orch/src/components/RunningInlineDetail.js'
+import { ScheduleTimeline } from '../../../dsl-lib-orch/src/components/ScheduleTimeline.js'
+import { TriggerBadge } from '../../../dsl-lib-orch/src/components/TriggerBadge.js'
+import { TriggerButton } from '../../../dsl-lib-orch/src/components/TriggerButton.js'
 
 export const ButtonActionEntry: ComponentRegistryEntry = {
 	name: 'ButtonAction', category: 'atomic', tags: ["button","action"],
@@ -1595,8 +1595,8 @@ export const AuditEntryIconEntry: ComponentRegistryEntry = {
 	name: 'AuditEntryIcon', category: 'atomic', tags: ["audit","icon","event"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const event = resolveExpressionValue(node['event'], ctx) as import('../../../orch-ui/src/components/AuditEntryIcon.js').AuditEntryIconProps['event']
-		const entry = resolveExpressionValue(node['entry'], ctx) as import('../../../orch-ui/src/components/AuditEntryIcon.js').AuditEntryIconProps['entry']
+		const event = resolveExpressionValue(node['event'], ctx) as import('../../../dsl-lib-orch/src/components/AuditEntryIcon.js').AuditEntryIconProps['event']
+		const entry = resolveExpressionValue(node['entry'], ctx) as import('../../../dsl-lib-orch/src/components/AuditEntryIcon.js').AuditEntryIconProps['entry']
 		return <AuditEntryIcon event={event} entry={entry} />
 	},
 }
@@ -1605,7 +1605,7 @@ export const AuditEntryRowEntry: ComponentRegistryEntry = {
 	name: 'AuditEntryRow', category: 'atomic', tags: ["audit","row","entry"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const entry = resolveExpressionValue(node['entry'], ctx) as import('../../../orch-ui/src/components/AuditEntryRow.js').AuditEntryRowProps['entry']
+		const entry = resolveExpressionValue(node['entry'], ctx) as import('../../../dsl-lib-orch/src/components/AuditEntryRow.js').AuditEntryRowProps['entry']
 		return <AuditEntryRow entry={entry} />
 	},
 }
@@ -1614,7 +1614,7 @@ export const AuditListEntry: ComponentRegistryEntry = {
 	name: 'AuditList', category: 'composite', tags: ["audit","list","entries","icons"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../orch-ui/src/components/AuditList.js').AuditListProps['entries']
+		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../dsl-lib-orch/src/components/AuditList.js').AuditListProps['entries']
 		return <AuditList entries={entries} />
 	},
 }
@@ -1623,8 +1623,8 @@ export const DesignSwitcherEntry: ComponentRegistryEntry = {
 	name: 'DesignSwitcher', category: 'atomic', tags: ["design","switcher","navigation","compare"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/DesignSwitcher.js').DesignSwitcherProps['jobId']
-		const current = resolveExpressionValue(node['current'], ctx) as import('../../../orch-ui/src/components/DesignSwitcher.js').DesignSwitcherProps['current']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/DesignSwitcher.js').DesignSwitcherProps['jobId']
+		const current = resolveExpressionValue(node['current'], ctx) as import('../../../dsl-lib-orch/src/components/DesignSwitcher.js').DesignSwitcherProps['current']
 		return <DesignSwitcher jobId={jobId} current={current} />
 	},
 }
@@ -1633,8 +1633,8 @@ export const EnableToggleEntry: ComponentRegistryEntry = {
 	name: 'EnableToggle', category: 'composite', tags: ["toggle","enable","disable"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/EnableToggle.js').EnableToggleProps['job']
-		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/EnableToggle.js').EnableToggleProps['onToggle']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/EnableToggle.js').EnableToggleProps['job']
+		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../dsl-lib-orch/src/components/EnableToggle.js').EnableToggleProps['onToggle']
 		return <EnableToggle job={job} onToggle={onToggle} />
 	},
 }
@@ -1643,7 +1643,7 @@ export const FailureOverlayEntry: ComponentRegistryEntry = {
 	name: 'FailureOverlay', category: 'composite', tags: ["failures","notifications","overlay","alert"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../../../orch-ui/src/components/FailureOverlay.js').FailureOverlayProps['refreshMs']
+		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../../../dsl-lib-orch/src/components/FailureOverlay.js').FailureOverlayProps['refreshMs']
 		return <FailureOverlay refreshMs={refreshMs} />
 	},
 }
@@ -1652,16 +1652,16 @@ export const JobCardEntry: ComponentRegistryEntry = {
 	name: 'JobCard', category: 'composite', tags: ["job","card"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['job']
-		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['runHistory']
-		const uptimePercent = resolveExpressionValue(node['uptimePercent'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['uptimePercent']
-		const consecutiveFailures = resolveExpressionValue(node['consecutiveFailures'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['consecutiveFailures']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onTrigger']
-		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onToggle']
-		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onClick']
-		const selected = resolveExpressionValue(node['selected'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['selected']
-		const onSelect = resolveExpressionValue(node['onSelect'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['onSelect']
-		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../../../orch-ui/src/components/JobCard.js').JobCardProps['nowMs']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['job']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['runHistory']
+		const uptimePercent = resolveExpressionValue(node['uptimePercent'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['uptimePercent']
+		const consecutiveFailures = resolveExpressionValue(node['consecutiveFailures'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['consecutiveFailures']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['onTrigger']
+		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['onToggle']
+		const onClick = resolveExpressionValue(node['onClick'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['onClick']
+		const selected = resolveExpressionValue(node['selected'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['selected']
+		const onSelect = resolveExpressionValue(node['onSelect'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['onSelect']
+		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../../../dsl-lib-orch/src/components/JobCard.js').JobCardProps['nowMs']
 		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} consecutiveFailures={consecutiveFailures} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} selected={selected} onSelect={onSelect} nowMs={nowMs} />
 	},
 }
@@ -1670,22 +1670,22 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 	name: 'JobCardGrid', category: 'composite', tags: ["job","grid","cards","list"],
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
-		const items = resolveExpressionValue(node['items'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['items']
-		const search = resolveExpressionValue(node['search'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['search']
-		const filter = resolveExpressionValue(node['filter'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['filter']
+		const items = resolveExpressionValue(node['items'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['items']
+		const search = resolveExpressionValue(node['search'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['search']
+		const filter = resolveExpressionValue(node['filter'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['filter']
 		const filters = node['filters'] as unknown[] | undefined
-		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
-		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onToggle']
-		const onJobClick = resolveExpressionValue(node['onJobClick'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onJobClick']
-		const onAddJob = resolveExpressionValue(node['onAddJob'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAddJob']
-		const onBulkEnable = resolveExpressionValue(node['onBulkEnable'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkEnable']
-		const onBulkDisable = resolveExpressionValue(node['onBulkDisable'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDisable']
-		const onBulkTrigger = resolveExpressionValue(node['onBulkTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkTrigger']
-		const onBulkDelete = resolveExpressionValue(node['onBulkDelete'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
-		const onAfterBulk = resolveExpressionValue(node['onAfterBulk'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAfterBulk']
-		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onAfterTrigger']
-		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onExport']
-		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../orch-ui/src/components/JobCardGrid.js').JobCardGridProps['onImport']
+		const uptimeMap = resolveExpressionValue(node['uptimeMap'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['uptimeMap']
+		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onToggle']
+		const onJobClick = resolveExpressionValue(node['onJobClick'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onJobClick']
+		const onAddJob = resolveExpressionValue(node['onAddJob'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onAddJob']
+		const onBulkEnable = resolveExpressionValue(node['onBulkEnable'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onBulkEnable']
+		const onBulkDisable = resolveExpressionValue(node['onBulkDisable'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onBulkDisable']
+		const onBulkTrigger = resolveExpressionValue(node['onBulkTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onBulkTrigger']
+		const onBulkDelete = resolveExpressionValue(node['onBulkDelete'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
+		const onAfterBulk = resolveExpressionValue(node['onAfterBulk'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onAfterBulk']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onAfterTrigger']
+		const onExport = resolveExpressionValue(node['onExport'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onExport']
+		const onImport = resolveExpressionValue(node['onImport'], ctx) as import('../../../dsl-lib-orch/src/components/JobCardGrid.js').JobCardGridProps['onImport']
 		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onAfterTrigger={onAfterTrigger} onExport={onExport} onImport={onImport} />
 	},
 }
@@ -1694,7 +1694,7 @@ export const JobConfigDisplayEntry: ComponentRegistryEntry = {
 	name: 'JobConfigDisplay', category: 'composite', tags: ["job","config","display"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobConfigDisplay.js').JobConfigDisplayProps['job']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/JobConfigDisplay.js').JobConfigDisplayProps['job']
 		return <JobConfigDisplay job={job} />
 	},
 }
@@ -1703,8 +1703,8 @@ export const JobFilterChipsEntry: ComponentRegistryEntry = {
 	name: 'JobFilterChips', category: 'atomic', tags: ["filter","chips","jobs","type"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const selected = resolveExpressionValue(node['selected'], ctx) as import('../../../orch-ui/src/components/JobFilterChips.js').JobFilterChipsProps['selected']
-		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('../../../orch-ui/src/components/JobFilterChips.js').JobFilterChipsProps['onChange']
+		const selected = resolveExpressionValue(node['selected'], ctx) as import('../../../dsl-lib-orch/src/components/JobFilterChips.js').JobFilterChipsProps['selected']
+		const onChange = resolveExpressionValue(node['onChange'], ctx) as import('../../../dsl-lib-orch/src/components/JobFilterChips.js').JobFilterChipsProps['onChange']
 		return <JobFilterChips selected={selected} onChange={onChange} />
 	},
 }
@@ -1713,10 +1713,10 @@ export const JobFormEntry: ComponentRegistryEntry = {
 	name: 'JobForm', category: 'composite', tags: ["form","job","edit","create"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['initial']
-		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['onSubmit']
-		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['onCancel']
-		const busy = resolveExpressionValue(node['busy'], ctx) as import('../../../orch-ui/src/components/JobForm.js').JobFormProps['busy']
+		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../dsl-lib-orch/src/components/JobForm.js').JobFormProps['initial']
+		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../dsl-lib-orch/src/components/JobForm.js').JobFormProps['onSubmit']
+		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../dsl-lib-orch/src/components/JobForm.js').JobFormProps['onCancel']
+		const busy = resolveExpressionValue(node['busy'], ctx) as import('../../../dsl-lib-orch/src/components/JobForm.js').JobFormProps['busy']
 		return <JobForm initial={initial} onSubmit={onSubmit} onCancel={onCancel} busy={busy} />
 	},
 }
@@ -1725,11 +1725,11 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 	name: 'JobFormSection', category: 'composite', tags: ["job","form","create","edit"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['jobId']
-		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['initial']
-		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onSubmit']
-		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['onCancel']
-		const saving = resolveExpressionValue(node['saving'], ctx) as import('../../../orch-ui/src/components/JobFormSection.js').JobFormSectionProps['saving']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/JobFormSection.js').JobFormSectionProps['jobId']
+		const initial = resolveExpressionValue(node['initial'], ctx) as import('../../../dsl-lib-orch/src/components/JobFormSection.js').JobFormSectionProps['initial']
+		const onSubmit = resolveExpressionValue(node['onSubmit'], ctx) as import('../../../dsl-lib-orch/src/components/JobFormSection.js').JobFormSectionProps['onSubmit']
+		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../../../dsl-lib-orch/src/components/JobFormSection.js').JobFormSectionProps['onCancel']
+		const saving = resolveExpressionValue(node['saving'], ctx) as import('../../../dsl-lib-orch/src/components/JobFormSection.js').JobFormSectionProps['saving']
 		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onCancel={onCancel} saving={saving} />
 	},
 }
@@ -1738,10 +1738,10 @@ export const JobStatusBadgeEntry: ComponentRegistryEntry = {
 	name: 'JobStatusBadge', category: 'atomic', tags: ["badge","status","job"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const exitCode = resolveExpressionValue(node['exitCode'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['exitCode']
-		const running = resolveExpressionValue(node['running'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['running']
-		const cancelled = resolveExpressionValue(node['cancelled'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['cancelled']
-		const skipped = resolveExpressionValue(node['skipped'], ctx) as import('../../../orch-ui/src/components/JobStatusBadge.js').JobStatusBadgeProps['skipped']
+		const exitCode = resolveExpressionValue(node['exitCode'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['exitCode']
+		const running = resolveExpressionValue(node['running'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['running']
+		const cancelled = resolveExpressionValue(node['cancelled'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['cancelled']
+		const skipped = resolveExpressionValue(node['skipped'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['skipped']
 		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} skipped={skipped} />
 	},
 }
@@ -1750,7 +1750,7 @@ export const JobToggleEntry: ComponentRegistryEntry = {
 	name: 'JobToggle', category: 'composite', tags: ["toggle","enable","disable","job"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/JobToggle.js').JobToggleProps['job']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/JobToggle.js').JobToggleProps['job']
 		return <JobToggle job={job} />
 	},
 }
@@ -1759,8 +1759,8 @@ export const LogPageBreadcrumbEntry: ComponentRegistryEntry = {
 	name: 'LogPageBreadcrumb', category: 'composite', tags: ["header","navigation","log"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/LogPageBreadcrumb.js').LogPageBreadcrumbProps['jobId']
-		const jobLabel = resolveExpressionValue(node['jobLabel'], ctx) as import('../../../orch-ui/src/components/LogPageBreadcrumb.js').LogPageBreadcrumbProps['jobLabel']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/LogPageBreadcrumb.js').LogPageBreadcrumbProps['jobId']
+		const jobLabel = resolveExpressionValue(node['jobLabel'], ctx) as import('../../../dsl-lib-orch/src/components/LogPageBreadcrumb.js').LogPageBreadcrumbProps['jobLabel']
 		return <LogPageBreadcrumb jobId={jobId} jobLabel={jobLabel} />
 	},
 }
@@ -1769,9 +1769,9 @@ export const LogViewerEntry: ComponentRegistryEntry = {
 	name: 'LogViewer', category: 'composite', tags: ["log","viewer","streaming","sse"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['jobId']
-		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['apiBase']
-		const fill = resolveExpressionValue(node['fill'], ctx) as import('../../../orch-ui/src/components/LogViewer.js').LogViewerProps['fill']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['jobId']
+		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['apiBase']
+		const fill = resolveExpressionValue(node['fill'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['fill']
 		return <LogViewer jobId={jobId} apiBase={apiBase} fill={fill} />
 	},
 }
@@ -1780,9 +1780,9 @@ export const MutationFeedbackEntry: ComponentRegistryEntry = {
 	name: 'MutationFeedback', category: 'composite', tags: ["toast","feedback","mutation","notification"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const pending = resolveExpressionValue(node['pending'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['pending']
-		const error = resolveExpressionValue(node['error'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['error']
-		const successMessage = resolveExpressionValue(node['successMessage'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['successMessage']
+		const pending = resolveExpressionValue(node['pending'], ctx) as import('../../../dsl-lib-orch/src/components/MutationFeedback.js').MutationFeedbackProps['pending']
+		const error = resolveExpressionValue(node['error'], ctx) as import('../../../dsl-lib-orch/src/components/MutationFeedback.js').MutationFeedbackProps['error']
+		const successMessage = resolveExpressionValue(node['successMessage'], ctx) as import('../../../dsl-lib-orch/src/components/MutationFeedback.js').MutationFeedbackProps['successMessage']
 		return <MutationFeedback pending={pending} error={error} successMessage={successMessage} />
 	},
 }
@@ -1791,7 +1791,7 @@ export const NavStatsEntry: ComponentRegistryEntry = {
 	name: 'NavStats', category: 'composite', tags: ["navbar","stats","jobs","status"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../../../orch-ui/src/components/NavStats.js').NavStatsProps['refreshMs']
+		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../../../dsl-lib-orch/src/components/NavStats.js').NavStatsProps['refreshMs']
 		return <NavStats refreshMs={refreshMs} />
 	},
 }
@@ -1800,8 +1800,8 @@ export const NextFireCountdownEntry: ComponentRegistryEntry = {
 	name: 'NextFireCountdown', category: 'atomic', tags: ["countdown","schedule","window"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/NextFireCountdown.js').NextFireCountdownProps['job']
-		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../../../orch-ui/src/components/NextFireCountdown.js').NextFireCountdownProps['nowMs']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/NextFireCountdown.js').NextFireCountdownProps['job']
+		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../../../dsl-lib-orch/src/components/NextFireCountdown.js').NextFireCountdownProps['nowMs']
 		return <NextFireCountdown job={job} nowMs={nowMs} />
 	},
 }
@@ -1810,8 +1810,8 @@ export const RunHistoryEntry: ComponentRegistryEntry = {
 	name: 'RunHistory', category: 'composite', tags: ["history","table","runs"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../orch-ui/src/components/RunHistory.js').RunHistoryProps['entries']
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunHistory.js').RunHistoryProps['jobId']
+		const entries = resolveExpressionValue(node['entries'], ctx) as import('../../../dsl-lib-orch/src/components/RunHistory.js').RunHistoryProps['entries']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/RunHistory.js').RunHistoryProps['jobId']
 		return <RunHistory entries={entries} jobId={jobId} />
 	},
 }
@@ -1820,15 +1820,15 @@ export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 	name: 'RunningAlertDetail', category: 'composite', tags: ["job","detail","running","alert","design-b"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['job']
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['jobId']
-		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['runHistory']
-		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onAfterTrigger']
-		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
-		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
-		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
-		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
-		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['job']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['runHistory']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onAfterTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
 		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
@@ -1837,15 +1837,15 @@ export const RunningBannerDetailEntry: ComponentRegistryEntry = {
 	name: 'RunningBannerDetail', category: 'composite', tags: ["job","detail","running","banner","design-a"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['job']
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['jobId']
-		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['runHistory']
-		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onAfterTrigger']
-		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
-		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
-		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
-		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
-		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['job']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['runHistory']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onAfterTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
 		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
@@ -1854,15 +1854,15 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 	name: 'RunningInlineDetail', category: 'composite', tags: ["job","detail","running","inline","design-c"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const job = resolveExpressionValue(node['job'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['job']
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['jobId']
-		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['runHistory']
-		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onAfterTrigger']
-		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
-		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
-		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
-		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
-		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../orch-ui/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
+		const job = resolveExpressionValue(node['job'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['job']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['jobId']
+		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['runHistory']
+		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onAfterTrigger']
+		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
+		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
+		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
+		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
+		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
 		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
@@ -1871,8 +1871,8 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	name: 'ScheduleTimeline', category: 'composite', tags: ["schedule","timeline","cron","firings"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const firings = resolveExpressionValue(node['firings'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['firings']
-		const onAfterRunEarly = resolveExpressionValue(node['onAfterRunEarly'], ctx) as import('../../../orch-ui/src/components/ScheduleTimeline.js').ScheduleTimelineProps['onAfterRunEarly']
+		const firings = resolveExpressionValue(node['firings'], ctx) as import('../../../dsl-lib-orch/src/components/ScheduleTimeline.js').ScheduleTimelineProps['firings']
+		const onAfterRunEarly = resolveExpressionValue(node['onAfterRunEarly'], ctx) as import('../../../dsl-lib-orch/src/components/ScheduleTimeline.js').ScheduleTimelineProps['onAfterRunEarly']
 		return <ScheduleTimeline firings={firings} onAfterRunEarly={onAfterRunEarly} />
 	},
 }
@@ -1881,7 +1881,7 @@ export const TriggerBadgeEntry: ComponentRegistryEntry = {
 	name: 'TriggerBadge', category: 'atomic', tags: ["badge","trigger","source","manual","cron"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const source = resolveExpressionValue(node['source'], ctx) as import('../../../orch-ui/src/components/TriggerBadge.js').TriggerBadgeProps['source']
+		const source = resolveExpressionValue(node['source'], ctx) as import('../../../dsl-lib-orch/src/components/TriggerBadge.js').TriggerBadgeProps['source']
 		return <TriggerBadge source={source} />
 	},
 }
@@ -1890,10 +1890,10 @@ export const TriggerButtonEntry: ComponentRegistryEntry = {
 	name: 'TriggerButton', category: 'atomic', tags: ["button","trigger","run"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['jobId']
-		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['onTrigger']
-		const feedbackDurationMs = resolveExpressionValue(node['feedbackDurationMs'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['feedbackDurationMs']
-		const size = resolveExpressionValue(node['size'], ctx) as import('../../../orch-ui/src/components/TriggerButton.js').TriggerButtonProps['size']
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/TriggerButton.js').TriggerButtonProps['jobId']
+		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/TriggerButton.js').TriggerButtonProps['onTrigger']
+		const feedbackDurationMs = resolveExpressionValue(node['feedbackDurationMs'], ctx) as import('../../../dsl-lib-orch/src/components/TriggerButton.js').TriggerButtonProps['feedbackDurationMs']
+		const size = resolveExpressionValue(node['size'], ctx) as import('../../../dsl-lib-orch/src/components/TriggerButton.js').TriggerButtonProps['size']
 		return <TriggerButton jobId={jobId} onTrigger={onTrigger} feedbackDurationMs={feedbackDurationMs} size={size} />
 	},
 }

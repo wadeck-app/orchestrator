@@ -80,8 +80,11 @@ jobs:
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Build orch-ui
-              run: npm run build --workspace=packages/orch-ui
+            # orch-app and the module import the components from dsl-lib-orch sources, so there is nothing to
+            # compile first. This step keeps what the former component-package build gave CI: a type error in a
+            # component fails here, before the SPA build.
+            - name: Typecheck dsl-lib-orch
+              run: npm run typecheck --workspace=packages/dsl-lib-orch
 
             # 57s on the Windows runner, and dashboard-server.test.js asserts the SPA is served, so it
             # cannot simply be skipped there. Cached on its inputs instead. No runner.os in the key:
@@ -91,7 +94,7 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: packages/orch-app/dist
-                  key: spa-${{ hashFiles('package-lock.json', 'packages/orch-app/src/**', 'packages/orch-app/index.html', 'packages/orch-app/vite.config.ts', 'packages/orch-app/package.json', 'packages/orch-ui/src/**', 'packages/orch-ui/package.json') }}
+                  key: spa-${{ hashFiles('package-lock.json', 'packages/orch-app/src/**', 'packages/orch-app/index.html', 'packages/orch-app/vite.config.ts', 'packages/orch-app/package.json', 'packages/dsl-lib-orch/src/**', 'packages/dsl-lib-orch/package.json') }}
 
             - name: Build orch-app
               if: steps.spa-cache.outputs.cache-hit != 'true'
@@ -176,16 +179,12 @@ jobs:
               if: runner.os == 'macOS'
               run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh start
 
-            # orch-ui is built here but was never tested, so its 11 test files failed to even
-            # load, unnoticed, for as long as they existed: @testing-library/dom is a
-            # peerDependency of @testing-library/react v16 and was never declared, and vitest
-            # lacked the @dsl-ui alias that @wadeck-app/dsl-ui uses internally. Building a
-            # package is not the same as exercising it.
+            # dsl-lib-orch holds both suites (components under src/, the DSL adapter under test/); they run as
+            # two vitest projects in one invocation.
             - name: Run tests
               run: |
                   npm test --workspace=packages/orch-server --if-present
-                  npm test --workspace=packages/orch-ui --if-present
-                  npm test --workspace=packages/orch-dsl-lib --if-present
+                  npm test --workspace=packages/dsl-lib-orch --if-present
                   npm test --workspace=packages/app-module-orchestrator --if-present
                   npm test --workspace=packages/orchestrator-cli --if-present
               # The orchestrator-cli suite was disabled here as "extremely slow (7+ min hang)".
@@ -231,9 +230,6 @@ jobs:
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Build orch-ui
-              run: npm run build --workspace=packages/orch-ui
-
             # Same key as build-and-test, so this restores the very bytes that job already built and
             # tested -- and since publish `needs: build-and-test`, the entry is always populated by
             # the time this runs. This was the last 36-42s of SPA rebuild left in the pipeline.
@@ -246,7 +242,7 @@ jobs:
               uses: actions/cache/restore@v4
               with:
                   path: packages/orch-app/dist
-                  key: spa-${{ hashFiles('package-lock.json', 'packages/orch-app/src/**', 'packages/orch-app/index.html', 'packages/orch-app/vite.config.ts', 'packages/orch-app/package.json', 'packages/orch-ui/src/**', 'packages/orch-ui/package.json') }}
+                  key: spa-${{ hashFiles('package-lock.json', 'packages/orch-app/src/**', 'packages/orch-app/index.html', 'packages/orch-app/vite.config.ts', 'packages/orch-app/package.json', 'packages/dsl-lib-orch/src/**', 'packages/dsl-lib-orch/package.json') }}
 
             # No Typecheck counterpart here, unlike build-and-test: that job has already typechecked
             # this exact input on all three platforms, and publish cannot start until it passed.

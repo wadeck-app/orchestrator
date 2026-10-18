@@ -1,0 +1,51 @@
+{
+  "name": "@wadeck-app/dsl-lib-orch",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./libTypes": "./src/libTypes.ts"
+  },
+  "scripts": {
+    "css": "tsx scripts/build-css.ts",
+    "entries": "tsx scripts/generate-entries.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@wadeck-app/dsl-renderer": "^2026.10.17-099-ff0571d7",
+    "@wadeck-app/dsl-ui": "^2026.10.3-085-45c50664",
+    "lucide-react": "^0.400.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.0",
+    "tailwindcss": "^3.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "*",
+    "@testing-library/react": "*",
+    "@testing-library/user-event": "*",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "@wadeck-app/app-core-cli": "latest",
+    "@wadeck-app/app-core-sdk": "latest",
+    "@wadeck-app/app-module-orchestrator": "*",
+    "autoprefixer": "^10.0.0",
+    "jsdom": "*",
+    "postcss": "^8.0.0",
+    "tailwindcss": "^3.0.0",
+    "tsx": "*",
+    "typescript": "*",
+    "vitest": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

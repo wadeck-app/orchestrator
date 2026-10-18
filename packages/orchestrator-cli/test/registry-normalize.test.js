@@ -6,7 +6,7 @@
 // makes "never configured", "cleared with --unset" and "set to empty" one single shape on disk.
 //
 // Two fields cannot simply vanish: `label` is read raw in a dozen places (job.label.toLowerCase()
-// in JobCardGrid crashes on undefined) and `triggerMode` is non-optional in the type orch-ui
+// in JobCardGrid crashes on undefined) and `triggerMode` is non-optional in the type dsl-lib-orch
 // consumes and rendered as-is. Those fall back to their default instead.
 const { test, describe, after } = require('node:test');
 const assert = require('node:assert/strict');
