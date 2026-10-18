@@ -1,105 +1,136 @@
 # Updating orch while jobs run
 
-Goal: `orch cli update` / restart works with any job running (long-running or not). A job that
-finishes or dies during the restart, and one still alive after it, must give the same information and
-features as if orch had not restarted. Nothing app-core specific: a job stays a generic command.
+Status: decided and reviewed (2026-10-18), implementation in progress. Nothing here is specific to app-core: a job stays a generic command.
 
-## Facts (verified in code, 2026-10-18)
+Goal: `orch cli update` and any daemon restart work with jobs running. A job that ends or dies while the daemon is down, and one still alive after it, give the same information and features as if the daemon had not restarted.
 
-- `state.closeOrphanedRuns()` closes every open run at start as `orphaned`, without looking at the pid (`state.ts:111`, called `index.ts:214`).
-- `Scheduler.stop()` only clears timers; it kills no child (`scheduler.ts:621`).
-- Jobs are spawned `shell:true`, stdout/stderr piped to the daemon, not detached (`scheduler.ts:334-379`, `1346`).
-- Everything that happens at the end of a run (exit code, `[job:finished]`, events, retry, dependents, peaks flush) hangs off the child's `close` event (`scheduler.ts:1379`).
-- Not verified: that `/quit` leaves a half-stopped daemon while pipes are open; whether `npm install -g` hits EBUSY with a job holding files.
+## Decisions
 
-## What "same as without a restart" requires
+| # | Decision | By |
+|---|---|---|
+| D1 | Every job runs under a per-job **supervisor** (Go, `packages/orchestrator-cli/supervisor-go`), detached from the daemon, started with `detached: true` (spike, below) | user |
+| D2 | The supervisor is staged out of `node_modules` with the existing launcher/tray mechanism (`stageBinary`, stamp = platform package version, which only changes when a binary hash changes); a running job needs the file only at launch | user, adapted |
+| D3 | A job that ended while the daemon was down: policy C, window 30 min (below) | user |
+| D4 | No cooperative heartbeat/progress files from jobs; the supervisor's heartbeat is the liveness evidence | user |
+| D5 | `orch stop` leaves jobs running (adopted at the next start); `orch stop --kill-jobs` ends them | proposed, to confirm |
+| D6 | The daemon no longer echoes job output to its own stdout (the supervisor owns the pipes) | proposed, to confirm |
+| D7 | Supervised jobs ship behind `supervisedJobs` in `config.yml` (default false) until phase 5 is green, then default true and the flag is removed | proposed |
 
-| Feature | Needs |
+## Facts (verified in code or by experiment, 2026-10-18)
+
+- `state.closeOrphanedRuns()` closes every open run at start as `orphaned` without looking at the pid (`state.ts:111`, `index.ts:214`); `start()` also closes open entries whose pid is dead as exit code 1 (`scheduler.ts:447-458`).
+- `Scheduler.stop()` kills nothing and only clears timers (`scheduler.ts:621`). The per-run sampler and timeout timers are not unref'd. Whether the daemon then fails to exit after `/quit` (and so blocks the launcher's restart) is read from the code, **not yet observed**: phase 5 test.
+- `SpawnFn` is synchronous and `_fire` reads `child.pid` at once (`scheduler.ts:1128-1129`); `_killChild` calls `killTreeSync(child.pid)` directly (`:821`).
+- End-of-run work hangs off the child's `close` event (`:1379-1480`): `emit('job-finished')` (audit), published events, hooks, retry, dependents, SLA. `jobLogger.close()` (`:1421`) runs before three later `jobLogger.write` calls (`:1446`, `:1465`, `:1475`), which are therefore no-ops: the `[retry]` and anomaly markers never reach the run log today (pre-existing bug).
+- State writes are batched on a 500 ms timer; `state.shutdown()` is the only synchronous flush.
+- Run log line = `[YYYY-MM-DD HH:MM:SS] text` (UTC), stderr prefixed `[stderr] `, blank lines dropped (`logger.ts:34`, `scheduler.ts:1346-1357`).
+- **Spike (Windows, replica of the launcher's Job Object flags, node inside the job, job closed):** a child started with `detached: true` survives; a child started without `detached` (today's `shell:true` jobs) dies; without `SILENT_BREAKAWAY_OK` everything dies. So today's jobs die when the launcher's job closes. macOS/Linux behaviour of the launcher is **not verified**. The spike did not run under the real launcher binary: phase 5 repeats it there.
+- Measured (Windows prototype): Go supervisor 12.7 MB private, 7.9 MB working set, 2 MB binary, 0 CPU at a 2 s heartbeat; the same in Node 21.2 MB private, 103 MB working set.
+- Platform packages exist for win32-x64, darwin-arm64, darwin-x64 only. On Linux there is no launcher, tray or supervisor package: a Linux install keeps pipe-spawned jobs and says so in the daemon log.
+
+## File contract (run folder `<configDir>/runs/<jobId>/<startedAt in ms>/`)
+
+| File | Writer | Content |
+|---|---|---|
+| `spec.json` | daemon, before starting the supervisor | `command`, `cwd`, `logPath`, `timeoutSeconds`, `heartbeatMs`, `killGraceMs`, and a `context` block (`jobId`, `label`, `trigger`, `retryAttempt`, `dryRun`) so a run can be finalized even if the job was edited or deleted meanwhile |
+| `status.json` | supervisor, atomic rename with retry | `state` (`running` / `exited` / `failed-to-start`), supervisor and child pid and start times, `finishedAt`, `exitCode`, `signal`, `killed`, `killReason`, `timedOut`, `error` |
+| `heartbeat` | supervisor | file refreshed every `heartbeatMs`; content = a counter, so a clock jump cannot fake liveness |
+| `kill` | daemon | request to end the tree; content = reason (`manual`, `resource-limit`) |
+| `owner.json` | daemon | pid + start time of the daemon that supervises the run; only a daemon that finds no live owner may adopt |
+| `effects.json` | daemon | which end-of-run effect groups are done (`state`, `events`, `hooks`, `retry`, `dependents`, `audit`) |
+| `done` | daemon, last | the end was fully processed |
+
+Environment and secrets are **never written to disk**: the supervisor inherits the job's environment from the process environment of the detached supervisor process (`process.env` + `job.env` + resolved secrets, as `scheduler.ts:1124-1128` builds it today).
+
+The supervisor writes the run log in the daemon's format; the daemon appends its own markers to the same file. The run folder is removed after `done`; `lost` and `failed-to-start` folders are kept 7 days.
+
+## Handle seen by the scheduler
+
+- `SpawnFn` becomes async-capable (`Handle | Promise<Handle>`, awaited in `_fire`), so the existing synchronous test fakes stay valid.
+- `handle.pid` is the **job root pid** (the supervisor's child), so the sampler, the state record and `killTree` keep working unchanged.
+- Kill while the daemon is alive: write `kill` (reason), then `killTreeSync(pid)` exactly as today, so `kill-job` stays synchronous. The supervisor only uses its own kill path when the daemon is gone.
+- Timeout: the daemon keeps its own timer (event and `flushPeaks` at the right moment); the supervisor enforces the same deadline plus a margin, so it only acts if the daemon is gone.
+
+## Policy C: a job that ended while the daemon was down
+
+`late` = `finishedAt` earlier than this daemon's start. `window` = `lateActionWindowMinutes` in `config.yml`, default 30.
+
+| Effect | Always | Only if `now - finishedAt <= window` |
+|---|---|---|
+| Run history (real exit code, signal, `finishedAt`), peaks, audit line, failure counters | yes | |
+| Published events (`job.completed/failed/recovered/anomaly/timed_out/killed_manual`, `alert.*`) with `late: true` and the real `finishedAt` | yes | |
+| Hooks `onJobRetry` / `onJobExhausted`, retry scheduling, dependents | | yes |
+
+Beyond the window the log gets one explicit line (`retry/dependents skipped: the run ended <n> min before the daemon came back (window 30 min)`). A `skipped` run (skip exit codes) never retries or fires dependents, late or not.
+
+**Order and idempotence.** (1) record the finished entry and flush state synchronously (`state.flushNow()`), (2) run the effect groups, writing `effects.json` after each, (3) write `done`, (4) remove the folder. A start that finds a finished status without `done` replays only the groups not marked done; an event group interrupted midway may deliver an event twice (consumers dedupe on `jobId` + `startedAt`; whether the queue does is open). Dependents are never fired twice.
+
+## Recovery at daemon start (before `scheduler.start()`)
+
+Synchronous registration of adopted runs in `_running` / `_activeChildren` before any firing. The old `start()` loop that closes dead-pid entries as exit 1 is replaced.
+
+| Found | Action |
 |---|---|
-| Output in the run log | Output must not depend on a pipe to the daemon |
-| Exit code, signal, `finishedAt` | Someone observes the end and records it durably |
-| Events, retry, dependents, `[job:finished]` | Replayed once, when the end is learned late |
-| Timeout | Enforced while the daemon is down, or on its return with the right deadline |
-| Resource peaks, hard budget, telemetry | A pid (tree) to sample after the restart |
-| Kill (`orch kill`) | A handle to the process tree |
-| `maxConcurrency`, liveness skip, "running" in the UI | Running set rebuilt at start |
-| Pid reuse safety | Creation time or an owner that vouches for the pid |
+| `exited` or `failed-to-start`, no `done` | finalize (policy C) |
+| `running`, supervisor pid alive (pid and start time agree with the status, 5 s tolerance), no live `owner.json` | adopt; a stale heartbeat on a live supervisor is logged and re-checked, never `lost` (sleep/resume, load) |
+| `running`, supervisor dead, no end recorded | close as `lost` (exit code unknown), warning with the pids; the leftover tree is reported, not killed (pid reuse) |
+| open `RuntimeEntry`, no run folder | `orphaned`, as today (job started by a pre-supervisor daemon) |
+| `done` present | remove the folder |
 
-## Cases every option must answer
+After adoption: `startup`, catch-up, `once` and cron firings of a job with an adopted run record a **skip with a reason** ("still running from before the restart") instead of starting a second copy. This is the case of a long-running `startup` job (a server) and must not be started twice.
 
-1. Ends normally during the restart.
-2. Dies (crash, SIGKILL, OOM) during the restart.
-3. Still alive after the restart.
-4. Timeout elapses while orch is down.
-5. User runs `orch kill` right after the restart.
-6. The supervising piece itself dies (if there is one).
-7. Machine reboots (all jobs gone, runs must close as interrupted).
-8. Pid reused by an unrelated process.
+Adoption restores what the run needs: peaks seeded from the stored entry (never overwritten with lower values), the retry counter derived from `triggeredBy.attempt`, `dryRun` from `spec.json`, telemetry gets an `adopt` event instead of a second `start`. Not restored, and said so in the docs: `hardBreaches` and the soft-limit "already alerted" flag reset; the SLA deadline and pending retry timers are lost on any restart (pre-existing).
 
-## Options
+## Other daemon changes
 
-### A. Adopt by pid
-Detach jobs, send output to files, persist `pid + creation time`, at start check the pid and poll it.
+- **Shutdown**: `onShutdown` cancels every sampler, timeout and watcher and detaches without finalizing; the daemon must then exit (test with an unref'd/cleared handle set). `--kill-jobs` writes `kill` files first.
+- **Updater deferral**: `active_jobs` stops counting supervised runs, so the background auto-update no longer defers forever behind a server job.
+- **Signal**: `RuntimeEntry` gets an optional `signal`; `exitCode` keeps today's `code ?? 1`.
+- **Tray**: adopted runs emit `job-started` after the tray subscribes (`index.ts:351`); late `job-finished` carries `late`.
+- **`finalizeRun`** keeps today's order but closes the run logger **after** the effects, so the `[retry]` and anomaly markers finally reach the log (visible change, covered by a test).
+- **Wait-mode callers** (`--wait`) still get a connection error when the daemon restarts; unchanged, documented.
+- **Out of scope**: `ExecManager` (piped, killed at shutdown), pending retry/SLA timers.
+- **Build/ship**: `supervisor-go` built like `tray-go` (`build-supervisor`), copied into the platform packages, included in the publish hash. Done.
 
-- 1/2: exit code unknown (no parent to `wait`), unless a wrapper writes it, which is option C.
-- 3: works; sampling and kill use the pid.
-- 8: handled by creation time.
-- Cost: the most invasive in `scheduler.ts`; exit code is the open hole.
+## Cases every phase is tested against
 
-### B. Cooperative files (the job writes progress and touches a heartbeat)
-Liveness by heartbeat age, progress read from the job's file.
+| # | Case | Expected |
+|---|---|---|
+| 1 | Ends normally while the daemon is down | real exit code, events `late`, retry/dependents per window |
+| 2 | Dies (crash, SIGKILL, OOM) while down | signal recorded, as 1 |
+| 3 | Alive after restart | adopted: running, peaks/telemetry resume, kill works, timeout applies, `maxConcurrency` counts it |
+| 4 | Timeout elapses while down | supervisor ended it; `timedOut`; events `late` |
+| 5 | `orch kill` right after restart | tree ended, `killed_manual` |
+| 6 | Supervisor dies, job alive | `lost`, warning with pids |
+| 7 | Machine rebooted | nothing alive: `lost` / orphaned |
+| 8 | Pid reused | start times vouch; no foreign process adopted |
+| 9 | Daemon crashes during finalization | replay of missing groups only; dependents once |
+| 10 | Finished long ago (beyond the window) | recorded, events `late`, retry/dependents skipped with the reason |
+| 11 | Startup job with an adopted run | skip recorded, no second copy |
+| 12 | Two daemons (old lingering, new) | only one adopts (`owner.json`) |
+| 13 | Dry run, edited or deleted job, run log deleted while running | finalized from `spec.json` context; no crash |
+| 14 | Grandchild outliving the shell; disk full on `status.json`; sleep/resume | documented behaviour, tested where possible |
+| 15 | Crash between `done` and the state flush | impossible by order (1) |
 
-- Good: no pid ownership, no pid reuse problem, simple to read.
-- 1: exit code only if the job writes it; 2: noticed only after the heartbeat goes stale (a delay, and a wrong "alive" window).
-- 3: no pid, so no resource sampling, no kill, no peaks, unless a pid is also recorded.
-- Only works for jobs that were written for it. `echo`, `npm run x`, a third-party server do nothing of the sort, so most jobs would be a different, lesser class.
-- Verdict: good as an optional extra (progress and heartbeat shown in the UI), not as the mechanism.
+## Phases (tests first; CI green before the next)
 
-### C. Supervisor shim (recommended base)
-Each job runs as `orch-supervise <runId> -- <command>`: a small detached process that spawns the job,
-owns its stdio (to the run log), and writes a status file in the run's folder.
+| Phase | Content | Gate |
+|---|---|---|
+| 1 | `supervisor-go`: contract, run-log format, kill reason, status write retry, millisecond folder names; build/ship scripts | Go tests on 3 OS (partly done) |
+| 2 | Characterization tests of the current end-of-run behaviour, then `finalizeRun` extraction, async `SpawnFn`, `_attach` split, logger-close order | the whole existing suite unchanged, new characterization tests |
+| 3 | `supervisedSpawn` + staging + `supervisedJobs` flag (default off), shutdown writes kill files so D5 is unchanged | cases 5 and the file contract on a live run |
+| 4 | Recovery of finished runs only (cases 1, 2, 9, 10), `state.flushNow`, `effects.json` | cases 1, 2, 9, 10 |
+| 5 | Adoption (cases 3, 4, 6, 8, 11, 12, 13), `owner.json`, shutdown detach and exit, spike repeated under the real launcher, updater deferral | cases 3-13 + a real `orch cli update` with a running job on this machine |
+| 6 | Flag default on and removed, `orch stop` semantics (D5/D6), docs, release caveat | manual |
 
-- Status file: `pid`, creation time, `startedAt`, deadline (timeout), `heartbeat` (the shim touches a file every few seconds), and at the end `exitCode`, `signal`, `finishedAt`.
-- The daemon never owns the job, so a restart is just "read the run folders":
-  - 1: status file has the end: finalize with the real code, replay events/retry/dependents once.
-  - 2: same, with the signal. The shim reports it because it is the parent.
-  - 3: heartbeat fresh and shim pid alive: re-attach (running set, sampling on the job's pid tree, kill through the shim).
-  - 4: the shim enforces the timeout itself, so it fires while orch is down.
-  - 5: kill goes to the shim, which kills the tree (the code already in `process-tree.ts`).
-  - 6: heartbeat stale and shim pid gone with no end record: run closed as `lost`, tree swept by pid.
-  - 7: nothing alive: closed as interrupted (today's behaviour).
-  - 8: heartbeat plus creation time vouch for the pid.
-- Works for any command, no cooperation.
-- Cost: one extra process per running job; a Go binary (the launcher already ships in the platform packages) is a few MB, a node shim is far heavier (inference, not measured). Needs a new subcommand or binary and Windows detach behaviour verified.
+## Caveats
 
-### D. C plus the cooperative extras of B
-The shim's heartbeat is the user's "touch"; a job may additionally write a progress file that the UI shows. Optional, per job, no impact on the mechanism. Recommended end state.
+- The first update to the first supervisor-enabled version still stops jobs started by the old daemon (they hold pipes to it). Later updates preserve running jobs.
+- `orch stop` changes (D5) and the daemon stdout echo goes (D6): to confirm.
+- One extra process per running job, about 13 MB private each (measured, Windows).
+- On Windows a grandchild that outlives the shell survives a timeout (`taskkill /T` needs a live root); a per-job Job Object in the supervisor would fix it, left for later.
 
-### E. Do nothing for jobs; mark some as "service" and exclude them
-Services survive, orch loses them (no log, no exit code, no peaks). Rejected: it breaks "same info as without a restart".
+## Open points
 
-## Comparison
-
-| | A pid | B coop | C shim | D = C + B extras | E exclude |
-|---|---|---|---|---|---|
-| Exit code of a job that ended while down | no | only if job writes it | yes | yes | no |
-| Works for any command | yes | no | yes | yes | yes |
-| Peaks / budget / kill after restart | yes | no | yes | yes | no |
-| Timeout enforced while down | no | no | yes | yes | no |
-| Pid reuse safe | creation time | n/a | heartbeat + creation time | same | n/a |
-| Extra process per job | no | no | yes | yes | no |
-| Change size | large | small | large | large + small | small |
-
-## Common work whatever the option
-
-- Extract the end-of-run logic from the `close` handler (`scheduler.ts:1379`) into one function that a late end can call.
-- Replace `closeOrphanedRuns` by "adopt or orphan" at start, before `scheduler.start()`.
-- `stop` gets a reason: explicit stop kills jobs, update/restart leaves them.
-- Output goes to a file the daemon only tails.
-- Tests first for the 8 cases, on Windows first (the dev machine), macOS/Linux in CI.
-
-## Open questions
-
-- Accept an extra process per running job (C)?
-- Go subcommand in the existing launcher, or a separate tiny binary?
-- A job that ended while down: replay retry and dependents, or only record it? (Proposal: replay, flagged `late: true` in the event.)
+- Does the queue's `/push` dedupe an event delivered twice? Ask queue-owner.
+- Heartbeat period (2 s) and the 5 s adoption tolerance are choices, not measurements.

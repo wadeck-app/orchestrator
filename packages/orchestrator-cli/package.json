@@ -26,6 +26,7 @@
     "test:time": "node scripts/time-tests.mjs",
     "build-launcher": "node ci/scripts/build-launcher.mjs",
     "build-tray": "npx tsx scripts/build-tray-binary.ts",
+    "build-supervisor": "npx tsx scripts/build-supervisor-binary.ts",
     "gen-icons": "npx tsx scripts/generate-icons.ts",
     "preversion": "echo 'Bump via CI -- use npm version in CI only' && exit 1",
     "clean": "rimraf dist"

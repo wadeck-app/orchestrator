@@ -146,6 +146,9 @@ jobs:
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
+            - name: Build supervisor binary
+              run: npm run build-supervisor --workspace=packages/orchestrator-cli
+
             # The launcher is what start-at-login depends on, and its bundle resolution had no
             # coverage in this repo at all. go.mod sits inside go-launcher, so that is the module
             # root: running from the package above it fails with "does not contain main module".
@@ -288,6 +291,9 @@ jobs:
 
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
+
+            - name: Build supervisor binary
+              run: npm run build-supervisor --workspace=packages/orchestrator-cli
 
             - name: Compute version
               id: version

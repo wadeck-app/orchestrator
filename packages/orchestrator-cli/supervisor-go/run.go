@@ -14,10 +14,15 @@ package main
 // file, a timeout is enforced here, and the exit code is recorded by us because we are the job's parent.
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,9 +53,10 @@ type Status struct {
 	ExitCode *int   `json:"exitCode,omitempty"`
 	Signal   string `json:"signal,omitempty"`
 	// Killed: the daemon asked (kill file). TimedOut: spec.timeoutSeconds elapsed.
-	Killed   bool   `json:"killed,omitempty"`
-	TimedOut bool   `json:"timedOut,omitempty"`
-	Error    string `json:"error,omitempty"`
+	Killed     bool   `json:"killed,omitempty"`
+	KillReason string `json:"killReason,omitempty"`
+	TimedOut   bool   `json:"timedOut,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 const (
@@ -71,7 +77,16 @@ func writeStatus(runDir string, st Status) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(runDir, "status.json"))
+	// A rename can fail for a moment on Windows while a reader or a virus scanner holds the target: the final
+	// status carries the exit code, so it is worth a few tries before giving up.
+	var renameErr error
+	for attempt := 1; attempt <= 6; attempt++ {
+		if renameErr = os.Rename(tmp, filepath.Join(runDir, "status.json")); renameErr == nil {
+			return nil
+		}
+		time.Sleep(time.Duration(attempt) * 25 * time.Millisecond)
+	}
+	return renameErr
 }
 
 func readSpec(runDir string) (Spec, error) {
@@ -89,9 +104,10 @@ func readSpec(runDir string) (Spec, error) {
 	return spec, nil
 }
 
-func touch(path string) {
+// touch records one more beat: the counter is the evidence, the modification time is only a convenience.
+func touch(path string, beat int) {
 	now := time.Now()
-	if err := os.WriteFile(path, []byte(stamp(now)), 0o644); err == nil {
+	if err := os.WriteFile(path, []byte(strconv.Itoa(beat)), 0o644); err == nil {
 		_ = os.Chtimes(path, now, now)
 	}
 }
@@ -123,12 +139,24 @@ func Run(runDir string) int {
 	defer logFile.Close()
 
 	cmd := buildCommand(spec)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	// The supervisor, not the daemon, reads the job's output, so it keeps flowing while the daemon is away.
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return failToStart(fmt.Sprintf("cannot read the job's stdout: %v", err))
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return failToStart(fmt.Sprintf("cannot read the job's stderr: %v", err))
+	}
 	startedAt := time.Now()
 	if err := cmd.Start(); err != nil {
 		return failToStart(fmt.Sprintf("cannot start %q (cwd %q): %v", spec.Command, spec.Cwd, err))
 	}
+	log := &runLog{file: logFile}
+	var readers sync.WaitGroup
+	readers.Add(2)
+	go func() { defer readers.Done(); log.copyLines(stdout, "") }()
+	go func() { defer readers.Done(); log.copyLines(stderr, "[stderr] ") }()
 
 	running := base
 	running.State = "running"
@@ -137,12 +165,16 @@ func Run(runDir string) int {
 	if err := writeStatus(runDir, running); err != nil {
 		// Without a status file nobody can adopt this run: end the job rather than leave one nobody can see.
 		endTree(cmd.Process.Pid, spec)
+		readers.Wait()
 		_ = cmd.Wait()
 		return failToStart(fmt.Sprintf("cannot write status.json in %s: %v", runDir, err))
 	}
 
 	waited := make(chan struct{})
 	go func() {
+		// Wait must not run before every read of the pipes is done. It also means the run ends when the job's
+		// output closes, as node's "close" event did: a background process that kept the pipe open keeps the run open.
+		readers.Wait()
 		_ = cmd.Wait()
 		close(waited)
 	}()
@@ -156,7 +188,8 @@ func Run(runDir string) int {
 	pollTick := time.NewTicker(poll)
 	defer beatTick.Stop()
 	defer pollTick.Stop()
-	touch(filepath.Join(runDir, "heartbeat"))
+	beats := 1
+	touch(filepath.Join(runDir, "heartbeat"), beats)
 
 	var deadline time.Time
 	if spec.TimeoutSeconds > 0 {
@@ -169,14 +202,16 @@ func Run(runDir string) int {
 		case <-waited:
 			ended = true
 		case <-beatTick.C:
-			touch(filepath.Join(runDir, "heartbeat"))
+			beats++
+			touch(filepath.Join(runDir, "heartbeat"), beats)
 		case <-pollTick.C:
 			if !final.Killed && fileExists(filepath.Join(runDir, "kill")) {
 				final.Killed = true
-				endTree(running.ChildPid, spec)
+				final.KillReason = killReason(filepath.Join(runDir, "kill"))
+				go endTree(running.ChildPid, spec)
 			} else if !final.TimedOut && !deadline.IsZero() && time.Now().After(deadline) {
 				final.TimedOut = true
-				endTree(running.ChildPid, spec)
+				go endTree(running.ChildPid, spec)
 			}
 		}
 	}
@@ -201,4 +236,44 @@ func orDefault(value, fallback int) int {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// killReason is the content of the kill file: why the daemon asked ("manual", "resource-limit").
+func killReason(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || strings.TrimSpace(string(data)) == "" {
+		return "unspecified"
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// runLog writes the run log in the exact format the daemon's RunLogger used: "[YYYY-MM-DD HH:MM:SS] text" in
+// UTC, trailing whitespace trimmed, blank lines dropped, stderr lines prefixed. One write per line, appended,
+// so the daemon can add its own markers to the same file without tearing a line.
+type runLog struct {
+	mu   sync.Mutex
+	file *os.File
+}
+
+func (l *runLog) write(prefix string, line string) {
+	text := strings.TrimRight(line, " \t\r\n")
+	if text == "" {
+		return
+	}
+	entry := "[" + time.Now().UTC().Format("2006-01-02 15:04:05") + "] " + prefix + text + "\n"
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, _ = l.file.WriteString(entry)
+}
+
+// copyLines reads r to its end, line by line, keeping a last line that has no newline.
+func (l *runLog) copyLines(r io.Reader, prefix string) {
+	reader := bufio.NewReader(r)
+	for {
+		line, err := reader.ReadString('\n')
+		l.write(prefix, line)
+		if err != nil {
+			return
+		}
+	}
 }

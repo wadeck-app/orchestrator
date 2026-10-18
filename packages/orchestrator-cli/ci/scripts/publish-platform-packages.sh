@@ -25,6 +25,7 @@ DIST_TAG="${2:?missing dist tag}"
 
 LAUNCHER_DIST="packages/orchestrator-cli/launcher-go/dist"
 TRAY_DIST="packages/orchestrator-cli/tray-go/dist"
+SUPERVISOR_DIST="packages/orchestrator-cli/supervisor-go/dist"
 MAIN_PKG="packages/orchestrator-cli"
 
 BIN_HASH=$(cat \
@@ -34,6 +35,9 @@ BIN_HASH=$(cat \
   "$TRAY_DIST/orchestrator-tray.exe" \
   "$TRAY_DIST/orchestrator-tray-arm64" \
   "$TRAY_DIST/orchestrator-tray-amd64" \
+  "$SUPERVISOR_DIST/orchestrator-supervisor.exe" \
+  "$SUPERVISOR_DIST/orchestrator-supervisor-arm64" \
+  "$SUPERVISOR_DIST/orchestrator-supervisor-amd64" \
   | sha256sum | cut -c1-12)
 
 echo "native binary hash: $BIN_HASH"

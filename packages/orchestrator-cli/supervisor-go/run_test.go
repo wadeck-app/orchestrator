@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +223,86 @@ func TestNeverLeavesAHalfWrittenStatus(t *testing.T) {
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
+	writeKill(t, runDir)
+	finish(t, done)
+}
+
+// The run log must read exactly as it did when the daemon wrote it, so that nothing downstream (the log
+// viewer, the log search, the progress engine) can tell whether the daemon restarted during the run.
+func TestWritesTheRunLogInTheFormatTheDaemonUsed(t *testing.T) {
+	dir := t.TempDir()
+	runDir, done := startRun(t, Spec{Command: jsCommand(t, dir, `console.log("first"); console.log(""); console.log("  padded   "); console.error("oops")`)})
+	finish(t, done)
+
+	log, _ := os.ReadFile(filepath.Join(runDir, "run.log"))
+	lines := strings.Split(strings.TrimRight(string(log), "\n"), "\n")
+	stamp := regexp.MustCompile(`^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] `)
+	var texts []string
+	for _, line := range lines {
+		if !stamp.MatchString(line) {
+			t.Fatalf("every line starts with a UTC timestamp, got %q", line)
+		}
+		texts = append(texts, stamp.ReplaceAllString(line, ""))
+	}
+	want := []string{"first", "  padded", "[stderr] oops"}
+	sort.Strings(texts)
+	sort.Strings(want)
+	if strings.Join(texts, "|") != strings.Join(want, "|") {
+		t.Fatalf("blank lines are dropped, trailing spaces trimmed and stderr prefixed; want %q, got %q", want, texts)
+	}
+}
+
+func TestKeepsALineThatDoesNotEndWithANewline(t *testing.T) {
+	dir := t.TempDir()
+	runDir, done := startRun(t, Spec{Command: jsCommand(t, dir, `process.stdout.write("no newline at the end")`)})
+	finish(t, done)
+
+	log, _ := os.ReadFile(filepath.Join(runDir, "run.log"))
+	if !strings.Contains(string(log), "] no newline at the end") {
+		t.Fatalf("the last partial line must not be lost, got %q", log)
+	}
+}
+
+func TestRecordsWhyTheDaemonAskedForTheKill(t *testing.T) {
+	dir := t.TempDir()
+	runDir, done := startRun(t, Spec{Command: jsCommand(t, dir, `setInterval(() => {}, 1000)`)})
+	waitFor(t, "the job to run", func() bool {
+		data, err := os.ReadFile(filepath.Join(runDir, "status.json"))
+		return err == nil && strings.Contains(string(data), `"running"`)
+	})
+	if err := os.WriteFile(filepath.Join(runDir, "kill"), []byte("resource-limit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	finish(t, done)
+
+	st := readStatus(t, runDir)
+	if !st.Killed || st.KillReason != "resource-limit" {
+		t.Fatalf("the reason in the kill file is kept, got %+v", st)
+	}
+}
+
+// A clock jump (sleep/resume, a manual change) must not be able to make a dead supervisor look alive or a live
+// one look dead, so the heartbeat carries a counter and not only a modification time.
+func TestHeartbeatCarriesACounterThatKeepsGrowing(t *testing.T) {
+	dir := t.TempDir()
+	runDir, done := startRun(t, Spec{Command: jsCommand(t, dir, `setTimeout(() => {}, 3000)`)})
+	read := func() int {
+		data, err := os.ReadFile(filepath.Join(runDir, "heartbeat"))
+		if err != nil {
+			return -1
+		}
+		n, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+		if convErr != nil {
+			return -1
+		}
+		return n
+	}
+	var first int
+	waitFor(t, "a first heartbeat counter", func() bool {
+		first = read()
+		return first >= 0
+	})
+	waitFor(t, "the counter to grow", func() bool { return read() > first })
 	writeKill(t, runDir)
 	finish(t, done)
 }
