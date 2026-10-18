@@ -163,6 +163,11 @@ describe('timers', () => {
     const reader = res.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain('first line');
+    // The history is sent before the poll timer is armed (the server awaits the file read in between), so the
+    // first chunk can reach the reader first: wait for the timer instead of assuming it exists.
+    for (let i = 0; i < 50 && host.timers.started.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
     expect(host.timers.started).toEqual([500]);
     expect(host.timers.cleared).toEqual([]);
 
