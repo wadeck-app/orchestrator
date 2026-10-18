@@ -222,6 +222,20 @@ describe('what a recovered end sets in motion (policy C)', () => {
     assert.equal(env.sched._retryCounters.get('job'), 1);
   });
 
+  // Seen live: the retry was announced in the log ("attempt 1/2 in 15s") and never happened. start() re-plans every
+  // job and began by dropping all of the job's deadlines, the retry set a moment earlier by the recovery included.
+  test('the retry it schedules is still armed once the scheduler has started', async () => {
+    const env = makeEnv([cronJob({ retryOnExitCodes: [7], retryDelays: [60] })]);
+    leaveRun(env, { endedMinutesAgo: 10, status: { exitCode: 7 } });
+
+    await env.sched.recoverRuns();
+    await env.sched.start();
+
+    const armed = env.sched._deadlines.list().filter((d) => d.jobId === 'job').map((d) => d.kind);
+    assert.ok(armed.includes('retry'), `the retry was dropped when the scheduler started; armed: ${armed.join(', ')}`);
+    assert.ok(armed.includes('cron'), 'the job\'s own schedule must still be armed too');
+  });
+
   test('an old failure is announced but not retried, and the log says why', async () => {
     const env = makeEnv([cronJob({ retryOnExitCodes: [7], retryDelays: [60] })]);
     const run = leaveRun(env, { endedMinutesAgo: 120, startedMinutesAgo: 150, status: { exitCode: 7 } });

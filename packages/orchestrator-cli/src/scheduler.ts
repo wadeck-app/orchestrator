@@ -511,6 +511,10 @@ export class Scheduler extends EventEmitter {
         continue;
       }
 
+      // A retry that recoverRuns armed for a run that ended while the daemon was down: re-planning the job below
+      // drops every deadline of the job, and the retry would be announced in the log and never happen.
+      const pendingRetry = this._deadlines.take(job.id, 'retry');
+
       if (job.type === 'cron') {
         // Through scheduleJob, not _scheduleCron: that is where the active window is honoured, so a
         // job whose window has not opened waits and one whose window closed while the daemon was down
@@ -550,6 +554,10 @@ export class Scheduler extends EventEmitter {
 
       if (job.type === 'once') {
         await this._scheduleOnce(job);
+      }
+
+      if (pendingRetry !== null) {
+        this._deadlines.set(job.id, 'retry', pendingRetry.dueAt, pendingRetry.run);
       }
     }
 
@@ -1475,9 +1483,10 @@ export class Scheduler extends EventEmitter {
     const previous = this._state.getRunBefore(jobId, startedAt);
     const finishedAt = status.finishedAt ?? this._now().toISOString();
     const cancelledByUser = status.killed === true && status.killReason === 'manual';
-    const minutesAgo = Math.max(0, Math.round((this._now().getTime() - Date.parse(finishedAt)) / 60_000));
-    const withinWindow = this._now().getTime() - Date.parse(finishedAt) <= this._lateActionWindowMs;
-    const windowMinutes = Math.round(this._lateActionWindowMs / 60_000);
+    const agoMs = Math.max(0, this._now().getTime() - Date.parse(finishedAt));
+    const withinWindow = agoMs <= this._lateActionWindowMs;
+    // Seconds under two minutes: "ended 1 min before (window 1 min)" reads as if it were inside the window.
+    const spoken = (ms: number): string => (ms < 120_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`);
 
     const ctx: RunContext = {
       job,
@@ -1502,7 +1511,7 @@ export class Scheduler extends EventEmitter {
     this._finishRun(ctx, outcome, {
       late: true,
       actionsAllowed: withinWindow,
-      actionsSkippedNote: `[recovery] retry/dependents skipped: the run ended ${minutesAgo} min before the daemon came back (window ${windowMinutes} min)`,
+      actionsSkippedNote: `[recovery] retry/dependents skipped: the run ended ${spoken(agoMs)} before the daemon came back (window ${spoken(this._lateActionWindowMs)})`,
       ledger: new EffectLedger(path.join(runDir, 'effects.json')),
     });
     fs.writeFileSync(path.join(runDir, 'done'), '');
