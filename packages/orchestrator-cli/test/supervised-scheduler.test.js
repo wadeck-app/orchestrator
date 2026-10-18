@@ -204,6 +204,34 @@ describe('a supervised run that ended in front of the daemon', () => {
   });
 });
 
+// Found live, on the real scrapers: "whatsapp-scraper" reached the supervisor as "what app- craper". The command is
+// split into words and put back with single spaces, as node's shell:true does, and the pattern that finds the words
+// had lost its backslash, so it cut at every letter s. The other tests ran `node "<path>"`, whose only s is in quotes.
+describe('the command given to the supervisor', () => {
+  const { Scheduler } = require('../src/scheduler');
+
+  function commandSentFor(command) {
+    const job = { id: 'job', type: 'cron', schedule: '0 8 * * *', label: 'Job', enabled: true, triggerMode: 'wait', command };
+    const env = makeEnv(job);
+    return env.sched._supervisedRequest(job, { kind: 'manual' }, new Date().toISOString(), undefined).command;
+  }
+
+  test.each = undefined;
+  for (const [given, expected] of [
+    ['whatsapp-scraper', 'whatsapp-scraper'],
+    ['whatsapp-scraper multi parse,visualize', 'whatsapp-scraper multi parse,visualize'],
+    ['chatgpt-scraper multi parse,visualize && whatsapp-scraper multi parse,visualize,activity', 'chatgpt-scraper multi parse,visualize && whatsapp-scraper multi parse,visualize,activity'],
+    ['npm   run   dev:all', 'npm run dev:all'],
+    ['node "C:/Program Files/app/job.js" --name "two words"', 'node "C:/Program Files/app/job.js" --name "two words"'],
+    ["echo 'single quoted words' s", "echo 'single quoted words' s"],
+  ]) {
+    test(`is "${given}" put back as the shell would have received it`, () => {
+      assert.equal(commandSentFor(given), expected);
+    });
+  }
+  assert.ok(Scheduler);
+});
+
 describe('a job that cannot be started', () => {
   test('is a failed run with the reason in its log, not an exception', async () => {
     const job = { id: 'job', type: 'cron', schedule: '0 8 * * *', label: 'Job', enabled: true, triggerMode: 'wait', command: 'whatever' };

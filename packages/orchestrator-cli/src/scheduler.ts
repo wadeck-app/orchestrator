@@ -1554,7 +1554,7 @@ export class Scheduler extends EventEmitter {
   /** What the supervisor needs to run this job: the same command line, directory and environment as a direct spawn. */
   private _supervisedRequest(job: Job, trigger: TriggerSource, startedAt: string, env: NodeJS.ProcessEnv | undefined): SupervisedRequest {
     // Tokens re-joined with single spaces, which is what node's `shell: true` hands to the shell.
-    const parts = job.command.match(/(?:[^s"']+|"[^"]*"|'[^']*')+/g) ?? [job.command];
+    const parts = job.command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [job.command];
     return {
       jobId: job.id,
       startedAt,
