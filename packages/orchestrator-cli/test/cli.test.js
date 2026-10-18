@@ -87,7 +87,8 @@ describe('orch stop', () => {
     fs.writeFileSync(path.join(dir, 'config.port'), JSON.stringify({ pid: process.pid, port: 47900 }));
     try {
       const { calls } = await run(['stop'], { deps: { configDir: dir } });
-      assert.equal(calls[0].command, 'quit');
+      // After a look at the running jobs (list-state), which is what lets stop say which of them keep running.
+      assert.equal(calls[calls.length - 1].command, 'quit');
     } finally {
       fs.rmSync(dir, { recursive: true });
     }

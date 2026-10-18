@@ -1,13 +1,44 @@
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
-import type { CliDeps, LivenessConfig } from './types.js';
+import type { CliDeps, LivenessConfig, RuntimeEntry } from './types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
 import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
+
+/** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
+const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
+
+/**
+ * Whether an error from talking to the daemon means the daemon is not there (as opposed to a daemon that is there
+ * and failed). Checked on `err.code` as well as the message: a connection reset mid-response is a
+ * `socket hang up` whose message never contains the code.
+ */
+export function isDaemonDownError(e: unknown): boolean {
+  const msg = getErrorMessage(e);
+  const code = (e as NodeJS.ErrnoException | undefined)?.code;
+  return msg.includes('not running') || msg.includes('ECONNREFUSED') || msg.includes('ENOENT')
+    || (!!code && CONNECTION_FAILURE_CODES.has(code));
+}
+
+/** Ids of the jobs with a run still going, and which of them a supervisor owns (they outlive the daemon). */
+function runningJobs(state: Record<string, RuntimeEntry[]>): { all: string[]; supervised: string[] } {
+  const all: string[] = [];
+  const supervised: string[] = [];
+  for (const [id, entries] of Object.entries(state)) {
+    const open = entries.filter(e => e.finishedAt == null && e.exitCode == null);
+    if (open.length > 0) {
+      all.push(id);
+      if (open.some(e => e.supervised === true)) {
+        supervised.push(id);
+      }
+    }
+  }
+  return { all, supervised };
+}
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
 function readDashboardFile(filePath: string): string | null {
@@ -371,9 +402,12 @@ Daemon lifecycle:
   orch start                   Start the daemon; tails logs in interactive TTY (Ctrl+C stops tail, daemon keeps running)
                                --no-follow  Return as soon as the daemon is up, without tailing
                                --follow,-f  Tail even when stdout is piped
-  orch stop                    Stop the daemon
+  orch stop [--kill-jobs]      Stop the daemon. Jobs run under their own supervisor keep running and are
+                               followed again at the next start; the jobs named in the answer do.
+                               --kill-jobs  End every running job first
   orch restart                 Restart the daemon
-  orch status [--json]         Show daemon pid, port, uptime
+  orch status [--json]         Show daemon pid, port, uptime. Never starts the daemon: when it is not
+                               running, says so and exits 1 (JSON: {"running":false})
                                JSON fields: pid, port, uptime (seconds)
   orch install                 Register orchestrator in OS startup
   orch uninstall               Remove from OS startup
@@ -575,8 +609,22 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   switch (cmd) {
 
     case 'status': {
-      // 'version' is special: resolved via client.version() in the entry point send wrapper
-      const data = await send('version') as { pid: number; port: number; uptime?: number };
+      // 'version' is special: resolved via client.version() in the entry point send wrapper.
+      // Without auto-start: asking whether the daemon runs must not be the thing that starts it.
+      let data: { pid: number; port: number; uptime?: number };
+      try {
+        data = await send('version', undefined, { autoStart: false }) as { pid: number; port: number; uptime?: number };
+      } catch (e) {
+        if (!isDaemonDownError(e)) {
+          console.error(`Orchestrator did not answer properly: ${getErrorMessage(e)}\nCheck: orch logs`);
+        } else if (forceJson || !process.stdout.isTTY) {
+          console.log(JSON.stringify({ running: false }));
+        } else {
+          console.log('Orchestrator is not running. Start it with: orch start');
+        }
+        process.exitCode = 1;
+        break;
+      }
       if (forceJson || !process.stdout.isTTY) {
         console.log(JSON.stringify(data));
       } else {
@@ -616,8 +664,36 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         console.log('Orchestrator is not running.');
         break;
       }
+      // Jobs run under their own supervisor outlive the daemon, so stopping it is no longer how they end. Say which
+      // ones keep running, or end them first with --kill-jobs.
+      const killJobs = has(rest, '--kill-jobs');
+      let keepRunning: string[] = [];
+      let ended = 0;
+      try {
+        const running = runningJobs(await send('list-state') as Record<string, RuntimeEntry[]>);
+        if (killJobs) {
+          for (const id of running.all) {
+            try {
+              await send('kill-job', { id });
+              ended++;
+            } catch (e) {
+              console.error(`Could not end job "${id}": ${getErrorMessage(e)}`);
+            }
+          }
+        } else {
+          keepRunning = running.supervised;
+        }
+      } catch (e) {
+        console.error(`Stopping anyway, but could not list the running jobs (${getErrorMessage(e)}): supervised jobs keep running, see: orch list --verbose`);
+      }
       await send('quit');
+      if (killJobs && ended > 0) {
+        console.log(`${ended} job(s) ended.`);
+      }
       console.log('Orchestrator stopped.');
+      if (keepRunning.length > 0) {
+        console.log(`${keepRunning.length} job(s) keep running without the daemon and will be followed again at the next start: ${keepRunning.join(', ')}.\nEnd them with: orch stop --kill-jobs (or orch kill <id> after the next start).`);
+      }
       break;
     }
 
@@ -1628,16 +1704,11 @@ export async function main(): Promise<void> {
   // `Error: socket hang up` with `code: 'ECONNRESET'` -- the message itself never contains
   // the string "ECONNRESET", so a plain substring check on the message misses it and the
   // auto-start retry below never kicks in; the user sees the raw "socket hang up" instead.
-  const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
-  function isConnectionFailure(e: unknown): boolean {
-    const code = (e as NodeJS.ErrnoException | undefined)?.code;
-    return !!code && CONNECTION_FAILURE_CODES.has(code);
-  }
 
   // ssh-agent pattern (D25): auto-start daemon on first command that needs it,
   // wait up to 3 s, retry once. --version / --pid bypass this via early returns in runCli.
   let _autoStarted = false;
-  function send(command: string, payload?: unknown): Promise<unknown> {
+  function send(command: string, payload?: unknown, options?: import('./types.js').SendOptions): Promise<unknown> {
     // A `wait: true` payload (trigger-job, exec) holds the HTTP connection open with zero
     // bytes flowing until the job finishes, which can legitimately take far longer than the
     // client's default 5s idle timeout. Disable it for these instead of guessing a bigger
@@ -1653,7 +1724,11 @@ export async function main(): Promise<void> {
 
     return doSend().catch(async (e: unknown) => {
       const msg = getErrorMessage(e);
-      const isDaemonDown = msg.includes('not running') || msg.includes('ECONNREFUSED') || msg.includes('ENOENT') || isConnectionFailure(e);
+      // The caller wants to know whether the daemon is there, not to have it there.
+      if (options?.autoStart === false) {
+        throw e;
+      }
+      const isDaemonDown = isDaemonDownError(e);
       if (isDaemonDown && !_autoStarted) {
         _autoStarted = true;
         startDaemon();

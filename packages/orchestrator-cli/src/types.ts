@@ -310,9 +310,17 @@ export type OrchestratorCommands = {
   'tray-list':   (payload?: unknown) => string[];
 };
 
+export interface SendOptions {
+  /**
+   * Whether a command that finds the daemon down starts it and retries (default true, the ssh-agent pattern).
+   * `false` for a command whose answer IS whether the daemon is there: it rethrows the connection error.
+   */
+  autoStart?: boolean;
+}
+
 export interface CliDeps {
   /** RPC-style send: command name + optional payload. 'version' resolves via client.version(). */
-  send: (command: string, payload?: unknown) => Promise<unknown>;
+  send: (command: string, payload?: unknown, options?: SendOptions) => Promise<unknown>;
   startDaemon: () => void;
   configDir: string;
 }
