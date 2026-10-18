@@ -27,7 +27,36 @@ import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './act
 import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
 
-type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
+// May be async: starting a job under a supervisor means waiting for its status file.
+type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess | Promise<ChildProcess>;
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return typeof (value as { then?: unknown }).then === 'function';
+}
+
+/** What the end of a run needs to know about the run, however the end was learned. */
+interface RunContext {
+  job:       Job;
+  trigger:   TriggerSource;
+  startedAt: string;
+  pid:       number | null;
+  jobLogger: RunLogger;
+  telemetry: JobTelemetry | null;
+  /** Whether the run before this one failed, read before this one was recorded. */
+  previousRunFailed: boolean;
+}
+
+/** How a run ended. `exitCode` is null for a run the user cancelled. */
+interface RunOutcome {
+  exitCode:              number | null;
+  finishedAt:            string;
+  durationMs:            number;
+  cancelledByUser:       boolean;
+  timedOut:              boolean;
+  killedByResourceLimit: boolean;
+  peakCpuPct:            number;
+  peakRamMb:             number;
+}
+
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
 
 interface SchedulerOptions {
@@ -1119,13 +1148,120 @@ export class Scheduler extends EventEmitter {
     });
   }
 
+  /**
+   * Everything that happens when a run is over: the history entry, the log marker, the events, and what the
+   * outcome sets in motion (dependents, retry, alerts).
+   *
+   * Its own method, and not the body of the child's close handler, because the same effects have to run for
+   * a job that ended while the daemon was down. Nothing in here may assume the child is still around.
+   */
+  private _finishRun(ctx: RunContext, outcome: RunOutcome): void {
+    const { job, trigger, startedAt, pid, jobLogger, telemetry } = ctx;
+    const { exitCode, finishedAt, durationMs, cancelledByUser, timedOut, killedByResourceLimit, peakCpuPct, peakRamMb } = outcome;
+    // Declared by the job as "nothing was done", so it is neither a success nor a failure. The
+    // real exit code is still recorded: a lock left stuck stays diagnosable.
+    const skipped = !cancelledByUser && exitCode !== null
+      && (job.skipExitCodes?.includes(exitCode) ?? false);
+
+    // Whether the run BEFORE this one failed was decided when this one started (ctx.previousRunFailed): by
+    // now the newest entry is this run's own, which had not failed, so "recovered" could never be true.
+    const wasFailure = ctx.previousRunFailed;
+
+    this._state.record(job.id, {
+      startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
+      peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
+      peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
+      peakMeasure: peakRamMb > 0 || peakCpuPct > 0 ? PEAK_MEASURE_VERSION : undefined,
+      cancelledByUser: cancelledByUser || undefined,
+      skipped: skipped || undefined,
+    });
+    const reason = timedOut ? 'timeout'
+      : cancelledByUser ? 'manual-kill'
+      : killedByResourceLimit ? 'resource-limit'
+      : undefined;
+    const finishedReason = reason === undefined ? '' : ` reason=${reason}`;
+    telemetry?.event('end', { exitCode, durationMs, reason });
+    jobLogger.write(skipped
+      ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
+      : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`);
+    // `skipped` travels with the event because the systray classifies on this alone.
+    this.emit('job-finished', { id: job.id, exitCode, job, skipped, durationMs, trigger });
+
+    if (cancelledByUser) {
+      this._eventPublisher.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
+    } else if (skipped) {
+      // No dependents and no retry: both would act on work that never happened. The retry
+      // counter is left alone, since a skip says nothing about whether the last attempt failed.
+      this._eventPublisher.publish('job.skipped', {
+        jobId: job.id, label: job.label, exitCode, durationMs, reason: 'exitCode',
+      });
+    } else if (exitCode === 0) {
+      this._retryCounters.delete(job.id);
+      this._eventPublisher.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
+      // Trigger dependent jobs
+      for (const dep of this._registry.list().filter(j => j.dependsOn === job.id && j.enabled)) {
+        this._fireUnlessFull(dep, { kind: 'dependency', dependsOnJobId: job.id });
+      }
+      if (wasFailure) {
+        this._eventPublisher.publish('job.recovered', { jobId: job.id, label: job.label });
+      }
+      // Anomaly detection: emit if duration is 3x longer than rolling average
+      const avgMs = this._state.getRollingAvgDurationMs(job.id);
+      if (avgMs !== null && durationMs > 3 * avgMs) {
+        jobLogger.write(`[warn] Job ${job.id} took ${durationMs}ms (3x avg ${Math.round(avgMs)}ms) - anomaly detected`);
+        this._eventPublisher.publish('job.anomaly', { jobId: job.id, label: job.label, durationMs, avgMs: Math.round(avgMs), multiplier: 3 });
+      }
+    } else if (exitCode !== null) {
+      this._eventPublisher.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
+      // Consecutive-failure alert
+      const threshold = job.alertAfterFailures ?? 3;
+      const consecutive = this._state.getConsecutiveFailures(job.id);
+      if (consecutive >= threshold) {
+        this._eventPublisher.publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
+      }
+      // Retry on specific exit codes (extension point: hooks fire for each retry/exhaustion)
+      if (job.retryOnExitCodes?.includes(exitCode)) {
+        const attempts = this._retryCounters.get(job.id) ?? 0;
+        const delays   = job.retryDelays ?? [];
+        if (attempts < delays.length) {
+          const delayMs     = delays[attempts]! * 1000;
+          const nextAttempt = attempts + 1;
+          this._retryCounters.set(job.id, nextAttempt);
+          jobLogger.write(`[retry] attempt ${nextAttempt}/${delays.length} in ${delays[attempts]}s (exitCode=${exitCode})`);
+          void this._hookDispatcher?.dispatch('onJobRetry' as never, {
+            jobId: job.id, label: job.label, exitCode,
+            attempt: nextAttempt, totalAttempts: delays.length, delaySeconds: delays[attempts],
+          }, (err: unknown) => console.error('[hook:onJobRetry]', err));
+          this._deadlines.set(job.id, 'retry', this._time.now() + delayMs, () => {
+            this._fireUnlessFull(job, { kind: 'retry', attempt: nextAttempt });
+          });
+        } else {
+          this._retryCounters.delete(job.id);
+          jobLogger.write(`[retry] exhausted after ${delays.length} attempts (exitCode=${exitCode}) -- permanent failure`);
+          void this._hookDispatcher?.dispatch('onJobExhausted' as never, {
+            jobId: job.id, label: job.label, exitCode, attempts: delays.length,
+          }, (err: unknown) => console.error('[hook:onJobExhausted]', err));
+          this._eventPublisher.publish('alert.retry_exhausted', { jobId: job.id, label: job.label, exitCode, attempts: delays.length });
+        }
+      }
+    }
+
+    // Closed last: the retry and anomaly markers above are written to this logger, and used to be dropped
+    // because it was already closed.
+    jobLogger.close();
+  }
+
   private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
     const jobEnv = (job.env || job.secrets?.length)
       ? { ...process.env, ...job.env, ...secretEnv }
       : undefined;
-    const child = this._spawn(job.command, job.cwd ?? undefined, jobEnv, job.id);
+    // Awaited only when it IS a promise: an `await` on a plain child would move everything below to a later
+    // tick, and a child that closes right after being spawned (every test double, and a command that fails
+    // at once) would emit before its listeners exist.
+    const spawned = this._spawn(job.command, job.cwd ?? undefined, jobEnv, job.id);
+    const child = isPromiseLike(spawned) ? await spawned : spawned;
     const pid   = child.pid ?? null;
 
     // Per-run log: one file per execution -- <jobId>-<startedAt>.log
@@ -1156,6 +1292,10 @@ export class Scheduler extends EventEmitter {
         this._liveLogger.delete(job.id);
       }
     });
+
+    // Read before this run's own entry exists, or the newest entry would be this run itself.
+    const previousEntry = this._state.get(job.id);
+    const previousRunFailed = previousEntry !== null && isFailure(previousEntry);
 
     this._state.record(job.id, {
       startedAt, exitCode: null, pid, triggeredBy: trigger,
@@ -1392,95 +1532,10 @@ export class Scheduler extends EventEmitter {
         // exitCode=null + finishedAt = "Cancelled" in RunHistory
         const exitCode = cancelledByUser ? null : rawExitCode;
 
-        // Declared by the job as "nothing was done", so it is neither a success nor a failure. The
-        // real exit code is still recorded: a lock left stuck stays diagnosable.
-        const skipped = !cancelledByUser && exitCode !== null
-          && (job.skipExitCodes?.includes(exitCode) ?? false);
-
-        // Recovery detection: was previous run a failure?
-        const prev = this._state.get(job.id);
-        const wasFailure = prev !== null && isFailure(prev);
-
-        this._state.record(job.id, {
-          startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
-          peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
-          peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
-          peakMeasure: peakRamMb > 0 || peakCpuPct > 0 ? PEAK_MEASURE_VERSION : undefined,
-          cancelledByUser: cancelledByUser || undefined,
-          skipped: skipped || undefined,
-        });
-        const reason = timedOut ? 'timeout'
-          : cancelledByUser ? 'manual-kill'
-          : killedByResourceLimit ? 'resource-limit'
-          : undefined;
-        const finishedReason = reason === undefined ? '' : ` reason=${reason}`;
-        telemetry?.event('end', { exitCode, durationMs, reason });
-        jobLogger.write(skipped
-          ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
-          : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`);
-        jobLogger.close();
-        // `skipped` travels with the event because the systray classifies on this alone.
-        this.emit('job-finished', { id: job.id, exitCode, job, skipped, durationMs, trigger });
-
-        if (cancelledByUser) {
-          this._eventPublisher.publish('job.killed_manual', { jobId: job.id, label: job.label, durationMs });
-        } else if (skipped) {
-          // No dependents and no retry: both would act on work that never happened. The retry
-          // counter is left alone, since a skip says nothing about whether the last attempt failed.
-          this._eventPublisher.publish('job.skipped', {
-            jobId: job.id, label: job.label, exitCode, durationMs, reason: 'exitCode',
-          });
-        } else if (exitCode === 0) {
-          this._retryCounters.delete(job.id);
-          this._eventPublisher.publish('job.completed', { jobId: job.id, label: job.label, exitCode, durationMs });
-          // Trigger dependent jobs
-          for (const dep of this._registry.list().filter(j => j.dependsOn === job.id && j.enabled)) {
-            this._fireUnlessFull(dep, { kind: 'dependency', dependsOnJobId: job.id });
-          }
-          if (wasFailure) {
-            this._eventPublisher.publish('job.recovered', { jobId: job.id, label: job.label });
-          }
-          // Anomaly detection: emit if duration is 3x longer than rolling average
-          const avgMs = this._state.getRollingAvgDurationMs(job.id);
-          if (avgMs !== null && durationMs > 3 * avgMs) {
-            jobLogger.write(`[warn] Job ${job.id} took ${durationMs}ms (3x avg ${Math.round(avgMs)}ms) - anomaly detected`);
-            this._eventPublisher.publish('job.anomaly', { jobId: job.id, label: job.label, durationMs, avgMs: Math.round(avgMs), multiplier: 3 });
-          }
-        } else if (exitCode !== null) {
-          this._eventPublisher.publish('job.failed', { jobId: job.id, label: job.label, exitCode, durationMs });
-          // Consecutive-failure alert
-          const threshold = job.alertAfterFailures ?? 3;
-          const consecutive = this._state.getConsecutiveFailures(job.id);
-          if (consecutive >= threshold) {
-            this._eventPublisher.publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
-          }
-          // Retry on specific exit codes (extension point: hooks fire for each retry/exhaustion)
-          if (job.retryOnExitCodes?.includes(exitCode)) {
-            const attempts = this._retryCounters.get(job.id) ?? 0;
-            const delays   = job.retryDelays ?? [];
-            if (attempts < delays.length) {
-              const delayMs     = delays[attempts]! * 1000;
-              const nextAttempt = attempts + 1;
-              this._retryCounters.set(job.id, nextAttempt);
-              jobLogger.write(`[retry] attempt ${nextAttempt}/${delays.length} in ${delays[attempts]}s (exitCode=${exitCode})`);
-              void this._hookDispatcher?.dispatch('onJobRetry' as never, {
-                jobId: job.id, label: job.label, exitCode,
-                attempt: nextAttempt, totalAttempts: delays.length, delaySeconds: delays[attempts],
-              }, (err: unknown) => console.error('[hook:onJobRetry]', err));
-              this._deadlines.set(job.id, 'retry', this._time.now() + delayMs, () => {
-                this._fireUnlessFull(job, { kind: 'retry', attempt: nextAttempt });
-              });
-            } else {
-              this._retryCounters.delete(job.id);
-              jobLogger.write(`[retry] exhausted after ${delays.length} attempts (exitCode=${exitCode}) -- permanent failure`);
-              void this._hookDispatcher?.dispatch('onJobExhausted' as never, {
-                jobId: job.id, label: job.label, exitCode, attempts: delays.length,
-              }, (err: unknown) => console.error('[hook:onJobExhausted]', err));
-              this._eventPublisher.publish('alert.retry_exhausted', { jobId: job.id, label: job.label, exitCode, attempts: delays.length });
-            }
-          }
-        }
-
+        this._finishRun(
+          { job, trigger, startedAt, pid, jobLogger, telemetry, previousRunFailed },
+          { exitCode, finishedAt, durationMs, cancelledByUser, timedOut, killedByResourceLimit, peakCpuPct, peakRamMb },
+        );
         resolve({ exitCode });
       });
     });
