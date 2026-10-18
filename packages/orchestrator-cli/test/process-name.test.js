@@ -18,6 +18,10 @@ describe('parseProcessName', () => {
     assert.equal(parseProcessName('node\n', false), 'node');
   });
 
+  test('keeps only the file name of the full path macOS prints', () => {
+    assert.equal(parseProcessName('/opt/homebrew/Cellar/node/24.1.0/bin/node\n', false), 'node');
+  });
+
   test('returns nothing for empty output', () => {
     assert.equal(parseProcessName('', true), undefined);
     assert.equal(parseProcessName('\n  \n', false), undefined);
