@@ -209,7 +209,10 @@ jobs:
                   npm test --workspace=packages/app-module-orchestrator --if-present
                   if [ "$RUNNER_OS" = "Linux" ]; then
                       command -v strace >/dev/null || sudo apt-get install -y strace
-                      strace -f -qq --seccomp-bpf -e trace=kill,tkill,tgkill -o "$KILL_TRACE_LOG" npm test --workspace=packages/orchestrator-cli --if-present
+                      # -D: the tracer is a detached grandchild, so the step ends with npm. Without it strace waits for
+                      # every traced descendant, and the processes some tests leave behind (see the process table
+                      # report) held run 423 until the step timeout although all 958 tests had passed.
+                      strace -D -f -qq --seccomp-bpf -e trace=kill,tkill,tgkill -o "$KILL_TRACE_LOG" npm test --workspace=packages/orchestrator-cli --if-present
                   else
                       npm test --workspace=packages/orchestrator-cli --if-present
                   fi
@@ -225,14 +228,16 @@ jobs:
               if: failure() && runner.os != 'Windows'
               run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh dump
 
-            # What the machine said while the tests ran: every kill syscall (liveness checks, signal 0, left out)
-            # and the suspicious node kills, the memory, and the kernel log (an out-of-memory kill would show
-            # there). A source that cannot be read is said so, not skipped.
+            # What the machine said while the tests ran: every kill syscall and every signal received, with the
+            # sender's pid in si_pid (liveness checks, SIGCHLD, and the SIGURG the Go runtime sends itself all the
+            # time, left out), the suspicious node kills, the
+            # memory, and the kernel log (an out-of-memory kill would show there). A source that cannot be read
+            # is said so, not skipped.
             - name: Report the signals (ubuntu, tests failed)
               if: failure() && runner.os == 'Linux'
               run: |
                   echo "--- kill syscalls, sender pid first (strace), last 300"
-                  if [ -f "$KILL_TRACE_LOG" ]; then grep -v ', 0)' "$KILL_TRACE_LOG" | tail -300; else echo "no kill trace: strace did not run"; fi
+                  if [ -f "$KILL_TRACE_LOG" ]; then grep -E '(kill|tkill|tgkill)\(|--- SIG' "$KILL_TRACE_LOG" | grep -v -E 'SIGURG|SIGCHLD|, 0\)' | tail -300; else echo "no kill trace: strace did not run"; fi
                   echo "--- signal-trace.log (node kills at a group, init or a parent)"
                   if [ -f "$SIGNAL_TRACE_LOG" ]; then cat "$SIGNAL_TRACE_LOG"; else echo "empty: no such kill was recorded"; fi
                   echo "--- memory"

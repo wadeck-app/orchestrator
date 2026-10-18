@@ -52,8 +52,8 @@ case "${1:-}" in
     fi
     echo "--- processes by command, most numerous first"
     ps -axo comm | sed 's|.*/||' | sort | uniq -c | sort -rn | head -15
-    echo "--- node processes still alive (pid, ppid, age, command)"
-    ps -axo pid,ppid,etime,command | grep -E '[n]ode ' | cut -c1-200 | head -40
+    echo "--- node and supervisor processes still alive (pid, ppid, age, command)"
+    ps -axo pid,ppid,etime,command | grep -E '[n]ode |[o]rchestrator-supervisor' | cut -c1-200 | head -40
     ;;
   stop)
     [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
