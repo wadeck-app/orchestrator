@@ -151,6 +151,15 @@ jobs:
             # root: running from the package above it fails with "does not contain main module".
             - name: Run Go launcher tests
               run: go test ./...
+
+            # Evidence, not a fix. A macOS leg has repeatedly died in `Run tests` with
+            # `spawn <node> EAGAIN` (the process table was full when the test runner tried to start a
+            # test file), on a different push each time and never on ubuntu or windows. Who held the
+            # processes was never recorded, so this samples the process table during the tests and the
+            # step after them prints the limits, the peak, and what was still alive.
+            - name: Watch the process table (macOS)
+              if: runner.os == 'macOS'
+              run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh start
               working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
             # orch-ui is built here but was never tested, so its 11 test files failed to even
@@ -172,6 +181,10 @@ jobs:
               # down the whole suite finishes in ~13s, so it belongs back in CI: several
               # regressions shipped on 2026-09-15 would have been caught here.
               timeout-minutes: 5
+
+            - name: Report the process table (macOS, tests failed)
+              if: failure() && runner.os == 'macOS'
+              run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh dump
 
     publish:
         needs: build-and-test
