@@ -14,6 +14,24 @@ Status: decided and reviewed (2026-10-18), implementation in progress. Nothing h
 | 5 still open | the spike under the REAL launcher (tray start kills every tray on the machine, so it is not run on a dev machine), cases 13-14, a real `orch cli update` with a running job |
 | 6 flag default on, `orch stop` semantics (D5/D6), docs | open |
 
+### Live test on the real daemon (2026-10-18, Windows)
+
+Done with temporary `zz-live-*` jobs (removed afterwards) and with the real app-core server and the four real scrapers.
+
+| Scenario | Result |
+|---|---|
+| Update (`orch cli update`) with 3 to 6 supervised jobs running | daemon back in ~2 s, every run followed again, job output continuous, history entries open and supervised |
+| Restart with seven live jobs | all followed again; a startup job was not started a second time (skip recorded as `adopted`) |
+| Job still running 38 min after four daemon restarts | killed with `orch kill`: cancelled, `reason=manual-kill`; another one released: normal exit 0 with its full duration |
+| 85 s outage; one job ended at +1 s, two at +75 s, one hit its timeout | real exit codes and end times (log markers stamped with the real end), timeout marked, dependents fired only for the recent end, retry skipped with its reason for the old one |
+| Outage then retry chain | retry 1, retry 2 and "exhausted" ran in order after the restart |
+| Real app-core server under a supervisor, 31 s without a daemon | kept answering on :4850 from the same process, followed again at restart, no second copy |
+| The four real scrapers run supervised | exit 0; resource peaks (1361 / 1274 / 1538 MB) match their unsupervised ones |
+
+Defects the live test found, all fixed with a test first: the process-table lookup was done once per run (about a second each on Windows), which delayed readiness and made `orch restart` start a second daemon; that second daemon closed live runs as orphaned; a run that ended in front of the daemon was never marked handled and was replayed at the next start; a retry armed while recovering was dropped by `start()`; a run whose supervisor vanished was waited on for ever; and the command was cut at every letter `s` (a lost backslash), which made the four real scrapers fail with exit 1 for the one cycle they ran supervised.
+
+Known gaps after the live test: `orch stop` leaves supervised jobs running and there is no `--kill-jobs` yet; the daemon stdout echo of job output is gone; macOS and Linux were only exercised by CI.
+
 Confirmed by experiment: without `detachRuns()` a process that holds a supervised run never exits (test/detach-exit.test.js, with a negative control), which is the review's blocker B1 for the scheduler's own handles. Whether the rest of the real daemon exits is part of the real-update check.
 
 Dropped from the plan: a `dryRun` flag in spec.json. A dry run is `command + ' --dry-run'` fired like any other run today, events included, so adopting it as an ordinary run is the same behaviour.
