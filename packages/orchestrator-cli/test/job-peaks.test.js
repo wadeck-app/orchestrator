@@ -5,6 +5,7 @@
 // resource use is most worth knowing.
 const { test, describe, after } = require('node:test');
 const assert = require('node:assert/strict');
+const { PEAK_MEASURE_VERSION } = require('../src/types');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -277,7 +278,7 @@ describe('resource peaks are persisted while the job runs', () => {
     const state = new State(path.join(dir, 'state.json'));
     // Three finished runs are the minimum getResourceBaseline accepts.
     for (const [startedAt, cpu, ram] of [['a', 10, 100], ['b', 12, 110], ['c', 11, 105]]) {
-      state.record('j', { startedAt, finishedAt: 'x', exitCode: 0, peakCpuPct: cpu, peakRamMb: ram });
+      state.record('j', { startedAt, finishedAt: 'x', exitCode: 0, peakCpuPct: cpu, peakRamMb: ram, peakMeasure: PEAK_MEASURE_VERSION });
     }
     const before = state.getResourceBaseline('j');
     assert.ok(before, 'expected a baseline from three finished runs');

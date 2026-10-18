@@ -194,6 +194,19 @@ export type TriggerSource =
   | { kind: 'dependency'; dependsOnJobId: string }
   | { kind: 'retry'; attempt: number };
 
+/**
+ * Version of the method that measures a run's CPU and RAM peaks. Raise it whenever a change would make
+ * old peaks mean something different.
+ *
+ * 2: the process-tree guard compares creation times. Version 1 compared the age each process had when
+ * it was queried, so under load a real child queried seconds after its parent looked older and was
+ * dropped, and a job was recorded as its idle shell wrapper (17 MB where it weighs 130 MB). The hard
+ * budget is twice the average of past peaks, so the old figures cannot be mixed with correct ones:
+ * correct measurements would exceed a budget built from them, every run would be killed, and since only
+ * successful runs feed the baseline it would never recover.
+ */
+export const PEAK_MEASURE_VERSION = 2;
+
 export interface RuntimeEntry {
   startedAt: string;
   finishedAt?: string;
@@ -203,6 +216,13 @@ export interface RuntimeEntry {
   acknowledgedAt?: string;
   peakCpuPct?: number;
   peakRamMb?: number;
+  /**
+   * Which measurement method produced `peakCpuPct`/`peakRamMb`: PEAK_MEASURE_VERSION when the run was
+   * measured by the current sampler. Absent on runs recorded before it existed, whose peaks may have
+   * counted only the job's idle shell wrapper. The resource baseline ignores those; see
+   * PEAK_MEASURE_VERSION.
+   */
+  peakMeasure?: number;
   cancelledByUser?: boolean;
   /**
    * Set when the daemon deliberately did not do the work: the liveness check found the target

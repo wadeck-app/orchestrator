@@ -2,6 +2,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const { PEAK_MEASURE_VERSION } = require('../src/types');
 const fs   = require('node:fs');
 const path = require('node:path');
 const os   = require('node:os');
@@ -271,9 +272,9 @@ describe('getResourceBaseline', () => {
 
   test('returns correct average for 3+ runs', () => {
     const s = new State(tmpFile());
-    s.record('job-r', { startedAt: '2026-09-05T08:00:00Z', exitCode: 0, pid: 1, peakCpuPct: 10, peakRamMb: 100 });
-    s.record('job-r', { startedAt: '2026-09-05T09:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 20, peakRamMb: 200 });
-    s.record('job-r', { startedAt: '2026-09-05T10:00:00Z', exitCode: 0, pid: 3, peakCpuPct: 30, peakRamMb: 300 });
+    s.record('job-r', { startedAt: '2026-09-05T08:00:00Z', exitCode: 0, pid: 1, peakCpuPct: 10, peakRamMb: 100, peakMeasure: PEAK_MEASURE_VERSION });
+    s.record('job-r', { startedAt: '2026-09-05T09:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 20, peakRamMb: 200, peakMeasure: PEAK_MEASURE_VERSION });
+    s.record('job-r', { startedAt: '2026-09-05T10:00:00Z', exitCode: 0, pid: 3, peakCpuPct: 30, peakRamMb: 300, peakMeasure: PEAK_MEASURE_VERSION });
     const b = s.getResourceBaseline('job-r');
     assert.ok(b !== null, 'baseline should exist with 3 runs');
     assert.equal(b.cpuPct, 20, 'avg CPU = 20');
@@ -283,8 +284,8 @@ describe('getResourceBaseline', () => {
   test('ignores runs without resource data', () => {
     const s = new State(tmpFile());
     s.record('job-r', { startedAt: '2026-09-05T07:00:00Z', exitCode: 0, pid: 1 });  // no resource data
-    s.record('job-r', { startedAt: '2026-09-05T08:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 10, peakRamMb: 100 });
-    s.record('job-r', { startedAt: '2026-09-05T09:00:00Z', exitCode: 0, pid: 3, peakCpuPct: 20, peakRamMb: 200 });
+    s.record('job-r', { startedAt: '2026-09-05T08:00:00Z', exitCode: 0, pid: 2, peakCpuPct: 10, peakRamMb: 100, peakMeasure: PEAK_MEASURE_VERSION });
+    s.record('job-r', { startedAt: '2026-09-05T09:00:00Z', exitCode: 0, pid: 3, peakCpuPct: 20, peakRamMb: 200, peakMeasure: PEAK_MEASURE_VERSION });
     assert.equal(s.getResourceBaseline('job-r'), null, 'only 2 runs have resource data - should be null');
   });
 });

@@ -6,6 +6,7 @@
 // These tests hold the job log to saying what happened, and what the monitor saw when it decided.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const { PEAK_MEASURE_VERSION } = require('../src/types');
 const fs   = require('node:fs');
 const path = require('node:path');
 const os   = require('node:os');
@@ -32,7 +33,7 @@ function seedTinyBaseline(state, id) {
     state.record(id, {
       startedAt:  `2026-08-22T08:0${i}:00Z`,
       finishedAt: `2026-08-22T08:0${i}:05Z`,
-      exitCode: 0, pid: 100 + i, peakCpuPct: 0.001, peakRamMb: 0.001,
+      exitCode: 0, pid: 100 + i, peakCpuPct: 0.001, peakRamMb: 0.001, peakMeasure: PEAK_MEASURE_VERSION,
     });
   }
 }

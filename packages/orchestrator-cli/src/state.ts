@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import type { RuntimeEntry, StateData } from './types.js';
+import { PEAK_MEASURE_VERSION, type RuntimeEntry, type StateData } from './types.js';
 import { atomicWriteJson, readJsonFile, getErrorMessage } from './fsUtil.js';
 
 const MAX_HISTORY = 20;
@@ -140,6 +140,7 @@ export class State {
       ...(entry.acknowledgedAt !== undefined && { acknowledgedAt: entry.acknowledgedAt }),
       ...(entry.peakCpuPct      !== undefined && { peakCpuPct:      entry.peakCpuPct      }),
       ...(entry.peakRamMb       !== undefined && { peakRamMb:       entry.peakRamMb       }),
+      ...(entry.peakMeasure     !== undefined && { peakMeasure:     entry.peakMeasure     }),
       ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
       ...(entry.orphaned        !== undefined && { orphaned:        entry.orphaned        }),
       ...(entry.skipped         !== undefined && { skipped:         entry.skipped         }),
@@ -279,7 +280,9 @@ export class State {
     this._ensure();
     // Only use successful runs - failed/killed runs have abnormal resource usage that would bias the baseline
     const entries = (this._cache![id] ?? [])
-      .filter(e => e.exitCode === 0 && e.peakCpuPct != null && e.peakRamMb != null)
+      .filter(e => e.exitCode === 0 && e.peakCpuPct != null && e.peakRamMb != null
+        // Only peaks from the current method: older ones may be a shell wrapper's, see PEAK_MEASURE_VERSION.
+        && e.peakMeasure === PEAK_MEASURE_VERSION)
       .slice(0, n);
     if (entries.length < 3) {
       return null;

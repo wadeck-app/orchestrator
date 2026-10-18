@@ -16,7 +16,7 @@ import pidusage from 'pidusage';
 // a wrapper (cmd.exe / sh) that stays idle: sampling it alone reports ~0% CPU and only
 // the wrapper's own few MB of RAM. The real work happens in its descendants.
 import pidtree from 'pidtree';
-import type { Job, TriggerResult, TriggerSource } from './types.js';
+import { PEAK_MEASURE_VERSION, type Job, type TriggerResult, type TriggerSource } from './types.js';
 import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -140,9 +140,16 @@ export interface TimerReport {
 }
 
 /** Injection seam for the tests; production passes nothing and gets pidtree + pidusage. */
+/**
+ * What pidusage answers for one process. `elapsed` is its age at the moment THAT process was measured
+ * and `timestamp` that moment, so only their difference (the creation time) is comparable between
+ * processes. `timestamp` is optional because older fixtures and a few callers carry only `elapsed`.
+ */
+interface TreeSample { cpu: number; memory: number; elapsed: number; ppid: number; timestamp?: number }
+
 interface TreeDeps {
   tree:  (pid: number) => Promise<number[]>;
-  usage: (pid: number) => Promise<{ cpu: number; memory: number; elapsed: number; ppid: number }>;
+  usage: (pid: number) => Promise<TreeSample>;
 }
 
 /**
@@ -193,14 +200,22 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
   // a link to be real: the claimed parent is itself part of the job, and the child did not start
   // before it. Age alone would not do, since a stranger hanging off a recycled DESCENDANT pid is
   // younger than the root.
-  const byPid = new Map<number, { cpu: number; memory: number; elapsed: number; ppid: number }>();
+  const byPid = new Map<number, TreeSample>();
   for (const s of samples) if (s !== null) {
     byPid.set(s.pid, s.sample);
   }
 
   let cpuPct   = root.sample.cpu;
   let ramBytes = root.sample.memory;
-  const accepted = new Map([[rootPid, root.sample.elapsed]]);
+  // Creation times, not ages. `elapsed` is measured per process, and under load the answers arrive
+  // seconds apart: a real child measured three seconds after its parent then looked three seconds OLDER
+  // than it and was refused as a stranger, so the job was counted as its idle shell wrapper. That made
+  // the same job measure 17 MB on one run and 147 MB on another. timestamp - elapsed does not depend on
+  // when the process was asked about. A sample without a timestamp is taken as measured now, which is
+  // the old comparison of ages.
+  const measuredNow = Date.now();
+  const startOf = (sample: TreeSample): number => (sample.timestamp ?? measuredNow) - sample.elapsed;
+  const accepted = new Map([[rootPid, startOf(root.sample)]]);
   const counted: TreeProcess[] = [{ pid: rootPid, ppid: root.sample.ppid, ramMb: root.sample.memory / 1024 / 1024, cpuPct: root.sample.cpu }];
   let frontier = [rootPid];
   while (frontier.length > 0) {
@@ -214,11 +229,11 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
       if (!frontier.includes(sample.ppid)) {
         continue;
       }
-      const parentElapsed = accepted.get(sample.ppid)!;
-      if (sample.elapsed > parentElapsed + TREE_AGE_TOLERANCE_MS) {
+      const parentStart = accepted.get(sample.ppid)!;
+      if (startOf(sample) < parentStart - TREE_AGE_TOLERANCE_MS) {
         continue;
       }
-      accepted.set(pid, sample.elapsed);
+      accepted.set(pid, startOf(sample));
       cpuPct   += sample.cpu;
       ramBytes += sample.memory;
       counted.push({ pid, ppid: sample.ppid, ramMb: sample.memory / 1024 / 1024, cpuPct: sample.cpu });
@@ -1172,6 +1187,7 @@ export class Scheduler extends EventEmitter {
         retryAttempt: trigger.kind === 'retry' ? trigger.attempt : undefined,
         peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
         peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
+        peakMeasure: peakRamMb > 0 || peakCpuPct > 0 ? PEAK_MEASURE_VERSION : undefined,
       });
     };
 
@@ -1364,6 +1380,7 @@ export class Scheduler extends EventEmitter {
           startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
           peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
           peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
+          peakMeasure: peakRamMb > 0 || peakCpuPct > 0 ? PEAK_MEASURE_VERSION : undefined,
           cancelledByUser: cancelledByUser || undefined,
           skipped: skipped || undefined,
         });
