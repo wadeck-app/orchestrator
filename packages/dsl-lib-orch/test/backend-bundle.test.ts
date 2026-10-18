@@ -62,7 +62,7 @@ describe('the packaged backend', () => {
 
   it('uses no raw timer of its own: the log stream\'s poll goes through the context', () => {
     const source = fs.readFileSync(backendFile, 'utf8');
-    // The only setInterval left in the bundle is the global fallback orch-server uses when no timers are passed.
+    // The only setInterval left in the bundle is the global fallback orch-core uses when no timers are passed.
     expect(source).toMatch(/timers\.setInterval\(/);
     expect(source).not.toMatch(/\bpollTimer = setInterval\(/);
   });

@@ -3,7 +3,7 @@ import http from 'node:http';
 import Fastify from 'fastify';
 import { eventsRoute } from './events.js';
 import { IdleTimer } from '../idle-timer.js';
-import type { DaemonProxy } from '../daemon-proxy.js';
+import type { DaemonProxy } from '@wadeck-app/orch-core/daemon-proxy';
 
 function makeProxy(stateResult: unknown = {}): DaemonProxy {
   return {

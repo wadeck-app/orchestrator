@@ -4,7 +4,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import fastify, { type FastifyInstance } from 'fastify';
 import { logsRoutes } from './logs.js';
-import { IdleTimer } from '../idle-timer.js';
+import type { IdleSignal } from '../route-host.js';
+
+// The stream's idle bookkeeping is not what these tests are about.
+const noIdle = (): IdleSignal => ({ reset: () => undefined, addSseConnection: () => undefined, removeSseConnection: () => undefined });
 
 /*
  * Reported as: "with two jobs, opening the logs of the first AFTER the second was launched shows the
@@ -83,7 +86,7 @@ describe('the log stream stays on what the reader asked for', () => {
   beforeEach(async () => {
     configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logstream-'));
     app = fastify();
-    await app.register(logsRoutes, { configDir, idleTimer: new IdleTimer(0, () => {}) });
+    await app.register(logsRoutes, { configDir, idleTimer: noIdle() });
     await app.listen({ port: 0, host: '127.0.0.1' });
     const addr = app.server.address();
     base = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
@@ -156,7 +159,7 @@ describe('the poll timer of a log stream', () => {
     const app = fastify();
     await app.register(logsRoutes, {
       configDir,
-      idleTimer: new IdleTimer(0, () => {}),
+      idleTimer: noIdle(),
       timers: {
         setInterval: (_fn, ms) => { started.push(ms); return handle; },
         clearInterval: (h) => { cleared.push(h); },

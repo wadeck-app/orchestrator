@@ -4,14 +4,14 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModuleContext, ModuleRouteHandler } from '@wadeck-app/app-core-sdk';
-import { DaemonUnavailableError } from '@wadeck-app/orch-server/daemon-proxy';
+import { DaemonUnavailableError } from '@wadeck-app/orch-core/daemon-proxy';
 import { ALLOWED_ROUTES } from './routes.js';
 import backend, { createBackend } from './index.js';
 
 /*
  * A real Fastify instance stands in for app-core's server: it supports path parameters, which is the
  * contract this module is written against (`req.params` carries the module's own `:names`).
- * The daemon is replaced by a scripted client; what is under test is that orch-server's route files
+ * The daemon is replaced by a scripted client; what is under test is that orch-core's route files
  * come up inside a module, with exactly the routes the dashboard needs and no others.
  */
 type Send = (command: string, payload?: unknown) => Promise<unknown>;

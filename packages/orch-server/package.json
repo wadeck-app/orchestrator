@@ -5,14 +5,11 @@
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/index.js",
-    "./routes/jobs": "./src/routes/jobs.ts",
-    "./routes/logs": "./src/routes/logs.ts",
-    "./routes/open": "./src/routes/open.ts",
-    "./daemon-proxy": "./src/daemon-proxy.ts"
+    ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc --build tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "npm run typecheck && node scripts/bundle.mjs",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
     "copy-app": "node scripts/copy-app.mjs",
@@ -22,9 +19,11 @@
     "fastify": "^5.0.0",
     "@fastify/static": "^8.0.0",
     "@fastify/cors": "^10.0.0",
+    "@wadeck-app/orch-core": "*",
     "@wadeck-app/singleton-daemon-kit": "latest"
   },
   "devDependencies": {
+    "esbuild": "^0.25.12",
     "typescript": "*",
     "tsx": "*",
     "vitest": "*",

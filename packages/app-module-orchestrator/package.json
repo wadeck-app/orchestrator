@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@wadeck-app/dsl-lib-orch": "*",
-    "@wadeck-app/orch-server": "*",
+    "@wadeck-app/orch-core": "*",
     "@wadeck-app/shared-cli": "latest"
   },
   "devDependencies": {

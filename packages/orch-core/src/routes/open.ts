@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
-import type { FastifyInstance } from 'fastify';
-import type { IdleTimer } from '../idle-timer.js';
+import type { IdleSignal, RouteHost } from '../route-host.js';
 
 /**
  * Lets the dashboard open a file or a localhost page with the OS default handler. Chrome will not
@@ -117,7 +116,7 @@ export function resolveOpenTarget(raw: string, probe: FsProbe): OpenDecision {
 }
 
 export interface OpenRouteDeps {
-  idleTimer: Pick<IdleTimer, 'reset'>;
+  idleTimer: Pick<IdleSignal, 'reset'>;
   /** Hands a target to the OS. Replaceable so a test opens nothing. */
   open?: (target: string) => Promise<void>;
   fs?: FsProbe;
@@ -163,7 +162,7 @@ function describeError(err: unknown): string {
   return String(err);
 }
 
-export async function openRoute(fastify: FastifyInstance, opts: OpenRouteDeps): Promise<void> {
+export async function openRoute(fastify: RouteHost, opts: OpenRouteDeps): Promise<void> {
   const { idleTimer, open = openWithOs, fs: probe = realFs } = opts;
 
   fastify.get('/api/open', async (req, reply) => {

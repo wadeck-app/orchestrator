@@ -1,6 +1,5 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { IdleSignal, RouteHost, RouteReply } from '../route-host.js';
 import { DaemonProxy, DaemonUnavailableError } from '../daemon-proxy.js';
-import { IdleTimer } from '../idle-timer.js';
 
 interface HealthRunEntry {
   startedAt: string;
@@ -26,16 +25,16 @@ function newestRun(entries: HealthRunEntry[] | undefined): HealthRunEntry | null
  */
 export interface JobsRouteDeps {
   proxy: Pick<DaemonProxy, 'send'>;
-  idleTimer: Pick<IdleTimer, 'reset'>;
+  idleTimer: Pick<IdleSignal, 'reset'>;
 }
 
 export async function jobsRoutes(
-  fastify: FastifyInstance,
+  fastify: RouteHost,
   opts: JobsRouteDeps
 ): Promise<void> {
   const { proxy, idleTimer } = opts;
 
-  async function guard<T>(reply: FastifyReply, fn: () => Promise<T>): Promise<T | void> {
+  async function guard<T>(reply: RouteReply, fn: () => Promise<T>): Promise<T | RouteReply | void> {
     try {
       idleTimer.reset();
       return await fn();

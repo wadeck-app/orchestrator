@@ -7,7 +7,7 @@ function occupyPort(port: number): Promise<{ server: net.Server; port: number }>
     const server = net.createServer();
     server.listen(port, '127.0.0.1', () => {
       const addr = server.address();
-      const actualPort = typeof addr === 'object' ? addr.port : port;
+      const actualPort = typeof addr === 'object' && addr ? addr.port : port;
       resolve({ server, port: actualPort });
     });
     server.on('error', reject);

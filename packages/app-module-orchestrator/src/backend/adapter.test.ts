@@ -3,7 +3,7 @@ import type { ModuleRouteHandler } from '@wadeck-app/app-core-sdk';
 import { createRouteAdapter } from './adapter.js';
 
 /*
- * orch-server's route files register themselves on a Fastify instance (`fastify.get(path, handler)`).
+ * orch-core's route files register themselves on a Fastify instance (`fastify.get(path, handler)`).
  * A module has no Fastify instance, only `ctx.registerRoute(method, subPath, handler)`. The adapter
  * is the thin shim that lets those same route files run unchanged, and the allow-list is what keeps
  * the routes a dashboard UI does not need (secrets, exec) from being published by a module.
@@ -35,7 +35,8 @@ describe('createRouteAdapter', () => {
     const ctx = fakeCtx();
     const { app } = createRouteAdapter(ctx, ['GET /api/jobs']);
 
-    app.get('/api/jobs', { schema: {} }, handler);
+    // The route files only use the two-argument form; the shim tolerates Fastify's three-argument one anyway.
+    (app.get as (...args: unknown[]) => unknown)('/api/jobs', { schema: {} }, handler);
 
     expect(ctx.registerRoute).toHaveBeenCalledWith('GET', '/api/jobs', handler);
   });

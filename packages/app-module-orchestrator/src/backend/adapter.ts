@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { RouteHost } from '@wadeck-app/orch-core/route-host';
 import type { ModuleContext, ModuleRouteHandler } from '@wadeck-app/app-core-sdk';
 
 /** `METHOD /path`, exactly as the route file registers it, e.g. `POST /api/jobs/:id/kill`. */
@@ -9,18 +9,18 @@ const VERBS: readonly Verb[] = ['get', 'post', 'put', 'delete'];
 
 export interface RouteAdapter {
   /** Stands in for the Fastify instance the route files expect; only get/post/put/delete exist. */
-  app: FastifyInstance;
+  app: RouteHost;
   /** Routes the route files tried to register that the allow-list does not cover. */
   skipped: string[];
   /**
-   * Throws if an allowed route was never registered. Without it, a route renamed in orch-server
+   * Throws if an allowed route was never registered. Without it, a route renamed in orch-core
    * would simply vanish from the module and the page using it would 404 with no hint why.
    */
   assertAllRegistered: () => void;
 }
 
 /**
- * Lets orch-server's Fastify route files run inside an app-core module, where the only thing on
+ * Lets orch-core's route files run inside an app-core module, where the only thing on
  * offer is `ctx.registerRoute(method, subPath, handler)`.
  *
  * It is a shim and deliberately not a fake Fastify: anything beyond the four verbs (hooks,
@@ -68,7 +68,7 @@ export function createRouteAdapter(
         );
       };
     },
-  }) as unknown as FastifyInstance;
+  }) as unknown as RouteHost;
 
   return {
     app,
@@ -77,7 +77,7 @@ export function createRouteAdapter(
       const missing = allowed.filter(key => !registered.has(key));
       if (missing.length > 0) {
         throw new Error(
-          `app-module-orchestrator: ${missing.length} allowed route(s) were never registered by orch-server's route files: ${missing.join(', ')}. ` +
+          `app-module-orchestrator: ${missing.length} allowed route(s) were never registered by orch-core's route files: ${missing.join(', ')}. ` +
           'They were probably renamed or removed there; update ALLOWED_ROUTES.',
         );
       }

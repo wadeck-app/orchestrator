@@ -1,7 +1,7 @@
 import type { RouteKey } from './adapter.js';
 
 /**
- * The orch-server routes this module publishes, under app-core's /api/modules/orchestrator prefix.
+ * The orch-core routes this module publishes, under app-core's /api/modules/orchestrator prefix.
  *
  * What the dashboard pages and dsl-lib-orch components call, and nothing more. Left out on purpose:
  * secrets and exec (no page uses them), import/export (not wired in any page), heartbeat and
@@ -9,7 +9,7 @@ import type { RouteKey } from './adapter.js';
  *
  * /api/open is published because the log viewer's file links need it. It starts a program on the machine,
  * so it was only exposed once it stopped being able to run anything (documents and folders only, no shell,
- * not from another site): see orch-server's routes/open.ts.
+ * not from another site): see orch-core's routes/open.ts.
  */
 export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'GET /api/jobs',

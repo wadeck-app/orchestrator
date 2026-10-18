@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import fastify from 'fastify';
 import { jobsRoutes } from '../src/routes/jobs.js';
 import { DaemonProxy, DaemonUnavailableError } from '../src/daemon-proxy.js';
-import { IdleTimer } from '../src/idle-timer.js';
+import type { IdleSignal } from '../src/route-host.js';
 
 /**
  * The edit-job payload these tests assert on.
@@ -24,7 +24,7 @@ interface EditJobPayload {
 describe('Jobs API Routes', () => {
   let app: FastifyInstance;
   let mockProxy: Pick<DaemonProxy, 'send'>;
-  let idleTimer: Pick<IdleTimer, 'reset'>;
+  let idleTimer: Pick<IdleSignal, 'reset'>;
 
   beforeEach(async () => {
     app = fastify();
@@ -100,7 +100,7 @@ describe('Jobs API Routes', () => {
 
     it('returns 503 when daemon is unavailable', async () => {
       mockProxy.send = async () => {
-        throw new DaemonUnavailableError('Daemon down');
+        throw new DaemonUnavailableError();
       };
 
       const res = await app.inject({
@@ -383,7 +383,7 @@ describe('Jobs API Routes', () => {
 
     it('returns 503 when daemon unavailable', async () => {
       mockProxy.send = async () => {
-        throw new DaemonUnavailableError('Daemon down');
+        throw new DaemonUnavailableError();
       };
 
       const res = await app.inject({

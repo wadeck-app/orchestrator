@@ -1,0 +1,26 @@
+{
+  "name": "@wadeck-app/orch-core",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./route-host": "./src/route-host.ts",
+    "./daemon-proxy": "./src/daemon-proxy.ts",
+    "./routes/jobs": "./src/routes/jobs.ts",
+    "./routes/logs": "./src/routes/logs.ts",
+    "./routes/open": "./src/routes/open.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "fastify": "^5.0.0",
+    "typescript": "*",
+    "vitest": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

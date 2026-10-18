@@ -80,6 +80,12 @@ jobs:
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+            # orch-core (the logic orch-server and the module share) has no build of its own: both controllers
+            # bundle its TypeScript sources. This is the only place its types are checked on their own, apart
+            # from the checks each controller makes when it consumes them.
+            - name: Typecheck orch-core
+              run: npm run typecheck --workspace=packages/orch-core
+
             # orch-app and the module import the components from dsl-lib-orch sources, so there is nothing to
             # compile first. This step keeps what the former component-package build gave CI: a type error in a
             # component fails here, before the SPA build.
@@ -183,6 +189,7 @@ jobs:
             # two vitest projects in one invocation.
             - name: Run tests
               run: |
+                  npm test --workspace=packages/orch-core --if-present
                   npm test --workspace=packages/orch-server --if-present
                   npm test --workspace=packages/dsl-lib-orch --if-present
                   npm test --workspace=packages/app-module-orchestrator --if-present

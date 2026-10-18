@@ -28,7 +28,9 @@ opts out. `terminate` exists because shell guardrails often block the word `kill
 | Package | Role |
 |---|---|
 | `packages/orchestrator-cli` | Daemon + CLI entry point |
-| `packages/orch-server` | Fastify web dashboard (child process of daemon) |
+| `packages/orch-core` | Logic shared by both dashboard controllers: `DaemonProxy`, job/log/open routes, `RouteHost` seam. No Fastify or app-core import (guarded by a test); sources only, bundled by each consumer |
+| `packages/orch-server` | Fastify controller: bootstrap, static files, CORS, port file, idle exit (child process of daemon); bundled with orch-core into `dist/index.js` by `scripts/bundle.mjs` |
+| `packages/app-module-orchestrator` | app-core controller: `ctx.registerRoute` adapter + `ALLOWED_ROUTES` over orch-core; never imports orch-server |
 | `packages/orch-app` | React SPA served by orch-server |
 | `packages/dsl-lib-orch` | React domain components + the DSL library of the orchestrator app-core module; consumed by orch-app (`@wadeck-app/dsl-lib-orch/ui`) and `app-module-orchestrator` (`@wadeck-app/dsl-lib-orch`) |
 

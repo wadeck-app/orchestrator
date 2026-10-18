@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { DaemonProxy, DaemonUnavailableError } from '../daemon-proxy.js';
+import { DaemonProxy, DaemonUnavailableError } from '@wadeck-app/orch-core/daemon-proxy';
 import { IdleTimer } from '../idle-timer.js';
 
 const POLL_INTERVAL_MS = parseInt(process.env['ORCH_EVENTS_POLL_MS'] ?? '5000', 10);

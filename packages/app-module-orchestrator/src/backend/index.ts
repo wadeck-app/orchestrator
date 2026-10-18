@@ -1,8 +1,8 @@
 import type { ModuleContext } from '@wadeck-app/app-core-sdk';
-import { DaemonProxy } from '@wadeck-app/orch-server/daemon-proxy';
-import { jobsRoutes } from '@wadeck-app/orch-server/routes/jobs';
-import { logsRoutes, type LogsTimers } from '@wadeck-app/orch-server/routes/logs';
-import { openRoute } from '@wadeck-app/orch-server/routes/open';
+import { DaemonProxy } from '@wadeck-app/orch-core/daemon-proxy';
+import { jobsRoutes } from '@wadeck-app/orch-core/routes/jobs';
+import { logsRoutes, type LogsTimers } from '@wadeck-app/orch-core/routes/logs';
+import { openRoute } from '@wadeck-app/orch-core/routes/open';
 import { createRouteAdapter } from './adapter.js';
 import { getOrchConfigDir } from './configDir.js';
 import { ALLOWED_ROUTES } from './routes.js';
@@ -34,8 +34,8 @@ function contextTimers(ctx: BackendContext): LogsTimers {
 }
 
 /**
- * Runs orch-server's own route files inside the module, so the dashboard server and the module
- * answer identically and there is one implementation to keep right, not two.
+ * Runs orch-core's route files inside the module, the same ones orch-server serves, so the dashboard
+ * server and the module answer identically and there is one implementation to keep right, not two.
  */
 export function createBackend({ configDir, proxy }: BackendDeps): (ctx: BackendContext) => Promise<void> {
   return async (ctx) => {

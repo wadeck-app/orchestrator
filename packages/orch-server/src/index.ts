@@ -5,13 +5,13 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import { isAllowedOrigin } from './cors.js';
-import { DaemonProxy } from './daemon-proxy.js';
+import { DaemonProxy } from '@wadeck-app/orch-core/daemon-proxy';
 import { IdleTimer } from './idle-timer.js';
 import { findFreePort, writeDashboardPort, deleteDashboardPort } from './port.js';
-import { jobsRoutes } from './routes/jobs.js';
-import { logsRoutes } from './routes/logs.js';
+import { jobsRoutes } from '@wadeck-app/orch-core/routes/jobs';
+import { logsRoutes } from '@wadeck-app/orch-core/routes/logs';
 import { heartbeatRoute } from './routes/heartbeat.js';
-import { openRoute } from './routes/open.js';
+import { openRoute } from '@wadeck-app/orch-core/routes/open';
 // eventsRoute is co-located in heartbeat.ts (workaround for Fastify v5 + @fastify/static route loss)
 
 // Parse CLI args

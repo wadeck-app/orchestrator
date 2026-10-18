@@ -1,8 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
-import type { FastifyInstance } from 'fastify';
-import { IdleTimer } from '../idle-timer.js';
+import type { IdleSignal, RouteHost } from '../route-host.js';
 
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
 const POLL_INTERVAL_MS = 500;
@@ -41,13 +40,6 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * What these handlers use of the idle timer. Structural, like jobs.ts: the dashboard server passes
- * its real IdleTimer, while an app-core module passes a no-op, because app-core has no idle exit
- * to postpone.
- */
-export type LogsIdleTimer = Pick<IdleTimer, 'reset' | 'addSseConnection' | 'removeSseConnection'>;
-
-/**
  * Where the stream's poll timer comes from. The dashboard server uses the global timers; an app-core
  * module passes its context's, which app-core clears when the module is unloaded or swapped.
  * The handle is opaque: whatever setInterval returns is what clearInterval gets back.
@@ -63,8 +55,8 @@ const GLOBAL_TIMERS: LogsTimers = {
 };
 
 export async function logsRoutes(
-  fastify: FastifyInstance,
-  opts: { configDir: string; idleTimer: LogsIdleTimer; timers?: LogsTimers }
+  fastify: RouteHost,
+  opts: { configDir: string; idleTimer: IdleSignal; timers?: LogsTimers }
 ): Promise<void> {
   const { configDir, idleTimer, timers = GLOBAL_TIMERS } = opts;
 

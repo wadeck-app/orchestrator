@@ -10,6 +10,7 @@ A local job scheduler daemon with systray integration, CLI, and a web dashboard.
 orchestrator/
   packages/
     orchestrator-cli/    daemon, CLI, scheduler, tray manager, dashboard process manager
+    orch-core/           route logic + daemon proxy shared by orch-server and the app-core module
     orch-server/         Fastify HTTP server — REST API + static SPA serving
     dsl-lib-orch/        React domain components (JobCard, LogViewer, JobForm, etc.) + DSL registry entries for the app-core module
     orch-app/            Vite SPA (pages, routes, heartbeat)
