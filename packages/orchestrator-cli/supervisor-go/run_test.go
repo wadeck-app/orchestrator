@@ -306,3 +306,24 @@ func TestHeartbeatCarriesACounterThatKeepsGrowing(t *testing.T) {
 	writeKill(t, runDir)
 	finish(t, done)
 }
+
+// The daemon writes `kill` and then ends the tree itself, so on a fast machine the job can be gone before the
+// supervisor next looks at the file. The reason must be recorded all the same: it is what tells a kill from a crash.
+func TestRecordsTheKillReasonEvenWhenTheJobDiedBeforeTheNextLook(t *testing.T) {
+	dir := t.TempDir()
+	// A heartbeat this slow makes the supervisor look for `kill` only every 250 ms, and the job ends sooner.
+	runDir, done := startRun(t, Spec{Command: jsCommand(t, dir, `setTimeout(() => {}, 100)`), HeartbeatMs: 5000})
+	waitFor(t, "the job to run", func() bool {
+		data, err := os.ReadFile(filepath.Join(runDir, "status.json"))
+		return err == nil && strings.Contains(string(data), `"running"`)
+	})
+	if err := os.WriteFile(filepath.Join(runDir, "kill"), []byte("manual"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	finish(t, done)
+
+	st := readStatus(t, runDir)
+	if !st.Killed || st.KillReason != "manual" {
+		t.Fatalf("a kill requested while the job was ending must still be recorded, got %+v", st)
+	}
+}

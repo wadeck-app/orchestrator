@@ -166,7 +166,7 @@ export async function startSupervised(options: SupervisorOptions, request: Super
     timeoutSeconds: request.timeoutSeconds > 0 ? request.timeoutSeconds + margin : 0,
     heartbeatMs,
     // What a finished run needs to be understood by whoever finds it, even if the job was edited or deleted since.
-    context: { jobId: request.jobId, label: request.label, trigger: request.trigger },
+    context: { jobId: request.jobId, label: request.label, trigger: request.trigger, startedAt: request.startedAt },
   };
   fs.writeFileSync(path.join(runDir, 'spec.json'), JSON.stringify(spec));
 

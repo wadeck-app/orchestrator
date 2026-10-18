@@ -216,6 +216,12 @@ func Run(runDir string) int {
 		}
 	}
 
+	// The daemon ends the tree itself as well as writing `kill`, so the job can be gone before the poll above
+	// ever saw the file. A kill asked for while it was ending is still a kill, and the reason must survive.
+	if !final.Killed && fileExists(filepath.Join(runDir, "kill")) {
+		final.Killed = true
+		final.KillReason = killReason(filepath.Join(runDir, "kill"))
+	}
 	final.State = "exited"
 	final.FinishedAt = stamp(time.Now())
 	final.ExitCode, final.Signal = exitOf(cmd.ProcessState)

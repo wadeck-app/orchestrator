@@ -207,6 +207,7 @@ async function main(): Promise<void> {
       catchUpInitialDelayMs: daemonCfg.catchUpInitialDelaySeconds * 1000,
       catchUpStaggerMs:      daemonCfg.catchUpStaggerSeconds * 1000,
       hookDispatcher,
+      lateActionWindowMs: daemonCfg.lateActionWindowMinutes * 60_000,
       supervisor: supervisorFor({
         enabled:   daemonCfg.supervisedJobs,
         configDir: CONFIG_DIR,
@@ -214,6 +215,20 @@ async function main(): Promise<void> {
         log:       (line) => daemonLog.write(line),
       }),
     });
+
+    // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must
+    // not be closed as "orphaned" below. Nothing fires before this is done.
+    const recovered = await scheduler.recoverRuns();
+    if (recovered.finalized > 0 || recovered.cleaned > 0) {
+      daemonLog.write(`recovered ${recovered.finalized} run(s) that ended while the daemon was down, cleaned ${recovered.cleaned}`);
+    }
+    if (recovered.stillRunning > 0) {
+      // Adopting a run that is still going is not implemented yet: said, not hidden.
+      daemonLog.write(`${recovered.stillRunning} supervised run(s) still going: they keep running, but this daemon does not follow them yet`);
+    }
+    for (const problem of recovered.unreadable) {
+      daemonLog.write(`recovery: ${problem}`);
+    }
 
     // Before anything reads the state: runs left open by a previous daemon can never be closed by
     // an event, so they would count as active for good. One such entry from two weeks earlier was

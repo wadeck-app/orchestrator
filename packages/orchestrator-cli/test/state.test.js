@@ -72,6 +72,24 @@ describe('record()', () => {
     assert.equal(raw.jobs['job-a'].length, 1);
   });
 
+  // The end of a supervised run is recorded here and only then marked done on disk: if the daemon died between
+  // the two with the entry still in the 500 ms batch, the real exit code would be lost for good.
+  test('flushNow() puts what was recorded on disk at once, and the daemon keeps running', () => {
+    const f = tmpFile();
+    const s = new State(f);
+    s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 7, pid: 1 });
+    s.flushNow();
+    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+    assert.equal(raw.jobs['job-a'][0].exitCode, 7);
+    s.record('job-a', { startedAt: '2026-08-22T09:00:00Z', exitCode: 0, pid: 1 });
+    assert.equal(s.get('job-a').exitCode, 0, 'the state is still usable after a flush');
+  });
+
+  test('flushNow() with nothing pending writes nothing and does not throw', () => {
+    const s = new State(tmpFile());
+    assert.doesNotThrow(() => s.flushNow());
+  });
+
   test('record() alone does not write synchronously (writes are batched)', () => {
     const f = tmpFile();
     const s = new State(f);

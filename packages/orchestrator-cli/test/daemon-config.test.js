@@ -164,3 +164,23 @@ describe('supervisedJobs', () => {
     assert.match(warnings[0], /supervisedJobs/);
   });
 });
+
+describe('lateActionWindowMinutes', () => {
+  test('a run that ended while the daemon was down may still retry for half an hour', () => {
+    assert.equal(withConfig(null).config.lateActionWindowMinutes, 30);
+    assert.equal(withConfig('lateActionWindowMinutes: 5\n').config.lateActionWindowMinutes, 5);
+  });
+
+  test('0 is valid and means that a late end never retries nor fires dependents', () => {
+    const { config, warnings } = withConfig('lateActionWindowMinutes: 0\n');
+    assert.equal(config.lateActionWindowMinutes, 0);
+    assert.deepEqual(warnings, []);
+  });
+
+  test('a negative or fractional value is reported and the default kept', () => {
+    const { config, warnings } = withConfig('lateActionWindowMinutes: -3\n');
+    assert.equal(config.lateActionWindowMinutes, 30);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /lateActionWindowMinutes/);
+  });
+});

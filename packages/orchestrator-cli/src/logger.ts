@@ -42,8 +42,9 @@ export class RunLogger {
     RunLogger._prune(logDir, prefix);
   }
 
-  write(line: string): void {
-    const ts    = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  /** `at` is for a line about something that happened earlier than now, such as the end of a run learned late. */
+  write(line: string, at: Date = new Date()): void {
+    const ts    = at.toISOString().replace('T', ' ').slice(0, 19);
     const entry = `[${ts}] ${line}\n`;
     if (this._fd >= 0) {
       try {

@@ -13,6 +13,11 @@ export interface DaemonConfig {
    * while the daemon restarts or updates (default: false while the feature is being proven).
    */
   supervisedJobs?: boolean;
+  /**
+   * A run that ended while the daemon was down is always recorded and announced; it only retries and fires its
+   * dependents if it ended at most this many minutes before the daemon came back (default: 30). 0 never does.
+   */
+  lateActionWindowMinutes?: number;
   /** Seconds to wait after daemon start before firing the first catch-up job (default: 300) */
   catchUpInitialDelaySeconds?: number;
   /** Seconds between consecutive catch-up jobs on startup (default: 300) */
@@ -31,6 +36,7 @@ const DEFAULTS: Required<DaemonConfig> = {
   autoUpdate:                  true,
   appCore:                     true,
   supervisedJobs:              false,
+  lateActionWindowMinutes:     30,
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,
   // From the registry, so the documented default and the one a Registry built without options uses
@@ -52,6 +58,7 @@ const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeIn
   autoUpdate:                 'boolean',
   appCore:                    'boolean',
   supervisedJobs:             'boolean',
+  lateActionWindowMinutes:    'nonNegativeInt',
   catchUpInitialDelaySeconds: 'nonNegativeInt',
   catchUpStaggerSeconds:      'nonNegativeInt',
   onceRetentionDays:          'nonNegativeInt',

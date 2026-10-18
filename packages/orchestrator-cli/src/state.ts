@@ -201,6 +201,25 @@ export class State {
       .map(e => ({ ...e }));
   }
 
+  /** The run of a job that started at exactly `startedAt`, or null. */
+  getRun(id: string, startedAt: string): RuntimeEntry | null {
+    this._ensure();
+    const found = (this._cache![id] ?? []).find(e => e.startedAt === startedAt);
+    return found === undefined ? null : { ...found };
+  }
+
+  /** The newest run of the job that started before `startedAt`: the run a given run follows. */
+  getRunBefore(id: string, startedAt: string): RuntimeEntry | null {
+    this._ensure();
+    let newest: RuntimeEntry | undefined;
+    for (const e of this._cache![id] ?? []) {
+      if (e.startedAt < startedAt && (newest === undefined || e.startedAt > newest.startedAt)) {
+        newest = e;
+      }
+    }
+    return newest === undefined ? null : { ...newest };
+  }
+
   getAll(): Record<string, RuntimeEntry[]> {
     this._ensure();
     if (!fs.existsSync(this._file)) {
@@ -340,6 +359,15 @@ export class State {
       delete this._cache![id];
       this._scheduledFlush();
     }
+  }
+
+  /**
+   * Writes whatever is pending now instead of at the next 500 ms tick. For the moments when the record is the
+   * only copy of a fact that cannot be learned again, such as the exit code of a run that is about to be marked
+   * as fully handled.
+   */
+  flushNow(): void {
+    this.shutdown();
   }
 
   shutdown(): void {
