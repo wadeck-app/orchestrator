@@ -24,6 +24,8 @@ import { isFailure } from './state.js';
 import { systemTime, waitUntil, type TimeService, type Timer } from './time-service.js';
 import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
+import { lookupProcessName } from './process-name.js';
+import { JobTelemetry } from './job-telemetry.js';
 
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess;
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
@@ -47,6 +49,11 @@ interface SchedulerOptions {
    */
   sampleUsage?:           (rootPid: number) => Promise<TreeUsage | null>;
   /**
+   * How a pid is turned into an executable name for the line a resource-limit kill writes. Defaults to
+   * tasklist/ps. Injectable so a test does not depend on which processes the machine happens to run.
+   */
+  processName?:           (pid: number) => Promise<string | undefined>;
+  /**
    * How often the resource monitor samples. Lowered in tests.
    *
    * Needed alongside sampleUsage to test the overlap guard at all: overlap only happens when a
@@ -65,9 +72,29 @@ interface SchedulerOptions {
   time?:                  TimeService;
 }
 
+/** One process the monitor counted towards a job. */
+export interface TreeProcess {
+  pid:    number;
+  ppid:   number;
+  ramMb:  number;
+  cpuPct: number;
+}
+
 export interface TreeUsage {
   cpuPct: number;
   ramMb:  number;
+  /**
+   * What the totals were made of, biggest memory first. Absent from a sampler that cannot say.
+   *
+   * Kept because a total alone cannot answer the question a kill raises: "was that the job, or
+   * something counted against it by mistake". The same job measured 17 MB in one run and 147 MB in
+   * another, and nothing recorded which processes made up either figure.
+   */
+  processes?: TreeProcess[];
+  /** Processes the tree walk offered. Against `counted`, it shows how many were refused as not ours. */
+  walked?:    number;
+  /** Processes that were counted. */
+  counted?:   number;
 }
 
 /** One job's intent, as configured, next to what the scheduler has actually armed for it. */
@@ -174,6 +201,7 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
   let cpuPct   = root.sample.cpu;
   let ramBytes = root.sample.memory;
   const accepted = new Map([[rootPid, root.sample.elapsed]]);
+  const counted: TreeProcess[] = [{ pid: rootPid, ppid: root.sample.ppid, ramMb: root.sample.memory / 1024 / 1024, cpuPct: root.sample.cpu }];
   let frontier = [rootPid];
   while (frontier.length > 0) {
     const next: number[] = [];
@@ -193,11 +221,18 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
       accepted.set(pid, sample.elapsed);
       cpuPct   += sample.cpu;
       ramBytes += sample.memory;
+      counted.push({ pid, ppid: sample.ppid, ramMb: sample.memory / 1024 / 1024, cpuPct: sample.cpu });
       next.push(pid);
     }
     frontier = next;
   }
-  return { cpuPct, ramMb: ramBytes / 1024 / 1024 };
+  return {
+    cpuPct,
+    ramMb: ramBytes / 1024 / 1024,
+    processes: counted.sort((a, b) => b.ramMb - a.ramMb),
+    walked: pids.length,
+    counted: counted.length,
+  };
 }
 
 export class Scheduler extends EventEmitter {
@@ -240,6 +275,7 @@ export class Scheduler extends EventEmitter {
   private readonly _hookDispatcher:  HookDispatcher | null;
   private readonly _peakFlushMs:     number;
   private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
+  private readonly _processName:     (pid: number) => Promise<string | undefined>;
   private readonly _sampleIntervalMs: number;
   private readonly _retryCounters  = new Map<string, number>();
   /**
@@ -278,6 +314,7 @@ export class Scheduler extends EventEmitter {
     this._hookDispatcher        = options.hookDispatcher        ?? null;
     this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
     this._sampleUsage           = options.sampleUsage           ?? sampleProcessTree;
+    this._processName           = options.processName           ?? lookupProcessName;
     this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
     // Said out loud rather than swallowed: a deadline callback that throws is a job that will not run,
     // and the queue keeps going so one broken job cannot stop the others. Silence here would make the
@@ -756,6 +793,47 @@ export class Scheduler extends EventEmitter {
    * and returns, so killJob answered `killed: true` while every process was still running and the
    * dashboard showed the job as killed on the strength of a promise nobody held.
    */
+  /**
+   * The run's telemetry file, or null when it cannot be opened. A job id the file name cannot carry
+   * (older registries allowed more than the current rule) costs the record, never the run, and says so
+   * in the job's own log.
+   */
+  private _openTelemetry(jobId: string, startedAt: string, pid: number | null | undefined, jobLogger: RunLogger): JobTelemetry | null {
+    try {
+      return new JobTelemetry(this._configDir, jobId, startedAt, pid, {
+        onWarn: (message) => jobLogger.write(`[resource-monitor] ${message}`),
+      });
+    } catch (err) {
+      jobLogger.write(`[resource-monitor] no telemetry kept for this run: ${getErrorMessage(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * One log line saying what the monitor was counting when it decided: how many processes of how many
+   * walked, and the biggest few with their executable. Null when the sampler gave no breakdown.
+   *
+   * Never rejects and never takes long. A name that cannot be found is simply left out, because this
+   * runs on the way to a kill that has to happen regardless.
+   */
+  private async _describeTree(usage: TreeUsage): Promise<string | null> {
+    if (usage.processes === undefined || usage.processes.length === 0) {
+      return null;
+    }
+    const top = usage.processes.slice(0, 5);
+    const timeout = new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 2000).unref());
+    const names = await Promise.all(top.map(p =>
+      Promise.race([this._processName(p.pid), timeout]).catch((): undefined => undefined)));
+    const parts = top.map((p, i) => {
+      const name = names[i] === undefined ? '' : ` ${names[i]}`;
+      return `pid ${p.pid}${name} (parent ${p.ppid}) ${Math.round(p.ramMb)}MB`;
+    });
+    const scope = usage.walked !== undefined && usage.counted !== undefined
+      ? `${usage.counted} of ${usage.walked} processes counted; `
+      : '';
+    return `[resource-monitor] Process tree at kill: ${scope}biggest: ${parts.join(', ')}`;
+  }
+
   private async _killChildAsync(child: ChildProcess): Promise<void> {
     if (child.pid !== undefined) {
       await killTree(child.pid);
@@ -1059,6 +1137,10 @@ export class Scheduler extends EventEmitter {
     const baseline      = this._state.getResourceBaseline(job.id);
     const softThreshold = baseline ? { cpuPct: baseline.cpuPct * 1.2, ramMb: baseline.ramMb * 1.2 } : null;
     const hardThreshold = baseline ? { cpuPct: baseline.cpuPct * 2.0, ramMb: baseline.ramMb * 2.0 } : null;
+    // What the monitor sees of this run, kept next to the job for later. Opened here so the thresholds
+    // it enforces are the first thing in the record.
+    const telemetry = this._openTelemetry(job.id, startedAt, pid, jobLogger);
+    telemetry?.event('start', { soft: softThreshold, hard: hardThreshold });
     /**
      * Writes the peaks measured so far onto the in-flight entry.
      *
@@ -1077,6 +1159,8 @@ export class Scheduler extends EventEmitter {
     // after close cannot call flushPeaks() and overwrite finishedAt with exitCode:null.
     // clearInterval cannot retract a Promise already in-flight, so this flag is the guard.
     let jobFinished  = false;
+    /** The monitor stopped this run. Reported in [job:finished], or its exit code reads as the job failing. */
+    let killedByResourceLimit = false;
     const flushPeaks = (): void => {
       if (!peakDirty || jobFinished) {
         return;
@@ -1148,6 +1232,7 @@ export class Scheduler extends EventEmitter {
           }
           const cpuPct = usage.cpuPct;
           const ramMb  = usage.ramMb;
+          telemetry?.sample({ cpuPct, ramMb, walked: usage.walked, counted: usage.counted, processes: usage.processes });
           if (cpuPct > peakCpuPct) { peakCpuPct = cpuPct; peakDirty = true; }
           if (ramMb  > peakRamMb)  { peakRamMb  = ramMb;  peakDirty = true; }
           // Throttled here rather than inside flushPeaks, so the kill paths below can force a
@@ -1180,14 +1265,30 @@ export class Scheduler extends EventEmitter {
               // Guarded even with the in-flight check above: a walk that had already resolved when
               // the kill started must not announce a second one. One kill, one event, one _killChild.
               killing = true;
+              killedByResourceLimit = true;
               const msg = `[warn] Hard resource limit exceeded for ${hardBreaches} consecutive samples (${over}) - killing`;
               try { process.stderr.write(msg + '\n'); } catch { /* EPIPE */ }
+              // In the job's own log as well: stderr is the daemon's, which reaches no file, so a kill
+              // that left only that read as the job failing by itself ("Over hard budget 2/3", then
+              // "[job:finished] exitCode=1").
+              jobLogger.write(`[resource-monitor] Hard limit exceeded for ${hardBreaches}/${HARD_BREACHES_TO_KILL} consecutive samples (${over}) - killing the process tree`);
               this._eventPublisher.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
               resourceTimer?.cancel();
               // Forced before the kill: the numbers that justified killing this job are the ones
               // most worth keeping, and clearing the timer above means no later sample will write.
               flushPeaks();
-              this._killChild(child);
+              telemetry?.event('resource-kill', { consecutiveSamples: hardBreaches, cpuPct, ramMb });
+              // Names are looked up while the processes are still alive, so the kill waits for them,
+              // bounded. A job that ended on its own meanwhile is left alone.
+              void this._describeTree(usage).then((line) => {
+                if (line !== null) {
+                  jobLogger.write(line);
+                }
+              }).finally(() => {
+                if (!jobFinished) {
+                  this._killChild(child);
+                }
+              });
             }
           }
         }).catch((err: unknown) => {
@@ -1266,7 +1367,12 @@ export class Scheduler extends EventEmitter {
           cancelledByUser: cancelledByUser || undefined,
           skipped: skipped || undefined,
         });
-        const finishedReason = timedOut ? ' reason=timeout' : cancelledByUser ? ' reason=manual-kill' : '';
+        const reason = timedOut ? 'timeout'
+          : cancelledByUser ? 'manual-kill'
+          : killedByResourceLimit ? 'resource-limit'
+          : undefined;
+        const finishedReason = reason === undefined ? '' : ` reason=${reason}`;
+        telemetry?.event('end', { exitCode, durationMs, reason });
         jobLogger.write(skipped
           ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
           : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`);

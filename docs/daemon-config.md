@@ -95,6 +95,43 @@ onceRetentionDays: 360
 onceRetentionMaxJobs: 50
 ```
 
+## Resource monitor
+
+While a job runs, the daemon samples the CPU and RAM of its whole process tree every 2 seconds. From
+the job's third successful run on it holds the run to twice that baseline (the hard budget) and kills
+it after 3 consecutive samples over it. Everything it sees is in the job's own log
+(`orch logs --job <id>`):
+
+```
+[resource-monitor] Over hard budget 1/3 (CPU: ... / RAM: 147MB threshold: 130MB)
+[resource-monitor] Hard limit exceeded for 3/3 consecutive samples (...) - killing the process tree
+[resource-monitor] Process tree at kill: 3 of 4 processes counted; biggest: pid 4242 node.exe (parent 1000) 120MB, ...
+[job:finished] exitCode=1 duration=41.2s reason=resource-limit
+```
+
+`reason=resource-limit` tells a kill by the monitor from the job failing on its own. The "3 of 4
+processes counted" part says how many processes the tree walk offered against how many were attributed
+to the job: a process refused as not the job's (it predates the job, or hangs off a recycled pid) is
+the difference between a total that is the job's and one that is not.
+
+### Telemetry file
+
+Every sample is also kept in `<configDir>/telemetry/<jobId>.ndjson`, one JSON object per line, so a
+UI can draw a job's history and an incident can be read after the fact. It is a record only: failing
+to write it is reported once in the job's log and never affects the run.
+
+| `kind` | When | Fields besides `t`, `run`, `pid` |
+|--------|------|----------------------------------|
+| `start` | The run begins | `soft`, `hard`: the `{ cpuPct, ramMb }` thresholds it is held to, or `null` before there is a baseline |
+| `sample` | Every 2 s | `cpuPct`, `ramMb`, `walked`, `counted`, and the 5 biggest `processes` (`pid`, `ppid`, `ramMb`, `cpuPct`) |
+| `resource-kill` | The monitor decides to kill | `consecutiveSamples`, `cpuPct`, `ramMb` |
+| `end` | The run closes | `exitCode`, `durationMs`, `reason` (`timeout`, `manual-kill`, `resource-limit`, absent for an ordinary finish) |
+
+`t` is the time of the line (ISO), `run` the run's `startedAt`, so lines of different runs in the same
+file are told apart. The file is rotated at 2 MiB to `<jobId>.1.ndjson`, and only that one older file
+is kept: at most about 4 MiB per job. It sits beside the logs but outside the logs folder, because the
+log viewer lists a job's runs by file name.
+
 ## app-core module
 
 At every start the daemon tells app-core where the dashboard module lives

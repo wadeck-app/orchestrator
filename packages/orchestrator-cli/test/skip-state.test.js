@@ -19,9 +19,15 @@ function makeState() {
   return new State(path.join(dir, 'state.json'));
 }
 
-/** Records runs oldest-first, so the last argument ends up as the latest run. */
+/**
+ * Records runs oldest-first, so the last argument ends up as the latest run.
+ *
+ * Relative to now, not a calendar date: the uptime looks at the last 30 days, and this used to start
+ * at a fixed 2026-09-18, so the tests passed for exactly 30 days and then failed on a morning
+ * nobody had touched anything.
+ */
 function record(state, id, runs) {
-  let t = Date.parse('2026-09-18T08:00:00.000Z');
+  let t = Date.now() - 60 * 60 * 1000;
   for (const run of runs) {
     const startedAt = new Date(t).toISOString();
     t += 60_000;
