@@ -27,13 +27,22 @@ import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
-import { SupervisedChild, type SupervisedRequest } from './supervised-run.js';
+import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartOf, type ProcessStartFn, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
 
 // May be async: starting a job under a supervisor means waiting for its status file.
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess | Promise<ChildProcess>;
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   return typeof (value as { then?: unknown }).then === 'function';
+}
+
+/** What following a run needs to know about it. */
+type MonitorContext = Omit<RunContext, 'telemetry'>;
+
+/** What a run found again after a restart brings with it. */
+interface ResumeState {
+  peakCpuPct: number;
+  peakRamMb:  number;
 }
 
 /** What the end of a run needs to know about the run, however the end was learned. */
@@ -58,6 +67,8 @@ interface SupervisedSpec {
 /** What the supervisor wrote in status.json, as far as recovery needs it. */
 interface SupervisedStatus {
   state: 'running' | 'exited' | 'failed-to-start';
+  supervisorPid: number;
+  supervisorStartedAt: string;
   childPid?: number;
   finishedAt?: string;
   exitCode?: number;
@@ -73,8 +84,12 @@ export interface RecoveryReport {
   finalized: number;
   /** Folders of runs already fully handled, removed. */
   cleaned: number;
-  /** Runs still going. */
-  stillRunning: number;
+  /** Runs still going whose job this daemon now follows again. */
+  adopted: number;
+  /** Runs whose supervisor is gone without having recorded an end; each entry says which. */
+  lost: string[];
+  /** Runs another live daemon already follows, left to it. */
+  followedElsewhere: number;
   /** Folders that could not be read, left in place; each entry says which and why. */
   unreadable: string[];
 }
@@ -120,6 +135,8 @@ interface SchedulerOptions {
   catchUpInitialDelayMs?: number;
   /** A run that ended while the daemon was down still retries and fires its dependents if it ended within this many ms (default 30 min). */
   lateActionWindowMs?:    number;
+  /** When a process started, for telling a supervisor from a stranger that reused its pid (default: from the OS). */
+  processStart?:          ProcessStartFn;
   catchUpStaggerMs?:      number;
   hookDispatcher?:        HookDispatcher;
   /** How often a running job's resource peaks are written to state. Lowered in tests. */
@@ -396,6 +413,13 @@ export class Scheduler extends EventEmitter {
   private readonly _skippedJobs    = new Map<string, number>();
   private readonly _catchUpInitialDelayMs: number;
   private readonly _lateActionWindowMs: number;
+  private readonly _processStart: ProcessStartFn;
+  /** `<jobId>|<startedAt>` of every run this daemon found going after a restart and follows again. */
+  private readonly _followed = new Set<string>();
+  /** Stops following the supervised runs without ending them, one per run (see detachRuns). */
+  private readonly _detachers = new Set<() => void>();
+  /** Ids of the jobs whose run was found going, to announce once the tray is listening. */
+  private readonly _adoptedIds: string[] = [];
   private readonly _catchUpStaggerMs:      number;
   private readonly _hookDispatcher:  HookDispatcher | null;
   private readonly _peakFlushMs:     number;
@@ -437,6 +461,7 @@ export class Scheduler extends EventEmitter {
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._lateActionWindowMs    = options.lateActionWindowMs    ?? 30 * 60_000;
+    this._processStart          = options.processStart          ?? processStartOf;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
     this._hookDispatcher        = options.hookDispatcher        ?? null;
     this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
@@ -496,10 +521,10 @@ export class Scheduler extends EventEmitter {
               const delayMs = catchUpStaggerMs;
               catchUpStaggerMs += this._catchUpStaggerMs;
               if (delayMs === 0) {
-                void this._maybeSpawn(job);
+                void this._maybeSpawn(job, { kind: 'cron' }, true);
               } else {
                 this._deadlines.set(job.id, 'catch-up', this._time.now() + delayMs,
-                  () => { void this._maybeSpawn(job); });
+                  () => { void this._maybeSpawn(job, { kind: 'cron' }, true); });
               }
             }
           }
@@ -509,10 +534,10 @@ export class Scheduler extends EventEmitter {
       if (job.type === 'startup') {
         const delay = (job.delaySeconds ?? 0) * 1000;
         if (delay === 0) {
-          await this._maybeSpawn(job);
+          await this._maybeSpawn(job, { kind: 'cron' }, true);
         } else {
           this._deadlines.set(job.id, 'startup-delay', this._time.now() + delay,
-            () => { void this._maybeSpawn(job); });
+            () => { void this._maybeSpawn(job, { kind: 'cron' }, true); });
         }
       }
 
@@ -1122,7 +1147,7 @@ export class Scheduler extends EventEmitter {
    * A manual `orch trigger` deliberately does not come through here: someone asking for a run
    * explicitly should not be second-guessed.
    */
-  private async _maybeSpawn(job: Job, trigger: TriggerSource = { kind: 'cron' }): Promise<void> {
+  private async _maybeSpawn(job: Job, trigger: TriggerSource = { kind: 'cron' }, atStart = false): Promise<void> {
     /*
      * The window, checked again at the moment of firing.
      *
@@ -1136,6 +1161,12 @@ export class Scheduler extends EventEmitter {
      */
     if (trigger.kind !== 'manual' && windowStateAt(job, this._time.now()) !== 'active') {
       this._expireOrWait(job);
+      return;
+    }
+    // The daemon has just come back and this run is still going from before: a startup or catch-up firing would
+    // start a second copy of it (two servers on one port). A cron firing is left alone, as it is for a live run.
+    if (atStart && this._hasFollowedRun(job.id)) {
+      this._recordSkip(job, 'adopted');
       return;
     }
     if (trigger.kind !== 'manual') {
@@ -1198,7 +1229,7 @@ export class Scheduler extends EventEmitter {
    * with exitCode null, because no process ran, and finishedAt set, so it does not read as a run
    * still in flight.
    */
-  private _recordSkip(job: Job, reason: 'liveness'): void {
+  private _recordSkip(job: Job, reason: 'liveness' | 'adopted'): void {
     const at = this._now().toISOString();
     this._state.record(job.id, {
       startedAt: at, finishedAt: at, exitCode: null, pid: null, skipped: true,
@@ -1206,7 +1237,9 @@ export class Scheduler extends EventEmitter {
     // Same per-run log file layout as a real run, so the skip shows up in `orch logs --job <id>`
     // right where the run would have been.
     const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, at);
-    jobLogger.write(`[job:skipped] reason=${reason} -- target already alive, nothing was done`);
+    jobLogger.write(`[job:skipped] reason=${reason} -- ${reason === 'adopted'
+      ? 'still running from before the restart, not started a second time'
+      : 'target already alive, nothing was done'}`);
     jobLogger.close();
     this._eventPublisher.publish('job.skipped', {
       jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason,
@@ -1218,11 +1251,11 @@ export class Scheduler extends EventEmitter {
    *
    * A run whose supervisor recorded an end gets that end handled as if the daemon had seen it, flagged late
    * (policy C in .claude/plans/2026-10-18_update-with-jobs-running.md): it is always recorded and announced,
-   * and only acts (retry, dependents) if it ended within the window. A run still going is left alone and counted:
-   * adopting it is the next step.
+   * and only acts (retry, dependents) if it ended within the window. A run still going is followed again: same
+   * history entry, same log, kill, timeout and peaks, as if the daemon had never been away.
    */
   async recoverRuns(): Promise<RecoveryReport> {
-    const report: RecoveryReport = { finalized: 0, cleaned: 0, stillRunning: 0, unreadable: [] };
+    const report: RecoveryReport = { finalized: 0, cleaned: 0, adopted: 0, lost: [], followedElsewhere: 0, unreadable: [] };
     const root = path.join(this._configDir, 'runs');
     let jobDirs: string[];
     try {
@@ -1251,7 +1284,7 @@ export class Scheduler extends EventEmitter {
           continue;
         }
         if (status.state === 'running') {
-          report.stillRunning++;
+          await this._followOrReport(runDir, spec, status, report);
           continue;
         }
         this._finalizeRecovered(runDir, spec, status);
@@ -1259,6 +1292,97 @@ export class Scheduler extends EventEmitter {
       }
     }
     return report;
+  }
+
+  /**
+   * A run whose supervisor says it is still going: follow it again, unless another daemon already does, and
+   * report it as lost when its supervisor is gone without having recorded an end.
+   */
+  private async _followOrReport(runDir: string, spec: SupervisedSpec, status: SupervisedStatus, report: RecoveryReport): Promise<void> {
+    if (ownedByAnotherLiveDaemon(runDir)) {
+      report.followedElsewhere++;
+      return;
+    }
+    if (!(await isOurSupervisor(status, this._processStart))) {
+      // The supervisor writes its final status and then exits, so a run that ended while we were looking can
+      // show "running" in what we read and a dead supervisor a moment later. Read again before calling it lost.
+      const fresh = readJsonFile<SupervisedStatus>(path.join(runDir, 'status.json'));
+      if (fresh !== null && fresh.state !== 'running') {
+        this._finalizeRecovered(runDir, spec, fresh);
+        report.finalized++;
+        return;
+      }
+      const note = `supervisor pid ${status.supervisorPid} of the run of "${spec.context.jobId}" started ${spec.context.startedAt} is not running (or is not the supervisor it was): the run ended without a record, so it is closed as interrupted. Its process ${status.childPid ?? '?'} may still be alive`;
+      report.lost.push(`${runDir}: ${note}`);
+      const jobLogger = new RunLogger(path.dirname(spec.logPath), spec.context.jobId, spec.context.startedAt);
+      jobLogger.write(`[recovery] ${note}`);
+      jobLogger.close();
+      return;
+    }
+    this._adopt(runDir, spec, status);
+    report.adopted++;
+  }
+
+  /** Follows a run found going: registers it like a live one and hands it to the same monitoring. */
+  private _adopt(runDir: string, spec: SupervisedSpec, status: SupervisedStatus): void {
+    const { jobId, startedAt } = spec.context;
+    const job = this._registry.get(jobId) ?? this._jobFromSpec(spec);
+    const entry = this._state.getRun(jobId, startedAt);
+    const previous = this._state.getRunBefore(jobId, startedAt);
+    const child = new SupervisedChild(runDir, status.childPid);
+    const jobLogger = new RunLogger(path.dirname(spec.logPath), jobId, startedAt);
+    const siblings = this._register(child, job, jobLogger);
+    claimRun(runDir);
+    const key = `${jobId}|${startedAt}`;
+    this._followed.add(key);
+    child.once('close', () => { this._followed.delete(key); });
+    this._adoptedIds.push(jobId);
+    jobLogger.write(`[recovery] the daemon is following this run again (pid ${status.childPid ?? '?'})`);
+    const ctx: MonitorContext = {
+      job,
+      trigger: spec.context.trigger,
+      startedAt,
+      pid: entry?.pid ?? status.childPid ?? null,
+      jobLogger,
+      previousRunFailed: previous !== null && isFailure(previous),
+    };
+    void this._monitor(child, ctx, siblings, false, { peakCpuPct: entry?.peakCpuPct ?? 0, peakRamMb: entry?.peakRamMb ?? 0 });
+    // After the monitoring has attached its listeners: a run that ended meanwhile is closed by the first read.
+    child.watch(250);
+  }
+
+  /** Whether a run of the job was found going and is followed again, so a startup firing must not start another. */
+  private _hasFollowedRun(jobId: string): boolean {
+    for (const key of this._followed) {
+      if (key.startsWith(`${jobId}|`)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether this daemon follows this very run again (for State.closeOrphanedRuns to leave it open). */
+  isFollowing(jobId: string, startedAt: string): boolean {
+    return this._followed.has(`${jobId}|${startedAt}`);
+  }
+
+  /** Tells the tray and the dashboard about the runs found going, once they are listening. */
+  announceAdopted(): void {
+    for (const id of this._adoptedIds.splice(0)) {
+      this.emit('job-started', { id });
+    }
+  }
+
+  /**
+   * Stops following every supervised run without ending any of them, for a daemon that is shutting down: their
+   * timers must not keep it alive, and what they would do next (a timeout kill, a finish) belongs to the daemon
+   * that comes back, which reads the same files.
+   */
+  detachRuns(): void {
+    for (const detach of [...this._detachers]) {
+      detach();
+    }
+    this._detachers.clear();
   }
 
   /** Handles the end of one run that the daemon was not there to see. */
@@ -1509,6 +1633,36 @@ export class Scheduler extends EventEmitter {
     jobLogger.close();
   }
 
+  /**
+   * Makes a child count as one of the job's live runs: findable to kill, taking one of its places, owning the
+   * log that refused firings write to. Undone by the child's own close, in a listener of its own.
+   */
+  private _register(child: ChildProcess, job: Job, jobLogger: RunLogger): Set<ChildProcess> {
+    const siblings = this._activeChildren.get(job.id) ?? new Set<ChildProcess>();
+    siblings.add(child);
+    this._activeChildren.set(job.id, siblings);
+
+    // The slot is tied to the child's own lifetime from this line on, in a listener of its own: if
+    // anything between here and the main close handler threw, the slot would otherwise never be given
+    // back and the job could not start again until the daemon restarted. Registered first, so the main
+    // handler's dependency and retry firings already see the slot free.
+    this._running.set(job.id, (this._running.get(job.id) ?? 0) + 1);
+    this._liveLogger.set(job.id, jobLogger);
+    child.once('close', () => {
+      const left = (this._running.get(job.id) ?? 1) - 1;
+      if (left > 0) {
+        this._running.set(job.id, left);
+      } else {
+        this._running.delete(job.id);
+      }
+      if (this._liveLogger.get(job.id) === jobLogger) {
+        this._liveLogger.delete(job.id);
+      }
+    });
+
+    return siblings;
+  }
+
   private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
@@ -1536,30 +1690,10 @@ export class Scheduler extends EventEmitter {
       startedAt,
     );
 
-    const siblings = this._activeChildren.get(job.id) ?? new Set<ChildProcess>();
-    siblings.add(child);
-    this._activeChildren.set(job.id, siblings);
-
-    // The slot is tied to the child's own lifetime from this line on, in a listener of its own: if
-    // anything between here and the main close handler threw, the slot would otherwise never be given
-    // back and the job could not start again until the daemon restarted. Registered first, so the main
-    // handler's dependency and retry firings already see the slot free.
-    this._running.set(job.id, (this._running.get(job.id) ?? 0) + 1);
-    this._liveLogger.set(job.id, jobLogger);
+    const siblings = this._register(child, job, jobLogger);
     if (child instanceof SupervisedChild && child.startError !== undefined) {
       jobLogger.write(`[error] could not start the job: ${child.startError}`);
     }
-    child.once('close', () => {
-      const left = (this._running.get(job.id) ?? 1) - 1;
-      if (left > 0) {
-        this._running.set(job.id, left);
-      } else {
-        this._running.delete(job.id);
-      }
-      if (this._liveLogger.get(job.id) === jobLogger) {
-        this._liveLogger.delete(job.id);
-      }
-    });
 
     // Read before this run's own entry exists, or the newest entry would be this run itself.
     const previousEntry = this._state.get(job.id);
@@ -1568,14 +1702,28 @@ export class Scheduler extends EventEmitter {
     this._state.record(job.id, {
       startedAt, exitCode: null, pid, triggeredBy: trigger,
       retryAttempt: trigger.kind === 'retry' ? trigger.attempt : undefined,
+      supervised: child instanceof SupervisedChild || undefined,
     });
     this._eventPublisher.publish('job.started', { jobId: job.id, label: job.label, pid, trigger: trigger.kind });
     this.emit('job-started', { id: job.id });
     jobLogger.write(`[job:started] pid=${pid} triggeredBy=${trigger.kind}`);
 
+    const ctx = { job, trigger, startedAt, pid, jobLogger, previousRunFailed };
+    return this._monitor(child, ctx, siblings, waitForExit);
+  }
+
+  /**
+   * Follows a run from the moment it is going until its end: resource samples and limits, peaks, the timeout,
+   * and the close that hands over to _finishRun. Starts the same way for a run this daemon launched and for one
+   * it found still going after a restart (`resume`), which is why nothing in it assumes it spawned the child.
+   */
+  private _monitor(
+    child: ChildProcess, ctx: MonitorContext, siblings: Set<ChildProcess>, waitForExit: boolean, resume?: ResumeState,
+  ): { pid: number | null } | Promise<{ exitCode: number | null }> {
+    const { job, trigger, startedAt, pid, jobLogger, previousRunFailed } = ctx;
     // Resource monitoring: sample CPU/RAM every 2s, enforce auto-budget thresholds
-    let peakCpuPct = 0;
-    let peakRamMb  = 0;
+    let peakCpuPct = resume?.peakCpuPct ?? 0;
+    let peakRamMb  = resume?.peakRamMb  ?? 0;
     let softAlertSent = false;
     // CPU% is spiky by nature, so the hard budget only kills once the breach is sustained
     // over this many consecutive samples (2s apart). A single spike must never kill a job.
@@ -1588,7 +1736,7 @@ export class Scheduler extends EventEmitter {
     // What the monitor sees of this run, kept next to the job for later. Opened here so the thresholds
     // it enforces are the first thing in the record.
     const telemetry = this._openTelemetry(job.id, startedAt, pid, jobLogger);
-    telemetry?.event('start', { soft: softThreshold, hard: hardThreshold });
+    telemetry?.event(resume === undefined ? 'start' : 'adopt', { soft: softThreshold, hard: hardThreshold });
     /**
      * Writes the peaks measured so far onto the in-flight entry.
      *
@@ -1618,6 +1766,7 @@ export class Scheduler extends EventEmitter {
       this._state.record(job.id, {
         startedAt, exitCode: null, pid, triggeredBy: trigger,
         retryAttempt: trigger.kind === 'retry' ? trigger.attempt : undefined,
+        supervised: child instanceof SupervisedChild || undefined,
         peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
         peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
         peakMeasure: peakRamMb > 0 || peakCpuPct > 0 ? PEAK_MEASURE_VERSION : undefined,
@@ -1765,7 +1914,11 @@ export class Scheduler extends EventEmitter {
     });
 
     // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s; 0 = no timeout).
-    const timeoutMs = (job.timeoutSeconds ?? 300) * 1000;
+    const fullTimeoutMs = (job.timeoutSeconds ?? 300) * 1000;
+    // A run found again after a restart has already used part of its time.
+    const timeoutMs = fullTimeoutMs > 0 && resume !== undefined
+      ? Math.max(1, fullTimeoutMs - (Date.now() - Date.parse(startedAt)))
+      : fullTimeoutMs;
     let timeoutHandle: Timer | null = null;
     let timedOut = false;
     if (timeoutMs > 0) {
@@ -1808,6 +1961,17 @@ export class Scheduler extends EventEmitter {
       });
     });
 
+    if (child instanceof SupervisedChild) {
+      const detach = (): void => {
+        flushPeaks();
+        timeoutHandle?.cancel();
+        resourceTimer?.cancel();
+        child.stopWatching();
+      };
+      this._detachers.add(detach);
+      child.once('close', () => { this._detachers.delete(detach); });
+    }
+
     // An explicit wait from the caller overrides the job's scheduling mode for this run only.
     if (!waitForExit && job.triggerMode !== 'wait') {
       done.catch((err: unknown) => {
@@ -1819,4 +1983,5 @@ export class Scheduler extends EventEmitter {
 
     return done;
   }
+
 }

@@ -240,6 +240,11 @@ export interface RuntimeEntry {
    * interrupted run from one whose exit was actually seen.
    */
   orphaned?: boolean;
+  /**
+   * The run is owned by a supervisor process, not by the daemon, so it survives a daemon restart and is followed
+   * again after it. Set while the run is open; it is what keeps the updater from waiting for it.
+   */
+  supervised?: boolean;
 }
 
 export interface RegistryData {

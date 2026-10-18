@@ -108,12 +108,13 @@ export class State {
    * exitCode stays null so the run reads as interrupted rather than as a clean exit or a failure,
    * and `orphaned` records why finishedAt appeared without anyone observing the process end.
    */
-  closeOrphanedRuns(now: Date = new Date()): number {
+  closeOrphanedRuns(now: Date = new Date(), keep: (id: string, entry: RuntimeEntry) => boolean = () => false): number {
     this._ensure();
     let closed = 0;
     for (const [id, entries] of Object.entries(this._cache!)) {
       const next = entries.map(e => {
-        if (e.finishedAt != null) {
+        // A run another part of the daemon is following again is not orphaned, whatever the file says.
+        if (e.finishedAt != null || keep(id, e)) {
           return e;
         }
         closed++;
@@ -144,6 +145,7 @@ export class State {
       ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
       ...(entry.orphaned        !== undefined && { orphaned:        entry.orphaned        }),
       ...(entry.skipped         !== undefined && { skipped:         entry.skipped         }),
+      ...(entry.supervised      !== undefined && { supervised:      entry.supervised      }),
     };
     const existing = this._cache![id] ?? [];
     // Update the matching entry in-place rather than prepending a duplicate. This covers

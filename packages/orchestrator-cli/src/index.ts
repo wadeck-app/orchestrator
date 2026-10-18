@@ -222,9 +222,14 @@ async function main(): Promise<void> {
     if (recovered.finalized > 0 || recovered.cleaned > 0) {
       daemonLog.write(`recovered ${recovered.finalized} run(s) that ended while the daemon was down, cleaned ${recovered.cleaned}`);
     }
-    if (recovered.stillRunning > 0) {
-      // Adopting a run that is still going is not implemented yet: said, not hidden.
-      daemonLog.write(`${recovered.stillRunning} supervised run(s) still going: they keep running, but this daemon does not follow them yet`);
+    if (recovered.adopted > 0) {
+      daemonLog.write(`following ${recovered.adopted} run(s) again that were still going when the daemon came back`);
+    }
+    if (recovered.followedElsewhere > 0) {
+      daemonLog.write(`${recovered.followedElsewhere} run(s) are followed by another daemon that is still alive, left to it`);
+    }
+    for (const lost of recovered.lost) {
+      daemonLog.write(`recovery: ${lost}`);
     }
     for (const problem of recovered.unreadable) {
       daemonLog.write(`recovery: ${problem}`);
@@ -233,7 +238,7 @@ async function main(): Promise<void> {
     // Before anything reads the state: runs left open by a previous daemon can never be closed by
     // an event, so they would count as active for good. One such entry from two weeks earlier was
     // enough to make every update defer.
-    const orphaned = state.closeOrphanedRuns();
+    const orphaned = state.closeOrphanedRuns(new Date(), (id, entry) => scheduler.isFollowing(id, entry.startedAt));
     if (orphaned > 0) {
       daemonLog.write(`closed ${orphaned} run(s) left in flight by a previous daemon`);
       audit.log('runs.orphaned_closed', { count: orphaned });
@@ -332,6 +337,8 @@ async function main(): Promise<void> {
         onShutdown: (reason: string) => {
           daemonLog.write(`daemon shutdown: ${reason}`);
           daemonLog.close();
+          // Supervised jobs keep running; what follows them stops, so nothing here keeps the daemon alive.
+          scheduler.detachRuns();
           void scheduler.stop();
           void trayManager.stop();
           void dashboardManager?.stop();
@@ -371,6 +378,8 @@ async function main(): Promise<void> {
       process.exit(0);
     });
     await trayManager.start();
+    // Now the tray listens: the runs found going after the restart show up as running, like any other.
+    scheduler.announceAdopted();
 
     // Re-point the start-at-login entry at the current install paths. Wrapped: staging the new
     // binary can throw before enableStartup's own try/catch, and that must not crash the daemon.

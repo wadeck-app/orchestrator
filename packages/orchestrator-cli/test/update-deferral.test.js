@@ -128,8 +128,11 @@ describe('runs left open by a dead daemon are closed at startup', () => {
     // Asserted on the source: the call sits inside createDaemon's setup, which a unit test cannot
     // drive without starting a real daemon and its tray.
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
-    assert.match(src, /state\.closeOrphanedRuns\(\)/,
+    // With arguments since runs that a supervisor still follows must be left open (see scheduler.isFollowing).
+    assert.match(src, /state\.closeOrphanedRuns\(/,
       'nothing closes orphaned runs at startup; they will block updates again');
+    assert.match(src, /closeOrphanedRuns\([^;]*isFollowing/,
+      'the sweep must leave the runs the daemon follows again open, or it ends them in the history while they still run');
   });
 });
 
@@ -151,5 +154,28 @@ describe('an explicitly requested update is not deferred', () => {
   test('the deferral says why, since a silent one looks like nothing happened', () => {
     assert.match(entry, /deferring update to .*job\(s\) still running/s,
       'the deferral is not logged with its reason');
+  });
+});
+
+describe('a run that survives the update does not hold the update back', () => {
+  // A supervised job keeps running through a daemon restart and is followed again afterwards, so waiting for it
+  // to end before updating would mean never updating while a long-running job (a server) exists.
+  test('an open supervised run is not counted', () => {
+    const state = tmpState();
+    state.record('server', { startedAt: '2026-10-18T10:00:00.000Z', exitCode: null, pid: 1, supervised: true });
+    assert.equal(activeJobs(state), 0);
+  });
+
+  test('an open run that is not supervised still is: the update would stop it', () => {
+    const state = tmpState();
+    state.record('plain', { startedAt: '2026-10-18T10:00:00.000Z', exitCode: null, pid: 1 });
+    assert.equal(activeJobs(state), 1);
+  });
+
+  test('a job with a supervised run and a plain one still open counts once, for the plain one', () => {
+    const state = tmpState();
+    state.record('mixed', { startedAt: '2026-10-18T10:00:00.000Z', exitCode: null, pid: 1, supervised: true });
+    state.record('mixed', { startedAt: '2026-10-18T10:05:00.000Z', exitCode: null, pid: 2 });
+    assert.equal(activeJobs(state), 1);
   });
 });

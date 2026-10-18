@@ -2,6 +2,22 @@
 
 Status: decided and reviewed (2026-10-18), implementation in progress. Nothing here is specific to app-core: a job stays a generic command.
 
+## Progress (2026-10-18)
+
+| Phase | State |
+|---|---|
+| 1 supervisor-go + shipping | done, CI green on 3 OS |
+| 2 `_finishRun` / `_register` / `_monitor` split, async spawn seam, logger-close order | done; also fixed `job.recovered` (never fired) and the retry/anomaly log markers (never written) |
+| 3 supervised launch behind `supervisedJobs` (default false) | done |
+| 4 recovery of finished runs, policy C, effect ledger, `state.flushNow`, `lateActionWindowMinutes` | done |
+| 5 adoption: `owner.json`, supervisor identity by start time, no second copy of a startup/catch-up job, `detachRuns` on shutdown, `supervised` flag so the updater does not wait for these runs | done in code and tests (cases 3, 4, 5, 6, 8, 11, 12) |
+| 5 still open | the spike under the REAL launcher (tray start kills every tray on the machine, so it is not run on a dev machine), cases 13-14, a real `orch cli update` with a running job |
+| 6 flag default on, `orch stop` semantics (D5/D6), docs | open |
+
+Confirmed by experiment: without `detachRuns()` a process that holds a supervised run never exits (test/detach-exit.test.js, with a negative control), which is the review's blocker B1 for the scheduler's own handles. Whether the rest of the real daemon exits is part of the real-update check.
+
+Dropped from the plan: a `dryRun` flag in spec.json. A dry run is `command + ' --dry-run'` fired like any other run today, events included, so adopting it as an ordinary run is the same behaviour.
+
 Goal: `orch cli update` and any daemon restart work with jobs running. A job that ends or dies while the daemon is down, and one still alive after it, give the same information and features as if the daemon had not restarted.
 
 ## Decisions

@@ -16,5 +16,7 @@ import type { RuntimeEntry } from './types.js';
  * it could only be checked by a test that restated it, which would have passed with the bug present.
  */
 export function countActiveJobs(state: Record<string, RuntimeEntry[]>): number {
-  return Object.values(state).filter(entries => entries.some(e => e.finishedAt == null)).length;
+  // A supervised run is left out: it keeps running through the update and is followed again afterwards, so
+  // waiting for it would mean never updating while a long-running job exists.
+  return Object.values(state).filter(entries => entries.some(e => e.finishedAt == null && e.supervised !== true)).length;
 }

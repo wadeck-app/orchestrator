@@ -2,7 +2,8 @@ import { ChildProcess, spawn as nodeSpawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runLogPath } from './logger.js';
-import { getErrorMessage } from './fsUtil.js';
+import pidusage from 'pidusage';
+import { atomicWriteJson, getErrorMessage, readJsonFile } from './fsUtil.js';
 import type { TriggerSource } from './types.js';
 
 /*
@@ -169,6 +170,7 @@ export async function startSupervised(options: SupervisorOptions, request: Super
     context: { jobId: request.jobId, label: request.label, trigger: request.trigger, startedAt: request.startedAt },
   };
   fs.writeFileSync(path.join(runDir, 'spec.json'), JSON.stringify(spec));
+  claimRun(runDir);
 
   const supervisor = nodeSpawn(options.supervisorPath, [runDir], {
     // Detached is what lets it outlive the daemon, and on Windows what lets it leave the launcher's Job Object.
@@ -212,6 +214,61 @@ async function waitForReport(runDir: string, timeoutMs: number, spawnError: () =
     `The job supervisor did not report within ${timeoutMs} ms: ${path.join(runDir, 'status.json')} was never written. `
     + `Look at ${runDir} for spec.json, and check that the supervisor executable runs (an antivirus scanning a freshly copied executable can delay it).`,
   );
+}
+
+/** The daemon that follows a run: written when it starts or adopts the run, so two daemons never both follow it. */
+export interface RunOwner {
+  pid: number;
+  startedAt: string;
+}
+
+export function claimRun(runDir: string): void {
+  const owner: RunOwner = { pid: process.pid, startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() };
+  atomicWriteJson(path.join(runDir, 'owner.json'), owner);
+}
+
+/**
+ * True when another daemon that is still alive follows this run. A pid that does not answer is a daemon that is
+ * gone, and its claim means nothing; a pid that answers "not allowed" is alive, only not ours to signal.
+ */
+export function ownedByAnotherLiveDaemon(runDir: string): boolean {
+  const owner = readJsonFile<RunOwner>(path.join(runDir, 'owner.json'));
+  if (owner === null || owner.pid === process.pid) {
+    return false;
+  }
+  try {
+    process.kill(owner.pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/** When a process started, in ms since the epoch, or null if it is not running. Injectable for tests. */
+export type ProcessStartFn = (pid: number) => Promise<number | null>;
+
+export const processStartOf: ProcessStartFn = async (pid) => {
+  try {
+    const usage = await pidusage(pid);
+    return usage.timestamp - usage.elapsed;
+  } catch {
+    return null;
+  }
+};
+
+/** How far apart the supervisor's own start stamp and the OS's creation time of that pid may be. */
+const SUPERVISOR_START_TOLERANCE_MS = 5000;
+
+/**
+ * Whether the pid recorded as a run's supervisor is still that supervisor, and not a stranger that was handed the
+ * same pid since: it must be running AND have been created when the supervisor says it started.
+ */
+export async function isOurSupervisor(
+  status: { supervisorPid: number; supervisorStartedAt: string },
+  processStart: ProcessStartFn = processStartOf,
+): Promise<boolean> {
+  const started = await processStart(status.supervisorPid);
+  return started !== null && Math.abs(started - Date.parse(status.supervisorStartedAt)) <= SUPERVISOR_START_TOLERANCE_MS;
 }
 
 export type SupervisorLauncher = (request: SupervisedRequest) => Promise<SupervisedChild>;
