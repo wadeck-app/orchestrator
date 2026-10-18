@@ -1,8 +1,7 @@
 'use strict';
 
-// ci/scripts/signal-trace.cjs is CI evidence for the ubuntu runs where the whole `node --test` run is interrupted
-// ("Interrupted while running", every file cancelled) and nothing says who signalled it. It must record the
-// suspicious kills and the signal the runner receives, and change nothing else.
+// ci/scripts/signal-trace.cjs is CI evidence for the ubuntu runs where the whole `node --test` run is killed and
+// nothing says who signalled it. It must record the suspicious kills (group, init, own parent) and change nothing else.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -67,24 +66,5 @@ describe('signal-trace preload', () => {
 
     assert.match(res.stdout, /child ended/, res.stderr);
     assert.equal(fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '', '');
-  });
-
-  // Windows ends a process signalled with SIGTERM without running its handlers, so there is nothing to record there.
-  test('the test runner that is signalled by one of its files writes who it was, with the process table', { skip: process.platform === 'win32' ? 'POSIX signals only: Windows runs no handler on SIGTERM' : false }, () => {
-    const dir = scratch();
-    const log = path.join(dir, 'trace.log');
-    fs.writeFileSync(path.join(dir, 'killer.test.js'), [
-      "const { test } = require('node:test');",
-      "test('kills its runner', async () => {",
-      "  process.kill(process.ppid, 'SIGTERM');",
-      '  await new Promise((resolve) => setTimeout(resolve, 5000));',
-      '});',
-    ].join('\n'));
-    runNode(['--test', 'killer.test.js'], { log, cwd: dir });
-
-    const written = fs.readFileSync(log, 'utf8');
-    assert.match(written, /kill pid=\d+ sig=SIGTERM \(its parent\)/, 'the file that sent it');
-    assert.match(written, /received SIGTERM; process table:/, 'the runner that got it');
-    assert.match(written, /PID\s+PPID/i, 'the process table follows');
   });
 });

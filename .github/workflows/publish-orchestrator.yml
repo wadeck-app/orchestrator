@@ -191,18 +191,28 @@ jobs:
             # dsl-lib-orch holds both suites (components under src/, the DSL adapter under test/); they run as
             # two vitest projects in one invocation.
             - name: Run tests
-              # Evidence, not a fix (ubuntu only): signal-trace.cjs is preloaded into every node process of the
-              # tests. It records the kills aimed at a group, at init or at a parent, and the signal that
-              # interrupts the test runner, with the process table at that moment. See the dump step below.
+              # Evidence, not a fix (ubuntu only), for the runs where the orchestrator-cli test run is killed
+              # (run 419 "Interrupted while running", run 421 "Terminated" / exit 143), both about five seconds
+              # after test/detach-exit.test.js passed. Two sources, printed by the report step below:
+              #   - strace records every kill/tkill/tgkill made by any process of the suite (the Go supervisor
+              #     included) with its sender and target; --seccomp-bpf makes tracing only those calls nearly free;
+              #   - signal-trace.cjs, preloaded into every node process, records the node kills aimed at a group,
+              #     at init or at a parent, with the caller's stack.
               env:
                   NODE_OPTIONS: ${{ runner.os == 'Linux' && format('--require {0}/packages/orchestrator-cli/ci/scripts/signal-trace.cjs', github.workspace) || '' }}
                   SIGNAL_TRACE_LOG: ${{ runner.temp }}/signal-trace.log
+                  KILL_TRACE_LOG: ${{ runner.temp }}/kill-trace.txt
               run: |
                   npm test --workspace=packages/orch-core --if-present
                   npm test --workspace=packages/orch-server --if-present
                   npm test --workspace=packages/dsl-lib-orch --if-present
                   npm test --workspace=packages/app-module-orchestrator --if-present
-                  npm test --workspace=packages/orchestrator-cli --if-present
+                  if [ "$RUNNER_OS" = "Linux" ]; then
+                      command -v strace >/dev/null || sudo apt-get install -y strace
+                      strace -f -qq --seccomp-bpf -e trace=kill,tkill,tgkill -o "$KILL_TRACE_LOG" npm test --workspace=packages/orchestrator-cli --if-present
+                  else
+                      npm test --workspace=packages/orchestrator-cli --if-present
+                  fi
               # The orchestrator-cli suite was disabled here as "extremely slow (7+ min hang)".
               # It was not slow: ExecManager.stop() never killed the process trees it started,
               # so every run leaked a node fixture, some of which ignore SIGTERM by design, and
@@ -215,20 +225,23 @@ jobs:
               if: failure() && runner.os != 'Windows'
               run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh dump
 
-            # What the machine said while the tests ran: the signals and suspicious kills the preload saw, the
-            # memory, and the kernel log (an out-of-memory kill would show there). A source that cannot be read
-            # is said so, not skipped.
+            # What the machine said while the tests ran: every kill syscall (liveness checks, signal 0, left out)
+            # and the suspicious node kills, the memory, and the kernel log (an out-of-memory kill would show
+            # there). A source that cannot be read is said so, not skipped.
             - name: Report the signals (ubuntu, tests failed)
               if: failure() && runner.os == 'Linux'
               run: |
-                  echo "--- signal-trace.log"
-                  if [ -f "$SIGNAL_TRACE_LOG" ]; then cat "$SIGNAL_TRACE_LOG"; else echo "empty: no signal and no suspicious kill was recorded"; fi
+                  echo "--- kill syscalls, sender pid first (strace), last 300"
+                  if [ -f "$KILL_TRACE_LOG" ]; then grep -v ', 0)' "$KILL_TRACE_LOG" | tail -300; else echo "no kill trace: strace did not run"; fi
+                  echo "--- signal-trace.log (node kills at a group, init or a parent)"
+                  if [ -f "$SIGNAL_TRACE_LOG" ]; then cat "$SIGNAL_TRACE_LOG"; else echo "empty: no such kill was recorded"; fi
                   echo "--- memory"
                   free -m
                   echo "--- kernel log (last 40 lines)"
                   sudo -n dmesg 2>&1 | tail -40
               env:
                   SIGNAL_TRACE_LOG: ${{ runner.temp }}/signal-trace.log
+                  KILL_TRACE_LOG: ${{ runner.temp }}/kill-trace.txt
 
     publish:
         needs: build-and-test
