@@ -1,0 +1,3 @@
+# The failure notifications orch-app stacks bottom-right, for app-core's overlay slot.
+# Handwritten: a shell slot has no orch-app page to derive from.
+$type: orchestrator:FailureOverlay

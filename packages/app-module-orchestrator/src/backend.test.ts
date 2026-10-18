@@ -56,7 +56,7 @@ describe('the published routes', () => {
     'GET /api/secrets', 'POST /api/secrets', 'DELETE /api/secrets/:name',
     'POST /api/exec', 'GET /api/exec', 'GET /api/exec/:runId', 'DELETE /api/exec/:runId',
     'POST /api/jobs/import', 'GET /api/jobs/export',
-    'POST /api/heartbeat', 'GET /api/events', 'GET /api/open',
+    'POST /api/heartbeat', 'GET /api/events',
   ])('do not include %s, which no dashboard page needs', async (route) => {
     const { registered, app } = await boot(async () => []);
     expect(registered).not.toContain(route);

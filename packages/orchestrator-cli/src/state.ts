@@ -228,6 +228,28 @@ export class State {
     return result;
   }
 
+  /**
+   * Acknowledges the latest failure of ONE job. False when there was nothing to acknowledge (unknown
+   * job, no failure, or already acknowledged), so a caller can tell "done" from "nothing happened".
+   *
+   * Exists because the only operation used to be acknowledgeAll: the per-job button of the failure
+   * notifications therefore acknowledged every failure on the server while hiding a single card.
+   */
+  acknowledge(id: string): boolean {
+    this._ensure();
+    const entries = this._cache![id];
+    if (!entries || entries.length === 0) {
+      return false;
+    }
+    const latest = this._latest(entries)!;
+    if (!isFailure(latest) || latest.acknowledgedAt) {
+      return false;
+    }
+    latest.acknowledgedAt = new Date().toISOString();
+    this._scheduledFlush();
+    return true;
+  }
+
   acknowledgeAll(): void {
     this._ensure();
     const now = new Date().toISOString();

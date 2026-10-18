@@ -176,7 +176,25 @@ export function makeCommands(
 
     'list-failures': () => state.getUnacknowledgedFailures(),
 
-    'ack-failures': () => { state.acknowledgeAll(); trayManager?.clearFailures(); return {}; },
+    /*
+     * With { jobId } acknowledges that job's failure, without it all of them. The tray lists failures
+     * itself and can only be cleared whole, so it is cleared once nothing is left to show.
+     */
+    'ack-failures': (p) => {
+      const jobId = (p as { jobId?: unknown } | undefined)?.jobId;
+      if (jobId !== undefined && typeof jobId !== 'string') {
+        throw new Error('ack-failures: jobId must be a string when given (omit it to acknowledge every failure)');
+      }
+      if (jobId === undefined) {
+        state.acknowledgeAll();
+      } else {
+        state.acknowledge(jobId);
+      }
+      if (state.getUnacknowledgedFailures().length === 0) {
+        trayManager?.clearFailures();
+      }
+      return {};
+    },
 
     'tray-list': () => [...TRAY_ACTIONS],
 

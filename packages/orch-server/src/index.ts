@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFile } from 'node:child_process';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
@@ -12,6 +11,7 @@ import { findFreePort, writeDashboardPort, deleteDashboardPort } from './port.js
 import { jobsRoutes } from './routes/jobs.js';
 import { logsRoutes } from './routes/logs.js';
 import { heartbeatRoute } from './routes/heartbeat.js';
+import { openRoute } from './routes/open.js';
 // eventsRoute is co-located in heartbeat.ts (workaround for Fastify v5 + @fastify/static route loss)
 
 // Parse CLI args
@@ -76,36 +76,9 @@ await server.register(jobsRoutes, { proxy, idleTimer });
 await server.register(logsRoutes, { configDir, idleTimer });
 await server.register(heartbeatRoute, { idleTimer, proxy });
 
-// Open a local file or URL using the OS default handler.
-// Chrome blocks file:// navigation from http:// pages -- this proxies the open via server.
-server.get('/api/open', async (req, reply) => {
-  const { path: rawPath } = req.query as { path?: string };
-  if (!rawPath) {
-    return reply.code(400).send({ error: 'path required' });
-  }
-  idleTimer.reset();
-  const target = decodeURIComponent(rawPath);
-  // Security: only allow file:// URLs and http(s)://localhost -- never remote URLs
-  const isFileUrl   = target.startsWith('file:///');
-  const isLocalHttp = target.startsWith('http://localhost') || target.startsWith('https://localhost');
-  const isWinPath   = /^[A-Za-z]:[\\\/]/.test(target);
-  if (!isFileUrl && !isLocalHttp && !isWinPath) {
-    return reply.code(403).send({ error: 'only local file paths and localhost URLs are allowed' });
-  }
-  const url = isWinPath ? `file:///${target.replace(/\\/g, '/')}` : target;
-  await new Promise<void>((resolve) => {
-    if (process.platform === 'win32') {
-      // windowsHide is explicitly false, not merely absent: this endpoint exists to reveal a file or
-      // URL to the user, so the shell handler it launches has to be allowed to show itself.
-      // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide opening something for the user IS the feature
-      execFile('cmd.exe', ['/c', 'start', '', url], { windowsHide: false }, () => resolve());
-    } else {
-      // violations-suppress: cli/daemon-spawn-no-windows-hide,cli/no-spawn-without-windows-hide macOS branch -- windowsHide has no meaning off Windows
-      execFile('open', [url], () => resolve());
-    }
-  });
-  return reply.code(204).send();
-});
+// Open a local file with the OS default handler (the log viewer's file links). See routes/open.ts for
+// what it will and will not open.
+await server.register(openRoute, { idleTimer });
 
 // Static file serving (orch-app dist)
 if (hasPublic) {

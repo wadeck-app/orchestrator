@@ -5,8 +5,11 @@ import type { RouteKey } from './adapter.js';
  *
  * What the dashboard pages and orch-ui components call, and nothing more. Left out on purpose:
  * secrets and exec (no page uses them), import/export (not wired in any page), heartbeat and
- * events (they serve the dashboard server's own idle exit and an unused stream), and /api/open
- * (it launches a shell command; it would need its own review before a module exposed it).
+ * events (they serve the dashboard server's own idle exit and an unused stream).
+ *
+ * /api/open is published because the log viewer's file links need it. It starts a program on the machine,
+ * so it was only exposed once it stopped being able to run anything (documents and folders only, no shell,
+ * not from another site): see orch-server's routes/open.ts.
  */
 export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'GET /api/jobs',
@@ -29,4 +32,5 @@ export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'GET /api/health',
   'GET /api/logs/:jobId/runs',
   'GET /api/logs/:jobId/stream',
+  'GET /api/open',
 ];

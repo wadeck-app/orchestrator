@@ -16,7 +16,7 @@ export const DERIVED_PAGES = [
 ] as const;
 
 /** Views with no orch-app counterpart (a dashboard widget has no page to derive from). */
-export const HANDWRITTEN_VIEWS = ['status-widget.yaml'] as const;
+export const HANDWRITTEN_VIEWS = ['status-widget.yaml', 'navbar-stats.yaml', 'failure-overlay.yaml'] as const;
 
 const orchAppSrc = (packageDir: string): string => path.resolve(packageDir, '..', 'orch-app', 'src');
 

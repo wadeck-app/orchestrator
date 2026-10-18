@@ -179,9 +179,19 @@ export async function jobsRoutes(
     });
   });
 
-  fastify.post('/api/failures/ack', async (_req, reply) => {
+  /*
+   * { jobId } acknowledges that job's failure, no body (or an empty one) all of them. The route used to
+   * ignore its body, so the per-job button of the failure notifications acknowledged every failure on
+   * the server while hiding a single card.
+   */
+  fastify.post('/api/failures/ack', async (req, reply) => {
+    const body = req.body as { jobId?: unknown } | null | undefined;
+    const jobId = body?.jobId;
+    if (jobId !== undefined && typeof jobId !== 'string') {
+      return reply.code(400).send({ error: 'jobId must be a string when given (omit it to acknowledge every failure)' });
+    }
     return guard(reply, async () => {
-      await proxy.send('ack-failures');
+      await proxy.send('ack-failures', jobId === undefined ? undefined : { jobId });
       return reply.code(204).send();
     });
   });

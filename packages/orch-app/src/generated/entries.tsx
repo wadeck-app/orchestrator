@@ -103,6 +103,7 @@ import { AuditEntryRow } from '../../../orch-ui/src/components/AuditEntryRow.js'
 import { AuditList } from '../../../orch-ui/src/components/AuditList.js'
 import { DesignSwitcher } from '../../../orch-ui/src/components/DesignSwitcher.js'
 import { EnableToggle } from '../../../orch-ui/src/components/EnableToggle.js'
+import { FailureOverlay } from '../../../orch-ui/src/components/FailureOverlay.js'
 import { JobCard } from '../../../orch-ui/src/components/JobCard.js'
 import { JobCardGrid } from '../../../orch-ui/src/components/JobCardGrid.js'
 import { JobConfigDisplay } from '../../../orch-ui/src/components/JobConfigDisplay.js'
@@ -114,6 +115,7 @@ import { JobToggle } from '../../../orch-ui/src/components/JobToggle.js'
 import { LogPageBreadcrumb } from '../../../orch-ui/src/components/LogPageBreadcrumb.js'
 import { LogViewer } from '../../../orch-ui/src/components/LogViewer.js'
 import { MutationFeedback } from '../../../orch-ui/src/components/MutationFeedback.js'
+import { NavStats } from '../../../orch-ui/src/components/NavStats.js'
 import { NextFireCountdown } from '../../../orch-ui/src/components/NextFireCountdown.js'
 import { RunHistory } from '../../../orch-ui/src/components/RunHistory.js'
 import { RunningAlertDetail } from '../../../orch-ui/src/components/RunningAlertDetail.js'
@@ -1637,6 +1639,15 @@ export const EnableToggleEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const FailureOverlayEntry: ComponentRegistryEntry = {
+	name: 'FailureOverlay', category: 'composite', tags: ["failures","notifications","overlay","alert"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../../../orch-ui/src/components/FailureOverlay.js').FailureOverlayProps['refreshMs']
+		return <FailureOverlay refreshMs={refreshMs} />
+	},
+}
+
 export const JobCardEntry: ComponentRegistryEntry = {
 	name: 'JobCard', category: 'composite', tags: ["job","card"],
 	nodeSchema: null as never,
@@ -1773,6 +1784,15 @@ export const MutationFeedbackEntry: ComponentRegistryEntry = {
 		const error = resolveExpressionValue(node['error'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['error']
 		const successMessage = resolveExpressionValue(node['successMessage'], ctx) as import('../../../orch-ui/src/components/MutationFeedback.js').MutationFeedbackProps['successMessage']
 		return <MutationFeedback pending={pending} error={error} successMessage={successMessage} />
+	},
+}
+
+export const NavStatsEntry: ComponentRegistryEntry = {
+	name: 'NavStats', category: 'composite', tags: ["navbar","stats","jobs","status"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../../../orch-ui/src/components/NavStats.js').NavStatsProps['refreshMs']
+		return <NavStats refreshMs={refreshMs} />
 	},
 }
 
@@ -1979,6 +1999,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	AuditListEntry,
 	DesignSwitcherEntry,
 	EnableToggleEntry,
+	FailureOverlayEntry,
 	JobCardEntry,
 	JobCardGridEntry,
 	JobConfigDisplayEntry,
@@ -1990,6 +2011,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	LogPageBreadcrumbEntry,
 	LogViewerEntry,
 	MutationFeedbackEntry,
+	NavStatsEntry,
 	NextFireCountdownEntry,
 	RunHistoryEntry,
 	RunningAlertDetailEntry,

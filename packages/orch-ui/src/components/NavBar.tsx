@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { Layers, LayoutGrid, Calendar, ScrollText, Moon, Sun } from 'lucide-react';
 import { IconButton } from '@wadeck-app/dsl-ui';
-import { isJobRunning, isRunFailed, latestRun, type Job, type RuntimeEntry } from '../types.js';
+import { NavStats } from './NavStats.js';
 
 // @formatter:off
 const NAV_LINK_BASE   = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm text-muted transition-colors hover:text-content hover:bg-muted-bg';
@@ -10,13 +10,10 @@ const NAV_LINK_ACTIVE = 'flex items-center gap-1.5 px-2 py-1 rounded text-sm tex
 const THEME_KEY       = 'orch-theme';
 // @formatter:on
 
-interface StatsData { total: number; running: number; failed: number; }
-
 export function NavBar(): React.ReactElement {
   const [dark, setDark] = useState<boolean>(() => {
     try { return localStorage.getItem(THEME_KEY) === 'dark'; } catch { return false; }
   });
-  const [stats, setStats] = useState<StatsData | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -24,32 +21,6 @@ export function NavBar(): React.ReactElement {
   }, [dark]);
 
   const toggleDark = useCallback(() => setDark(v => !v), []);
-
-  useEffect(() => {
-    const load = (): void => {
-      fetch('/api/jobs').then(r => r.json()).then((all: { job: Job; runHistory: RuntimeEntry[] }[]) => {
-        /*
-         * Spent `once` jobs are dropped first, because this counter has to agree with the job grid
-         * beside it: with four cron jobs listed and four already-fired once jobs hidden, "8 jobs"
-         * contradicts what the user can count on screen and reads as jobs missing from the grid.
-         *
-         * It also keeps the failure badge from being held open for good by a one-off job whose single
-         * run failed - there is no next run that could ever clear it.
-         */
-        const items   = all.filter(i => !(i.job.type === 'once' && i.job.spent === true));
-        const total   = items.length;
-        // Jobs with any open run: a job whose newest run ended may still have an older instance alive.
-        const running = items.filter(i => isJobRunning(i.runHistory)).length;
-        // Shares the one classifier rather than re-deriving it from exitCode, which is how this
-        // counter came to include skipped runs in the global failure badge.
-        const failed  = items.filter(i => isRunFailed(latestRun(i.runHistory))).length;
-        setStats({ total, running, failed });
-      }).catch(() => { /* daemon may be unavailable */ });
-    };
-    load();
-    const t = setInterval(load, 30_000);
-    return () => clearInterval(t);
-  }, []);
 
   return (
     <nav className="flex items-center h-10 px-3 border-b border-border bg-surface">
@@ -68,14 +39,7 @@ export function NavBar(): React.ReactElement {
         </NavLink>
       </div>
       {/* Inline stats - always visible, compact */}
-      {stats && (
-        <div className="hidden sm:flex items-center gap-2 text-xs text-muted mr-3">
-          <span>{stats.total} jobs</span>
-          {stats.running > 0 && <span className="text-primary">{stats.running} running</span>}
-          {stats.failed > 0  && <span className="text-danger">{stats.failed} failed</span>}
-          {stats.running === 0 && stats.failed === 0 && <span className="text-success">All OK</span>}
-        </div>
-      )}
+      <NavStats />
       {/* violations-suppress: react/no-raw-button icon-only toggle - no Button variant for compact icon-only nav action */}
       <IconButton icon={dark ? <Sun size={14} /> : <Moon size={14} />} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleDark} variant="ghost" size="icon-sm" />
     </nav>

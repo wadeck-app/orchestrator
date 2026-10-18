@@ -2,6 +2,7 @@ import type { ModuleContext } from '@wadeck-app/app-core-sdk';
 import { DaemonProxy } from '@wadeck-app/orch-server/daemon-proxy';
 import { jobsRoutes } from '@wadeck-app/orch-server/routes/jobs';
 import { logsRoutes } from '@wadeck-app/orch-server/routes/logs';
+import { openRoute } from '@wadeck-app/orch-server/routes/open';
 import { createRouteAdapter } from './adapter.js';
 import { getOrchConfigDir } from './configDir.js';
 import { ALLOWED_ROUTES } from './routes.js';
@@ -26,6 +27,7 @@ export function createBackend({ configDir, proxy }: BackendDeps): (ctx: ModuleCo
     const { app, assertAllRegistered } = createRouteAdapter(ctx, ALLOWED_ROUTES);
     await jobsRoutes(app, { proxy, idleTimer: NO_IDLE_TIMER });
     await logsRoutes(app, { configDir, idleTimer: NO_IDLE_TIMER });
+    await openRoute(app, { idleTimer: NO_IDLE_TIMER });
     assertAllRegistered();
   };
 }

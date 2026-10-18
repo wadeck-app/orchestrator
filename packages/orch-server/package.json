@@ -8,6 +8,7 @@
     ".": "./dist/index.js",
     "./routes/jobs": "./src/routes/jobs.ts",
     "./routes/logs": "./src/routes/logs.ts",
+    "./routes/open": "./src/routes/open.ts",
     "./daemon-proxy": "./src/daemon-proxy.ts"
   },
   "scripts": {

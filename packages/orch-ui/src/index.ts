@@ -35,6 +35,8 @@ export { AuditList } from './components/AuditList.js';
 export type { AuditListProps } from './components/AuditList.js';
 export { ScheduleTimeline } from './components/ScheduleTimeline.js';
 export { NavBar } from './components/NavBar.js';
+export { NavStats } from './components/NavStats.js';
+export { FailureOverlay } from './components/FailureOverlay.js';
 export { JobFilterChips } from './components/JobFilterChips.js';
 export type { JobFilterChipsProps, JobFilterType } from './components/JobFilterChips.js';
 export { useFailures } from './hooks/useFailures.js';
