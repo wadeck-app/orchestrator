@@ -44,6 +44,8 @@ function makeEnv() {
     configDir: dir,
     time,
     liveness: async () => false,
+    // The fake child claims pid 1, the root of every process on the machine: measuring it for real walked them all.
+    sampleUsage: async () => null,
     spawn: () => {
       const c = new EventEmitter();
       c.pid = 1;
@@ -161,6 +163,8 @@ describe('the whole daemon arms one timer', () => {
       configDir: env.dir,
       time: env.time,
       liveness: async () => false,
+    // The fake child claims pid 1, the root of every process on the machine: measuring it for real walked them all.
+    sampleUsage: async () => null,
       spawn: (cmd) => {
         spawned.push(cmd);
         const c = new EventEmitter();

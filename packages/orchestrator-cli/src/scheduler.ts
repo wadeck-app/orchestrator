@@ -159,6 +159,31 @@ interface TreeDeps {
 const TREE_AGE_TOLERANCE_MS = 1_000;
 
 /**
+ * How many processes are measured at the same time.
+ *
+ * On macOS every measurement is a `ps` process of its own (Linux reads /proc and starts nothing). All of a
+ * tree at once meant a job with 400 descendants started 400 processes in one instant, every sampling
+ * interval: past a per-user process limit (1333 on the macOS CI runners) spawn fails with EAGAIN, for
+ * this job and for whatever else on the machine is starting a process at that moment. The measurement
+ * has to be complete, not simultaneous.
+ */
+export const MAX_CONCURRENT_USAGE_CALLS = 8;
+
+/** Like Promise.all(items.map(fn)), with at most `limit` calls running at once. Results keep the items' order. */
+async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
  * Sums CPU and RAM over a process and all its descendants.
  *
  * Returns null when the root itself could not be sampled, which lets the caller tell "the job exited"
@@ -180,13 +205,13 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
     pids = [rootPid];
   }
 
-  const samples = await Promise.all(pids.map(async (pid) => {
+  const samples = await mapWithLimit(pids, MAX_CONCURRENT_USAGE_CALLS, async (pid) => {
     try {
       return { pid, sample: await usage(pid) };
     } catch {
       return null;
     }
-  }));
+  });
 
   // Without the root there is nothing to attribute usage to: the job has exited.
   const root = samples.find(s => s !== null && s.pid === rootPid);

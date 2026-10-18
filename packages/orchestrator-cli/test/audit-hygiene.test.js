@@ -41,6 +41,8 @@ describe('trigger-job refuses a request that names no real job, before auditing 
     registry.add({ id: 'j1', type: 'cron', schedule: '0 8 * * *', command: 'node -v', enabled: true, triggerMode: 'fire-and-forget' });
     const sched = new Scheduler(registry, state, {
       spawn: () => { const c = new EventEmitter(); c.pid = 1; setTimeout(() => c.emit('close', 0), 5); return c; },
+      // The fake child claims pid 1, the root of every process on the machine: measuring it for real walked them all.
+      sampleUsage: async () => null,
       liveness: async () => false,
       eventPublisher: { publish: () => {} },
       configDir: dir,
@@ -126,6 +128,8 @@ describe('a manual trigger refused by maxConcurrency leaves a trace of the refus
     registry.add({ id: 'j1', type: 'cron', schedule: '0 8 * * *', command: 'node -v', enabled: true, triggerMode: 'fire-and-forget' });
     const sched = new Scheduler(registry, state, {
       spawn: () => { const c = new EventEmitter(); c.pid = 1; setTimeout(() => c.emit('close', 0), 5); return c; },
+      // The fake child claims pid 1, the root of every process on the machine: measuring it for real walked them all.
+      sampleUsage: async () => null,
       liveness: async () => false,
       eventPublisher: { publish: () => {} },
       configDir: dir,
@@ -263,6 +267,8 @@ describe('job.completed and job.skipped say how long it took and what started it
     registry.add({ id: 'j1', type: 'cron', schedule: '0 8 * * *', command: 'node -v', enabled: true, triggerMode: 'fire-and-forget' });
     const sched = new Scheduler(registry, state, {
       spawn: () => { const c = new EventEmitter(); c.pid = 1; setTimeout(() => c.emit('close', 0), 10); return c; },
+      // The fake child claims pid 1, the root of every process on the machine: measuring it for real walked them all.
+      sampleUsage: async () => null,
       liveness: async () => false,
       eventPublisher: { publish: () => {} },
       configDir: dir,
