@@ -42,8 +42,12 @@ function makeEnv(jobs, codes, extra = {}) {
   const hooks = [];
   const spawned = [];
   let next = 0;
+  // Two runs of a job in the same millisecond share a start time, which is the key of their history entry: the
+  // second would replace the first. A fast machine does that, so the clock never gives the same instant twice.
+  let ticks = 0;
   const sched = new Scheduler(registry, state, {
     configDir: dir,
+    now: () => new Date(Date.now() + ticks++),
     spawn: (cmd) => {
       spawned.push(cmd);
       const child = new EventEmitter();
