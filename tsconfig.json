@@ -1,7 +1,6 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/orchestrator-cli" },
-    { "path": "packages/orch-server" }
+    { "path": "packages/orchestrator-cli" }
   ]
 }

@@ -87,8 +87,6 @@ if (hasPublic) {
   });
 }
 
-// events SSE registered via register() - required in Fastify v5 after init phase
-
 // SPA fallback
 server.setNotFoundHandler((_req, reply) => {
   if (_req.url.startsWith('/api/')) {
