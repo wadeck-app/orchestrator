@@ -1761,6 +1761,9 @@ export class Scheduler extends EventEmitter {
     this._running.set(job.id, (this._running.get(job.id) ?? 0) + 1);
     this._liveLogger.set(job.id, jobLogger);
     child.once('close', () => {
+      if (child instanceof SupervisedChild && child.lostReason !== undefined) {
+        jobLogger.write(`[recovery] ${child.lostReason}`);
+      }
       const left = (this._running.get(job.id) ?? 1) - 1;
       if (left > 0) {
         this._running.set(job.id, left);

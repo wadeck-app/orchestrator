@@ -31,6 +31,8 @@ export interface SupervisorOptions {
   heartbeatMs?: number;
   /** How often status.json is read while the job runs. */
   pollMs?: number;
+  /** How often a run that still says "running" is checked for a supervisor that is gone (default 2000 ms). */
+  supervisorLivenessMs?: number;
   /** How long to wait for the supervisor to report that the job started. */
   startupTimeoutMs?: number;
   timeoutMarginSeconds?: number;
@@ -71,6 +73,8 @@ export class SupervisedChild extends ChildProcess {
   readonly runDir: string;
   /** Why the job could not be started, when it could not. */
   startError?: string;
+  /** Set when the supervisor vanished without recording an end: the run was closed without an exit code. */
+  lostReason?: string;
   private _killRequested = false;
   private _watcher: NodeJS.Timeout | null = null;
 
@@ -99,15 +103,42 @@ export class SupervisedChild extends ChildProcess {
     return true;
   }
 
-  /** Reads status.json until the job has ended, then closes like a child process would. */
-  watch(pollMs: number): void {
+  /**
+   * Reads status.json until the job has ended, then closes like a child process would.
+   *
+   * A supervisor that is killed, crashes, or cannot write its final status leaves "running" behind for ever, so a
+   * run that says running is also checked for a supervisor that is still there. When it is not, and the status has
+   * not changed since, the run is closed without an exit code and `lostReason` says why.
+   */
+  watch(pollMs: number, supervisorLivenessMs = 2000): void {
+    let lastLivenessCheck = Date.now();
     this._watcher = setInterval(() => {
       const status = readStatus(this.runDir);
-      if (status === null || status.state === 'running') {
+      if (status === null) {
         return;
       }
+      if (status.state !== 'running') {
+        this.stopWatching();
+        this._close(status);
+        return;
+      }
+      if (Date.now() - lastLivenessCheck < supervisorLivenessMs) {
+        return;
+      }
+      lastLivenessCheck = Date.now();
+      if (processExists(status.supervisorPid)) {
+        return;
+      }
+      // The supervisor writes its final status and then exits: look once more before calling it lost.
+      const again = readStatus(this.runDir);
+      if (again !== null && again.state !== 'running') {
+        this.stopWatching();
+        this._close(again);
+        return;
+      }
+      this.lostReason = `supervisor pid ${status.supervisorPid} is gone without having recorded an end, so the exit code of this run is unknown`;
       this.stopWatching();
-      this._close(status);
+      this._close({});
     }, pollMs);
     // A job that outlives the daemon is the point: this timer must never be what keeps the daemon alive.
     this._watcher.unref();
@@ -144,6 +175,16 @@ export class SupervisedChild extends ChildProcess {
     const signal = (status.signal ?? null) as NodeJS.Signals | null;
     this.emit('exit', code, signal);
     this.emit('close', code, signal);
+  }
+}
+
+/** Whether a process with this pid exists. "Not allowed to signal it" still means it exists. */
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
@@ -206,7 +247,7 @@ export async function startSupervised(options: SupervisorOptions, request: Super
     return child;
   }
   // A job already over when we first looked is closed by this same watcher, on its first read.
-  child.watch(options.pollMs ?? DEFAULT_POLL_MS);
+  child.watch(options.pollMs ?? DEFAULT_POLL_MS, options.supervisorLivenessMs);
   return child;
 }
 

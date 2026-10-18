@@ -175,6 +175,31 @@ describe('startSupervised', () => {
     await Promise.all([closed(first), closed(second)]);
   });
 
+  // If the supervisor is killed, crashes, or cannot write its final status, status.json says "running" for ever.
+  // Waiting on it for ever is how a run sits in the history as running with no one to end it, and how an update
+  // check waits for it.
+  test('a supervisor that disappears without recording an end closes the run, and says so', async () => {
+    const dir = tmp();
+    const child = await startSupervised(
+      options(dir, { supervisorLivenessMs: 100 }),
+      request(dir, scriptCommand(dir, 'setInterval(() => {}, 1000)')),
+    );
+    children.push(child);
+    const status = JSON.parse(fs.readFileSync(path.join(child.runDir, 'status.json'), 'utf8'));
+    const done = closed(child);
+
+    process.kill(status.supervisorPid);
+    const { code } = await Promise.race([
+      done,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('the run was never closed although its supervisor is gone')), 10_000)),
+    ]);
+
+    assert.equal(code, null, 'no exit code is known, and none is invented');
+    assert.match(child.lostReason ?? '', new RegExp(`supervisor pid ${status.supervisorPid}`));
+    // The job itself was not the supervisor's to keep alive on a kill of the supervisor; clean it up.
+    try { process.kill(status.childPid); } catch { /* already gone */ }
+  });
+
   test('says what to check when the supervisor never reports', async () => {
     const dir = tmp();
     const notASupervisor = process.execPath;

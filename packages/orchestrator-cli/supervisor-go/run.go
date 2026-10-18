@@ -225,11 +225,17 @@ func Run(runDir string) int {
 	final.State = "exited"
 	final.FinishedAt = stamp(time.Now())
 	final.ExitCode, final.Signal = exitOf(cmd.ProcessState)
-	if err := writeStatus(runDir, final); err != nil {
-		fmt.Fprintln(os.Stderr, "orchestrator-supervisor: cannot write the final status.json:", err)
-		return 1
+	// The one write that must not be lost: it carries the exit code, and without it the run reads "running" for ever.
+	// A reader or a virus scanner can hold the file for a moment on Windows, so keep trying for a good while.
+	var writeErr error
+	for attempt := 0; attempt < 60; attempt++ {
+		if writeErr = writeStatus(runDir, final); writeErr == nil {
+			return 0
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
-	return 0
+	fmt.Fprintln(os.Stderr, "orchestrator-supervisor: cannot write the final status.json:", writeErr)
+	return 1
 }
 
 func orDefault(value, fallback int) int {
