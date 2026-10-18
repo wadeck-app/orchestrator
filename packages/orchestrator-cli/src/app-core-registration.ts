@@ -17,9 +17,11 @@ export function getAppCoreConfigDir(env: NodeJS.ProcessEnv = process.env): strin
 }
 
 /**
- * The module's manifest: inside the installed package (`app-module/`, assembled when the package is
- * built), else the sibling package of a source checkout. The installed one wins, so a checkout next
- * to an install cannot shadow what that install actually ships.
+ * The module's PACKAGED manifest: inside the installed package (`app-module/`, the content of the module's
+ * dist-module, assembled when the package is built), else the dist-module of the sibling package of a source
+ * checkout. The installed one wins, so a checkout next to an install cannot shadow what that install actually
+ * ships. The sibling's source manifest.json is never a candidate: app-core refuses it (it has no version and
+ * no backendEntryPath), only `app-core-cli package` makes a registrable one.
  */
 export function findAppModuleManifest(packageRoot: string): string | undefined {
   return appModuleManifestCandidates(packageRoot).find(candidate => fs.existsSync(candidate));
@@ -28,7 +30,7 @@ export function findAppModuleManifest(packageRoot: string): string | undefined {
 function appModuleManifestCandidates(packageRoot: string): string[] {
   return [
     path.join(packageRoot, 'app-module', 'manifest.json'),
-    path.join(packageRoot, '..', 'app-module-orchestrator', 'manifest.json'),
+    path.join(packageRoot, '..', 'app-module-orchestrator', 'dist-module', 'manifest.json'),
   ];
 }
 
@@ -46,7 +48,7 @@ function findAppModule(packageRoot: string): FoundModule | undefined {
   if (fs.existsSync(installed)) {
     return { manifestPath: installed, dir: path.dirname(installed), installed: true };
   }
-  const sibling = path.join(packageRoot, '..', 'app-module-orchestrator', 'manifest.json');
+  const sibling = path.join(packageRoot, '..', 'app-module-orchestrator', 'dist-module', 'manifest.json');
   if (fs.existsSync(sibling)) {
     return { manifestPath: sibling, dir: path.dirname(sibling), installed: false };
   }
@@ -163,7 +165,7 @@ export async function registerOnStart(options: RegisterOnStartOptions): Promise<
 
   const found = findAppModule(packageRoot);
   if (found === undefined) {
-    log(`app-core: no app-module found, not registering. Looked for ${appModuleManifestCandidates(packageRoot).join(' and ')}. A published install should ship one: reinstall with "orch cli update", or set appCore: false in config.yml.`);
+    log(`app-core: no app-module found, not registering. Looked for ${appModuleManifestCandidates(packageRoot).join(' and ')}. A published install should ship one: reinstall with "orch cli update", or set appCore: false in config.yml. In a source checkout, build it with: BUNDLE_VERSION=<version> npm run package --workspace=packages/app-module-orchestrator`);
     return;
   }
   // Before anything is copied: a machine that never installed app-core gets no folder, no network call.

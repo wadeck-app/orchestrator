@@ -116,11 +116,16 @@ jobs:
                   cp -r packages/orch-server/public packages/orchestrator-cli/server/public
 
             # The dashboard as an app-core module: its components and stylesheet (dsl-lib), its backend
-            # and its pages. The daemon registers the folder with app-core at every start.
+            # and its pages. The daemon registers the PACKAGED folder (dist-module) with app-core at every
+            # start. `package` builds the stylesheet first (Tailwind), then runs app-core-cli, which checks
+            # the layout again, bundles the backend and the components and stamps BUNDLE_VERSION into the manifest.
+            # No version is computed in this job (it publishes nothing), so the manifest carries a placeholder.
             - name: Build the app-core module
               run: |
-                  npm run build --workspace=packages/orch-dsl-lib
-                  npm run build --workspace=packages/app-module-orchestrator
+                  npm run check --workspace=packages/app-module-orchestrator
+                  npm run package --workspace=packages/app-module-orchestrator
+              env:
+                  BUNDLE_VERSION: 0.0.0-ci
 
             - name: Bundle the app-core module into orchestrator-cli
               run: bash packages/orchestrator-cli/ci/scripts/copy-app-module.sh
@@ -261,12 +266,25 @@ jobs:
                   cp -r packages/orch-server/dist packages/orchestrator-cli/server/dist
                   cp -r packages/orch-server/public packages/orchestrator-cli/server/public
 
+            - name: Compute version
+              id: version
+              uses: wadeck-app/ci-templates/.github/actions/compute-version@main
+              with:
+                  version-input: ${{ github.event.inputs.version || '' }}
+                  breaking-input: ${{ github.event.inputs.breaking || 'false' }}
+
             # The dashboard as an app-core module: its components and stylesheet (dsl-lib), its backend
-            # and its pages. The daemon registers the folder with app-core at every start.
+            # and its pages. The daemon registers the PACKAGED folder (dist-module) with app-core at every
+            # start. `package` builds the stylesheet first (Tailwind), then runs app-core-cli, which checks
+            # the layout again, bundles the backend and the components and stamps BUNDLE_VERSION into the manifest.
+            # The version is computed above (it used to come after the builds) so the manifest the daemon
+            # registers carries the version being published, not a placeholder.
             - name: Build the app-core module
               run: |
-                  npm run build --workspace=packages/orch-dsl-lib
-                  npm run build --workspace=packages/app-module-orchestrator
+                  npm run check --workspace=packages/app-module-orchestrator
+                  npm run package --workspace=packages/app-module-orchestrator
+              env:
+                  BUNDLE_VERSION: ${{ steps.version.outputs.version }}
 
             - name: Bundle the app-core module into orchestrator-cli
               run: bash packages/orchestrator-cli/ci/scripts/copy-app-module.sh
@@ -294,13 +312,6 @@ jobs:
 
             - name: Build supervisor binary
               run: npm run build-supervisor --workspace=packages/orchestrator-cli
-
-            - name: Compute version
-              id: version
-              uses: wadeck-app/ci-templates/.github/actions/compute-version@main
-              with:
-                  version-input: ${{ github.event.inputs.version || '' }}
-                  breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
             # Must run BEFORE the bundle step: esbuild inlines require('../package.json'),
             # so bundling first would freeze the version reported by the daemon and the CLI.

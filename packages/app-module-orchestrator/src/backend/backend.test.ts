@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModuleContext, ModuleRouteHandler } from '@wadeck-app/app-core-sdk';
 import { DaemonUnavailableError } from '@wadeck-app/orch-server/daemon-proxy';
 import { ALLOWED_ROUTES } from './routes.js';
-import backend, { createBackend } from './backend.js';
+import backend, { createBackend } from './index.js';
 
 /*
  * A real Fastify instance stands in for app-core's server: it supports path parameters, which is the
@@ -18,20 +18,31 @@ type Send = (command: string, payload?: unknown) => Promise<unknown>;
 
 interface Host {
   app: FastifyInstance;
-  ctx: Pick<ModuleContext, 'registerRoute'>;
+  /** Stands in for the module context; cast where it is handed over, since the SDK's timer handle type varies by version. */
+  ctx: unknown;
   registered: string[];
+  /** Intervals started through the context, and the handles it was asked to clear. */
+  timers: { started: number[]; cleared: unknown[] };
 }
 
 function makeHost(): Host {
   const app = Fastify();
   const registered: string[] = [];
+  const timers = { started: [] as number[], cleared: [] as unknown[] };
   const ctx = {
+    setInterval(_fn: () => void, ms: number): unknown {
+      timers.started.push(ms);
+      return { timer: timers.started.length };
+    },
+    clearInterval(handle: unknown): void {
+      timers.cleared.push(handle);
+    },
     registerRoute(method: string, subPath: string, handler: ModuleRouteHandler): void {
       registered.push(`${method} ${subPath}`);
       app.route({ method: method as 'GET', url: subPath, handler: handler as never });
     },
   };
-  return { app, ctx, registered };
+  return { app, ctx, registered, timers };
 }
 
 let tmpDir: string;
@@ -131,6 +142,39 @@ describe('the module entry', () => {
 
     expect(res.statusCode).toBe(503);
     expect(res.json()).toEqual({ error: 'daemon-not-running' });
+    await host.app.close();
+  });
+});
+
+describe('timers', () => {
+  it('a log stream polls through the context\'s timers and releases its own when the reader leaves, never a raw setInterval', async () => {
+    const logDir = path.join(tmpDir, 'logs', 'jobs', 'j1');
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.writeFileSync(path.join(logDir, 'j1-2026-09-18T10-00-00.log'), 'first line\n');
+    const rawSetInterval = vi.spyOn(globalThis, 'setInterval');
+    const host = makeHost();
+    await createBackend({ configDir: tmpDir, proxy: { send: async () => [] } })(host.ctx as ModuleContext);
+    await host.app.listen({ port: 0, host: '127.0.0.1' });
+    const address = host.app.server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+
+    const controller = new AbortController();
+    const res = await fetch(`http://127.0.0.1:${port}/api/logs/j1/stream`, { signal: controller.signal });
+    const reader = res.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain('first line');
+    expect(host.timers.started).toEqual([500]);
+    expect(host.timers.cleared).toEqual([]);
+
+    controller.abort();
+    await reader.read().catch(() => undefined);
+    for (let i = 0; i < 50 && host.timers.cleared.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    // The handle the context gave out is the one handed back to it.
+    expect(host.timers.cleared).toEqual([{ timer: 1 }]);
+    // Fastify and the HTTP client may own timers of their own; the route files must not add one.
+    expect(rawSetInterval.mock.calls.filter(([, ms]) => ms === 500)).toEqual([]);
     await host.app.close();
   });
 });

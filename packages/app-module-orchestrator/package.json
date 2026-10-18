@@ -3,25 +3,32 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "files": ["dist-module"],
+  "exports": {
+    "./moduleConfig": "./src/commons/moduleConfig.ts",
+    "./routes": "./src/backend/routes.ts"
+  },
   "scripts": {
-    "build": "node scripts/build-backend.mjs",
+    "css": "npm run css --workspace=@wadeck-app/orch-dsl-lib",
+    "derive": "npm run derive --workspace=@wadeck-app/orch-dsl-lib",
+    "check": "app-core-cli check .",
+    "package": "npm run css && app-core-cli package .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --bail=1",
-    "test:watch": "vitest",
-    "derive": "tsx scripts/derive-pages.ts",
-    "clean": "rimraf api-backend/dist"
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@wadeck-app/orch-app": "*",
+    "@wadeck-app/orch-server": "*",
+    "@wadeck-app/orch-ui": "*",
     "@wadeck-app/shared-cli": "latest"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
+    "@types/react": "^19.0.0",
+    "@wadeck-app/app-core-cli": "2026.10.18-032-56246393",
     "@wadeck-app/app-core-sdk": "latest",
-    "@wadeck-app/orch-dsl-lib": "*",
-    "esbuild": "*",
-    "tsx": "*",
     "fastify": "^5.0.0",
-    "rimraf": "^6.0.1",
     "typescript": "*",
     "vitest": "*"
   },

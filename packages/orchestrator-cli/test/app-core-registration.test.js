@@ -43,13 +43,20 @@ describe('findAppModuleManifest', () => {
     assert.equal(findAppModuleManifest(packageRoot), path.join(packageRoot, 'app-module', 'manifest.json'));
   });
 
-  it('falls back to the sibling package of a source checkout', () => {
+  it('falls back to the PACKAGED module of the sibling package in a source checkout', () => {
+    const packageRoot = layout(['app-module-orchestrator/dist-module/manifest.json']);
+    assert.equal(findAppModuleManifest(packageRoot), path.join(packageRoot, '..', 'app-module-orchestrator', 'dist-module', 'manifest.json'));
+  });
+
+  // app-core refuses a source manifest (no version, no backendEntryPath): registering it would only
+  // trade a clear "not built" for a rejection further away.
+  it('does not take the source manifest of the sibling for a module: only dist-module is registrable', () => {
     const packageRoot = layout(['app-module-orchestrator/manifest.json']);
-    assert.equal(findAppModuleManifest(packageRoot), path.join(packageRoot, '..', 'app-module-orchestrator', 'manifest.json'));
+    assert.equal(findAppModuleManifest(packageRoot), undefined);
   });
 
   it('prefers the installed one when both exist', () => {
-    const packageRoot = layout(['orchestrator-cli/app-module/manifest.json', 'app-module-orchestrator/manifest.json']);
+    const packageRoot = layout(['orchestrator-cli/app-module/manifest.json', 'app-module-orchestrator/dist-module/manifest.json']);
     assert.equal(findAppModuleManifest(packageRoot), path.join(packageRoot, 'app-module', 'manifest.json'));
   });
 

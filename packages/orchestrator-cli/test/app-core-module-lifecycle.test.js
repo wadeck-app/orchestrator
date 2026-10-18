@@ -34,10 +34,10 @@ function freshDir(name) {
 function installedPackage() {
   const packageRoot = path.join(freshDir('inst'), 'orchestrator-cli');
   const dir = path.join(packageRoot, 'app-module');
-  fs.mkdirSync(path.join(dir, 'api-backend', 'dist'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'api-backend'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'dsl-lib'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'manifest.json'), '{}');
-  fs.writeFileSync(path.join(dir, 'api-backend', 'dist', 'backend.mjs'), 'export default () => {};');
+  fs.writeFileSync(path.join(dir, 'api-backend', 'backend.cjs'), 'module.exports = () => {};');
   fs.writeFileSync(path.join(dir, 'dsl-lib', 'entries.mjs'), 'export default [];');
   return { packageRoot, dir };
 }
@@ -50,7 +50,7 @@ describe('stageAppModule', () => {
     const manifest = stageAppModule(dir, configDir, '2026.10.1');
 
     assert.equal(manifest, path.join(configDir, 'app-module', '2026.10.1', 'manifest.json'));
-    assert.ok(fs.existsSync(path.join(configDir, 'app-module', '2026.10.1', 'api-backend', 'dist', 'backend.mjs')));
+    assert.ok(fs.existsSync(path.join(configDir, 'app-module', '2026.10.1', 'api-backend', 'backend.cjs')));
     assert.ok(fs.existsSync(path.join(configDir, 'app-module', '2026.10.1', 'dsl-lib', 'entries.mjs')));
   });
 
@@ -184,15 +184,15 @@ describe('registerOnStart with an installed package', () => {
 
   it('registers a source checkout\'s module in place, with no copy', async () => {
     const root = freshDir('checkout');
-    fs.mkdirSync(path.join(root, 'app-module-orchestrator'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'app-module-orchestrator', 'manifest.json'), '{}');
+    fs.mkdirSync(path.join(root, 'app-module-orchestrator', 'dist-module'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'app-module-orchestrator', 'dist-module', 'manifest.json'), '{}');
     const packageRoot = path.join(root, 'orchestrator-cli');
     fs.mkdirSync(packageRoot, { recursive: true });
     const orchConfig = freshDir('orch-cfg');
     const appCore = await fakeAppCore(accept);
     try {
       await start({ packageRoot, moduleStamp: 'dev', orchConfigDir: orchConfig, appCoreConfigDir: freshDir('ac'), env: { APP_CORE_PORT: String(appCore.port) } });
-      assert.equal(path.resolve(appCore.seen[0].body.source.path), path.resolve(packageRoot, '..', 'app-module-orchestrator', 'manifest.json'));
+      assert.equal(path.resolve(appCore.seen[0].body.source.path), path.resolve(packageRoot, '..', 'app-module-orchestrator', 'dist-module', 'manifest.json'));
       assert.equal(fs.existsSync(path.join(orchConfig, 'app-module')), false);
     } finally {
       await appCore.close();

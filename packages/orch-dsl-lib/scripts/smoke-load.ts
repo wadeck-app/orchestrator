@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DEFAULT_OUT_DIR } from '../src/paths.js';
+import { MODULE_DIST } from '../src/paths.js';
 
 globalThis.__APP_CORE_SHARED__ = {
   'react': await import('react'),
@@ -19,6 +19,6 @@ globalThis.__APP_CORE_SHARED__ = {
   '@wadeck-app/dsl-renderer': await import('@wadeck-app/dsl-renderer'),
 };
 
-const file = path.resolve(process.argv[2] ?? path.join(DEFAULT_OUT_DIR, 'entries.mjs'));
+const file = path.resolve(process.argv[2] ?? path.join(MODULE_DIST, 'dsl-lib', 'entries.mjs'));
 const loaded = await import(pathToFileURL(file).href) as { default: { name: string }[] };
 process.stdout.write(`${loaded.default.length} entries: ${loaded.default.map(e => e.name).join(', ')}\n`);

@@ -141,3 +141,41 @@ describe('the log stream stays on what the reader asked for', () => {
     expect(lines).toContain('run2-one');
   });
 });
+
+/*
+ * Inside an app-core module the poll timer must come from the module's context: app-core clears what
+ * went through ctx when the module is unloaded or swapped, and knows nothing about a raw setInterval.
+ */
+describe('the poll timer of a log stream', () => {
+  it('goes through the timers the host passes in, and is released when the reader leaves', async () => {
+    const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-logstream-timers-'));
+    writeRun(configDir, 'job-a', '2026-09-18T10-00-00', ['a-one']);
+    const started: number[] = [];
+    const cleared: unknown[] = [];
+    const handle = { id: 'handle-1' };
+    const app = fastify();
+    await app.register(logsRoutes, {
+      configDir,
+      idleTimer: new IdleTimer(0, () => {}),
+      timers: {
+        setInterval: (_fn, ms) => { started.push(ms); return handle; },
+        clearInterval: (h) => { cleared.push(h); },
+      },
+    });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const addr = app.server.address();
+    const base = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+
+    const lines = await collect(`${base}/api/logs/job-a/stream`, { settleMs: 200 });
+    // The close handler runs on the server side a moment after the client aborted.
+    for (let i = 0; i < 50 && cleared.length === 0; i++) {
+      await new Promise(r => setTimeout(r, 20));
+    }
+    await app.close();
+    fs.rmSync(configDir, { recursive: true, force: true });
+
+    expect(lines).toContain('a-one');
+    expect(started).toEqual([POLL_MS]);
+    expect(cleared).toEqual([handle]);
+  });
+});

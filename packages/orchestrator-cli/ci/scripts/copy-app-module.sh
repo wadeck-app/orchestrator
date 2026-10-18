@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Assembles packages/orchestrator-cli/app-module/ from the built app-core module, so the published
+# Assembles packages/orchestrator-cli/app-module/ from the PACKAGED app-core module, so the published
 # package carries it and the daemon can register it at start (src/app-core-registration.ts).
 #
-# Run after:
-#   npm run build --workspace=packages/orch-dsl-lib           (components + stylesheet -> dsl-lib/)
-#   npm run build --workspace=packages/app-module-orchestrator (backend -> api-backend/dist/)
+# app-module/manifest.json is the packaged manifest (version stamped, paths pointing at the built files),
+# never the source one: app-core refuses a source manifest.
+#
+# Run after (see the "Build the app-core module" step of the workflow):
+#   BUNDLE_VERSION=<version> npm run package --workspace=packages/app-module-orchestrator
+#   (stylesheet, then `app-core-cli package` -> packages/app-module-orchestrator/dist-module/)
 #
 # Both CI jobs run it, so the package that is tested is the package that is published.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-module="$root/packages/app-module-orchestrator"
+packaged="$root/packages/app-module-orchestrator/dist-module"
 out="$root/packages/orchestrator-cli/app-module"
 
 require() {
@@ -20,20 +23,19 @@ require() {
   fi
 }
 
-require "$module/manifest.json"                     "The module's manifest is missing."
-require "$module/api-backend/dist/backend.mjs"     "Run: npm run build --workspace=packages/app-module-orchestrator"
-require "$module/dsl-lib/entries.mjs"              "Run: npm run build --workspace=packages/orch-dsl-lib"
-require "$module/dsl-lib/style.css"                "Run: npm run build --workspace=packages/orch-dsl-lib"
-require "$module/dsl-frontend"                     "The module's pages are missing."
+hint="Run: BUNDLE_VERSION=<version> npm run package --workspace=packages/app-module-orchestrator"
+require "$packaged/manifest.json"            "The module is not packaged. $hint"
+require "$packaged/api-backend/backend.cjs"  "$hint"
+require "$packaged/dsl-lib/entries.mjs"      "$hint"
+require "$packaged/dsl-lib/style.css"        "$hint (the stylesheet is built by the same command)"
+require "$packaged/dsl-frontend"             "$hint"
 
 # Rebuilt from scratch each time: a file removed from the module must not linger in the package.
 rm -rf "$out"
-mkdir -p "$out/api-backend/dist"
-cp "$module/manifest.json" "$out/manifest.json"
-# Only the file the manifest's backendEntryPath names, not the folder: it is one self-contained bundle,
-# and copying a folder would ship whatever stale file an earlier local build left in it.
-cp "$module/api-backend/dist/backend.mjs" "$out/api-backend/dist/backend.mjs"
-cp -r "$module/dsl-frontend" "$out/dsl-frontend"
-cp -r "$module/dsl-lib" "$out/dsl-lib"
+mkdir -p "$out"
+# The whole packaged folder, as `app-core-cli package` wrote it: it holds only what the manifest names plus
+# the backend's sourcemap, and copying the folder (not a list of files) keeps this script right when the
+# CLI adds an output.
+cp -r "$packaged/." "$out/"
 
-echo "copy-app-module: assembled ${out#"$root"/}"
+echo "copy-app-module: assembled ${out#"$root"/} from ${packaged#"$root"/}"

@@ -1,10 +1,6 @@
 {
   "id": "orchestrator",
-  "version": "1.0.0",
-  "backendEntryPath": "./api-backend/dist/backend.mjs",
   "dslLib": {
-    "entry": "./dsl-lib/entries.mjs",
-    "css": "./dsl-lib/style.css",
     "shared": {
       "react": "^19",
       "react-router-dom": "^7",
@@ -17,68 +13,68 @@
       "kind": "widget",
       "slot": "dashboard",
       "label": "Orchestrator",
-      "view": { "type": "path", "value": "./dsl-frontend/status-widget.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/status-widget.yaml" }
     },
     {
       "kind": "widget",
       "slot": "navbar",
       "label": "Job counts",
-      "view": { "type": "path", "value": "./dsl-frontend/navbar-stats.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/navbar-stats.yaml" }
     },
     {
       "kind": "widget",
       "slot": "overlay",
       "label": "Failures",
-      "view": { "type": "path", "value": "./dsl-frontend/failure-overlay.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/failure-overlay.yaml" }
     },
     {
       "kind": "page",
       "slot": "nav",
       "label": "Jobs",
       "path": "/",
-      "view": { "type": "path", "value": "./dsl-frontend/jobs.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/jobs.yaml" }
     },
     {
       "kind": "page",
       "slot": "nav",
       "label": "Schedule",
       "path": "/schedule",
-      "view": { "type": "path", "value": "./dsl-frontend/schedule.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/schedule.yaml" }
     },
     {
       "kind": "page",
       "slot": "nav",
       "label": "Audit",
       "path": "/audit",
-      "view": { "type": "path", "value": "./dsl-frontend/audit.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/audit.yaml" }
     },
     {
       "kind": "page",
       "slot": "route",
       "label": "New job",
       "path": "/jobs/new",
-      "view": { "type": "path", "value": "./dsl-frontend/job-new.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/job-new.yaml" }
     },
     {
       "kind": "page",
       "slot": "route",
       "label": "Job",
       "path": "/jobs/:id",
-      "view": { "type": "path", "value": "./dsl-frontend/job.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/job.yaml" }
     },
     {
       "kind": "page",
       "slot": "route",
       "label": "Edit job",
       "path": "/jobs/:id/edit",
-      "view": { "type": "path", "value": "./dsl-frontend/job-edit.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/job-edit.yaml" }
     },
     {
       "kind": "page",
       "slot": "route",
       "label": "Job logs",
       "path": "/jobs/:id/logs",
-      "view": { "type": "path", "value": "./dsl-frontend/job-logs.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/job-logs.yaml" }
     }
   ]
 }

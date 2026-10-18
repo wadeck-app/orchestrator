@@ -179,8 +179,14 @@ app-core: refused module "orchestrator" (HTTP 400): <app-core's reason>. Fix the
   module is *not* removed by an uninstall: it belongs to app-core until you remove it there
   (`POST /api/modules/unregister {"id":"orchestrator"}`). Until the daemon runs again its pages answer
   `daemon-not-running`.
-- Nothing is copied on a machine without app-core, and a source checkout registers its sibling
-  `app-module-orchestrator` package in place.
+- **What is registered is the packaged module**, never the source `manifest.json` (app-core refuses it:
+  no `version`, no `backendEntryPath`). The published package ships the content of
+  `packages/app-module-orchestrator/dist-module` as `app-module/`, built by
+  `BUNDLE_VERSION=<version> npm run package --workspace=packages/app-module-orchestrator`
+  (Tailwind stylesheet, then `app-core-cli package`) and copied by `ci/scripts/copy-app-module.sh`.
+- Nothing is copied on a machine without app-core. A source checkout registers
+  `app-module-orchestrator/dist-module/manifest.json` in place, so run the `package` command above first;
+  without it the daemon logs where it looked and how to build it.
 - app-core's port is `APP_CORE_PORT` if set, else the port app-core wrote in its own config dir
   (`server.port.json`), else `4850`. The config dir is `~/.config/app-core`, or `APP_CORE_CONFIG_DIR`.
 - When app-core is not running but was installed, the daemon leaves the registration in app-core's

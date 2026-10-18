@@ -16,6 +16,9 @@ export default {
     // Left in, its manifest.json would be judged as a module with the wrong folder name.
     'packages/orchestrator-cli/app-module/**',
     'packages/orchestrator-cli/bin/**',
+    // Output of `app-core-cli package` (gitignored): a bundle of third-party code and a manifest in a folder
+    // that is not named app-module-<name>, neither of which is ours to fix.
+    'packages/*/dist-module/**',
     // tailwind.config.ts safelist entries ARE the raw color declarations - not component usage
     'packages/orch-app/tailwind.config.ts',
   ],
@@ -49,12 +52,24 @@ export default {
         '**/*.test.js',
       ],
     },
-    // Package src/index.ts are public API surfaces, not internal barrel imports
+    // Package src/index.ts are public API surfaces, not internal barrel imports. The app-core module's two
+    // entries are index.ts by contract (`app-core-cli check` requires src/backend/index.ts and
+    // src/dsl-components/index.ts): they are entry points, not barrels.
     'ts/no-barrel-index': {
       $exclude: [
         'packages/*/src/index.ts',
         'packages/*/src/index.tsx',
+        'packages/app-module-*/src/backend/index.ts',
+        'packages/app-module-*/src/dsl-components/index.ts',
       ],
+    },
+    // This rule (scoped to the package.json next to the manifest) validates manifest.json against the schema of
+    // the PACKAGED manifest (version, backendEntryPath and dslLib.entry required). The source manifest of the
+    // new module layout has none of them by design: `package` writes them into dist-module/manifest.json.
+    // `app-core-cli check` (npm run check) validates the source manifest and `package` validates the packaged
+    // one, so the module is still covered.
+    'app-module/manifest-exists-and-valid': {
+      $exclude: ['packages/app-module-*/package.json'],
     },
     // Dev scripts intentionally show build output - windowsHide would suppress it.
     // packages/*/scripts/** is the same case and was not covered: 'scripts/**' does not match

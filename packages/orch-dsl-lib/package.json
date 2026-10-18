@@ -4,24 +4,26 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./libTypes": "./src/libTypes.ts",
-    "./moduleConfig": "./src/moduleConfig.ts"
+    "./libTypes": "./src/libTypes.ts"
   },
   "scripts": {
-    "build": "tsx scripts/build.ts",
+    "css": "tsx scripts/build-css.ts",
+    "derive": "tsx scripts/derive-pages.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "*",
     "@testing-library/react": "*",
     "@testing-library/user-event": "*",
-    "@testing-library/jest-dom": "*",
     "@types/node": "^26.2.0",
     "@types/react": "^19.0.0",
+    "@wadeck-app/app-core-cli": "2026.10.18-032-56246393",
+    "@wadeck-app/app-core-sdk": "latest",
+    "@wadeck-app/app-module-orchestrator": "*",
     "@wadeck-app/orch-app": "*",
     "@wadeck-app/orch-ui": "*",
     "autoprefixer": "^10.0.0",
-    "esbuild": "*",
     "jsdom": "*",
     "postcss": "^8.0.0",
     "tailwindcss": "^3.0.0",

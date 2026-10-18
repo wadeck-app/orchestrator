@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { listLibTypes } from '@wadeck-app/orch-dsl-lib/libTypes';
-import { API_BASE, MODULE_ID, ROUTE_BASE } from '@wadeck-app/orch-dsl-lib/moduleConfig';
+import { listLibTypes } from '../libTypes.js';
+import { API_BASE, MODULE_ID, ROUTE_BASE } from '@wadeck-app/app-module-orchestrator/moduleConfig';
 import { derivePage, type DeriveOptions } from './derivePages.js';
 
-/** [orch-app page file, file name in dsl-frontend/]. Design variants and audit experiments are not part of the module. */
+/** [orch-app page file, file name in src/dsl-views/]. Design variants and audit experiments are not part of the module. */
 export const DERIVED_PAGES = [
   ['job-list.yaml', 'jobs.yaml'],
   ['schedule.yaml', 'schedule.yaml'],
@@ -26,7 +26,7 @@ export function orchAppEntriesPath(packageDir: string): string {
 }
 
 /**
- * Derives every page from orch-app. Returns `dsl-frontend` file name to content, nothing written.
+ * Derives every page from orch-app. Returns `src/dsl-views` file name to content, nothing written.
  *
  * The component types to prefix, the module id and the two prefixes all come from the dsl-lib: it is
  * what defines which types exist and where the module lives, so a page cannot name a type the bundle

@@ -23,10 +23,10 @@ let bundleSource: string;
 beforeAll(async () => {
   const built = process.env[OUT_DIR_VAR];
   if (built === undefined) {
-    throw new Error(`${OUT_DIR_VAR} is not set: the bundle is built by global-setup.ts, check that vitest.config.ts still lists it.`);
+    throw new Error(`${OUT_DIR_VAR} is not set: the bundle is packaged by global-setup.ts, check that vitest.config.ts still lists it.`);
   }
   outDir = built;
-  bundleSource = fs.readFileSync(path.join(outDir, 'entries.mjs'), 'utf8');
+  bundleSource = fs.readFileSync(path.join(outDir, 'dsl-lib', 'entries.mjs'), 'utf8');
 
   globalThis.__APP_CORE_SHARED__ = {
     'react': await import('react'),
@@ -48,10 +48,10 @@ afterAll(() => {
   globalThis.__APP_CORE_SHARED__ = undefined;
 });
 
-describe('the dsl-lib bundle', () => {
-  it('produces the entry and the stylesheet the manifest points at', () => {
-    expect(fs.existsSync(path.join(outDir, 'entries.mjs'))).toBe(true);
-    expect(fs.statSync(path.join(outDir, 'style.css')).size).toBeGreaterThan(1000);
+describe('the packaged dsl-lib', () => {
+  it('is packaged with the entry and the stylesheet the manifest points at', () => {
+    expect(fs.existsSync(path.join(outDir, 'dsl-lib', 'entries.mjs'))).toBe(true);
+    expect(fs.statSync(path.join(outDir, 'dsl-lib', 'style.css')).size).toBeGreaterThan(1000);
   });
 
   /*
@@ -61,7 +61,7 @@ describe('the dsl-lib bundle', () => {
    * the placeholder. So the sheet is a superset: it also scans dsl-ui, and keeps Tailwind's own order.
    */
   it('carries dsl-ui\'s utilities in Tailwind\'s order, so it cannot override the shell\'s with a shorthand alone', () => {
-    const css = fs.readFileSync(path.join(outDir, 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(outDir, 'dsl-lib', 'style.css'), 'utf8');
     const shorthand = css.indexOf('.px-2 {');
     const longhand = css.indexOf('.pl-7 {');
     expect(shorthand, '.px-2 is missing').toBeGreaterThan(-1);
@@ -114,5 +114,20 @@ describe('the dsl-lib bundle', () => {
       <React.Fragment>{switcher.render({ node: { $type: 'DesignSwitcher', jobId: 'j1' }, registry: {}, ctx: {} } as never)}</React.Fragment>,
     );
     expect(screen.getByRole('link', { name: 'Default' })).toHaveAttribute('href', '/modules/orchestrator/jobs/j1');
+  });
+});
+
+describe('the packaged views', () => {
+  it('name only types the packaged dsl-lib exports, so no page asks the shell for a component that is not there', () => {
+    const exported = new Set(entries.map(e => e.name));
+    const viewsDir = path.join(outDir, 'dsl-frontend');
+    const views = fs.readdirSync(viewsDir);
+    expect(views.length).toBeGreaterThan(9);
+    for (const view of views) {
+      const text = fs.readFileSync(path.join(viewsDir, view), 'utf8');
+      for (const match of text.matchAll(/"\$type":"orchestrator:(\w+)"/g)) {
+        expect(exported.has(match[1]!), `${view} uses orchestrator:${match[1]}, which the dsl-lib does not export`).toBe(true);
+      }
+    }
   });
 });

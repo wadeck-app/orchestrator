@@ -1,19 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
-import { listLibTypes } from '@wadeck-app/orch-dsl-lib/libTypes';
+import { listLibTypes } from '../libTypes.js';
+import { MODULE_DIR } from '../paths.js';
 import { deriveAll, DERIVED_PAGES, HANDWRITTEN_VIEWS, orchAppEntriesPath } from './deriveAll.js';
 
 /*
- * dsl-frontend/ is committed, like orch-app's generated entries, so a reviewer sees the views the
+ * src/dsl-views/ is committed, like orch-app's generated entries, so a reviewer sees the views the
  * module really serves. These tests are what stops it from drifting away from orch-app's pages:
  * when a page changes there, this fails until `npm run derive` is run here.
  */
-const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const frontendDir = path.join(packageDir, 'dsl-frontend');
+const packageDir = MODULE_DIR;
+const frontendDir = path.join(packageDir, 'src', 'dsl-views');
 
-describe('dsl-frontend', () => {
+describe('src/dsl-views', () => {
   const derived = deriveAll(packageDir);
 
   it.each(DERIVED_PAGES.map(([, target]) => target))('%s matches what is derived from orch-app (run "npm run derive" if not)', (target) => {

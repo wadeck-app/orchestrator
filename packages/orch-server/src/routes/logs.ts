@@ -47,11 +47,26 @@ function escapeRegExp(s: string): string {
  */
 export type LogsIdleTimer = Pick<IdleTimer, 'reset' | 'addSseConnection' | 'removeSseConnection'>;
 
+/**
+ * Where the stream's poll timer comes from. The dashboard server uses the global timers; an app-core
+ * module passes its context's, which app-core clears when the module is unloaded or swapped.
+ * The handle is opaque: whatever setInterval returns is what clearInterval gets back.
+ */
+export interface LogsTimers {
+  setInterval(fn: () => void, ms: number): unknown;
+  clearInterval(handle: unknown): void;
+}
+
+const GLOBAL_TIMERS: LogsTimers = {
+  setInterval: (fn, ms) => setInterval(fn, ms),
+  clearInterval: (handle) => { clearInterval(handle as NodeJS.Timeout); },
+};
+
 export async function logsRoutes(
   fastify: FastifyInstance,
-  opts: { configDir: string; idleTimer: LogsIdleTimer }
+  opts: { configDir: string; idleTimer: LogsIdleTimer; timers?: LogsTimers }
 ): Promise<void> {
-  const { configDir, idleTimer } = opts;
+  const { configDir, idleTimer, timers = GLOBAL_TIMERS } = opts;
 
   // List available run log files for a job
   fastify.get('/api/logs/:jobId/runs', async (req, reply) => {
@@ -114,7 +129,7 @@ export async function logsRoutes(
     }
 
     // Poll for new lines every POLL_INTERVAL_MS (reliable on Windows, avoids fs.watch quirks)
-    const pollTimer = setInterval(() => {
+    const pollTimer = timers.setInterval(() => {
       try {
         // A reader who named a run is pinned to it. Following the newest file regardless is what
         // appended the NEXT run's output to the run on screen: two runs interleaved in one pane,
@@ -156,7 +171,7 @@ export async function logsRoutes(
     }, POLL_INTERVAL_MS);
 
     req.raw.on('close', () => {
-      clearInterval(pollTimer);
+      timers.clearInterval(pollTimer);
       idleTimer.removeSseConnection();
     });
   });

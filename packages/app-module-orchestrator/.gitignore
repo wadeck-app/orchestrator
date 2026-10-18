@@ -1,3 +1,6 @@
-# Built by `npm run build` here (backend) and in packages/orch-dsl-lib (components + stylesheet).
-api-backend/dist/
-dsl-lib/
+# Output of `app-core-cli package` (npm run package): the module as app-core loads it.
+dist-module
+# Local `app-core-cli dev` state.
+.app-core-dev
+# Built by `npm run css` (Tailwind over orch-ui, the views and dsl-ui) right before `package`, which copies it as is.
+src/dsl-components/style.css

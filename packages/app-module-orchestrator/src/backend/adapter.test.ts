@@ -8,7 +8,8 @@ import { createRouteAdapter } from './adapter.js';
  * is the thin shim that lets those same route files run unchanged, and the allow-list is what keeps
  * the routes a dashboard UI does not need (secrets, exec) from being published by a module.
  */
-const handler: ModuleRouteHandler = () => undefined;
+// Typed loosely on purpose: the SDK's ModuleRouteHandler changes between versions, and the adapter only passes it through.
+const handler = (() => undefined) as never;
 
 function fakeCtx() {
   return { registerRoute: vi.fn<(method: string, subPath: string, h: ModuleRouteHandler) => void>() };
