@@ -38,6 +38,8 @@ interface FailureEntry {
 }
 
 const SUCCESS_FLASH_MS = 5_000;
+/** How long a job meant to run for ever (no timeout) is shown as running: long enough to see it start. */
+const LONG_RUNNING_SHOWN_MS = 5_000;
 
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'up-to-date' | 'updating';
 
@@ -49,7 +51,9 @@ export class TrayManager extends EventEmitter {
   private _restartTimer:     ReturnType<typeof setTimeout> | null = null;
   private _successTimer:   ReturnType<typeof setTimeout> | null = null;
   private _showSuccess     = false;
-  private _runningJobIds   = new Set<string>();  // jobs currently executing
+  private _runningJobIds   = new Set<string>();  // jobs currently executing, as far as the icon is concerned
+  /** One timer per long-running job: when it fires the job stops counting for the icon. */
+  private readonly _longRunningTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private _startupEnabled: boolean;
   private readonly _failures: FailureEntry[] = [];
   private readonly _log:      DailyLogger;
@@ -117,15 +121,12 @@ export class TrayManager extends EventEmitter {
     this._clearTrayPid();
     this._intentionalStop = false;
 
-    this._scheduler.on('job-started', (ev: { id: string }) => {
-      this._runningJobIds.add(ev.id);
-      this._refresh();
-    });
+    this._scheduler.on('job-started', (ev: { id: string }) => { this._jobStarted(ev.id); });
     this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job; skipped?: boolean }) => {
       // Still running while any instance is: the first one to end must not clear the job from the
       // tray. The slot is released before this event, so the count is already the one after.
       if (this._scheduler.runningCount(ev.id) === 0) {
-        this._runningJobIds.delete(ev.id);
+        this._jobEnded(ev.id);
       }
       this._onJobFinished(ev);
     });
@@ -318,6 +319,38 @@ export class TrayManager extends EventEmitter {
       }, SUCCESS_FLASH_MS);
     }
     this._refresh();
+  }
+
+  /**
+   * A job started. A job declared with no timeout (timeoutSeconds 0: "for a process that must stay up") is meant to run
+   * for ever, so it is shown as running for a few seconds only: counted for ever, it would leave the icon blue on
+   * every machine that has a server job, and a blue icon that is always blue says nothing.
+   */
+  private _jobStarted(id: string): void {
+    this._runningJobIds.add(id);
+    this._clearLongRunningTimer(id);
+    if (this._registry.get(id)?.timeoutSeconds === 0) {
+      this._longRunningTimers.set(id, setTimeout(() => {
+        this._longRunningTimers.delete(id);
+        this._runningJobIds.delete(id);
+        this._refresh();
+      }, LONG_RUNNING_SHOWN_MS));
+    }
+    this._refresh();
+  }
+
+  /** The last instance of a job ended. */
+  private _jobEnded(id: string): void {
+    this._clearLongRunningTimer(id);
+    this._runningJobIds.delete(id);
+  }
+
+  private _clearLongRunningTimer(id: string): void {
+    const timer = this._longRunningTimers.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this._longRunningTimers.delete(id);
+    }
   }
 
   private _buildMenu(): MenuSnapshot {

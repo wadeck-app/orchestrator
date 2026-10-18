@@ -26,7 +26,7 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/react": "^19.0.0",
-    "@wadeck-app/app-core-cli": "2026.10.18-032-56246393",
+    "@wadeck-app/app-core-cli": "latest",
     "@wadeck-app/app-core-sdk": "latest",
     "fastify": "^5.0.0",
     "typescript": "*",
