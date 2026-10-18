@@ -256,6 +256,38 @@ export const processStartOf: ProcessStartFn = async (pid) => {
   }
 };
 
+/** When each of these processes started, in ms since the epoch; a process that is not running is simply absent. */
+export type ProcessStartsFn = (pids: number[]) => Promise<Map<number, number>>;
+
+/**
+ * One look at the process table for all the pids, because each look costs about a second on Windows: asking pid by
+ * pid made a daemon with seven runs to find again take nine seconds to become ready.
+ */
+export const processStartsOf: ProcessStartsFn = async (pids) => {
+  const starts = new Map<number, number>();
+  if (pids.length === 0) {
+    return starts;
+  }
+  try {
+    const usages = await pidusage(pids);
+    for (const pid of pids) {
+      const usage = usages[pid];
+      if (usage !== undefined) {
+        starts.set(pid, usage.timestamp - usage.elapsed);
+      }
+    }
+  } catch {
+    // Some platforms refuse a list in which no process is alive: ask one by one, which is slow but exact.
+    for (const pid of pids) {
+      const started = await processStartOf(pid);
+      if (started !== null) {
+        starts.set(pid, started);
+      }
+    }
+  }
+  return starts;
+};
+
 /** How far apart the supervisor's own start stamp and the OS's creation time of that pid may be. */
 const SUPERVISOR_START_TOLERANCE_MS = 5000;
 

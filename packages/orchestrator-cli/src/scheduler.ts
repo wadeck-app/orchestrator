@@ -27,7 +27,7 @@ import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
-import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartOf, type ProcessStartFn, type SupervisedRequest } from './supervised-run.js';
+import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
 
 // May be async: starting a job under a supervisor means waiting for its status file.
@@ -135,8 +135,10 @@ interface SchedulerOptions {
   catchUpInitialDelayMs?: number;
   /** A run that ended while the daemon was down still retries and fires its dependents if it ended within this many ms (default 30 min). */
   lateActionWindowMs?:    number;
-  /** When a process started, for telling a supervisor from a stranger that reused its pid (default: from the OS). */
-  processStart?:          ProcessStartFn;
+  /** When processes started, for telling a supervisor from a stranger that reused its pid (default: from the OS, one look for all). */
+  processStarts?:         ProcessStartsFn;
+  /** How often runs another daemon follows are checked for that daemon having gone (default 3000 ms). */
+  ownerWatchMs?:          number;
   catchUpStaggerMs?:      number;
   hookDispatcher?:        HookDispatcher;
   /** How often a running job's resource peaks are written to state. Lowered in tests. */
@@ -413,7 +415,11 @@ export class Scheduler extends EventEmitter {
   private readonly _skippedJobs    = new Map<string, number>();
   private readonly _catchUpInitialDelayMs: number;
   private readonly _lateActionWindowMs: number;
-  private readonly _processStart: ProcessStartFn;
+  private readonly _processStarts: ProcessStartsFn;
+  private readonly _ownerWatchMs: number;
+  /** `<jobId>|<startedAt>` -> run folder, for runs another live daemon follows: left open, taken over if it goes. */
+  private readonly _followedElsewhere = new Map<string, string>();
+  private _ownerWatch: ReturnType<typeof setInterval> | null = null;
   /** `<jobId>|<startedAt>` of every run this daemon found going after a restart and follows again. */
   private readonly _followed = new Set<string>();
   /** Stops following the supervised runs without ending them, one per run (see detachRuns). */
@@ -461,7 +467,8 @@ export class Scheduler extends EventEmitter {
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._lateActionWindowMs    = options.lateActionWindowMs    ?? 30 * 60_000;
-    this._processStart          = options.processStart          ?? processStartOf;
+    this._processStarts         = options.processStarts         ?? processStartsOf;
+    this._ownerWatchMs          = options.ownerWatchMs          ?? 3000;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
     this._hookDispatcher        = options.hookDispatcher        ?? null;
     this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
@@ -1263,6 +1270,7 @@ export class Scheduler extends EventEmitter {
     } catch {
       return report;
     }
+    const going: Array<{ runDir: string; spec: SupervisedSpec; status: SupervisedStatus }> = [];
     for (const jobDir of jobDirs) {
       let runNames: string[];
       try {
@@ -1284,12 +1292,20 @@ export class Scheduler extends EventEmitter {
           continue;
         }
         if (status.state === 'running') {
-          await this._followOrReport(runDir, spec, status, report);
+          going.push({ runDir, spec, status });
           continue;
         }
         this._finalizeRecovered(runDir, spec, status);
         report.finalized++;
       }
+    }
+    // One look at the process table for every supervisor, not one per run: each look costs about a second on
+    // Windows, and the daemon is not ready until this is done.
+    const candidates = going.filter(run => !ownedByAnotherLiveDaemon(run.runDir));
+    const starts = await this._processStarts(candidates.map(run => run.status.supervisorPid));
+    const startOf: ProcessStartFn = async (pid) => starts.get(pid) ?? null;
+    for (const run of going) {
+      await this._followOrReport(run.runDir, run.spec, run.status, report, startOf);
     }
     return report;
   }
@@ -1298,12 +1314,15 @@ export class Scheduler extends EventEmitter {
    * A run whose supervisor says it is still going: follow it again, unless another daemon already does, and
    * report it as lost when its supervisor is gone without having recorded an end.
    */
-  private async _followOrReport(runDir: string, spec: SupervisedSpec, status: SupervisedStatus, report: RecoveryReport): Promise<void> {
+  private async _followOrReport(
+    runDir: string, spec: SupervisedSpec, status: SupervisedStatus, report: RecoveryReport, startOf: ProcessStartFn,
+  ): Promise<void> {
     if (ownedByAnotherLiveDaemon(runDir)) {
       report.followedElsewhere++;
+      this._watchOwner(`${spec.context.jobId}|${spec.context.startedAt}`, runDir);
       return;
     }
-    if (!(await isOurSupervisor(status, this._processStart))) {
+    if (!(await isOurSupervisor(status, startOf))) {
       // The supervisor writes its final status and then exits, so a run that ended while we were looking can
       // show "running" in what we read and a dead supervisor a moment later. Read again before calling it lost.
       const fresh = readJsonFile<SupervisedStatus>(path.join(runDir, 'status.json'));
@@ -1321,6 +1340,61 @@ export class Scheduler extends EventEmitter {
     }
     this._adopt(runDir, spec, status);
     report.adopted++;
+  }
+
+  /**
+   * A run another live daemon follows is left to it, but not forgotten: if that daemon goes away (an update replaces
+   * it, it crashes) nobody would follow the run, and it would sit in the history as running with no one watching.
+   */
+  private _watchOwner(key: string, runDir: string): void {
+    this._followedElsewhere.set(key, runDir);
+    if (this._ownerWatch !== null) {
+      return;
+    }
+    this._ownerWatch = setInterval(() => { void this._takeOverRuns(); }, this._ownerWatchMs);
+    this._ownerWatch.unref();
+  }
+
+  private _takingOver = false;
+
+  private async _takeOverRuns(): Promise<void> {
+    if (this._takingOver) {
+      return;
+    }
+    this._takingOver = true;
+    try {
+      for (const [key, runDir] of [...this._followedElsewhere]) {
+        if (!fs.existsSync(runDir)) {
+          this._followedElsewhere.delete(key);
+          continue;
+        }
+        if (ownedByAnotherLiveDaemon(runDir)) {
+          continue;
+        }
+        this._followedElsewhere.delete(key);
+        const spec = readJsonFile<SupervisedSpec>(path.join(runDir, 'spec.json'));
+        const status = readJsonFile<SupervisedStatus>(path.join(runDir, 'status.json'));
+        if (spec === null || status === null || spec.context === undefined || fs.existsSync(path.join(runDir, 'done'))) {
+          continue;
+        }
+        const report: RecoveryReport = { finalized: 0, cleaned: 0, adopted: 0, lost: [], followedElsewhere: 0, unreadable: [] };
+        if (status.state === 'running') {
+          const starts = await this._processStarts([status.supervisorPid]);
+          await this._followOrReport(runDir, spec, status, report, async (pid) => starts.get(pid) ?? null);
+        } else {
+          this._finalizeRecovered(runDir, spec, status);
+          report.finalized++;
+        }
+        this.announceAdopted();
+        this.emit('recovery', report);
+      }
+    } finally {
+      this._takingOver = false;
+      if (this._followedElsewhere.size === 0 && this._ownerWatch !== null) {
+        clearInterval(this._ownerWatch);
+        this._ownerWatch = null;
+      }
+    }
   }
 
   /** Follows a run found going: registers it like a live one and hands it to the same monitoring. */
@@ -1353,7 +1427,7 @@ export class Scheduler extends EventEmitter {
 
   /** Whether a run of the job was found going and is followed again, so a startup firing must not start another. */
   private _hasFollowedRun(jobId: string): boolean {
-    for (const key of this._followed) {
+    for (const key of [...this._followed, ...this._followedElsewhere.keys()]) {
       if (key.startsWith(`${jobId}|`)) {
         return true;
       }
@@ -1361,9 +1435,13 @@ export class Scheduler extends EventEmitter {
     return false;
   }
 
-  /** Whether this daemon follows this very run again (for State.closeOrphanedRuns to leave it open). */
+  /**
+   * Whether this very run is followed, by this daemon or by another live one, so State.closeOrphanedRuns leaves it
+   * open: closing it would show a run that is still going as ended.
+   */
   isFollowing(jobId: string, startedAt: string): boolean {
-    return this._followed.has(`${jobId}|${startedAt}`);
+    const key = `${jobId}|${startedAt}`;
+    return this._followed.has(key) || this._followedElsewhere.has(key);
   }
 
   /** Tells the tray and the dashboard about the runs found going, once they are listening. */
@@ -1383,6 +1461,10 @@ export class Scheduler extends EventEmitter {
       detach();
     }
     this._detachers.clear();
+    if (this._ownerWatch !== null) {
+      clearInterval(this._ownerWatch);
+      this._ownerWatch = null;
+    }
   }
 
   /** Handles the end of one run that the daemon was not there to see. */

@@ -233,6 +233,36 @@ describe('a startup job whose run is still going (case 11)', () => {
   });
 });
 
+describe('finding the runs again takes one look at the process table, not one per run', () => {
+  // Seen live: each look costs about a second on Windows, so seven runs delayed the daemon's readiness by nine
+  // seconds, and `orch restart` took the silence for a dead daemon and started a second one.
+  test('the start times of all the supervisors are asked for at once', async () => {
+    const dir = tmpDir();
+    const jobs = [1, 2, 3].map((n) => ({ ...cronJob(dir, 'setInterval(() => {}, 1000)'), id: `job${n}` }));
+    const a = daemon(dir, jobs);
+    for (const job of jobs) {
+      await a.sched._fire(job);
+    }
+    a.state.flushNow();
+    a.sched.detachRuns();
+    await a.sched.stop();
+    const asked = [];
+    const { processStartsOf } = require('../src/supervised-run');
+    const b = daemon(dir, jobs, {
+      processStarts: async (pids) => { asked.push([...pids]); return processStartsOf(pids); },
+    });
+
+    const report = await b.sched.recoverRuns();
+
+    assert.equal(report.adopted, 3);
+    assert.equal(asked.length, 1, `the process table was read ${asked.length} times for 3 runs`);
+    assert.equal(asked[0].length, 3);
+    for (const job of jobs) {
+      await b.sched.killJob(job.id);
+    }
+  });
+});
+
 describe('a run that cannot be followed', () => {
   test('a supervisor that is gone without recording an end is reported as lost and the run is closed, not adopted (case 6)', async () => {
     const dir = tmpDir();
@@ -292,6 +322,48 @@ describe('a run that cannot be followed', () => {
     assert.equal(b.sched.runningCount('job'), 0);
     const owner = JSON.parse(fs.readFileSync(path.join(dir, 'runs', 'job', runDirs[0], 'owner.json'), 'utf8'));
     assert.equal(owner.pid, other.pid, 'the other daemon\'s claim must be left alone');
+  });
+
+  // Seen live: `orch restart` started a second daemon while the first was still finding its runs again. The
+  // second one saw the runs as "followed elsewhere" and then ended five of them in the shared history as orphaned,
+  // while they were running and being followed by the first.
+  test('a run another live daemon follows is not closed as orphaned: the startup sweep must leave it open', async () => {
+    const dir = tmpDir();
+    const job = cronJob(dir, 'setInterval(() => {}, 1000)');
+    await startAndLeave(dir, job);
+    const other = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    helpers.push(other);
+    const runDirs = fs.readdirSync(path.join(dir, 'runs', 'job'));
+    fs.writeFileSync(path.join(dir, 'runs', 'job', runDirs[0], 'owner.json'), JSON.stringify({ pid: other.pid, startedAt: new Date().toISOString() }));
+    const b = daemon(dir, [job]);
+    await b.sched.recoverRuns();
+    const open = b.state.getOpenRuns('job')[0];
+
+    assert.equal(b.sched.isFollowing('job', open.startedAt), true);
+    const closed = b.state.closeOrphanedRuns(new Date(), (id, entry) => b.sched.isFollowing(id, entry.startedAt));
+
+    assert.equal(closed, 0, 'a run that is still going was closed as orphaned');
+    assert.equal(b.state.getOpenRuns('job').length, 1);
+  });
+
+  test('a run left to another daemon is followed by this one when that daemon goes away', async () => {
+    const dir = tmpDir();
+    const job = cronJob(dir, 'setInterval(() => {}, 1000)');
+    const { pid } = await startAndLeave(dir, job);
+    const other = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    helpers.push(other);
+    const runDirs = fs.readdirSync(path.join(dir, 'runs', 'job'));
+    fs.writeFileSync(path.join(dir, 'runs', 'job', runDirs[0], 'owner.json'), JSON.stringify({ pid: other.pid, startedAt: new Date().toISOString() }));
+    const b = daemon(dir, [job], { ownerWatchMs: 100 });
+    await b.sched.recoverRuns();
+    assert.equal(b.sched.runningCount('job'), 0);
+
+    other.kill();
+    await until('the other daemon to be gone', () => !isAlive(other.pid));
+    await until('this daemon to follow the run', () => b.sched.runningCount('job') === 1);
+
+    assert.equal(b.state.getOpenRuns('job')[0].pid, pid);
+    await b.sched.killJob('job');
   });
 
   test('a run whose owner is a dead daemon is taken over', async () => {

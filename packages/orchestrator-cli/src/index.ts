@@ -7,7 +7,7 @@ import { createDaemon } from '@wadeck-app/singleton-daemon-kit';
 import { Registry }    from './registry.js';
 import { State }       from './state.js';
 import { cleanTmpDir, getErrorMessage } from './fsUtil.js';
-import { Scheduler }   from './scheduler.js';
+import { Scheduler, type RecoveryReport } from './scheduler.js';
 import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
 import { AuditLogger } from './audit.js';
@@ -218,22 +218,27 @@ async function main(): Promise<void> {
 
     // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must
     // not be closed as "orphaned" below. Nothing fires before this is done.
+    const logRecovery = (report: RecoveryReport): void => {
+      if (report.finalized > 0 || report.cleaned > 0) {
+        daemonLog.write(`recovered ${report.finalized} run(s) that ended while the daemon was down, cleaned ${report.cleaned}`);
+      }
+      if (report.adopted > 0) {
+        daemonLog.write(`following ${report.adopted} run(s) again that were still going when the daemon came back`);
+      }
+      if (report.followedElsewhere > 0) {
+        daemonLog.write(`${report.followedElsewhere} run(s) are followed by another daemon that is still alive, left to it and taken over if it goes away`);
+      }
+      for (const lost of report.lost) {
+        daemonLog.write(`recovery: ${lost}`);
+      }
+      for (const problem of report.unreadable) {
+        daemonLog.write(`recovery: ${problem}`);
+      }
+    };
+    // Also when a run left to another daemon is taken over later, because that daemon went away.
+    scheduler.on('recovery', logRecovery);
     const recovered = await scheduler.recoverRuns();
-    if (recovered.finalized > 0 || recovered.cleaned > 0) {
-      daemonLog.write(`recovered ${recovered.finalized} run(s) that ended while the daemon was down, cleaned ${recovered.cleaned}`);
-    }
-    if (recovered.adopted > 0) {
-      daemonLog.write(`following ${recovered.adopted} run(s) again that were still going when the daemon came back`);
-    }
-    if (recovered.followedElsewhere > 0) {
-      daemonLog.write(`${recovered.followedElsewhere} run(s) are followed by another daemon that is still alive, left to it`);
-    }
-    for (const lost of recovered.lost) {
-      daemonLog.write(`recovery: ${lost}`);
-    }
-    for (const problem of recovered.unreadable) {
-      daemonLog.write(`recovery: ${problem}`);
-    }
+    logRecovery(recovered);
 
     // Before anything reads the state: runs left open by a previous daemon can never be closed by
     // an event, so they would count as active for good. One such entry from two weeks earlier was
