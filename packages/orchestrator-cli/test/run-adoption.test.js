@@ -197,19 +197,20 @@ describe('a job still running when the daemon restarts (case 3)', () => {
 
   test('keeps enforcing the timeout with the time already used', async () => {
     const dir = tmpDir();
-    // 4 s of timeout, 2.5 s of them used while the daemon is away: about 1.5 s are left. A daemon that granted the
-    // whole timeout again would end the run 6.5 s after it started; this one must end it at about 4 s.
+    // 4 s of timeout, 2.5 s of them used while the daemon is away: about 1.5 s are left when it comes back (less if
+    // finding the run again is slow, as it is on a loaded Windows runner, and then the timeout is already over and
+    // fires at once). A daemon that granted the whole timeout again would end the run 4 s AFTER it came back.
     const job = cronJob(dir, 'setInterval(() => {}, 1000)', { timeoutSeconds: 4 });
     await startAndLeave(dir, job);
-    const startedAtMs = Date.parse(daemon(dir, [job]).state.getOpenRuns('job')[0].startedAt);
     await new Promise((resolve) => setTimeout(resolve, 2500));
     const b = daemon(dir, [job]);
     await b.sched.recoverRuns();
+    const cameBackAt = Date.now();
 
     await until('the timeout', () => names(b.events).includes('job.timed_out'), 20_000);
 
-    const elapsed = Date.now() - startedAtMs;
-    assert.ok(elapsed < 5500, `the run ended ${elapsed} ms after it started: the whole timeout was granted again after the restart`);
+    const waited = Date.now() - cameBackAt;
+    assert.ok(waited < 3000, `the run ended ${waited} ms after the daemon came back, with 4 s of timeout of which 2.5 s were already used: the whole timeout was granted again`);
     assert.match(runLog(dir, 'job'), /\[job:timeout\]/);
   });
 });
