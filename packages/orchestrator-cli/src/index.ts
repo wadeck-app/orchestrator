@@ -12,7 +12,8 @@ import { DailyLogger } from './logger.js';
 import { makeCommands } from './commands.js';
 import { AuditLogger } from './audit.js';
 import { wireAuditEvents } from './audit-wiring.js';
-import { pruneStaleStagedBinaries } from './platform-binary.js';
+import { pruneStaleStagedBinaries, supervisorToRun } from './platform-binary.js';
+import { supervisorFor } from './supervised-run.js';
 import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
@@ -206,6 +207,12 @@ async function main(): Promise<void> {
       catchUpInitialDelayMs: daemonCfg.catchUpInitialDelaySeconds * 1000,
       catchUpStaggerMs:      daemonCfg.catchUpStaggerSeconds * 1000,
       hookDispatcher,
+      supervisor: supervisorFor({
+        enabled:   daemonCfg.supervisedJobs,
+        configDir: CONFIG_DIR,
+        locate:    supervisorToRun,
+        log:       (line) => daemonLog.write(line),
+      }),
     });
 
     // Before anything reads the state: runs left open by a previous daemon can never be closed by

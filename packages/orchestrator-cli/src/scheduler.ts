@@ -26,6 +26,7 @@ import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
+import { SupervisedChild, type SupervisedRequest } from './supervised-run.js';
 
 // May be async: starting a job under a supervisor means waiting for its status file.
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess | Promise<ChildProcess>;
@@ -58,9 +59,13 @@ interface RunOutcome {
 }
 
 type LivenessFn = (job: Pick<Job, 'id' | 'liveness'>) => Promise<boolean>;
+/** Starts a job under its own supervisor (supervised-run.ts), so it can outlive the daemon. */
+type SupervisorFn = (request: SupervisedRequest) => Promise<SupervisedChild>;
 
 interface SchedulerOptions {
   spawn?:                 SpawnFn;
+  /** When set, jobs are started through it instead of `spawn`. */
+  supervisor?:            SupervisorFn;
   liveness?:              LivenessFn;
   now?:                   () => Date;
   configDir?:             string;
@@ -308,6 +313,7 @@ export class Scheduler extends EventEmitter {
   private readonly _registry:  Registry;
   private readonly _state:     State;
   private _spawn:              SpawnFn;
+  private readonly _supervisor:  SupervisorFn | null;
   private readonly _liveness:  LivenessFn;
   private readonly _now:       () => Date;
   private readonly _time:      TimeService;
@@ -366,6 +372,7 @@ export class Scheduler extends EventEmitter {
       // violations-suppress: shared/no-out-of-repo-path a job with no configured cwd runs from the user's home, like a shell would -- the repo is not where a user's job belongs
       return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
     });
+    this._supervisor = options.supervisor ?? null;
     this._liveness  = options.liveness  ?? checkLiveness;
     this._time      = options.time      ?? systemTime;
     // Defaults to the time service rather than Date, so a test that moves the clock is not
@@ -847,7 +854,11 @@ export class Scheduler extends EventEmitter {
    * root to enumerate, and on POSIX our synchronous signal lands before the asynchronous
    * pidtree walk has even listed the tree. Either way the real work keeps running.
    */
-  private _killChild(child: ChildProcess): void {
+  private _killChild(child: ChildProcess, reason: string): void {
+    // Written first: the supervisor records why the job ended, and ends the tree itself if the daemon is gone.
+    if (child instanceof SupervisedChild) {
+      child.requestKill(reason);
+    }
     if (child.pid !== undefined) {
       killTreeSync(child.pid);
       return;
@@ -903,7 +914,10 @@ export class Scheduler extends EventEmitter {
     return `[resource-monitor] Process tree at kill: ${scope}biggest: ${parts.join(', ')}`;
   }
 
-  private async _killChildAsync(child: ChildProcess): Promise<void> {
+  private async _killChildAsync(child: ChildProcess, reason: string): Promise<void> {
+    if (child instanceof SupervisedChild) {
+      child.requestKill(reason);
+    }
     if (child.pid !== undefined) {
       await killTree(child.pid);
       return;
@@ -926,7 +940,7 @@ export class Scheduler extends EventEmitter {
       for (const child of live) {
         this._killedByUser.add(child);
       }
-      await Promise.all(live.map(child => this._killChildAsync(child)));
+      await Promise.all(live.map(child => this._killChildAsync(child, 'manual')));
       return { killed: true, count: live.length };
     }
     // Stale state: no active child but state still shows running - clean it up.
@@ -1148,6 +1162,40 @@ export class Scheduler extends EventEmitter {
     });
   }
 
+  /** What the supervisor needs to run this job: the same command line, directory and environment as a direct spawn. */
+  private _supervisedRequest(job: Job, trigger: TriggerSource, startedAt: string, env: NodeJS.ProcessEnv | undefined): SupervisedRequest {
+    // Tokens re-joined with single spaces, which is what node's `shell: true` hands to the shell.
+    const parts = job.command.match(/(?:[^s"']+|"[^"]*"|'[^']*')+/g) ?? [job.command];
+    return {
+      jobId: job.id,
+      startedAt,
+      command: parts.join(' '),
+      cwd: job.cwd ?? ensureTmpDir(this._configDir, job.id),
+      env: env ?? process.env,
+      timeoutSeconds: job.timeoutSeconds ?? 300,
+      label: job.label,
+      trigger,
+    };
+  }
+
+  /**
+   * A run that could not even be started (the supervisor did not answer, its executable is missing): recorded as
+   * a failed run with the reason in its log, like any other, instead of an exception nobody catches.
+   */
+  private _recordStartFailure(
+    job: Job, trigger: TriggerSource, startedAt: string, err: unknown, waitForExit: boolean,
+  ): { pid: number | null } | { exitCode: number | null } {
+    const reason = getErrorMessage(err);
+    const finishedAt = this._now().toISOString();
+    const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, startedAt);
+    jobLogger.write(`[error] could not start the job: ${reason}`);
+    jobLogger.write('[job:finished] exitCode=1 duration=0s');
+    jobLogger.close();
+    this._state.record(job.id, { startedAt, finishedAt, exitCode: 1, pid: null, triggeredBy: trigger });
+    this._eventPublisher.publish('job.failed', { jobId: job.id, label: job.label, exitCode: 1, durationMs: 0 });
+    return waitForExit || job.triggerMode === 'wait' ? { exitCode: 1 } : { pid: null };
+  }
+
   /**
    * Everything that happens when a run is over: the history entry, the log marker, the events, and what the
    * outcome sets in motion (dependents, retry, alerts).
@@ -1260,8 +1308,15 @@ export class Scheduler extends EventEmitter {
     // Awaited only when it IS a promise: an `await` on a plain child would move everything below to a later
     // tick, and a child that closes right after being spawned (every test double, and a command that fails
     // at once) would emit before its listeners exist.
-    const spawned = this._spawn(job.command, job.cwd ?? undefined, jobEnv, job.id);
-    const child = isPromiseLike(spawned) ? await spawned : spawned;
+    let child: ChildProcess;
+    try {
+      const spawned = this._supervisor !== null
+        ? this._supervisor(this._supervisedRequest(job, trigger, startedAt, jobEnv))
+        : this._spawn(job.command, job.cwd ?? undefined, jobEnv, job.id);
+      child = isPromiseLike(spawned) ? await spawned : spawned;
+    } catch (err) {
+      return this._recordStartFailure(job, trigger, startedAt, err, waitForExit);
+    }
     const pid   = child.pid ?? null;
 
     // Per-run log: one file per execution -- <jobId>-<startedAt>.log
@@ -1281,6 +1336,9 @@ export class Scheduler extends EventEmitter {
     // handler's dependency and retry firings already see the slot free.
     this._running.set(job.id, (this._running.get(job.id) ?? 0) + 1);
     this._liveLogger.set(job.id, jobLogger);
+    if (child instanceof SupervisedChild && child.startError !== undefined) {
+      jobLogger.write(`[error] could not start the job: ${child.startError}`);
+    }
     child.once('close', () => {
       const left = (this._running.get(job.id) ?? 1) - 1;
       if (left > 0) {
@@ -1467,7 +1525,7 @@ export class Scheduler extends EventEmitter {
                 }
               }).finally(() => {
                 if (!jobFinished) {
-                  this._killChild(child);
+                  this._killChild(child, 'resource-limit');
                 }
               });
             }
@@ -1511,7 +1569,7 @@ export class Scheduler extends EventEmitter {
         this._eventPublisher.publish('job.timed_out', { jobId: job.id, label: job.label, timeoutSeconds: job.timeoutSeconds ?? 300 });
         // A timed-out job is one whose resource use is worth a look, so persist before killing.
         flushPeaks();
-        this._killChild(child);
+        this._killChild(child, 'timeout');
       });
     }
 

@@ -24,6 +24,7 @@ export function platformPackage(): string | null {
 // named plainly. The dev build in tray-go/dist keeps the arch suffix.
 const LAUNCHER_IN_PLATFORM_PKG = process.platform === 'win32' ? 'orchestrator.exe' : 'orchestrator';
 const TRAY_IN_PLATFORM_PKG     = process.platform === 'win32' ? 'orchestrator-tray.exe' : 'orchestrator-tray';
+const SUPERVISOR_IN_PLATFORM_PKG = process.platform === 'win32' ? 'orchestrator-supervisor.exe' : 'orchestrator-supervisor';
 
 // Keyed on the platform too, not just the arch: a bare arch ternary returned the darwin
 // binary on any non-Windows host, so a Linux checkout would find and try to exec a Mach-O
@@ -39,6 +40,15 @@ const TRAY_DEV_NAME: Record<string, string> = {
   'win32-x64':    'orchestrator-tray.exe',
   'darwin-arm64': 'orchestrator-tray-arm64',
   'darwin-x64':   'orchestrator-tray-amd64',
+};
+
+// linux-x64 exists only here: no platform package carries it (there is no launcher or tray on Linux either), but a
+// checkout and CI build it so jobs can be supervised there too.
+const SUPERVISOR_DEV_NAME: Record<string, string> = {
+  'win32-x64':    'orchestrator-supervisor.exe',
+  'darwin-arm64': 'orchestrator-supervisor-arm64',
+  'darwin-x64':   'orchestrator-supervisor-amd64',
+  'linux-x64':    'orchestrator-supervisor-linux-amd64',
 };
 
 function platformKey(): string {
@@ -176,6 +186,19 @@ export function findTrayBinary(): string | null {
   return firstExisting([path.join(__dirname, '..', 'tray-go', 'dist', devName)]);
 }
 
+/** The per-job supervisor, started detached by the daemon for each job. */
+export function findSupervisorBinary(): string | null {
+  const fromPkg = resolveInPlatformPackage(SUPERVISOR_IN_PLATFORM_PKG);
+  if (fromPkg) {
+    return fromPkg;
+  }
+  const devName = SUPERVISOR_DEV_NAME[platformKey()];
+  if (!devName) {
+    return null;
+  }
+  return firstExisting([path.join(__dirname, '..', 'supervisor-go', 'dist', devName)]);
+}
+
 /**
  * Version of the installed platform package, used as the staging stamp.
  *
@@ -229,6 +252,14 @@ export function launcherToRun(configDir: string): string | null {
 /** The tray binary to spawn: staged out of node_modules. */
 export function trayToRun(configDir: string): string | null {
   return toRun(findTrayBinary(), configDir);
+}
+
+/**
+ * The supervisor to start for a job: staged out of node_modules, because a running executable cannot be replaced
+ * on Windows and an update must be able to replace this one while jobs still run under it.
+ */
+export function supervisorToRun(configDir: string): string | null {
+  return toRun(findSupervisorBinary(), configDir);
 }
 
 /** Drops staged copies from every version but the one this install would use. */

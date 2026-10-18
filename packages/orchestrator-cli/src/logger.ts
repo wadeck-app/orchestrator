@@ -9,6 +9,17 @@ const HARD_CAP_DAYS = 120;
 const MAX_RUN_LOGS  = 100; // keep last 100 run log files per job
 
 /**
+ * Where the log of a run lives: <prefix>-<YYYY-MM-DDTHH-MM-SS>.log, colons replaced for Windows.
+ *
+ * Shared because two writers append to the same file: the daemon (its markers) and, for a supervised job, the
+ * supervisor (the job's output). They must agree on the name without ever talking to each other.
+ */
+export function runLogPath(logDir: string, prefix: string, startedAt: string): string {
+  const compact = startedAt.replace(/:/g, '-').slice(0, 19); // YYYY-MM-DDTHH-MM-SS
+  return path.join(logDir, `${prefix}-${compact}.log`);
+}
+
+/**
  * Per-run logger: writes all output for one job execution to a single timestamped file.
  * Filename: <prefix>-<YYYY-MM-DDTHH-MM-SS>.log  (colons replaced for Windows compatibility)
  */
@@ -19,8 +30,7 @@ export class RunLogger {
 
   constructor(logDir: string, prefix: string, startedAt: string) {
     fs.mkdirSync(logDir, { recursive: true });
-    const compact = startedAt.replace(/:/g, '-').slice(0, 19); // YYYY-MM-DDTHH-MM-SS
-    this._file = path.join(logDir, `${prefix}-${compact}.log`);
+    this._file = runLogPath(logDir, prefix, startedAt);
     try {
       this._fd = fs.openSync(this._file, 'a');
     } catch (e) {

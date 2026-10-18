@@ -10,6 +10,7 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 |-----|------|---------|-------------|
 | `autoUpdate` | bool | `true` | Enable automatic background updates |
 | `appCore` | bool | `true` | Register the dashboard as a module with app-core at every daemon start. See "app-core module" below |
+| `supervisedJobs` | bool | `false` | Run each job under its own small supervisor process, so jobs survive a daemon restart or update. In progress, see `.claude/plans/2026-10-18_update-with-jobs-running.md` |
 | `catchUpInitialDelaySeconds` | int | `300` | Seconds to wait after daemon start before firing the first catch-up job |
 | `catchUpStaggerSeconds` | int | `300` | Seconds between consecutive catch-up jobs on startup |
 | `onceRetentionDays` | int | `360` | Days a spent `once` job is kept before being pruned |

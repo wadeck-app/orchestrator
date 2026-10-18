@@ -8,6 +8,11 @@ export interface DaemonConfig {
   autoUpdate?: boolean;
   /** Register the dashboard as a module with app-core at every daemon start (default: true). */
   appCore?: boolean;
+  /**
+   * Run every job under its own supervisor process, so a job keeps running (and keeps its output and exit code)
+   * while the daemon restarts or updates (default: false while the feature is being proven).
+   */
+  supervisedJobs?: boolean;
   /** Seconds to wait after daemon start before firing the first catch-up job (default: 300) */
   catchUpInitialDelaySeconds?: number;
   /** Seconds between consecutive catch-up jobs on startup (default: 300) */
@@ -25,6 +30,7 @@ export interface DaemonConfig {
 const DEFAULTS: Required<DaemonConfig> = {
   autoUpdate:                  true,
   appCore:                     true,
+  supervisedJobs:              false,
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,
   // From the registry, so the documented default and the one a Registry built without options uses
@@ -35,7 +41,7 @@ const DEFAULTS: Required<DaemonConfig> = {
   auditMaxFiles:               AUDIT_DEFAULTS.maxFiles,
 };
 
-type BooleanKey = 'autoUpdate' | 'appCore';
+type BooleanKey = 'autoUpdate' | 'appCore' | 'supervisedJobs';
 
 /**
  * What each key accepts. A table rather than a chain of ifs, so the parser can also tell a typo from
@@ -45,6 +51,7 @@ type BooleanKey = 'autoUpdate' | 'appCore';
 const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeInt'> = {
   autoUpdate:                 'boolean',
   appCore:                    'boolean',
+  supervisedJobs:             'boolean',
   catchUpInitialDelaySeconds: 'nonNegativeInt',
   catchUpStaggerSeconds:      'nonNegativeInt',
   onceRetentionDays:          'nonNegativeInt',

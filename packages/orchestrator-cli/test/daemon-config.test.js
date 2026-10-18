@@ -143,3 +143,24 @@ describe('appCore', () => {
     assert.match(warnings[0], /appCore/);
   });
 });
+
+describe('supervisedJobs', () => {
+  test('jobs run under their own supervisor only when asked to, until the feature is proven', () => {
+    assert.equal(withConfig(null).config.supervisedJobs, false);
+    assert.equal(withConfig('supervisedJobs: true\n').config.supervisedJobs, true);
+    assert.equal(withConfig('supervisedJobs: false\n').config.supervisedJobs, false);
+  });
+
+  test('it sets itself and only itself', () => {
+    const on = withConfig('supervisedJobs: true\n').config;
+    assert.equal(on.autoUpdate, true);
+    assert.equal(on.appCore, true);
+  });
+
+  test('a value that is neither true nor false is reported, not read as false', () => {
+    const { config, warnings } = withConfig('supervisedJobs: yes please\n');
+    assert.equal(config.supervisedJobs, false);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /supervisedJobs/);
+  });
+});
