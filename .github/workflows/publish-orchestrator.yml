@@ -181,13 +181,22 @@ jobs:
             # test file), on a different push each time and never on ubuntu or windows. Who held the
             # processes was never recorded, so this samples the process table during the tests and the
             # step after them prints the limits, the peak, and what was still alive.
-            - name: Watch the process table (macOS)
-              if: runner.os == 'macOS'
+            # Ubuntu joined in after run 419: the whole orchestrator-cli test run was interrupted
+            # ("Interrupted while running", 47 files cancelled), the same silent symptom as the exec-manager
+            # failure of run 394, and the rerun passed.
+            - name: Watch the process table
+              if: runner.os != 'Windows'
               run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh start
 
             # dsl-lib-orch holds both suites (components under src/, the DSL adapter under test/); they run as
             # two vitest projects in one invocation.
             - name: Run tests
+              # Evidence, not a fix (ubuntu only): signal-trace.cjs is preloaded into every node process of the
+              # tests. It records the kills aimed at a group, at init or at a parent, and the signal that
+              # interrupts the test runner, with the process table at that moment. See the dump step below.
+              env:
+                  NODE_OPTIONS: ${{ runner.os == 'Linux' && format('--require {0}/packages/orchestrator-cli/ci/scripts/signal-trace.cjs', github.workspace) || '' }}
+                  SIGNAL_TRACE_LOG: ${{ runner.temp }}/signal-trace.log
               run: |
                   npm test --workspace=packages/orch-core --if-present
                   npm test --workspace=packages/orch-server --if-present
@@ -202,9 +211,24 @@ jobs:
               # regressions shipped on 2026-09-15 would have been caught here.
               timeout-minutes: 5
 
-            - name: Report the process table (macOS, tests failed)
-              if: failure() && runner.os == 'macOS'
+            - name: Report the process table (tests failed)
+              if: failure() && runner.os != 'Windows'
               run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh dump
+
+            # What the machine said while the tests ran: the signals and suspicious kills the preload saw, the
+            # memory, and the kernel log (an out-of-memory kill would show there). A source that cannot be read
+            # is said so, not skipped.
+            - name: Report the signals (ubuntu, tests failed)
+              if: failure() && runner.os == 'Linux'
+              run: |
+                  echo "--- signal-trace.log"
+                  if [ -f "$SIGNAL_TRACE_LOG" ]; then cat "$SIGNAL_TRACE_LOG"; else echo "empty: no signal and no suspicious kill was recorded"; fi
+                  echo "--- memory"
+                  free -m
+                  echo "--- kernel log (last 40 lines)"
+                  sudo -n dmesg 2>&1 | tail -40
+              env:
+                  SIGNAL_TRACE_LOG: ${{ runner.temp }}/signal-trace.log
 
     publish:
         needs: build-and-test

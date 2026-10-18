@@ -5,7 +5,7 @@ Status: draft, nothing implemented. Spec-first (guiding-principles.md): the open
 ## Decisions (proposed)
 
 - The engine is a pure function of files on disk: run history + per-run log files + job config. It holds no pipe and no in-memory run state, so it survives a daemon restart and the planned per-job supervisor.
-- It lives in `packages/orchestrator-cli` (new `src/progress/`), exposed by one new RPC `get-progress`; orch-server only proxies it (P-6: no source import between the two).
+- It lives in `packages/orchestrator-cli` (new `src/progress/`), exposed by one new RPC `get-progress`; the controllers (orch-server, the app-core module) only proxy it through `orch-core` (P-6: no source import between the daemon and them).
 - Strategies are plugins behind one interface; `progress: auto` is the default and picks one, with a visible reason.
 - Every "no estimate" and every fallback carries a reason string shown to the user. No silent `null`.
 - Progress is advisory and never affects job execution, kill, retry or alerting (P-1, P-8: orch does not model what a job did; a strategy only reads what the job chose to write).
@@ -33,17 +33,17 @@ Non-goals:
 | Log line format | `[YYYY-MM-DD HH:MM:SS] <text>` (UTC, 1 s resolution); stdout trimmed and empty lines dropped; stderr prefixed `[stderr] ` | `logger.ts:35-37`, `scheduler.ts:1346-1357` |
 | Log markers | `[job:started] pid=.. triggeredBy=..` first; `[job:finished] exitCode=.. duration=..s [reason=..]` or `[job:skipped]` last | `scheduler.ts:1166`, `scheduler.ts:1418-1420` |
 | Log retention | pruned when age > 120 days, or > 100 files and age > 30 days; so logs can outlive the 20 history entries | `logger.ts:7-9`, `logger.ts:60-73` |
-| Log listing | `listLogFiles` already matches per-run and legacy daily names (`<id>-YYYY-MM-DD.log`); legacy daily files are not per-run and must be ignored by the engine | `orch-server/src/routes/logs.ts:16-29` |
+| Log listing | `listLogFiles` already matches per-run and legacy daily names (`<id>-YYYY-MM-DD.log`); legacy daily files are not per-run and must be ignored by the engine | `orch-core/src/routes/logs.ts:15` |
 | Log tailing | existing SSE route polls file size every 500 ms and reads from the last offset | `logs.ts:116-156` |
 | Telemetry | `<configDir>/telemetry/<jobId>.ndjson`, one rotation only (2 MB), samples every 2 s with `run` = startedAt; has `start`/`end` events with `durationMs` | `job-telemetry.ts:15-28`, `job-telemetry.ts:10`, `scheduler.ts:1417` |
 | Events | `EventPublisher.publish` posts to an external queue at `localhost:47910`, fire-and-forget; it is not a channel to the dashboard | `event-publisher.ts:4-20` |
-| Dashboard live data | `GET /api/jobs` returns `{job, runHistory, uptimePercent}`; `get-uptime` failure is swallowed to `{}` | `orch-server/src/routes/jobs.ts:50-64` |
+| Dashboard live data | `GET /api/jobs` returns `{job, runHistory, uptimePercent}`; `get-uptime` failure is swallowed to `{}` | `orch-core/src/routes/jobs.ts:54-59` |
 | SSE | `/api/events` pushes the whole `list-state` every 5 s; it is NOT in the module's allowed routes | `routes/events.ts:13-34`, `app-module-orchestrator/src/routes.ts:3-13` |
 | Pages | job list polls `GET /api/jobs` every 30 s; job detail polls `GET /api/jobs/{id}` every 30 s | `orch-app/src/dsl/pages/job-list.yaml:7-10`, `job-detail.yaml:3-8` |
-| UI | `JobCard` uses dsl-ui `Progress` for uptime (inline, sm) and shows the status pill; `RunningBannerDetail` already ticks every 1 s and shows `formatElapsed` | `orch-ui/src/components/JobCard.tsx:286-296`, `RunningBannerDetail.tsx:53-59,140` |
+| UI | `JobCard` uses dsl-ui `Progress` for uptime (inline, sm) and shows the status pill; `RunningBannerDetail` already ticks every 1 s and shows `formatElapsed` | `dsl-lib-orch/src/components/JobCard.tsx:288`, `RunningBannerDetail.tsx:140` |
 | Job config validation | `validateJob(job)` is the single place a new `Job` field is checked; `UNSETTABLE_FIELDS` must list every new optional field (comment at `types.ts:121-124`) | `registry.ts:29`, `types.ts:126-146` |
-| app-core module | reuses orch-server `jobsRoutes`/`logsRoutes` verbatim; pages are standalone YAML in `src/dsl-views/` (no longer derived from orch-app); a route must be added to `ALLOWED_ROUTES` to be published | `app-module-orchestrator/src/backend.ts:25-33`, `routes.ts:14-36` |
-| orch-ui types | orch-ui has its own `RuntimeEntry`/`Job` copy (no `orphaned`, no `retryAttempt`) | `orch-ui/src/types.ts:11,127-145` |
+| app-core module | registers `orch-core`'s `jobsRoutes`/`logsRoutes` verbatim; pages are standalone YAML in `src/dsl-views/`; a route must be added to `ALLOWED_ROUTES` to be published | `app-module-orchestrator/src/backend/index.ts`, `routes.ts` |
+| UI types | `dsl-lib-orch` has its own `Job`/`RuntimeEntry` copy, behind the CLI's (no `orphaned`, `retryAttempt`, `supervised`, `retryOnExitCodes`, `skipExitCodes`, `spent`) | `dsl-lib-orch/src/types.ts:11,127` |
 
 Unknown (to verify before building): the supervisor's log/status file names and whether it keeps the `[job:started]`/`[job:finished]` markers and the `[ts]` prefix; whether `Progress` in dsl-ui supports an indeterminate state; whether a DSL `$sources` poll interval can change while a job runs; where `docs/daemon-config.md` expects new job keys documented.
 
@@ -150,13 +150,13 @@ API:
 - Time: the response carries `etaAt` (absolute) and `serverNow`; the client computes remaining time locally so the 30 s page poll (`job-detail.yaml:8`) is enough for the list; the detail page needs a 5 s source (or the existing 1 s UI tick in `RunningBannerDetail.tsx:53-59` with a 5 s refetch while running) - unknown whether the DSL can vary the poll interval.
 - Changing `/api/events` is not planned (not published by the module).
 
-UI (`packages/orch-ui`, consumed by `orch-app` YAML pages and, through `orch-dsl-lib`, by the module's own YAML in `app-module-orchestrator/src/dsl-views/`; a new component is added to `orch-dsl-lib/src/index.ts` and `npm run entries --workspace=packages/orch-dsl-lib` regenerates its entries):
+UI (`packages/dsl-lib-orch`, consumed by `orch-app` YAML pages and by the module's own YAML in `app-module-orchestrator/src/dsl-views/`; a new component is added under `src/components/`, listed in `src/index.ts`, and `npm run entries --workspace=packages/dsl-lib-orch` regenerates its entries):
 - New `JobProgress` component: `Progress` bar + text `"42% - ends ~14:32 (in 6 min)"`; shown in `RunningBannerDetail` (under the elapsed line, `RunningBannerDetail.tsx:140`) and in `JobCard` for running jobs (next to the status pill, `JobCard.tsx:203-206`).
 - Low confidence: bar rendered striped/lighter, ETA prefixed `~`, tooltip shows `reason` and strategy id.
 - No estimate (`progress: null`): no bar; one muted line with the `reason` (for example "needs 3 completed runs, has 1"), never a blank.
 - Overdue (elapsed > expected): text "longer than usual (usual: 12 min)", no negative time.
 - Detail page shows a "Progress" row in `JobConfigDisplay` with the configured mode (`auto` or the strategy) and, for `auto`, the chosen strategy and skip reasons.
-- orch-ui keeps its own type copy (`orch-ui/src/types.ts`), so the new type is added there too; a contract test compares both shapes.
+- `dsl-lib-orch` keeps its own type copy (`src/types.ts`), so the new type is added there too; a contract test compares both shapes.
 - Job form (`JobForm.tsx`): a Progress section (mode select + options JSON for advanced strategies); shown errors come from `validateJob`.
 - Tray/CLI: `orch status` prints `42% ~14:32` per running job (small, same RPC); tray unchanged in v1.
 
@@ -190,7 +190,7 @@ Rules: tests first, committed failing; test the installed `orch` for the end-to-
 
 Questions for the user:
 1. Supervisor contract: file names, whether `[job:started]`/`[job:finished]` and the `[YYYY-MM-DD HH:MM:SS]` prefix remain, who writes the finish time. Phase 0 depends on it.
-2. Where should the engine run: in the daemon (this plan) or computed by orch-server from files (the module's `logsRoutes` already receives `configDir`)? The first keeps one implementation and P-6; the second avoids new RPC load on the daemon.
+2. Where should the engine run: in the daemon (this plan) or computed by `orch-core` from files (the module's `logsRoutes` already receives `configDir`)? The first keeps one implementation and P-6; the second avoids new RPC load on the daemon.
 3. Is a job allowed to write `##orch-progress` lines / a progress file (a job-side convention that mildly conflicts with "orch takes the program at its word", P-8, though it only reads what the job volunteers)?
 4. Learning depth: history is 20 runs (`state.ts:5`) but logs can reach 100 files; may the engine learn from log files older than history (needs duration from the log's markers)?
 5. Telemetry retention (2 files, `job-telemetry.ts:10`) blocks `resource`; is a retention increase acceptable, or is `resource` dropped?
@@ -207,5 +207,5 @@ Risks:
 - Parallel runs (`maxConcurrency` > 1, `types.ts:65`): one estimate per open run, not per job; the API must key by `startedAt` (the field in the payload above is per job in v1: decision needed, folds into question 2's design).
 - Sticky `auto` choice and learned data can drift silently; the replay report and the `reason` string are the controls.
 - Learning cost on large logs (up to 100 files): bounded by a byte cap per file and by learning only the 20 newest usable runs; confirm with measurements in phase 2.
-- Two copies of the types in orch-ui and orchestrator-cli can diverge (they already differ: `orphaned`, `retryAttempt`); mitigated by the contract test in section 6.
+- Two copies of the types in `dsl-lib-orch` and orchestrator-cli can diverge (they already differ, see the Facts table); mitigated by the contract test in section 6.
 - Side effects found while reading, worth a separate decision: the existing anomaly check (`scheduler.ts:1444`) and the new engine will both define "usual duration"; they should share one function to avoid two different medians/averages.
