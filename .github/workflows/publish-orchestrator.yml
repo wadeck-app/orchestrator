@@ -153,6 +153,12 @@ jobs:
               run: go test ./...
               working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
+            # The per-job supervisor: its tests run the real binary logic against node, so the unix process
+            # group and the Windows taskkill paths are each exercised on their own platform.
+            - name: Run supervisor tests
+              run: go test ./...
+              working-directory: packages/orchestrator-cli/supervisor-go
+
             # Evidence, not a fix. A macOS leg has repeatedly died in `Run tests` with
             # `spawn <node> EAGAIN` (the process table was full when the test runner tried to start a
             # test file), on a different push each time and never on ubuntu or windows. Who held the
