@@ -151,6 +151,7 @@ jobs:
             # root: running from the package above it fails with "does not contain main module".
             - name: Run Go launcher tests
               run: go test ./...
+              working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
             # Evidence, not a fix. A macOS leg has repeatedly died in `Run tests` with
             # `spawn <node> EAGAIN` (the process table was full when the test runner tried to start a
@@ -160,7 +161,6 @@ jobs:
             - name: Watch the process table (macOS)
               if: runner.os == 'macOS'
               run: bash packages/orchestrator-cli/ci/scripts/proc-watch.sh start
-              working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
             # orch-ui is built here but was never tested, so its 11 test files failed to even
             # load, unnoticed, for as long as they existed: @testing-library/dom is a
