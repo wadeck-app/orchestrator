@@ -360,7 +360,7 @@ export async function isOurSupervisor(
 export type SupervisorLauncher = (request: SupervisedRequest) => Promise<SupervisedChild>;
 
 export interface SupervisorSetup {
-  /** `supervisedJobs` in config.yml. */
+  /** `supervisedJobs` in config.yml (on by default). */
   enabled: boolean;
   configDir: string;
   /** Finds the supervisor executable and stages it out of node_modules (platform-binary.ts supervisorToRun). */
@@ -380,11 +380,11 @@ export function supervisorFor(setup: SupervisorSetup): SupervisorLauncher | unde
   try {
     supervisorPath = setup.locate(setup.configDir);
   } catch (err) {
-    setup.log(`supervisedJobs: true, but the supervisor cannot be prepared (${getErrorMessage(err)}). Jobs run unsupervised and will not survive a daemon restart. Reinstall with: orch cli update`);
+    setup.log(`supervisedJobs is on (the default), but the supervisor cannot be prepared (${getErrorMessage(err)}). Jobs run unsupervised and will not survive a daemon restart. Reinstall with: orch cli update`);
     return undefined;
   }
   if (supervisorPath === null) {
-    setup.log(`supervisedJobs: true, but there is no supervisor executable for ${process.platform}-${process.arch}. Jobs run unsupervised and will not survive a daemon restart. Set supervisedJobs: false to silence this.`);
+    setup.log(`supervisedJobs is on (the default), but there is no supervisor executable for ${process.platform}-${process.arch}. Jobs run unsupervised and will not survive a daemon restart. Set supervisedJobs: false in config.yml to silence this.`);
     return undefined;
   }
   setup.log(`supervisedJobs is on: jobs run under ${supervisorPath}`);

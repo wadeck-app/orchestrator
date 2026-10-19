@@ -145,23 +145,26 @@ describe('appCore', () => {
 });
 
 describe('supervisedJobs', () => {
-  test('jobs run under their own supervisor only when asked to, until the feature is proven', () => {
-    assert.equal(withConfig(null).config.supervisedJobs, false);
+  // On by default since it was proven (a live update with jobs running, a daemon outage of 85 s, the real app-core
+  // server followed again, and the three OS legs of CI). Off is the explicit choice.
+  test('jobs run under their own supervisor unless it is turned off', () => {
+    assert.equal(withConfig(null).config.supervisedJobs, true);
     assert.equal(withConfig('supervisedJobs: true\n').config.supervisedJobs, true);
     assert.equal(withConfig('supervisedJobs: false\n').config.supervisedJobs, false);
   });
 
   test('it sets itself and only itself', () => {
-    const on = withConfig('supervisedJobs: true\n').config;
-    assert.equal(on.autoUpdate, true);
-    assert.equal(on.appCore, true);
+    const off = withConfig('supervisedJobs: false\n').config;
+    assert.equal(off.autoUpdate, true);
+    assert.equal(off.appCore, true);
   });
 
-  test('a value that is neither true nor false is reported, not read as false', () => {
+  test('a value that is neither true nor false is reported, and the default applies', () => {
     const { config, warnings } = withConfig('supervisedJobs: yes please\n');
-    assert.equal(config.supervisedJobs, false);
+    assert.equal(config.supervisedJobs, true);
     assert.equal(warnings.length, 1);
     assert.match(warnings[0], /supervisedJobs/);
+    assert.match(warnings[0], /true/);
   });
 });
 

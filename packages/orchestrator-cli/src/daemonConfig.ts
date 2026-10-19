@@ -10,7 +10,7 @@ export interface DaemonConfig {
   appCore?: boolean;
   /**
    * Run every job under its own supervisor process, so a job keeps running (and keeps its output and exit code)
-   * while the daemon restarts or updates (default: false while the feature is being proven).
+   * while the daemon restarts or updates (default: true; false runs jobs as children of the daemon, as before).
    */
   supervisedJobs?: boolean;
   /**
@@ -35,7 +35,7 @@ export interface DaemonConfig {
 const DEFAULTS: Required<DaemonConfig> = {
   autoUpdate:                  true,
   appCore:                     true,
-  supervisedJobs:              false,
+  supervisedJobs:              true,
   lateActionWindowMinutes:     30,
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,

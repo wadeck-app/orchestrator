@@ -12,7 +12,7 @@ Status: decided and reviewed (2026-10-18), implementation in progress. Nothing h
 | 4 recovery of finished runs, policy C, effect ledger, `state.flushNow`, `lateActionWindowMinutes` | done |
 | 5 adoption: `owner.json`, supervisor identity by start time, no second copy of a startup/catch-up job, `detachRuns` on shutdown, `supervised` flag so the updater does not wait for these runs | done in code and tests (cases 3, 4, 5, 6, 8, 11, 12) |
 | 5 still open | the spike under the REAL launcher (tray start kills every tray on the machine, so it is not run on a dev machine), cases 13-14, a real `orch cli update` with a running job |
-| 6 flag default on, `orch stop` semantics (D5/D6), docs | open |
+| 6 flag default on, `orch stop` semantics (D5/D6), docs | done (2026-10-19): `supervisedJobs` defaults to `true`, `orch stop` leaves jobs running, `--kill-jobs` ends them. The flag stays as the way to turn it off |
 
 ### Live test on the real daemon (2026-10-18, Windows)
 
@@ -48,7 +48,7 @@ Goal: `orch cli update` and any daemon restart work with jobs running. A job tha
 | D4 | No cooperative heartbeat/progress files from jobs; the supervisor's heartbeat is the liveness evidence | user |
 | D5 | `orch stop` leaves jobs running (adopted at the next start); `orch stop --kill-jobs` ends them | proposed, to confirm |
 | D6 | The daemon no longer echoes job output to its own stdout (the supervisor owns the pipes) | proposed, to confirm |
-| D7 | Supervised jobs ship behind `supervisedJobs` in `config.yml` (default false) until phase 5 is green, then default true and the flag is removed | proposed |
+| D7 | Supervised jobs shipped behind `supervisedJobs` in `config.yml`, default false; default `true` since 2026-10-19 (live test and CI green on 3 OS). The flag is kept, not removed: `false` is the way back to jobs that are children of the daemon | done |
 
 ## Facts (verified in code or by experiment, 2026-10-18)
 

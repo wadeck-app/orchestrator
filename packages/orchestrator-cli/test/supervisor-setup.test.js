@@ -42,7 +42,10 @@ describe('supervisorFor', () => {
 
     assert.equal(launcher, undefined);
     assert.equal(lines.length, 1);
-    assert.match(lines[0], /supervisedJobs: true/);
+    // On by default, so the line must not suggest the user wrote it, and must say how to silence it.
+    assert.match(lines[0], /supervisedJobs/);
+    assert.doesNotMatch(lines[0], /supervisedJobs: true/);
+    assert.match(lines[0], /supervisedJobs: false/);
     assert.match(lines[0], new RegExp(process.platform));
     assert.match(lines[0], /unsupervised|will not survive/);
   });
