@@ -13,7 +13,7 @@ const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised } = require('../src/supervised-run');
-const { endLeftoverRuns } = require('./helpers/end-leftover-runs');
+const { endLeftoverRuns, withPidFile } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
@@ -53,8 +53,10 @@ function makeEnv(job, extra = {}) {
 }
 
 function script(dir, name, source) {
+  // The script may live in a folder of its own, away from the config dir: the sweep has to know it too.
+  dirs.push(dir);
   const file = path.join(dir, name);
-  fs.writeFileSync(file, source);
+  fs.writeFileSync(file, withPidFile(source));
   return `node "${file}"`;
 }
 

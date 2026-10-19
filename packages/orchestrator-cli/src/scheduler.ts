@@ -1647,8 +1647,8 @@ export class Scheduler extends EventEmitter {
       jobLogger.write(skipped
         ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
         : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`, endedAt);
-      // `skipped` travels with the event because the systray classifies on this alone.
-      this.emit('job-finished', { id: job.id, exitCode, job, skipped, durationMs, trigger, late: finish.late });
+      // `skipped` and `cancelledByUser` travel with the event because the systray classifies on these alone.
+      this.emit('job-finished', { id: job.id, exitCode, job, skipped, cancelledByUser, durationMs, trigger, late: finish.late });
       if (ledger !== undefined) {
         // The exit code is the one fact that cannot be learned again once the run folder is gone.
         this._state.flushNow();

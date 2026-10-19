@@ -16,7 +16,7 @@ const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised, runDirFor } = require('../src/supervised-run');
-const { endLeftoverRuns } = require('./helpers/end-leftover-runs');
+const { endLeftoverRuns, withPidFile } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
@@ -44,7 +44,7 @@ after(async () => { await endLeftoverRuns(dirs); });
 
 function cronJob(dir, source, extra = {}) {
   const file = path.join(dir, `job-${Math.random().toString(36).slice(2)}.js`);
-  fs.writeFileSync(file, source);
+  fs.writeFileSync(file, withPidFile(source));
   return { id: 'job', type: 'cron', schedule: '0 8 * * *', label: 'Job', enabled: true, triggerMode: 'fire-and-forget', command: `node "${file}"`, ...extra };
 }
 

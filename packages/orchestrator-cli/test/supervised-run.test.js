@@ -11,7 +11,7 @@ const os   = require('node:os');
 
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised, SupervisedChild } = require('../src/supervised-run');
-const { endLeftoverRuns } = require('./helpers/end-leftover-runs');
+const { endLeftoverRuns, withPidFile } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
@@ -40,7 +40,7 @@ after(async () => { await endLeftoverRuns(dirs); });
 /** A job written as a script, so quoting is the same under cmd.exe and sh. */
 function scriptCommand(dir, source) {
   const script = path.join(dir, 'job.js');
-  fs.writeFileSync(script, source);
+  fs.writeFileSync(script, withPidFile(source));
   return `node "${script}"`;
 }
 

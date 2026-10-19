@@ -32,7 +32,8 @@ export type TrayActionId = typeof TRAY_ACTIONS[number];
 interface FailureEntry {
   id:       string;
   label:    string;
-  exitCode: number;
+  // Null for a run that ended without a code (timeout, resource limit): the menu says "exit null" for it.
+  exitCode: number | null;
   message:  string | null;
   time:     string;
 }
@@ -122,7 +123,7 @@ export class TrayManager extends EventEmitter {
     this._intentionalStop = false;
 
     this._scheduler.on('job-started', (ev: { id: string }) => { this._jobStarted(ev.id); });
-    this._scheduler.on('job-finished', (ev: { id: string; exitCode: number; job: Job; skipped?: boolean }) => {
+    this._scheduler.on('job-finished', (ev: { id: string; exitCode: number | null; job: Job; skipped?: boolean; cancelledByUser?: boolean }) => {
       // Still running while any instance is: the first one to end must not clear the job from the
       // tray. The slot is released before this event, so the count is already the one after.
       if (this._scheduler.runningCount(ev.id) === 0) {
@@ -216,9 +217,16 @@ export class TrayManager extends EventEmitter {
     this._log.close();
   }
 
-  private _onJobFinished({ id, exitCode, job, skipped }: { id: string; exitCode: number; job: Job; skipped?: boolean }): void {
+  private _onJobFinished({ id, exitCode, job, skipped, cancelledByUser }: {
+    id: string; exitCode: number | null; job: Job; skipped?: boolean; cancelledByUser?: boolean;
+  }): void {
     // A skipped run is neither a failure to badge nor a success to flash green: it did no work.
     if (skipped) {
+      return;
+    }
+    // A run the user ended has no exit code and is not a failure (the history does not count it as one either). It
+    // used to be listed here as "exit null", and ending a server by hand left the tray red with every job fine.
+    if (cancelledByUser) {
       return;
     }
     if (exitCode !== 0) {
