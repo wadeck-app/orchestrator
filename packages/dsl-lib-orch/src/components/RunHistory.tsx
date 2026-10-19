@@ -1,27 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { ColumnHelpers, DataTable, type TableColumn } from '@wadeck-app/dsl-ui';
 import { isRunActive, isRunCancelled, isRunSkipped, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
+import { JobStatusPill } from './JobStatusPill.js';
 import { TriggerBadge } from './TriggerBadge.js';
-import { appPath } from '../runtime-config.js';
+import { RunLogLink } from './RunLogLink.js';
 
 export interface RunHistoryProps {
   entries: RuntimeEntry[];
   /** Enables the per-run Logs link. Without it the run cannot be addressed, so no link is shown. */
   jobId?: string;
-}
-
-/**
- * The run's log file stamp, as RunLogger names it: colons to dashes, milliseconds dropped.
- *
- * Duplicating the rule is what makes the link land on the right run; deriving it from the displayed
- * locale string would produce a name no file has, and the pane would quietly fall back to the live
- * tail rather than say the run was not found.
- */
-function runName(startedAt: string): string {
-  return startedAt.replace(/:/g, '-').slice(0, 19);
 }
 
 /*
@@ -108,12 +97,30 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
       label: 'Result',
       // The badge owns the whole outcome-to-pill mapping; this column only classifies.
       render: ({ entry }) => (
-        <JobStatusBadge
-          exitCode={entry.exitCode}
-          running={isRunActive(entry)}
-          cancelled={isRunCancelled(entry)}
-          skipped={isRunSkipped(entry)}
-        />
+        <span className="inline-flex items-center gap-1.5">
+          {entry.orphaned === true && !isRunActive(entry) ? (
+            // The daemon that spawned the run died, so nobody saw it end: neither a failure nor a
+            // cancellation by the user, and not the JobStatusBadge's call to make (no such prop).
+            <span title="The daemon stopped while this run was going, so how it ended was never seen. Not a failure of the job.">
+              <JobStatusPill kind="interrupted" label="Interrupted" />
+            </span>
+          ) : (
+            <JobStatusBadge
+              exitCode={entry.exitCode}
+              running={isRunActive(entry)}
+              cancelled={isRunCancelled(entry)}
+              skipped={isRunSkipped(entry)}
+            />
+          )}
+          {entry.supervised === true && (
+            <span
+              className="text-xs px-1.5 py-0.5 rounded bg-muted/20 text-muted"
+              title="Ran under its own supervisor process: it survives a daemon restart and is picked up again after it."
+            >
+              supervised
+            </span>
+          )}
+        </span>
       ),
     },
     { key: 'triggeredBy', label: 'Triggered by', render: ({ entry }) => <TriggerBadge source={entry.triggeredBy} /> },
@@ -126,13 +133,10 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
       key: 'output',
       label: 'Output',
       render: ({ entry }) => (
-        <Link
-          to={appPath(`/jobs/${jobId}/logs?run=${encodeURIComponent(runName(entry.startedAt))}`)}
-          className="inline-flex items-center gap-1 text-primary hover:underline"
-        >
+        <RunLogLink jobId={jobId} startedAt={entry.startedAt} className="inline-flex items-center gap-1 text-primary hover:underline">
           <FileText size={12} />
           Logs
-        </Link>
+        </RunLogLink>
       ),
     });
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { postTrigger, postTriggerEarly } from './trigger-job.js';
+import { postDryRun, postTrigger, postTriggerEarly } from './trigger-job.js';
 
 function stubFetch(response: { status: number; ok?: boolean; json?: unknown }): ReturnType<typeof vi.fn> {
   const fn = vi.fn().mockResolvedValue({
@@ -93,5 +93,37 @@ describe('postTriggerEarly', () => {
     stubFetch({ status: 503, ok: false, json: { error: 'daemon-not-running' } });
 
     await expect(postTriggerEarly('nightly')).rejects.toThrow('daemon-not-running');
+  });
+});
+
+describe('postDryRun', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('posts to the dry-run route of the job and resolves with the daemon answer', async () => {
+    const fetchFn = stubFetch({ status: 200, json: { pid: 42 } });
+
+    await expect(postDryRun('j1')).resolves.toEqual({ pid: 42 });
+    expect(fetchFn).toHaveBeenCalledWith('/api/jobs/j1/dry-run', { method: 'POST' });
+  });
+
+  it('uses the configured api base', async () => {
+    const fetchFn = stubFetch({ status: 200, json: { exitCode: 0 } });
+
+    await postDryRun('j1', '/api/modules/orchestrator');
+
+    expect(fetchFn.mock.calls[0][0]).toBe('/api/modules/orchestrator/api/jobs/j1/dry-run');
+  });
+
+  it('throws with the server message when the request fails', async () => {
+    stubFetch({ status: 500, json: { error: 'daemon unavailable' } });
+
+    await expect(postDryRun('j1')).rejects.toThrow('daemon unavailable');
+  });
+
+  // The daemon answers 200 with { error } when the job does not declare dryRunSupported.
+  it('throws when the daemon refuses with an error body', async () => {
+    stubFetch({ status: 200, json: { error: 'Job "j1" does not declare dryRunSupported: true' } });
+
+    await expect(postDryRun('j1')).rejects.toThrow('dryRunSupported');
   });
 });

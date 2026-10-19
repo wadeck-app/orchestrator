@@ -1878,7 +1878,7 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 }
 
 export const TriggerBadgeEntry: ComponentRegistryEntry = {
-	name: 'TriggerBadge', category: 'atomic', tags: ["badge","trigger","source","manual","cron"],
+	name: 'TriggerBadge', category: 'atomic', tags: ["badge","trigger","source","manual","cron","retry"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const source = resolveExpressionValue(node['source'], ctx) as import('../components/TriggerBadge.js').TriggerBadgeProps['source']

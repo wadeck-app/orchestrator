@@ -39,6 +39,27 @@ export function postTrigger(
   return postRun(id, 'trigger', opts, apiBase);
 }
 
+/** What the daemon answers to a dry run: started (pid), or already finished (exitCode, for a job that waits). */
+export type DryRunResult = { pid: number | null } | { exitCode: number | null };
+
+/**
+ * Asks the dashboard server to run the job's command with `--dry-run` appended (the job must declare
+ * dryRunSupported). Rejects with the server's own message on a failed request AND when the daemon
+ * answers 200 with `{ error }` (the job does not support it), so a refusal cannot read as a start.
+ */
+export async function postDryRun(id: string, apiBase = getApiBase()): Promise<DryRunResult> {
+  const res = await fetch(`${apiBase}/api/jobs/${id}/dry-run`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
+    throw new Error(body.error ?? res.statusText);
+  }
+  const body = await res.json() as DryRunResult | { error: string };
+  if ('error' in body) {
+    throw new Error(body.error);
+  }
+  return body;
+}
+
 /**
  * Same contract as `postTrigger`, for "run it now instead of at its next scheduled time".
  *

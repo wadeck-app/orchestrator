@@ -2,6 +2,7 @@ import React from 'react';
 import {
   CheckCircle, XCircle, Play, Clock, Plus, Trash2,
   Pencil, ToggleLeft, ToggleRight, Power, RefreshCw, Square,
+  SkipForward, Ban, AlertTriangle,
 } from 'lucide-react';
 import type { AuditEntry } from './AuditEntryRow.js';
 
@@ -24,10 +25,27 @@ export function AuditEntryIcon({ event, entry }: AuditEntryIconProps): React.Rea
     return <RefreshCw size={sz} className="text-primary" />;
   }
   if (event === 'job.completed') {
+    // A run flagged skipped keeps the child's real exit code and is not a failure (same rule as the daemon).
+    if (entry.skipped === true) {
+      return <SkipForward size={sz} className="text-muted" />;
+    }
     const ec = entry.exitCode as number | undefined;
     return ec === 0
       ? <CheckCircle size={sz} className="text-green-600" />
       : <XCircle size={sz} className="text-danger" />;
+  }
+  // Nothing was started: the job's own exit-code skip, or a firing refused (concurrency, adopted, liveness).
+  // Neutral on purpose, it asks for nothing.
+  if (event === 'job.skipped') {
+    return <SkipForward size={sz} className="text-muted" />;
+  }
+  // A manual trigger the daemon turned down (job at its concurrency limit): somebody asked, nothing ran.
+  if (event === 'job.trigger_refused') {
+    return <Ban size={sz} className="text-warning" />;
+  }
+  // The daemon died with runs open and closed them at the next start: worth a look, not the job's fault.
+  if (event === 'runs.orphaned_closed') {
+    return <AlertTriangle size={sz} className="text-warning" />;
   }
   if (event === 'job.triggered_manual') {
     return <Play size={sz} className="text-primary" />;

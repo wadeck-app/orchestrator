@@ -8,7 +8,7 @@ import { Badge } from '@wadeck-app/dsl-ui';
  * active window has not opened yet. That job is enabled and correctly doing nothing, and it used to
  * show "Never run" -- true, and indistinguishable from a job that is broken.
  */
-export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never' | 'pending';
+export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never' | 'pending' | 'interrupted';
 
 /**
  * Which design-system variant each state maps to.
@@ -29,6 +29,8 @@ export const JOB_STATUS_VARIANT: Record<JobStatusKind, 'success' | 'danger' | 'w
   cancelled: 'warning',
   skipped:   'default',
   never:     'default',
+  // Amber like Cancelled: it asks for a glance (the daemon died mid-run) without being the job's fault.
+  interrupted: 'warning',
   pending:   'default',
 };
 

@@ -21,6 +21,40 @@ function wire() {
 
 const JOB = { label: 'WhatsApp scrape' };
 
+// A firing refused before anything spawned (run still going from before a restart, liveness check) is published for
+// the queue but never went through job-finished, so the audit trail did not know the job had been due and did
+// nothing. The scheduler announces it as 'job-skipped'.
+describe('wireAuditEvents records a firing that never spawned', () => {
+  for (const reason of ['adopted', 'liveness']) {
+    test(`a ${reason} skip becomes job.skipped with its reason`, () => {
+      const { scheduler, logged } = wire();
+
+      scheduler.emit('job-skipped', { id: 'wa', job: JOB, reason });
+
+      assert.equal(logged.length, 1);
+      assert.equal(logged[0].event, 'job.skipped');
+      assert.deepEqual(logged[0].payload, { jobId: 'wa', label: 'WhatsApp scrape', reason });
+    });
+  }
+
+  // docs/daemon-config.md: a scheduled refusal for concurrency is not audited (only a refused `orch trigger` is). A
+  // cron job every minute behind a long run would write a line per minute for as long as it lasts.
+  test('a concurrency refusal is not audited', () => {
+    const { scheduler, logged } = wire();
+
+    scheduler.emit('job-skipped', { id: 'wa', job: JOB, reason: 'concurrency', running: 2, maxConcurrency: 2 });
+
+    assert.equal(logged.length, 0);
+  });
+
+  test('a throwing audit sink does not escape into the scheduler', () => {
+    const scheduler = new EventEmitter();
+    wireAuditEvents(scheduler, { log: () => { throw new Error('disk full'); } });
+
+    assert.doesNotThrow(() => scheduler.emit('job-skipped', { id: 'wa', job: JOB, reason: 'liveness' }));
+  });
+});
+
 describe('wireAuditEvents maps a finished run to the right audit event', () => {
   test('a normal run is a completion', () => {
     const { scheduler, logged } = wire();

@@ -3,6 +3,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
 import { isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
 import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
+import { DryRunButton } from './DryRunButton.js';
 import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -43,7 +44,7 @@ export interface RunningAlertDetailProps {
  * @registryCategory composite
  * @registryTags job detail running alert design-b
  */
-export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningAlertDetailProps): React.ReactElement | null {
+export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onViewLogs, onEdit }: RunningAlertDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -155,6 +156,7 @@ export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onK
       )}
 
       <div className="flex gap-3 flex-wrap mb-4">
+        <DryRunButton job={job} jobId={jobId} onDryRun={onDryRun} />
         {onViewLogs
           ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
           : <ButtonLink to={appPath(`/jobs/${jobId}/logs`)} label="View logs" variant="neutral" />}

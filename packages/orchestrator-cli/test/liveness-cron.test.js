@@ -171,6 +171,23 @@ describe('a once job honours its liveness check', () => {
 });
 
 describe('a skipped firing says so', () => {
+  test('the scheduler announces it, which is what feeds the audit trail', async () => {
+    const job = {
+      id: 'svc', type: 'startup', delaySeconds: 0, command: 'npm run scrape',
+      enabled: true, triggerMode: 'fire-and-forget', liveness: LIVE,
+    };
+    const { sched } = makeSched([job], true);
+    const announced = [];
+    sched.on('job-skipped', (ev) => announced.push(ev));
+
+    await sched.start();
+    await sched.stop();
+
+    assert.equal(announced.length, 1);
+    assert.equal(announced[0].id, 'svc');
+    assert.equal(announced[0].reason, 'liveness');
+  });
+
   test('job.skipped is published, with liveness as the reason', async () => {
     const job = {
       id: 'svc', type: 'startup', delaySeconds: 0, command: 'npm run scrape',

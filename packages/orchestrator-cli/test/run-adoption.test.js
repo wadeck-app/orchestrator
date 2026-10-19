@@ -251,9 +251,12 @@ describe('a startup job whose run is still going (case 11)', () => {
     await b.sched.recoverRuns();
     const followed = b.state.getOpenRuns('job')[0];
 
+    const announced = [];
+    b.sched.on('job-skipped', (ev) => announced.push(ev));
     await b.sched.start();
     await new Promise((resolve) => setTimeout(resolve, 200));
 
+    assert.deepEqual(announced.map((ev) => [ev.id, ev.reason]), [['job', 'adopted']], 'the audit trail would not know the firing was refused');
     const runs = b.state.getAll()['job'] ?? [];
     assert.equal(runs.length, 1, `a skip was recorded as a run: ${JSON.stringify(runs)}`);
     assert.equal(runs[0].startedAt, followed.startedAt);

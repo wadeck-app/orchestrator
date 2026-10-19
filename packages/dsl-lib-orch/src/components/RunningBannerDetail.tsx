@@ -3,6 +3,7 @@ import { Zap } from 'lucide-react';
 import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
 import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
+import { DryRunButton } from './DryRunButton.js';
 import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -36,7 +37,7 @@ export interface RunningBannerDetailProps {
  * @registryCategory composite
  * @registryTags job detail running banner design-a
  */
-export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onViewLogs, onEdit }: RunningBannerDetailProps): React.ReactElement | null {
+export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onViewLogs, onEdit }: RunningBannerDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -153,6 +154,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, on
         <span className={typeBadgeCls}>{job.type}</span>
         <JobToggle job={job} />
         {!isRunning && <TriggerButton jobId={jobId} onTrigger={handleTrigger} />}
+        <DryRunButton job={job} jobId={jobId} onDryRun={onDryRun} />
         {onViewLogs
           ? <ButtonAction label="View logs" variant="secondary" onClick={onViewLogs} />
           : <ButtonLink to={appPath(`/jobs/${jobId}/logs`)} label="View logs" variant="neutral" />}

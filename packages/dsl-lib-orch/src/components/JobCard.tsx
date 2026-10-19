@@ -153,6 +153,32 @@ function successStreak(runHistory: RuntimeEntry[]): number {
   return streak;
 }
 
+// "since" is left out when the history does not reach back to the streak's start, rather than saying "since at an unrecorded time".
+function failuresTooltip(count: number, since: string | null, now: number): string {
+  return since === null ? `${count} failures in a row` : `${count} failures in a row, since ${describeAgo(since, now)}`;
+}
+
+/**
+ * When the current run of failures began: the oldest of the `count` failed runs counted from the newest,
+ * skipped runs being transparent (same walk as getConsecutiveFailures in JobCardGrid). The history is
+ * newest-first, as the grid passes it. Null when the history holds fewer failures than `count`.
+ */
+function failureStreakSince(runHistory: RuntimeEntry[], count: number): string | null {
+  let seen = 0;
+  let since: string | null = null;
+  for (const e of runHistory) {
+    if (isRunSkipped(e)) {
+      continue;
+    }
+    if (!isRunFailed(e) || seen === count) {
+      break;
+    }
+    seen++;
+    since = e.startedAt;
+  }
+  return seen === count ? since : null;
+}
+
 /**
  * @registryCategory composite
  * @registryTags job card
@@ -295,11 +321,15 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               />
             </Tooltip>
           )}
-          {consecutiveFailures !== undefined && consecutiveFailures >= (job.alertAfterFailures ?? 3) && (
-            <div className="flex items-center gap-0.5 text-warning">
-              <AlertTriangle size={10} />
-              <span className="text-xs">{consecutiveFailures} fails</span>
-            </div>
+          {/* From 2, not from alertAfterFailures: at 1 the status pill already says Failed, at 2 it has become
+              a pattern. alertAfterFailures stays what it was, the point where the daemon alerts. */}
+          {consecutiveFailures !== undefined && consecutiveFailures >= 2 && (
+            <Tooltip content={failuresTooltip(consecutiveFailures, failureStreakSince(runHistory, consecutiveFailures), now)}>
+              <div className="flex items-center gap-0.5 text-warning">
+                <AlertTriangle size={10} />
+                <span className="text-xs">{consecutiveFailures} fails</span>
+              </div>
+            </Tooltip>
           )}
         </div>
       )}

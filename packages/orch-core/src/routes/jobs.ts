@@ -5,6 +5,15 @@ interface HealthRunEntry {
   startedAt: string;
   exitCode: number | null;
   finishedAt?: string;
+  skipped?: boolean;
+  cancelledByUser?: boolean;
+}
+
+// Same rule as isFailure in orchestrator-cli/src/state.ts (orch-core must not import the daemon): a
+// skipped run keeps the child's real exit code and is not a failure, and a null code is a run killed or
+// orphaned, not a fault of the job. A run the user ended is not a failure either.
+function isFailedRun(entry: HealthRunEntry | null): boolean {
+  return entry !== null && !entry.skipped && !entry.cancelledByUser && entry.exitCode != null && entry.exitCode !== 0;
 }
 
 // Run history is not guaranteed to be ordered newest-first, so resolve by startedAt.
@@ -326,13 +335,13 @@ export async function jobsRoutes(
       // exitCode would report it as still running forever. Jobs with ANY open run, not the newest
       // one: with several instances alive the newest may have ended while an older one still runs.
       const runningCount = Object.values(stateData).filter(entries => entries.some(e => e.finishedAt == null)).length;
-      // A missing exit code is not a failure: null means killed, undefined means never run.
-      const failureCount = latest.filter(e => e !== null && e.exitCode != null && e.exitCode !== 0).length;
+      const failureCount = latest.filter(isFailedRun).length;
       return reply.send({
         status: failureCount > 0 ? 'degraded' : runningCount > 0 ? 'busy' : 'ok',
         totalJobs: jobs.length,
         runningJobs: runningCount,
         recentFailures: failureCount,
+        // The dashboard server's own process uptime, not the daemon's.
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
       });

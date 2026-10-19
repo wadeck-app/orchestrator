@@ -155,3 +155,50 @@ describe('JobCard success streak', () => {
     expect(screen.getByText('2 streak')).toBeInTheDocument();
   });
 });
+
+// The pill says "Failed" at one failure; the counter is for when it has become a pattern. It used to wait
+// for alertAfterFailures (default 3), which hid a job that had failed twice running.
+describe('JobCard consecutive failures counter', () => {
+  const NOW = Date.parse('2026-09-02T12:00:00Z');
+  // Newest first, as JobCardGrid passes them.
+  const HISTORY: RuntimeEntry[] = [
+    { startedAt: '2026-09-02T11:00:00Z', exitCode: 1, pid: 1 },
+    { startedAt: '2026-09-02T10:00:00Z', exitCode: 1, pid: 1 },
+    { startedAt: '2026-09-02T09:00:00Z', exitCode: 0, pid: 1 },
+  ];
+
+  function renderWith(consecutiveFailures: number | undefined, job: Job = BASE_JOB, history: RuntimeEntry[] = HISTORY) {
+    return render(
+      <MemoryRouter>
+        <JobCard job={job} runHistory={history} consecutiveFailures={consecutiveFailures} nowMs={NOW}
+                 onTrigger={vi.fn()} onToggle={vi.fn()} />
+      </MemoryRouter>
+    );
+  }
+
+  it('shows the count from two failures, below the default alert threshold of 3', () => {
+    renderWith(2);
+    expect(screen.getByText('2 fails')).toBeInTheDocument();
+  });
+
+  it('shows nothing at a single failure, where the status pill already says Failed', () => {
+    renderWith(1, BASE_JOB, [HISTORY[0], HISTORY[2]]);
+    expect(screen.queryByText(/\bfails\b/)).toBeNull();
+  });
+
+  it('shows nothing without a count', () => {
+    renderWith(undefined);
+    expect(screen.queryByText(/\bfails\b/)).toBeNull();
+  });
+
+  it('states the count and since when in the tooltip', () => {
+    renderWith(2);
+    // The oldest failure of the streak (10:00), not the last success and not the newest failure.
+    expect(screen.getByText('2 failures in a row, since 2h ago')).toBeInTheDocument();
+  });
+
+  it('shows the count from two even when the job sets a higher alertAfterFailures', () => {
+    renderWith(2, { ...BASE_JOB, alertAfterFailures: 5 });
+    expect(screen.getByText('2 fails')).toBeInTheDocument();
+  });
+});

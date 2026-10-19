@@ -62,6 +62,24 @@ const logsOf = (dir, id) => {
 };
 
 describe('a scheduled firing at the limit', () => {
+  // The queue event never reached the audit trail; the scheduler's own 'job-skipped' is what the audit listens to.
+  test('is announced on the scheduler too, which is what feeds the audit trail', async () => {
+    const { sched, registry, children } = makeEnv([JOB]);
+    const announced = [];
+    sched.on('job-skipped', (ev) => announced.push(ev));
+    const job = registry.get('j');
+
+    await sched._maybeSpawn(job);
+    await sched._maybeSpawn(job);
+
+    assert.equal(announced.length, 1);
+    assert.equal(announced[0].id, 'j');
+    assert.equal(announced[0].reason, 'concurrency');
+    assert.equal(announced[0].running, 1);
+    assert.equal(announced[0].maxConcurrency, 1);
+    finish(children[0]);
+  });
+
   test('is refused while the limit is reached, and says why', async () => {
     const { sched, registry, children, events } = makeEnv([JOB]);
     const job = registry.get('j');

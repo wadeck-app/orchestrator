@@ -1208,6 +1208,21 @@ export class Scheduler extends EventEmitter {
   }
 
   /**
+   * Announces a firing that was due and spawned nothing, on both channels: the queue (job.skipped) and this
+   * scheduler's own 'job-skipped', which the audit trail listens to. Publishing alone left the audit blind to
+   * every refusal. The exit-code skip does not come through here: it is a run, reported by 'job-finished'.
+   */
+  private _announceSkip(
+    job: Job, reason: 'concurrency' | 'adopted' | 'liveness',
+    full?: { running: number; maxConcurrency: number },
+  ): void {
+    this._eventPublisher.publish('job.skipped', {
+      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason, ...full,
+    });
+    this.emit('job-skipped', { id: job.id, job, reason, ...full });
+  }
+
+  /**
    * Reports a firing refused because the job is at its maxConcurrency.
    *
    * Deliberately NOT _recordSkip: that writes a history entry and a log file of its own, and both
@@ -1221,9 +1236,7 @@ export class Scheduler extends EventEmitter {
     this._liveLogger.get(job.id)?.write(
       `[job:skipped] reason=concurrency -- ${full.running} of ${full.maxConcurrency} already running`,
     );
-    this._eventPublisher.publish('job.skipped', {
-      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason: 'concurrency', ...full,
-    });
+    this._announceSkip(job, 'concurrency', full);
   }
 
   /**
@@ -1238,9 +1251,7 @@ export class Scheduler extends EventEmitter {
     this._liveLogger.get(job.id)?.write(
       '[job:skipped] reason=adopted -- still running from before the restart, not started a second time',
     );
-    this._eventPublisher.publish('job.skipped', {
-      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason: 'adopted',
-    });
+    this._announceSkip(job, 'adopted');
   }
 
   /** A firing that does not come from the schedule (retry, dependency), held to the same limit. */
@@ -1271,9 +1282,7 @@ export class Scheduler extends EventEmitter {
     const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, at);
     jobLogger.write(`[job:skipped] reason=${reason} -- target already alive, nothing was done`);
     jobLogger.close();
-    this._eventPublisher.publish('job.skipped', {
-      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason,
-    });
+    this._announceSkip(job, reason);
   }
 
   /**

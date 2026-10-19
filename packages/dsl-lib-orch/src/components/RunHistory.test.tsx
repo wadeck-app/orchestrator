@@ -72,3 +72,32 @@ describe('RunHistory - exit code display in detail page', () => {
     expect(screen.queryByText('Cancelled')).toBeNull();
   });
 });
+
+describe('RunHistory - what the daemon recorded beyond the exit code', () => {
+  const base = { startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:00:01Z', pid: 7 };
+
+  // The daemon that spawned the run died; nobody saw the process end, so it says nothing about the job.
+  it('shows "Interrupted", not "Cancelled", for an orphaned run', () => {
+    render(<RunHistory entries={[{ ...base, exitCode: null, orphaned: true }]} />);
+    expect(screen.getByText('Interrupted')).toBeInTheDocument();
+    expect(screen.queryByText('Cancelled')).toBeNull();
+    expect(screen.queryByText(/Failed/)).toBeNull();
+  });
+
+  it('names the retry attempt in the Triggered by column', () => {
+    render(<RunHistory entries={[{ ...base, exitCode: 0, triggeredBy: { kind: 'retry', attempt: 2 } }]} />);
+    expect(screen.getByText('retry #2')).toBeInTheDocument();
+    expect(screen.queryByText('manual')).toBeNull();
+  });
+
+  it('marks a supervised run, with a tooltip saying what it means', () => {
+    render(<RunHistory entries={[{ ...base, exitCode: 0, supervised: true }]} />);
+    const marker = screen.getByText('supervised');
+    expect(marker.getAttribute('title')).toMatch(/daemon restart/i);
+  });
+
+  it('shows no supervised marker for an unsupervised run', () => {
+    render(<RunHistory entries={[{ ...base, exitCode: 0 }]} />);
+    expect(screen.queryByText('supervised')).toBeNull();
+  });
+});

@@ -492,3 +492,47 @@ describe('GET /api/health with several instances of one job', () => {
     expect(body.status).toBe('ok');
   });
 });
+
+// The daemon's own rule (isFailure in orchestrator-cli/src/state.ts): a skipped run is neither a success
+// nor a failure even though it keeps the child's real exit code. A run the user ended is not a fault either.
+describe('GET /api/health failure rule', () => {
+  async function healthFor(history: unknown[]): Promise<{ recentFailures: number; status: string }> {
+    const app = fastify();
+    const proxy = {
+      send: async (cmd: string) => {
+        if (cmd === 'list-jobs') {
+          return [{ id: 'a' }];
+        }
+        if (cmd === 'list-state') {
+          return { a: history };
+        }
+        throw new Error(`Unknown command: ${cmd}`);
+      },
+    };
+    await app.register(jobsRoutes, { proxy, idleTimer: { reset: () => {} } });
+    await app.ready();
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    await app.close();
+    return res.json();
+  }
+
+  const done = { startedAt: '2026-01-01T00:00:00Z', finishedAt: '2026-01-01T00:00:01Z' };
+
+  it('does not count a run skipped by skipExitCodes, although it keeps its real exit code', async () => {
+    const body = await healthFor([{ ...done, exitCode: 2, skipped: true }]);
+    expect(body.recentFailures).toBe(0);
+    expect(body.status).toBe('ok');
+  });
+
+  it('does not count a run the user cancelled, even with a non-zero exit code', async () => {
+    const body = await healthFor([{ ...done, exitCode: 143, cancelledByUser: true }]);
+    expect(body.recentFailures).toBe(0);
+    expect(body.status).toBe('ok');
+  });
+
+  it('still counts a real failure', async () => {
+    const body = await healthFor([{ ...done, exitCode: 2 }]);
+    expect(body.recentFailures).toBe(1);
+    expect(body.status).toBe('degraded');
+  });
+});

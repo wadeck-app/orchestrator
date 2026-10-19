@@ -79,7 +79,7 @@ Per-job option, not a `config.yml` key. `orch add|edit <id> --max-concurrency <n
 
 A firing that finds `n` runs already alive is refused, whatever started it: schedule, catch-up, retry, dependency or `orch trigger`. A refusal is a skip, not a failure:
 
-- `job.skipped` event with `reason: concurrency`, `running` and `maxConcurrency` on the event bus. Only a refused `orch trigger` reaches `audit.ndjson`, as `job.trigger_refused`; scheduled refusals are not audited.
+- `job.skipped` event with `reason: concurrency`, `running` and `maxConcurrency` on the event bus. Only a refused `orch trigger` reaches `audit.ndjson`, as `job.trigger_refused`; scheduled refusals are not audited (a job every minute behind a long run would write a line per minute). The rarer refusals are: a startup or catch-up firing refused because its run is still going after a restart (`reason: adopted`) and a liveness skip are audited as `job.skipped` with their reason.
 - A `[job:skipped] reason=concurrency` line in the log of the run holding the slot.
 - No run-history entry and no log file of its own, so the dashboard keeps showing the real run as running.
 - `orch trigger` answers `{ status: "already-running", running, maxConcurrency }` and exits 0. `--force` starts another instance anyway.

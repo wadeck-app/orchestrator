@@ -14,6 +14,15 @@ interface JobFinishedEvent {
   trigger?: { kind: string };
 }
 
+/** A firing that was due and never spawned anything; see Scheduler._announceSkip. */
+interface JobSkippedEvent {
+  id: string;
+  job: { label: string };
+  reason: string;
+  running?: number;
+  maxConcurrency?: number;
+}
+
 /**
  * Registers the scheduler listeners that feed the audit trail.
  *
@@ -37,6 +46,25 @@ export function wireAuditEvents(scheduler: EventEmitter, audit: AuditSink): void
       // The audit trail is a side channel. A failure to write it must not propagate into the
       // scheduler's own emit, where it would surface as an unhandled error on a job that ran fine.
       console.error('[audit:job-finished]', err);
+    }
+  });
+
+  // The refusals that never reach job-finished (run still going from before a restart, liveness check) used to be
+  // published for the queue only, so the audit trail did not know the job had been due. No exitCode and no
+  // duration: nothing ran. A concurrency refusal stays out, as docs/daemon-config.md says: it repeats at every
+  // firing while a long run holds the slot.
+  scheduler.on('job-skipped', (ev: JobSkippedEvent) => {
+    if (ev.reason === 'concurrency') {
+      return;
+    }
+    try {
+      audit.log('job.skipped', {
+        jobId: ev.id, label: ev.job.label, reason: ev.reason,
+        ...(ev.running !== undefined ? { running: ev.running } : {}),
+        ...(ev.maxConcurrency !== undefined ? { maxConcurrency: ev.maxConcurrency } : {}),
+      });
+    } catch (err) {
+      console.error('[audit:job-skipped]', err);
     }
   });
 }

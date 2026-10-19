@@ -59,6 +59,15 @@ export interface Job {
   slaWindowMinutes?: number;
   secrets?: string[];
   dryRunSupported?: boolean;
+  /** Exit codes that make the daemon run the job again, after the matching entry of `retryDelays`. */
+  retryOnExitCodes?: number[];
+  /** Seconds to wait before each retry; its length is the number of retries. */
+  retryDelays?: number[];
+  /**
+   * Exit codes that mean "this run deliberately did nothing", not "this run broke". The run is recorded
+   * as skipped (real exit code kept) and never counted as a failure.
+   */
+  skipExitCodes?: number[];
   /**
    * `once` only: the job has already had its single firing.
    *
@@ -122,7 +131,9 @@ export function getErrorMessage(e: unknown): string {
 export type TriggerSource =
   | { kind: 'cron' }
   | { kind: 'manual'; ip?: string; userAgent?: string }
-  | { kind: 'dependency'; dependsOnJobId: string };
+  | { kind: 'dependency'; dependsOnJobId: string }
+  // A re-run the daemon started after an exit code listed in retryOnExitCodes; `attempt` counts from 1.
+  | { kind: 'retry'; attempt: number };
 
 export interface RuntimeEntry {
   startedAt: string;
@@ -142,6 +153,17 @@ export interface RuntimeEntry {
    * child's own code, or null when nothing was ever spawned, and neither may raise an alarm.
    */
   skipped?: boolean;
+  /** Which attempt of a retried run this is, counted from 1. Absent on a first attempt. */
+  retryAttempt?: number;
+  /**
+   * The daemon that spawned this run is gone: the run was closed at the next daemon start because
+   * nobody could have seen the process end. Not a failure of the job.
+   */
+  orphaned?: boolean;
+  /** The run is owned by its own supervisor process, so it survives a daemon restart. */
+  supervised?: boolean;
+  /** Version of the method that measured peakCpuPct/peakRamMb; absent on runs recorded before it existed. */
+  peakMeasure?: number;
 }
 
 // Picks the run with the latest startedAt. Do not trust index 0: overlapping runs

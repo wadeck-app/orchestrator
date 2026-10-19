@@ -12,8 +12,33 @@ export interface AuditEntryRowProps {
   entry: AuditEntry;
 }
 
+function formatSeconds(ms: number): string {
+  const s = ms / 1000;
+  return s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+}
+
+/**
+ * How long the run took. The daemon writes `durationMs` (audit-wiring.ts); startedAt/finishedAt are
+ * what older entries carried and are still read when that is all there is. Null when neither says.
+ */
+function durationOf(entry: AuditEntry): number | null {
+  if (typeof entry.durationMs === 'number') {
+    return entry.durationMs;
+  }
+  if (entry.finishedAt && entry.startedAt) {
+    const ms = new Date(entry.finishedAt as string).getTime() - new Date(entry.startedAt as string).getTime();
+    return ms >= 0 ? ms : null;
+  }
+  return null;
+}
+
+// Fields rendered as words by formatDetails; the rest of the entry falls through as key=value.
+const RENDERED_FIELDS = new Set([
+  'ts', 'event', 'label', 'jobId', 'userAgent',
+  'exitCode', 'finishedAt', 'startedAt', 'durationMs', 'trigger', 'reason', 'ip',
+]);
+
 function formatDetails(entry: AuditEntry): string {
-  const skip = new Set(['ts', 'event', 'label', 'jobId', 'userAgent']);
   const parts: string[] = [];
   if (entry.label) {
     parts.push(String(entry.label));
@@ -22,24 +47,26 @@ function formatDetails(entry: AuditEntry): string {
     parts.push(String(entry.jobId));
   }
 
-  if (entry.event === 'job.completed' && entry.exitCode !== undefined) {
+  // null is a run that never produced a code (nothing spawned, or killed): nothing to print.
+  if ((entry.event === 'job.completed' || entry.event === 'job.skipped') && typeof entry.exitCode === 'number') {
     parts.push(`exit ${entry.exitCode}`);
-    if (entry.finishedAt && entry.startedAt) {
-      const ms = new Date(entry.finishedAt as string).getTime() - new Date(entry.startedAt as string).getTime();
-      if (ms >= 0) {
-        const s = ms / 1000;
-        parts.push(s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`);
-      }
-    }
   }
-  if (entry.event === 'job.triggered_manual' && entry.ip) {
+  const ms = durationOf(entry);
+  // A refusal has a duration of 0 by construction (nothing ran): "0.0s" would suggest a run that took no time.
+  if (ms !== null && !(ms === 0 && entry.event === 'job.skipped')) {
+    parts.push(formatSeconds(ms));
+  }
+  if (entry.trigger) {
+    parts.push(String(entry.trigger));
+  }
+  if (entry.reason) {
+    parts.push(String(entry.reason));
+  }
+  if (entry.ip) {
     parts.push(`from ${entry.ip}`);
   }
   for (const [k, v] of Object.entries(entry)) {
-    if (skip.has(k) || ['exitCode', 'finishedAt', 'startedAt', 'ip'].includes(k)) {
-      continue;
-    }
-    if (v === undefined || v === null) {
+    if (RENDERED_FIELDS.has(k) || v === undefined || v === null) {
       continue;
     }
     parts.push(`${k}=${v}`);

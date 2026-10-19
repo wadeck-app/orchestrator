@@ -1,5 +1,7 @@
 import React from 'react';
+import { FileText } from 'lucide-react';
 import type { RuntimeEntry } from '../types.js';
+import { RunLogLink } from './RunLogLink.js';
 
 export interface FailureEntry {
   jobId: string;
@@ -50,6 +52,13 @@ export function FailureBanner({ failures, onAcknowledge, onAcknowledgeAll }: Fai
             </div>
             <div className={BODY_CLS}>
               <span className="text-xs text-muted">exit {f.entry.exitCode ?? '?'}</span>
+              {/* A run without a start time cannot be addressed, so it gets no link rather than a dead one. */}
+              {f.entry.startedAt && (
+                <RunLogLink jobId={f.jobId} startedAt={f.entry.startedAt} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                  <FileText size={12} />
+                  Log
+                </RunLogLink>
+              )}
               {/* violations-suppress: react/no-raw-button toast acknowledge button - Button component doesn't fit compact toast pattern */}
               <button onClick={() => onAcknowledge(f.jobId)} className={ACK_BTN_CLS}>
                 Acknowledge
