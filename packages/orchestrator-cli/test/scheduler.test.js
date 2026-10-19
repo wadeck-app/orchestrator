@@ -910,7 +910,8 @@ describe('sampleProcessTree', () => {
       assert.ok(tree.ramMb > wrapperRamMb,
         `tree RAM ${tree.ramMb.toFixed(1)}MB should exceed wrapper-only ${wrapperRamMb.toFixed(1)}MB`);
     } finally {
-      try { child.kill(); } catch { /* already gone */ }
+      // The whole tree: killing the shell alone leaves the busy node descendant burning a core until its 20 s end.
+      await require('../src/process-tree').killTree(child.pid);
       try { fs.unlinkSync(scriptPath); } catch { /* best effort */ }
     }
   });

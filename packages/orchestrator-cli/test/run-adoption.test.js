@@ -4,7 +4,7 @@
 // it (detachRuns, which is what a shutdown does); "daemon B" starts from the same config dir and must follow the
 // job again as if nothing had happened: same history entry, same log, kill, timeout, peaks, no second copy.
 // Real supervisors and real processes: the thing under test is the agreement between the daemon and the files.
-const { test, describe, afterEach } = require('node:test');
+const { test, describe, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
 const path = require('node:path');
@@ -16,6 +16,7 @@ const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised, runDirFor } = require('../src/supervised-run');
+const { endLeftoverRuns } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
@@ -27,6 +28,7 @@ if (supervisorPath === null) {
 
 const schedulers = [];
 const helpers = [];
+const dirs = [];
 afterEach(async () => {
   while (schedulers.length > 0) {
     const s = schedulers.pop();
@@ -37,6 +39,8 @@ afterEach(async () => {
     try { helpers.pop().kill(); } catch { /* already gone */ }
   }
 });
+// These tests walk away from runs on purpose; nothing else ends the jobs they leave.
+after(async () => { await endLeftoverRuns(dirs); });
 
 function cronJob(dir, source, extra = {}) {
   const file = path.join(dir, `job-${Math.random().toString(36).slice(2)}.js`);
@@ -93,7 +97,9 @@ function runLog(dir, jobId) {
 }
 
 function tmpDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'orch-adopt-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-adopt-'));
+  dirs.push(dir);
+  return dir;
 }
 
 /** Daemon A starts the job and goes away, leaving it running. Returns what B needs to know. */

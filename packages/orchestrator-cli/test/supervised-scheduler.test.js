@@ -2,7 +2,7 @@
 
 // The scheduler running jobs through the supervisor, end to end, with the real supervisor binary: what the
 // daemon records for a supervised job must be what it recorded for a job it spawned itself.
-const { test, describe, afterEach } = require('node:test');
+const { test, describe, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
 const path = require('node:path');
@@ -13,6 +13,7 @@ const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised } = require('../src/supervised-run');
+const { endLeftoverRuns } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
@@ -23,14 +24,17 @@ if (supervisorPath === null) {
 }
 
 const schedulers = [];
+const dirs = [];
 afterEach(async () => {
   while (schedulers.length > 0) {
     await schedulers.pop().stop();
   }
 });
+after(async () => { await endLeftoverRuns(dirs); });
 
 function makeEnv(job, extra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-supervised-sched-'));
+  dirs.push(dir);
   const registry = new Registry(path.join(dir, 'registry.json'));
   const state    = new State(path.join(dir, 'state.json'));
   registry.load();

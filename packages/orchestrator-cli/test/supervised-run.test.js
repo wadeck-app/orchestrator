@@ -3,7 +3,7 @@
 // A job started under the supervisor: the daemon writes a spec, starts the supervisor detached, and then only
 // reads files. These tests run the REAL supervisor binary, because the contract between the two is the
 // thing being tested; a double would only prove that the daemon agrees with itself.
-const { test, describe, afterEach } = require('node:test');
+const { test, describe, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
 const path = require('node:path');
@@ -11,6 +11,7 @@ const os   = require('node:os');
 
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised, SupervisedChild } = require('../src/supervised-run');
+const { endLeftoverRuns } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
@@ -27,12 +28,14 @@ function tmp() {
   dirs.push(dir);
   return dir;
 }
-afterEach(() => {
+afterEach(async () => {
   while (children.length > 0) {
     const child = children.pop();
     try { child.requestKill('test-cleanup'); } catch { /* already gone */ }
   }
 });
+// requestKill only asks, and a test that made its supervisor disappear leaves the job with nobody to ask.
+after(async () => { await endLeftoverRuns(dirs); });
 
 /** A job written as a script, so quoting is the same under cmd.exe and sh. */
 function scriptCommand(dir, source) {
