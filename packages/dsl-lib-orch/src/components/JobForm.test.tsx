@@ -680,3 +680,90 @@ describe('JobForm clears fields the user emptied', () => {
     expect(submitted(onSubmit).unset).toHaveLength(2);
   });
 });
+
+// The description is optional free text, up to 2000 characters. The form refuses an over-long one
+// itself, with the number, instead of sending it to be refused by the daemon.
+describe('JobForm description', () => {
+  it('has a Description field with its hint and a live counter', () => {
+    renderEditForm({ ...EXISTING_CRON, description: 'Backs up' }, vi.fn().mockResolvedValue(undefined));
+
+    expect(screen.getByLabelText(/^Description/)).toHaveValue('Backs up');
+    expect(screen.getByText('Shown on the job card and the job page. Plain text, up to 2000 characters.')).toBeInTheDocument();
+    expect(screen.getByText('8 / 2000')).toBeInTheDocument();
+  });
+
+  it('updates the counter as the user types', () => {
+    renderEditForm(EXISTING_CRON, vi.fn().mockResolvedValue(undefined));
+
+    fill(/^Description/, 'abc\ndef');
+
+    expect(screen.getByText('7 / 2000')).toBeInTheDocument();
+  });
+
+  it('sends the trimmed text, line breaks kept', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Description/, '  first\nsecond  ');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).description).toBe('first\nsecond');
+  });
+
+  it('sends nothing for a description the user never wrote', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit)).not.toHaveProperty('description');
+    expect(submitted(onSubmit)).not.toHaveProperty('unset');
+  });
+
+  it('sends description in unset, and not in the body, when an existing one is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, description: 'old' }, onSubmit);
+
+    fill(/^Description/, '   ');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).unset).toEqual(['description']);
+    expect(submitted(onSubmit)).not.toHaveProperty('description');
+  });
+
+  it('accepts exactly 2000 characters', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Description/, 'x'.repeat(2000));
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  });
+
+  it('refuses 2001 before submit, naming the limit and the length, and sends nothing', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Description/, 'x'.repeat(2001));
+    saveButton().click();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/2000/);
+    expect(alert.textContent).toMatch(/2001/);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('counts the trimmed text, like the daemon', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    fill(/^Description/, `   ${'x'.repeat(2000)}   `);
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  });
+});

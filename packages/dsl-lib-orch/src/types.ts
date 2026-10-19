@@ -8,6 +8,9 @@ export interface LivenessConfig {
   command?: string;
 }
 
+/** The longest description a job may have, counted on the trimmed text. Mirrors orchestrator-cli's types.ts. */
+export const DESCRIPTION_MAX_LENGTH = 2000;
+
 export interface Job {
   id: string;
   type: 'cron' | 'startup' | 'once';
@@ -34,6 +37,8 @@ export interface Job {
   scheduledAt?: string;
   command: string;
   cwd?: string | null;
+  /** What the job is for: plain text, may contain line breaks, at most DESCRIPTION_MAX_LENGTH characters. Absent when none. */
+  description?: string;
   enabled: boolean;
   /**
    * The window a cron job may fire in, both ISO timestamps and both optional.
@@ -91,7 +96,7 @@ export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
   | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
-  | 'label' | 'triggerMode' | 'maxConcurrency'
+  | 'label' | 'triggerMode' | 'maxConcurrency' | 'description'
   // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it
   // active now. Both are ordinary edits, so both must be clearable rather than only replaceable.
   | 'activeFrom' | 'activeUntil';

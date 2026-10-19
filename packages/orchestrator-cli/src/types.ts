@@ -16,6 +16,9 @@ export interface LivenessConfig {
   command?: string;
 }
 
+/** The longest description a job may have, counted on the trimmed text. */
+export const DESCRIPTION_MAX_LENGTH = 2000;
+
 export interface Job {
   id: string;
   type: JobType;
@@ -26,6 +29,12 @@ export interface Job {
   scheduledAt?: string;
   cwd?: string | null;
   command: string;
+  /**
+   * Free text for humans: what the job is for. Plain text, may contain line breaks, stored trimmed, at
+   * most DESCRIPTION_MAX_LENGTH characters (longer is refused, never cut). Absent when empty. No effect
+   * on scheduling.
+   */
+  description?: string;
   enabled: boolean;
   /**
    * The window a cron job is allowed to fire in. Both ISO timestamps, both optional.
@@ -141,6 +150,7 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
   slaWindowMinutes:   'delete',
   secrets:            'delete',
   dryRunSupported:    'delete',
+  description:        'delete',
   label:              (job) => job.id,
   triggerMode:        () => 'fire-and-forget',
 };

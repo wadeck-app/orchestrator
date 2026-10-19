@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
-import { getErrorMessage, type Job, type JobFormPayload, type MissedFiring, type LivenessConfig, type LivenessStrategy, type UnsettableJobField } from '../types.js';
+import { DESCRIPTION_MAX_LENGTH, getErrorMessage, type Job, type JobFormPayload, type MissedFiring, type LivenessConfig, type LivenessStrategy, type UnsettableJobField } from '../types.js';
 import { describeCron } from '../cron-describe.js';
-import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
+import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, FieldTextarea, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
 const CHIP_BTN_CLS   = 'text-xs px-2 py-0.5 rounded border border-border text-muted hover:bg-muted-bg hover:text-content transition-colors';
@@ -80,6 +80,7 @@ export interface JobFormProps {
 interface FormErrors {
   id?: string;
   label?: string;
+  description?: string;
   command?: string;
   schedule?: string;
   onceMoment?: string;
@@ -178,6 +179,7 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
   const isCreating = initial?.id === undefined;
   const [jobId, setJobId] = useState('');
   const [label, setLabel] = useState(initial?.label ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [type, setType] = useState<JobType>(initial?.type ?? 'cron');
   const [command, setCommand] = useState(initial?.command ?? '');
   const [cwd, setCwd] = useState(initial?.cwd ?? '');
@@ -274,6 +276,11 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     if (!command.trim()) {
       e.command = 'Command is required';
     }
+    // The daemon refuses it too, but its sentence would come back through a channel the form may not
+    // display. Counted on the trimmed text, which is what the daemon stores and measures.
+    if (description.trim().length > DESCRIPTION_MAX_LENGTH) {
+      e.description = `The description is ${description.trim().length} characters long; the limit is ${DESCRIPTION_MAX_LENGTH}. Shorten it by ${description.trim().length - DESCRIPTION_MAX_LENGTH}.`;
+    }
     if (type === 'cron') {
       const cronErr = parseCron(schedule);
       if (cronErr) {
@@ -317,6 +324,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         }
       };
 
+      if (description.trim()) {
+        data.description = description.trim();
+      }
+      else {
+        clearIfWasConfigured('description', initial?.description);
+      }
       if (cwd.trim()) {
         data.cwd = cwd.trim();
       }
@@ -490,6 +503,23 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       )}
 
       <FieldText label="Label" value={label} onChange={setLabel} placeholder="My job" error={errors?.label} required />
+
+      {/* Documentation for humans, so it sits next to the name and not among the advanced options.
+          The counter is outside the field because FieldTextarea has no slot for one; it turns to the
+          danger colour past the limit, and the refusal itself is announced as an alert on submit. */}
+      <div>
+        <FieldTextarea
+          label="Description"
+          description="Shown on the job card and the job page. Plain text, up to 2000 characters."
+          value={description}
+          onChange={setDescription}
+          rows={3}
+        />
+        <p className={`mt-1 text-xs ${description.trim().length > DESCRIPTION_MAX_LENGTH ? 'text-danger' : 'text-muted'}`}>
+          {description.trim().length} / {DESCRIPTION_MAX_LENGTH}
+        </p>
+        {errors?.description && <p role="alert" className="mt-1 text-xs text-danger">{errors.description}</p>}
+      </div>
 
       <FieldText label="Tags (comma-separated)" value={tagInput} onChange={setTagInput} placeholder="scraper, daily, production" />
 

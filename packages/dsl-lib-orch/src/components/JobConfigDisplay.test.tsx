@@ -45,3 +45,19 @@ describe('JobConfigDisplay', () => {
     expect(screen.queryByText('0 10 * * *')).toBeNull();
   });
 });
+
+// The job page shows the whole description, line breaks kept: it is text a person wrote to be read.
+describe('JobConfigDisplay description', () => {
+  it('shows the full text under a Description label, line breaks preserved', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, description: 'Line one.\nLine two.' }} />);
+
+    expect(screen.getByText('Description')).toBeInTheDocument();
+    const text = screen.getByText((_, el) => el?.textContent === 'Line one.\nLine two.' && el.tagName === 'P');
+    expect(text.className).toContain('whitespace-pre-wrap');
+  });
+
+  it('shows no Description section when the job has none', () => {
+    render(<JobConfigDisplay job={CRON_JOB} />);
+    expect(screen.queryByText('Description')).toBeNull();
+  });
+});

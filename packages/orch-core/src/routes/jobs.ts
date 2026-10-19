@@ -55,6 +55,22 @@ export async function jobsRoutes(
     }
   }
 
+  /*
+   * A daemon refusal of a job definition (a bad schedule, a description over its limit, a duplicate id)
+   * as the dashboard reads it: the daemon's sentence under `error`, 400 or 404. Left to fastify it was a
+   * 500 whose sentence sat under `message`, shown as "Internal Server Error". Every refusal of add-job
+   * and edit-job is a validation sentence, which is why they are all 400s; a daemon that is down stays
+   * the 503 of guard().
+   */
+  function relayRefusal(reply: RouteReply, err: unknown): RouteReply {
+    if (err instanceof DaemonUnavailableError) {
+      throw err;
+    }
+    // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+    const message = err instanceof Error ? err.message : String(err);
+    return reply.code(message.startsWith('Job not found') ? 404 : 400).send({ error: message });
+  }
+
   fastify.get('/api/jobs', async (_req, reply) => {
     return guard(reply, async () => {
       const [jobs, state, uptime] = await Promise.all([
@@ -84,8 +100,12 @@ export async function jobsRoutes(
 
   fastify.post('/api/jobs', async (req, reply) => {
     return guard(reply, async () => {
-      const result = await proxy.send('add-job', req.body);
-      return reply.code(201).send(result);
+      try {
+        const result = await proxy.send('add-job', req.body);
+        return reply.code(201).send(result);
+      } catch (err) {
+        return relayRefusal(reply, err);
+      }
     });
   });
 
@@ -99,10 +119,14 @@ export async function jobsRoutes(
       // means "leave it alone" and a client clearing e.g. the working directory has to name it.
       // Left inside, the daemon would take "unset" for a job field.
       const { unset, ...fields } = (req.body ?? {}) as { unset?: string[] } & Record<string, unknown>;
-      const result = await proxy.send('edit-job', {
-        id, updates: fields, ...(unset !== undefined ? { unset } : {}),
-      });
-      return reply.send(result);
+      try {
+        const result = await proxy.send('edit-job', {
+          id, updates: fields, ...(unset !== undefined ? { unset } : {}),
+        });
+        return reply.send(result);
+      } catch (err) {
+        return relayRefusal(reply, err);
+      }
     });
   });
 

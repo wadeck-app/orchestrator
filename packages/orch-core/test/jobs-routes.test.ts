@@ -160,9 +160,11 @@ describe('Jobs API Routes', () => {
       expect(body.id).toBe('new-job');
     });
 
-    it('returns 400 if payload invalid', async () => {
+    // The daemon's refusal is a sentence the form shows. Left to fastify it was a 500 whose sentence sat
+    // under `message`, while the dashboard reads `error`: the user saw "Internal Server Error".
+    it('returns 400 with the daemon sentence under `error` if payload invalid', async () => {
       mockProxy.send = async () => {
-        throw new Error('Invalid job');
+        throw new Error('Job description must be 2000 characters or fewer (got: 2001).');
       };
 
       const res = await app.inject({
@@ -171,7 +173,36 @@ describe('Jobs API Routes', () => {
         payload: { /* invalid */ },
       });
 
-      expect(res.statusCode).toBe(500);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body)).toEqual({ error: 'Job description must be 2000 characters or fewer (got: 2001).' });
+    });
+
+    it('passes a description to the daemon untouched', async () => {
+      let sent: unknown;
+      mockProxy.send = async (cmd, payload) => {
+        if (cmd === 'add-job') {
+          sent = payload;
+        }
+        return { id: 'new-job' };
+      };
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/jobs',
+        payload: { id: 'new-job', type: 'cron', command: 'x', schedule: '0 * * * *', description: 'line 1\nline 2' },
+      });
+
+      expect((sent as { description?: string }).description).toBe('line 1\nline 2');
+    });
+
+    it('still answers 503 when the daemon is down', async () => {
+      mockProxy.send = async () => {
+        throw new DaemonUnavailableError();
+      };
+
+      const res = await app.inject({ method: 'POST', url: '/api/jobs', payload: {} });
+
+      expect(res.statusCode).toBe(503);
     });
   });
 
@@ -237,6 +268,44 @@ describe('Jobs API Routes', () => {
       expect(res.statusCode).toBe(200);
       expect(sent!.unset).toEqual(['cwd']);
       expect(sent!.updates).toEqual({ label: 'Renamed' });
+    });
+
+    it('relays a refused edit as 400 with the daemon sentence under `error`', async () => {
+      mockProxy.send = async () => {
+        throw new Error('Job description must be 2000 characters or fewer (got: 2500).');
+      };
+
+      const res = await app.inject({
+        method: 'PUT', url: '/api/jobs/job1', payload: { description: 'x'.repeat(2500) },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body).error).toMatch(/2000.*2500/);
+    });
+
+    it('answers 404 when the job does not exist', async () => {
+      mockProxy.send = async () => {
+        throw new Error('Job not found: "ghost"');
+      };
+
+      const res = await app.inject({ method: 'PUT', url: '/api/jobs/ghost', payload: { label: 'x' } });
+
+      expect(res.statusCode).toBe(404);
+      expect(JSON.parse(res.body).error).toMatch(/Job not found/);
+    });
+
+    it('carries `unset: ["description"]` beside `updates`', async () => {
+      let sent: EditJobPayload | undefined;
+      mockProxy.send = async (cmd, payload) => {
+        if (cmd === 'edit-job') {
+          sent = payload as EditJobPayload;
+        }
+        return { id: 'job1' };
+      };
+
+      await app.inject({ method: 'PUT', url: '/api/jobs/job1', payload: { unset: ['description'] } });
+
+      expect(sent!.unset).toEqual(['description']);
     });
 
     it('sends no `unset` when the body has none', async () => {

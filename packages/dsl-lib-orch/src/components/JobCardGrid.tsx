@@ -261,7 +261,9 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const visible = items.filter(({ job, runHistory }) => {
     const last = latestRun(runHistory);
     const q = search.toLowerCase();
-    const matchSearch = !q || job.label.toLowerCase().includes(q) || job.command.toLowerCase().includes(q);
+    // The whole description, not the first line a card shows: it is text written to find the job again.
+    const matchSearch = !q || job.label.toLowerCase().includes(q) || job.command.toLowerCase().includes(q)
+      || (job.description?.toLowerCase().includes(q) ?? false);
     /*
      * A spent `once` job has already had its single firing. It stays in the registry for the audit
      * trail rather than being deleted, which means it arrives here and has to be kept out of every

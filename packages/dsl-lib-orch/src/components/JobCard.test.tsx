@@ -202,3 +202,43 @@ describe('JobCard consecutive failures counter', () => {
     expect(screen.getByText('2 fails')).toBeInTheDocument();
   });
 });
+
+// The description is documentation: a card shows only its first line, on one line, with the whole
+// text one hover away. A job without one must not get a taller card.
+describe('JobCard description', () => {
+  function cardWith(description: string | undefined) {
+    return render(
+      <MemoryRouter>
+        <JobCard job={{ ...BASE_JOB, description }} runHistory={[]} onTrigger={vi.fn()} onToggle={vi.fn()} />
+      </MemoryRouter>
+    );
+  }
+
+  it('shows the first line only, with the full text as its title', () => {
+    cardWith('Backs up the database.\nRuns before the export.');
+
+    const line = screen.getByText('Backs up the database.');
+    expect(line.getAttribute('title')).toBe('Backs up the database.\nRuns before the export.');
+    expect(screen.queryByText(/Runs before the export/)).toBeNull();
+  });
+
+  it('is truncated to one line by CSS, not cut in the text', () => {
+    cardWith('x'.repeat(500));
+
+    const line = screen.getByText('x'.repeat(500));
+    expect(line.className).toContain('truncate');
+  });
+
+  it('adds no element at all when the job has no description', () => {
+    const without = cardWith(undefined).container.innerHTML;
+    expect(without).not.toContain('data-job-description');
+    expect(cardWith('   ').container.querySelector('[data-job-description]')).toBeNull();
+  });
+
+  it('is a plain paragraph under the label, not a tooltip-only secret', () => {
+    const { container } = cardWith('Visible text');
+    const p = container.querySelector('[data-job-description]')!;
+    expect(p.tagName.toLowerCase()).toBe('p');
+    expect(p.textContent).toBe('Visible text');
+  });
+});

@@ -366,3 +366,29 @@ describe('JobCardGrid list view', () => {
     expect(screen.getAllByText('No jobs match the current filter.')).toHaveLength(1);
   });
 });
+
+// The page's search box used to match the label and the command only. A description is text someone
+// wrote to find the job again, so it has to be searchable -- the whole text, not just the line a card shows.
+describe('JobCardGrid search matches the description', () => {
+  const items = [
+    { job: { ...JOB('j1', 'Alpha'), description: 'Archives the invoices\nevery quarter' }, runHistory: HISTORY },
+    { job: JOB('j2', 'Beta'), runHistory: HISTORY },
+  ];
+
+  it('finds a job by a word of its first line', () => {
+    wrap(<JobCardGrid items={items} search="invoices" />);
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Beta')).toBeNull();
+  });
+
+  it('finds a job by a word on a later line, whatever the case', () => {
+    wrap(<JobCardGrid items={items} search="QUARTER" />);
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Beta')).toBeNull();
+  });
+
+  it('still finds by label and command, and a job without a description does not blow up', () => {
+    wrap(<JobCardGrid items={items} search="beta" />);
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+  });
+});

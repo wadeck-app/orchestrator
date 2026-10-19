@@ -89,6 +89,47 @@ describe('the fields that had no flag at all', () => {
   });
 });
 
+describe('--description', () => {
+  const text = 'Backs up the database.\nRuns before the nightly export.';
+
+  test('edit sends it untouched, line breaks included', async () => {
+    const { calls } = await run(['edit', 'j1', '--description', text]);
+    assert.equal(sent(calls).description, text);
+  });
+
+  test('add sends it untouched', async () => {
+    const { calls } = await run([...ADD, '--description', text]);
+    assert.equal(sent(calls).description, text);
+  });
+
+  // An empty value reaches the daemon, which treats it as "no description"; the CLI does not decide.
+  test('an empty value is passed on, not swallowed', async () => {
+    const { calls } = await run(['edit', 'j1', '--description', '']);
+    assert.equal(sent(calls).description, '');
+  });
+
+  test('--unset description is accepted and sent as an unset', async () => {
+    const { calls, exitCode } = await run(['edit', 'j1', '--unset', 'description']);
+    assert.equal(exitCode, 0);
+    assert.deepEqual(calls[0].payload.unset, ['description']);
+  });
+
+  test('a description without a value is refused rather than ignored', async () => {
+    const { exitCode, stderr, calls } = await run(['edit', 'j1', '--description']);
+    assert.equal(exitCode, 4);
+    assert.match(stderr, /--description/);
+    assert.equal(calls.length, 0);
+  });
+
+  // The --once branch parses its positionals by hand: the text of a description must not be read as
+  // the job id when the flag comes first.
+  test('add --once does not take the description text for the job id', async () => {
+    const { calls } = await run(['add', '--once', '--description', 'run later', 'j9', '--delay', '1h', '--command', 'node -v']);
+    assert.equal(calls[0].payload.id, 'j9');
+    assert.equal(calls[0].payload.description, 'run later');
+  });
+});
+
 describe('the key=value fields', () => {
   test('--env repeats into a map', async () => {
     const { calls } = await run(['edit', 'j1', '--env', 'TOKEN=abc', '--env', 'MODE=fast']);

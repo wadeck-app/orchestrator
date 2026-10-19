@@ -76,6 +76,15 @@ Catch-up jobs fire with staggered delays to avoid simultaneous load (e.g. after 
 
 Only the **most recent** missed firing is caught up per job -- multiple missed days do not accumulate.
 
+## Documenting a job -- `description`
+
+Per-job option, not a `config.yml` key. `orch add|edit <id> --description "<text>"`; clear it with `orch edit <id> --unset description`. Documentation only: no effect on scheduling.
+
+- Plain text, line breaks allowed, stored trimmed; empty or whitespace-only means absent.
+- At most 2000 characters (counted on the trimmed text). Longer is refused with the limit and the actual length, never truncated. Over HTTP the refusal is a 400 `{ "error": "<sentence>" }`.
+- Visible in `orch show` and `orch list --json` (not in the one-line `orch list`), `GET /api/jobs`, and export/import. The dashboard shows its first line on the job card, the full text on the job page, and the jobs search matches it.
+- The `job.edited` audit line lists `description` among the changed fields; the text is not logged.
+
 ## Limiting concurrent runs -- `maxConcurrency`
 
 Per-job option, not a `config.yml` key. `orch add|edit <id> --max-concurrency <n>`; clear it with `orch edit <id> --unset maxConcurrency`. Absent means no limit.

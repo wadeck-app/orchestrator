@@ -2,7 +2,7 @@ import fs   from 'node:fs';
 // The same validator the scheduler uses, so what the registry accepts is what can actually be run.
 import cron from 'node-cron';
 import type { Job, RegistryData } from './types.js';
-import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES,
+import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES, DESCRIPTION_MAX_LENGTH,
          UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 import { activeWindowError } from './active-window.js';
@@ -53,6 +53,21 @@ export function validateJob(job: Partial<Job>): void {
   }
   if (job.command.includes('\x00'))                    {
     throw new Error('Job command must not contain null bytes');
+  }
+
+  if (job.description !== undefined && job.description !== null) {
+    if (typeof job.description !== 'string') {
+      throw new Error(`Job description must be text (got: ${typeof job.description})`);
+    }
+    // Measured on the trimmed text, the same text that gets stored. Refused rather than cut: a
+    // silent truncation would drop the end of what someone wrote without telling them.
+    const length = job.description.trim().length;
+    if (length > DESCRIPTION_MAX_LENGTH) {
+      throw new Error(
+        `Job description must be ${DESCRIPTION_MAX_LENGTH} characters or fewer (got: ${length}). `
+        + `Shorten it by ${length - DESCRIPTION_MAX_LENGTH} characters.`,
+      );
+    }
   }
 
   if (job.type === 'cron') {
@@ -184,6 +199,10 @@ function isEmptyValue(value: unknown): boolean {
  */
 function normalizeJob(job: Job): Job {
   const out = { ...job } as Job & Record<string, unknown>;
+  // Trimmed before the emptiness check, so a blank description is the same as none.
+  if (typeof out.description === 'string') {
+    out.description = out.description.trim();
+  }
   for (const [field, rule] of Object.entries(UNSETTABLE_FIELDS)) {
     if (!isEmptyValue(out[field])) {
       continue;

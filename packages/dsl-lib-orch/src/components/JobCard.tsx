@@ -3,6 +3,7 @@ import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
 import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, runEndReason, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
 import { windowStateAt } from '../active-window.js';
+import { descriptionFirstLine } from '../job-description.js';
 import { describeAgo } from '../relative-time.js';
 import { END_REASON_PILL, JobStatusPill } from './JobStatusPill.js';
 import { LateMarker } from './LateMarker.js';
@@ -194,6 +195,7 @@ function failureStreakSince(runHistory: RuntimeEntry[], count: number): string |
 export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, onTrigger, onToggle, onClick, selected, onSelect, nowMs }: JobCardProps): React.ReactElement {
   const streak = successStreak(runHistory);
   const now = nowMs ?? Date.now();
+  const descriptionLine = descriptionFirstLine(job.description);
 
   /*
    * A `once` job has exactly one firing, so the furniture of a recurring job is noise on its card: an
@@ -233,6 +235,18 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
         </div>
         <EnableToggle job={job} onToggle={onToggle} />
       </div>
+
+      {/*
+        * First line only, one line, truncated by CSS. The whole text is the native title: dsl-ui's Tooltip
+        * wraps its child in an inline-flex box that would defeat the truncation, and the title is
+        * announced by screen readers and honours line breaks. Not rendered at all without a description,
+        * so a card without one is not a pixel taller. The negative margin cancels the header's own.
+        */}
+      {descriptionLine !== undefined && (
+        <p data-job-description className="text-xs text-muted truncate -mt-1 mb-2" title={job.description}>
+          {descriptionLine}
+        </p>
+      )}
 
       <div className="flex items-center gap-3 mb-1">
         {jobListBadge(job, runHistory, now)}

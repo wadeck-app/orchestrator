@@ -18,6 +18,8 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
   }
   return (
     <div className="bg-surface rounded-lg border border-border p-4 space-y-3">
+      {/* whitespace-pre-wrap keeps the author's line breaks; break-words stops one long token from widening the card. */}
+      {job.description && <div><span className={LABEL_CLS}>Description</span><p className="mt-1 text-sm text-content whitespace-pre-wrap break-words">{job.description}</p></div>}
       <div><span className={LABEL_CLS}>Command</span><p className={VALUE_CLS}>{job.command}</p></div>
       {job.cwd && <div><span className={LABEL_CLS}>Working directory</span><p className={VALUE_CLS}>{job.cwd}</p></div>}
       {job.type === 'cron' && job.schedule && <div><span className={LABEL_CLS}>Schedule</span><p className={VALUE_CLS}>{job.schedule}</p></div>}

@@ -96,6 +96,7 @@ interface FieldFlag {
 const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--command',              field: 'command',            kind: 'string'      },
   { flag: '--label',                field: 'label',              kind: 'string'      },
+  { flag: '--description',          field: 'description',        kind: 'string'      },
   { flag: '--cwd',                  field: 'cwd',                kind: 'string'      },
   { flag: '--schedule',             field: 'schedule',           kind: 'string'      },
   { flag: '--trigger-mode',         field: 'triggerMode',        kind: 'string'      },
@@ -203,6 +204,11 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
     }
     const raw = flag(argv, name);
     if (raw === undefined) {
+      // Named, not skipped: a trailing `--description` used to be dropped and the command still
+      // reported success.
+      if (has(argv, name)) {
+        throw new Error(`${name} needs a value, but was followed by nothing.`);
+      }
       continue;
     }
     if (kind === 'string') {
@@ -419,8 +425,10 @@ Job inspection:
                                --past is given; see onceRetentionDays in config.yml
   orch show <id> [--json]      Show full job detail
                                JSON fields: id, type, label, command, schedule,
-                               delaySeconds, cwd, enabled, triggerMode, missedFiring,
-                               liveness, tags, timeoutSeconds
+                               description (when set), delaySeconds, cwd, enabled,
+                               triggerMode, missedFiring, liveness, tags, timeoutSeconds
+                               (orch list stays one line per job and does not show it;
+                               orch list --json carries it)
   orch --pid                   Show daemon pid/port (no daemon required)
 
 Job mutation:
@@ -437,6 +445,9 @@ Job mutation:
   Accepted by both add and edit, from the same table, so nothing is settable by one only:
   --command <cmd>              What to run
   --label <text>               Display name (defaults to the id)
+  --description <text>         What the job is for: plain text, line breaks allowed, up to 2000
+                               characters (longer is refused, not cut). Documentation only, shown by
+                               the dashboard and by orch show. Clear it with --unset description
   --cwd <path>                 Working directory
   --schedule <expr>            Cron expression (cron jobs)
   --trigger-mode <mode>        fire-and-forget | wait
@@ -467,7 +478,7 @@ Job mutation:
                                [--unset <field>[,<field>...]]  Clear an option instead of changing it
                                Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
                                maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
-                               skipExitCodes, liveness, label, triggerMode
+                               skipExitCodes, liveness, label, triggerMode, description
                                Example: orch edit my-job --unset cwd
 
 Schedule format (cron jobs): standard 5-field cron -- min hour day month weekday
@@ -896,15 +907,15 @@ To restart the job, run: orch restart-job ${jobArg}`);
 
       if (has(rest, '--once')) {
         type = 'once';
-        const flagsWithValues = new Set(['--delay', '--command', '--cwd', '--label', '--trigger-mode',
-          '--liveness-strategy', '--liveness-port-file', '--liveness-command']);
         const positionals: string[] = [];
         for (let i = 0; i < rest.length; i++) {
           if (rest[i] === '--once' || rest[i] === '--disabled') {
             continue;
           }
           if (rest[i]!.startsWith('--')) {
-            if (flagsWithValues.has(rest[i]!)) {
+            // takesValue knows every field flag. The hand-kept list this replaces lacked most of
+            // them, so a free-text value (a description) in front of the id was read as the id.
+            if (takesValue(rest[i]!)) {
               i++;
             }
           } else {

@@ -4,12 +4,13 @@
 // stop. The process must then EXIT ON ITS OWN while the job keeps running. A daemon that cannot exit leaves the
 // launcher waiting on it, the restart sentinel is never acted on, and the update this whole design exists for
 // never completes. Run in a child process, because "does it exit" cannot be asked of the process running the test.
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
 const path = require('node:path');
 const os   = require('node:os');
 const { spawn } = require('node:child_process');
+const { endLeftoverRuns, withPidFile } = require('./helpers/end-leftover-runs');
 
 const { findSupervisorBinary } = require('../src/platform-binary');
 
@@ -60,10 +61,15 @@ function isAlive(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
+// The job outlives the daemon on purpose, so nothing else ends it: the file's last hook does.
+const dirs = [];
+after(async () => { await endLeftoverRuns(dirs); });
+
 test('a daemon that detached from a supervised job with a timeout and a resource monitor exits by itself, and the job keeps running', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-detach-'));
+  dirs.push(dir);
   const jobFile = path.join(dir, 'job.js');
-  fs.writeFileSync(jobFile, 'setInterval(() => {}, 1000)');
+  fs.writeFileSync(jobFile, withPidFile('setInterval(() => {}, 1000)'));
   const child = spawn(process.execPath, ['-e', daemonScript(dir, jobFile)], { stdio: ['ignore', 'pipe', 'pipe'], cwd: path.join(__dirname, '..') });
   let out = '';
   let err = '';
