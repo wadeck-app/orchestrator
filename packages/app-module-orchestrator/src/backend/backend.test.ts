@@ -130,6 +130,21 @@ describe('serving the dashboard routes through the module', () => {
     await app.close();
   });
 
+  it('serves the daemon status from get-daemon-info', async () => {
+    const seen: unknown[] = [];
+    const { app } = await boot(async (command, payload) => {
+      seen.push([command, payload]);
+      return { version: '1.2.3', uptimeSeconds: 10 };
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/daemon' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ version: '1.2.3', uptimeSeconds: 10 });
+    expect(seen).toContainEqual(['get-daemon-info', undefined]);
+    await app.close();
+  });
+
   it('answers 503 daemon-not-running, as the dashboard server does, when the daemon is down', async () => {
     const { app } = await boot(async () => { throw new DaemonUnavailableError(); });
 

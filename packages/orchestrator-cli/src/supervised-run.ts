@@ -368,25 +368,43 @@ export interface SupervisorSetup {
   log: (line: string) => void;
 }
 
+/** Whether jobs run under a supervisor, as get-daemon-info reports it. */
+export interface SupervisorState {
+  /** `supervisedJobs` in config.yml (on by default). */
+  requested: boolean;
+  /** Whether the supervisor executable was found, so jobs really are supervised. */
+  active: boolean;
+  /** Why it was asked for and is not active, with the fix; the same sentence as the daemon-start warning. */
+  note?: string;
+}
+
 /**
  * Decides, once at daemon start, whether jobs run under a supervisor. Asking for it and not getting it is logged
- * as a warning that names the consequence: jobs run unsupervised, so a restart will still stop them.
+ * as a warning that names the consequence: jobs run unsupervised, so a restart will still stop them. The same
+ * sentence is returned as `status.note`, so the dashboard says what the log says.
  */
-export function supervisorFor(setup: SupervisorSetup): SupervisorLauncher | undefined {
+export function resolveSupervisor(setup: SupervisorSetup): { launcher: SupervisorLauncher | undefined; status: SupervisorState } {
   if (!setup.enabled) {
-    return undefined;
+    return { launcher: undefined, status: { requested: false, active: false } };
   }
+  const unavailable = (note: string) => {
+    setup.log(note);
+    return { launcher: undefined, status: { requested: true, active: false, note } };
+  };
   let supervisorPath: string | null;
   try {
     supervisorPath = setup.locate(setup.configDir);
   } catch (err) {
-    setup.log(`supervisedJobs is on (the default), but the supervisor cannot be prepared (${getErrorMessage(err)}). Jobs run unsupervised and will not survive a daemon restart. Reinstall with: orch cli update`);
-    return undefined;
+    return unavailable(`supervisedJobs is on (the default), but the supervisor cannot be prepared (${getErrorMessage(err)}). Jobs run unsupervised and will not survive a daemon restart. Reinstall with: orch cli update`);
   }
   if (supervisorPath === null) {
-    setup.log(`supervisedJobs is on (the default), but there is no supervisor executable for ${process.platform}-${process.arch}. Jobs run unsupervised and will not survive a daemon restart. Set supervisedJobs: false in config.yml to silence this.`);
-    return undefined;
+    return unavailable(`supervisedJobs is on (the default), but there is no supervisor executable for ${process.platform}-${process.arch}. Jobs run unsupervised and will not survive a daemon restart. Set supervisedJobs: false in config.yml to silence this.`);
   }
   setup.log(`supervisedJobs is on: jobs run under ${supervisorPath}`);
-  return (request) => startSupervised({ supervisorPath, configDir: setup.configDir }, request);
+  const launcher: SupervisorLauncher = (request) => startSupervised({ supervisorPath, configDir: setup.configDir }, request);
+  return { launcher, status: { requested: true, active: true } };
+}
+
+export function supervisorFor(setup: SupervisorSetup): SupervisorLauncher | undefined {
+  return resolveSupervisor(setup).launcher;
 }

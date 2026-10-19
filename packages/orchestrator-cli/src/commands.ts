@@ -14,9 +14,23 @@ import type { ExecManager } from './exec-manager.js';
 import { getNextFirings } from './cronNext.js';
 import { SecretsManager } from './secrets.js';
 import { readRunTelemetry } from './run-telemetry.js';
+import { summarizeTimers } from './scheduler.js';
+import type { DaemonConfig } from './daemonConfig.js';
+import type { SupervisorState } from './supervised-run.js';
 
 // Same rule as registry.add and the logs route's path-traversal guard (P-7); do not relax it here.
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
+
+/** What get-daemon-info reports that only index.ts knows. */
+export interface DaemonInfoSource {
+  version: string;
+  /** A function because the port is only known once the server listens. */
+  port: () => number;
+  startedAt: Date;
+  config: Required<Pick<DaemonConfig,
+    'supervisedJobs' | 'lateActionWindowMinutes' | 'autoUpdate' | 'appCore' | 'catchUpInitialDelaySeconds' | 'catchUpStaggerSeconds'>>;
+  supervisor: SupervisorState;
+}
 
 /**
  * Builds the OrchestratorCommands map for use with createDaemon() and createTestDaemon().
@@ -31,6 +45,7 @@ export function makeCommands(
   audit?: AuditLogger,
   events?: EventPublisher,
   execManager?: ExecManager,
+  daemonInfo?: DaemonInfoSource,
 ): OrchestratorCommands {
   const secrets = new SecretsManager(configDir);
   return {
@@ -260,6 +275,35 @@ export function makeCommands(
      * guard. A job that is silently not armed is exactly the one to show.
      */
     'list-timers': () => scheduler.inspectTimers(),
+
+    /*
+     * The daemon's own status, for the dashboard. Built field by field: the config is the six keys that
+     * explain behaviour, and nothing of a job (command, env, cwd) or a secret is read here.
+     */
+    'get-daemon-info': () => {
+      if (!daemonInfo) {
+        throw new Error('get-daemon-info: this daemon was started without its daemon info source (a wiring bug in index.ts); restart it with `orch restart`.');
+      }
+      const c = daemonInfo.config;
+      return {
+        version:       daemonInfo.version,
+        pid:           process.pid,
+        port:          daemonInfo.port(),
+        startedAt:     daemonInfo.startedAt.toISOString(),
+        uptimeSeconds: Math.max(0, Math.floor((Date.now() - daemonInfo.startedAt.getTime()) / 1000)),
+        config: {
+          supervisedJobs:             c.supervisedJobs,
+          lateActionWindowMinutes:    c.lateActionWindowMinutes,
+          autoUpdate:                 c.autoUpdate,
+          appCore:                    c.appCore,
+          catchUpInitialDelaySeconds: c.catchUpInitialDelaySeconds,
+          catchUpStaggerSeconds:      c.catchUpStaggerSeconds,
+        },
+        supervisor: { ...daemonInfo.supervisor },
+        runs:       scheduler.runCounts(),
+        scheduler:  summarizeTimers(scheduler.inspectTimers()),
+      };
+    },
 
     'dry-run-job': (p) => {
       const { id } = p as { id: string };

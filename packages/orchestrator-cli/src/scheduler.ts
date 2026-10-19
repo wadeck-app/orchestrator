@@ -241,6 +241,23 @@ export interface TimerReport {
   problem: string | null;
 }
 
+/**
+ * What the dashboard says about the timers, reduced from the same report `list-timers` returns.
+ *
+ * `desired` counts the jobs that should have a timer: enabled, not a spent `once`, not a `startup` job (it fires
+ * once at start, nothing to arm) and not past its active period. `armed` is how many of those have one.
+ * `problems` is every report that carries a problem, whether or not it counts as desired.
+ */
+export function summarizeTimers(reports: TimerReport[]): { armed: number; desired: number; problems: Array<{ jobId: string; problem: string }> } {
+  const desired = reports.filter(r =>
+    r.enabled && !r.spent && r.type !== 'startup' && r.windowState !== 'expired');
+  return {
+    armed:    desired.filter(r => r.armed !== null).length,
+    desired:  desired.length,
+    problems: reports.filter(r => r.problem !== null).map(r => ({ jobId: r.jobId, problem: r.problem as string })),
+  };
+}
+
 /** Injection seam for the tests; production passes nothing and gets pidtree + pidusage. */
 /**
  * What pidusage answers for one process. `elapsed` is its age at the moment THAT process was measured
@@ -426,6 +443,8 @@ export class Scheduler extends EventEmitter {
   private readonly _detachers = new Set<() => void>();
   /** Ids of the jobs whose run was found going, to announce once the tray is listening. */
   private readonly _adoptedIds: string[] = [];
+  /** How many runs this daemon has followed again since it started; unlike _adoptedIds it is never drained. */
+  private _followedAgainTotal = 0;
   private readonly _catchUpStaggerMs:      number;
   private readonly _hookDispatcher:  HookDispatcher | null;
   private readonly _peakFlushMs:     number;
@@ -1016,6 +1035,24 @@ export class Scheduler extends EventEmitter {
     child.kill('SIGTERM');
   }
 
+  /**
+   * Live runs across all jobs: how many are going, how many of those run under a supervisor, and how many this
+   * daemon found going and followed again (since it started, whether at start or by taking over).
+   */
+  runCounts(): { running: number; supervised: number; followedAgain: number } {
+    let running = 0;
+    let supervised = 0;
+    for (const children of this._activeChildren.values()) {
+      for (const child of children) {
+        running++;
+        if (child instanceof SupervisedChild) {
+          supervised++;
+        }
+      }
+    }
+    return { running, supervised, followedAgain: this._followedAgainTotal };
+  }
+
   /** How many instances of the job are alive right now. */
   runningCount(id: string): number {
     return this._running.get(id) ?? 0;
@@ -1443,6 +1480,7 @@ export class Scheduler extends EventEmitter {
     this._followed.add(key);
     child.once('close', () => { this._followed.delete(key); });
     this._adoptedIds.push(jobId);
+    this._followedAgainTotal++;
     jobLogger.write(`[recovery] the daemon is following this run again (pid ${status.childPid ?? '?'})`);
     const ctx: MonitorContext = {
       job,

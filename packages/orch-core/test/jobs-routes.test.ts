@@ -599,3 +599,72 @@ describe('GET /api/jobs/:jobId/telemetry', () => {
     expect(sent.map(s => s.cmd)).toEqual(['list-jobs']);
   });
 });
+
+// /api/health used to report the dashboard server's own process uptime, which restarts whenever the server idles
+// out and says nothing about the daemon. It now carries the daemon's, from get-daemon-info.
+describe('GET /api/health uptime and GET /api/daemon', () => {
+  const daemonInfo = {
+    version: '1.2.3', pid: 42, port: 47900, startedAt: '2026-01-01T00:00:00.000Z', uptimeSeconds: 1234,
+    config: {}, supervisor: { requested: true, active: true },
+    runs: { running: 0, supervised: 0, followedAgain: 0 }, scheduler: { armed: 0, desired: 0, problems: [] },
+  };
+
+  async function appWith(send: (cmd: string) => Promise<unknown>): Promise<FastifyInstance> {
+    const app = fastify();
+    await app.register(jobsRoutes, { proxy: { send }, idleTimer: { reset: () => {} } });
+    await app.ready();
+    return app;
+  }
+
+  const base = async (cmd: string): Promise<unknown> => {
+    if (cmd === 'list-jobs') {
+      return [];
+    }
+    if (cmd === 'list-state') {
+      return {};
+    }
+    throw new Error(`Unknown command: ${cmd}`);
+  };
+
+  it('reports the daemon uptime, not the dashboard server process uptime', async () => {
+    const app = await appWith(async (cmd) => (cmd === 'get-daemon-info' ? daemonInfo : base(cmd)));
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().uptime).toBe(1234);
+  });
+
+  it('still answers health, with a null uptime, when the daemon cannot say its info', async () => {
+    const app = await appWith(async (cmd) => {
+      if (cmd === 'get-daemon-info') {
+        throw new Error('Unknown command: get-daemon-info');
+      }
+      return base(cmd);
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().uptime).toBeNull();
+    expect(res.json().status).toBe('ok');
+  });
+
+  it('GET /api/daemon returns the daemon reply as is', async () => {
+    const app = await appWith(async (cmd) => (cmd === 'get-daemon-info' ? daemonInfo : base(cmd)));
+    const res = await app.inject({ method: 'GET', url: '/api/daemon' });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(daemonInfo);
+  });
+
+  it('GET /api/daemon answers 503 daemon-not-running when the daemon is down', async () => {
+    const app = await appWith(async () => { throw new DaemonUnavailableError(); });
+    const res = await app.inject({ method: 'GET', url: '/api/daemon' });
+    await app.close();
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ error: 'daemon-not-running' });
+  });
+});

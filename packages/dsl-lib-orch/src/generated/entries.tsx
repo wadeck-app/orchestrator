@@ -101,6 +101,7 @@ import { StatusFilter } from '@wadeck-app/dsl-ui/dist/components/table/StatusFil
 import { AuditEntryIcon } from '../components/AuditEntryIcon.js'
 import { AuditEntryRow } from '../components/AuditEntryRow.js'
 import { AuditList } from '../components/AuditList.js'
+import { DaemonStatus } from '../components/DaemonStatus.js'
 import { DesignSwitcher } from '../components/DesignSwitcher.js'
 import { EnableToggle } from '../components/EnableToggle.js'
 import { FailureOverlay } from '../components/FailureOverlay.js'
@@ -1620,6 +1621,15 @@ export const AuditListEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const DaemonStatusEntry: ComponentRegistryEntry = {
+	name: 'DaemonStatus', category: 'composite', tags: ["daemon","status","supervisor","version","scheduler","timers"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const refreshMs = resolveExpressionValue(node['refreshMs'], ctx) as import('../components/DaemonStatus.js').DaemonStatusProps['refreshMs']
+		return <DaemonStatus refreshMs={refreshMs} />
+	},
+}
+
 export const DesignSwitcherEntry: ComponentRegistryEntry = {
 	name: 'DesignSwitcher', category: 'atomic', tags: ["design","switcher","navigation","compare"],
 	nodeSchema: null as never,
@@ -2010,6 +2020,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	AuditEntryIconEntry,
 	AuditEntryRowEntry,
 	AuditListEntry,
+	DaemonStatusEntry,
 	DesignSwitcherEntry,
 	EnableToggleEntry,
 	FailureOverlayEntry,

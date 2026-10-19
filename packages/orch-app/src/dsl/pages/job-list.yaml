@@ -95,3 +95,5 @@ sections:
       onJobClick: [id]
       onAddJob: [_]
       onAfterBulk: [_]
+  # The page footer: the daemon behind the grid (version, uptime, supervisor, timers). Reads /api/daemon itself.
+  - $type: DaemonStatus

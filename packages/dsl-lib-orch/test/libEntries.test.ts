@@ -10,7 +10,7 @@ import { LIB_ENTRIES } from '../src/paths.js';
  * dropping a component changes every view's contract with the shell, so it must be a visible edit.
  */
 const EXPECTED = [
-  'AuditEntryIcon', 'AuditEntryRow', 'AuditList', 'DesignSwitcher', 'EnableToggle', 'FailureOverlay', 'JobCard',
+  'AuditEntryIcon', 'AuditEntryRow', 'AuditList', 'DaemonStatus', 'DesignSwitcher', 'EnableToggle', 'FailureOverlay', 'JobCard',
   'JobCardGrid', 'JobConfigDisplay', 'JobFilterChips', 'JobForm', 'JobFormSection', 'JobStatusBadge', 'JobToggle',
   'LogPageBreadcrumb', 'LogViewer', 'MutationFeedback', 'NavStats', 'NextFireCountdown', 'RunHistory', 'RunTelemetry',
   'RunningAlertDetail', 'RunningBannerDetail', 'RunningInlineDetail', 'ScheduleTimeline', 'SearchBar',
@@ -20,8 +20,8 @@ const EXPECTED = [
 describe('createOrchLibEntries', () => {
   const entries = createOrchLibEntries({ apiBase: '/api/modules/orchestrator', routeBase: '/modules/orchestrator' });
 
-  it('exports the 28 components the module ships (RunTelemetry is the newest)', () => {
-    expect(EXPECTED).toHaveLength(28);
+  it('exports the 29 components the module ships (DaemonStatus is the newest)', () => {
+    expect(EXPECTED).toHaveLength(29);
     expect(entries.map(e => e.name).sort()).toEqual(EXPECTED);
   });
 

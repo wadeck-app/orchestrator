@@ -18,3 +18,5 @@ items:
   - $type: StatTile
     label: Recent failures
     value: $sources.health.recentFailures
+  # The daemon behind the numbers: version, uptime, supervisor, runs, timers. Reads /api/daemon itself.
+  - $type: orchestrator:DaemonStatus

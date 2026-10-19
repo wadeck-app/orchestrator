@@ -100,6 +100,29 @@ onceRetentionDays: 360
 onceRetentionMaxJobs: 50
 ```
 
+## Daemon status
+
+What the daemon says about itself; the config keys it echoes are the ones in the table above.
+
+| Layer | Entry point |
+|-------|-------------|
+| Daemon RPC | `get-daemon-info` (no payload) |
+| HTTP | `GET /api/daemon`, also published by the app-core module; `503 { error: "daemon-not-running" }` when the daemon is down |
+| UI | `DaemonStatus` card: footer of the jobs page, and in the app-core dashboard widget |
+
+Reply:
+
+| Field | Meaning |
+|-------|---------|
+| `version`, `pid`, `port` | The running build, process and RPC port |
+| `startedAt` (ISO), `uptimeSeconds` | When this daemon started and for how long |
+| `config` | `supervisedJobs`, `lateActionWindowMinutes`, `autoUpdate`, `appCore`, `catchUpInitialDelaySeconds`, `catchUpStaggerSeconds` as read at start |
+| `supervisor` | `requested` (`supervisedJobs`), `active` (the executable was found), `note` when requested but not active: the daemon-start warning, with the platform and the fix |
+| `runs` | `running` now, how many of them `supervised`, and `followedAgain` (runs this daemon found going and adopted since it started) |
+| `scheduler` | `armed` of `desired` timers, and `problems` `[{ jobId, problem }]`. Desired: enabled, not a spent `once`, not `startup`, not past its active period. Same data as `list-timers` |
+
+No job command, environment, `cwd` or secret is in the reply. `/api/health` takes its `uptime` (seconds) from `uptimeSeconds`; it is `null` when the daemon cannot answer `get-daemon-info`, and the rest of the health reply is unaffected.
+
 ## Resource monitor
 
 While a job runs, the daemon samples the CPU and RAM of its whole process tree every 2 seconds. From

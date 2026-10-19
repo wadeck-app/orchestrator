@@ -31,6 +31,7 @@ export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'GET /api/audit',
   'GET /api/uptime',
   'GET /api/health',
+  'GET /api/daemon',
   'GET /api/logs/:jobId/runs',
   'GET /api/logs/:jobId/stream',
   'GET /api/open',

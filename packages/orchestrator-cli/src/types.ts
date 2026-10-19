@@ -281,6 +281,23 @@ export type TriggerResult =
   | { status: 'finished'; exitCode: number | null; consumed?: boolean }
   | { status: 'already-running'; running: number; maxConcurrency: number };
 
+/** What `get-daemon-info` answers. No job command, environment or secret is ever part of it. */
+export interface DaemonInfo {
+  version: string;
+  pid: number;
+  port: number;
+  /** ISO. */
+  startedAt: string;
+  uptimeSeconds: number;
+  config: {
+    supervisedJobs: boolean; lateActionWindowMinutes: number; autoUpdate: boolean; appCore: boolean;
+    catchUpInitialDelaySeconds: number; catchUpStaggerSeconds: number;
+  };
+  supervisor: { requested: boolean; active: boolean; note?: string };
+  runs: { running: number; supervised: number; followedAgain: number };
+  scheduler: { armed: number; desired: number; problems: Array<{ jobId: string; problem: string }> };
+}
+
 /** RPC command map for the orchestrator daemon (used with singleton-daemon-kit). */
 export type OrchestratorCommands = {
   'list-jobs':   (payload?: unknown) => Job[];
@@ -304,6 +321,8 @@ export type OrchestratorCommands = {
     armed: string | null; dueAt: string | null; windowEndsAt: string | null;
     nextFiring: string | null; windowState: string | null; problem: string | null;
   }>;
+  /** The daemon's own status; see DaemonInfo and docs/daemon-config.md. */
+  'get-daemon-info':        (payload?: unknown) => DaemonInfo;
   'get-uptime':             (payload?: unknown) => Record<string, number | null>;
   'get-resource-baseline':  (payload?: unknown) => { cpuPct: number; ramMb: number } | null;
   /** One run's resource curve from the telemetry file; see run-telemetry.ts. `run` is its startedAt, default the newest. */

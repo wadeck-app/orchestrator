@@ -13,7 +13,7 @@ import { makeCommands } from './commands.js';
 import { AuditLogger } from './audit.js';
 import { wireAuditEvents } from './audit-wiring.js';
 import { pruneStaleStagedBinaries, supervisorToRun } from './platform-binary.js';
-import { supervisorFor } from './supervised-run.js';
+import { resolveSupervisor } from './supervised-run.js';
 import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { DashboardManager } from './dashboard-manager.js';
@@ -201,6 +201,12 @@ async function main(): Promise<void> {
     });
     const events      = new EventPublisher();
     const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
+    const supervisorSetup = resolveSupervisor({
+      enabled:   daemonCfg.supervisedJobs,
+      configDir: CONFIG_DIR,
+      locate:    supervisorToRun,
+      log:       (line) => daemonLog.write(line),
+    });
     const scheduler      = new Scheduler(registry, state, {
       configDir: CONFIG_DIR,
       eventPublisher: events,
@@ -208,12 +214,7 @@ async function main(): Promise<void> {
       catchUpStaggerMs:      daemonCfg.catchUpStaggerSeconds * 1000,
       hookDispatcher,
       lateActionWindowMs: daemonCfg.lateActionWindowMinutes * 60_000,
-      supervisor: supervisorFor({
-        enabled:   daemonCfg.supervisedJobs,
-        configDir: CONFIG_DIR,
-        locate:    supervisorToRun,
-        log:       (line) => daemonLog.write(line),
-      }),
+      supervisor: supervisorSetup.launcher,
     });
 
     // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must
@@ -299,7 +300,13 @@ async function main(): Promise<void> {
       // health-server.js, where `version: appVersion ?? PACKAGE_VERSION` comes last.
       appVersion:  displayVersion,
       port:        47900,
-      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events, execManager),
+      commands:    makeCommands(registry, state, scheduler, CONFIG_DIR, trayManager, audit, events, execManager, {
+        version:   displayVersion,
+        port:      () => activePort,
+        startedAt: new Date(Date.now() - process.uptime() * 1000),
+        config:    daemonCfg,
+        supervisor: supervisorSetup.status,
+      }),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,

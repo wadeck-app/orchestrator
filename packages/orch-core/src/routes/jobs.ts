@@ -338,11 +338,21 @@ export async function jobsRoutes(
     });
   });
 
+  // The daemon's own status (version, uptime, supervisor, runs, timers). Same error mapping as its neighbours.
+  fastify.get('/api/daemon', async (_req, reply) => {
+    return guard(reply, async () => reply.send(await proxy.send('get-daemon-info')));
+  });
+
   fastify.get('/api/health', async (_req, reply) => {
     return guard(reply, async () => {
-      const [jobs, stateData] = await Promise.all([
+      const [jobs, stateData, daemonUptime] = await Promise.all([
         proxy.send('list-jobs') as Promise<{ id: string }[]>,
         proxy.send('list-state') as Promise<Record<string, HealthRunEntry[]>>,
+        // Uptime is a nicety: a daemon that cannot answer get-daemon-info (an older build, say) must not take
+        // the whole health call down, so a failure here becomes a null uptime instead of an error.
+        proxy.send('get-daemon-info')
+          .then(info => (info as { uptimeSeconds?: number }).uptimeSeconds ?? null)
+          .catch(() => null),
       ]);
       const latest = Object.values(stateData).map(newestRun);
       // Liveness is finishedAt: a run killed by signal has no exit code, so testing
@@ -355,8 +365,9 @@ export async function jobsRoutes(
         totalJobs: jobs.length,
         runningJobs: runningCount,
         recentFailures: failureCount,
-        // The dashboard server's own process uptime, not the daemon's.
-        uptime: process.uptime(),
+        // The daemon's uptime in seconds (null when the daemon could not say). It used to be the dashboard
+        // server's own process uptime, which restarts whenever the server idles out and says nothing about the daemon.
+        uptime: daemonUptime,
         timestamp: new Date().toISOString(),
       });
     });
