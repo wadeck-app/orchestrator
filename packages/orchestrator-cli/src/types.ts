@@ -306,6 +306,8 @@ export type OrchestratorCommands = {
   }>;
   'get-uptime':             (payload?: unknown) => Record<string, number | null>;
   'get-resource-baseline':  (payload?: unknown) => { cpuPct: number; ramMb: number } | null;
+  /** One run's resource curve from the telemetry file; see run-telemetry.ts. `run` is its startedAt, default the newest. */
+  'get-run-telemetry':      (payload?: unknown) => Promise<import('./run-telemetry.js').RunTelemetry>;
   'dry-run-job':   (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }>;
   'list-secrets':  (payload?: unknown) => string[];
   'set-secret':    (payload?: unknown) => void;

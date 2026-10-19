@@ -23,7 +23,7 @@ export function telemetryPath(configDir: string, jobId: string): string {
   return path.join(telemetryDir(configDir), `${jobId}.ndjson`);
 }
 
-function rotatedPath(configDir: string, jobId: string): string {
+export function rotatedPath(configDir: string, jobId: string): string {
   return path.join(telemetryDir(configDir), `${jobId}.1.ndjson`);
 }
 

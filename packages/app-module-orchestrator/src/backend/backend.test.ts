@@ -115,6 +115,21 @@ describe('serving the dashboard routes through the module', () => {
     await app.close();
   });
 
+  it('serves the telemetry of one run, the run passed through, from the daemon', async () => {
+    const seen: unknown[] = [];
+    const { app } = await boot(async (command, payload) => {
+      seen.push([command, payload]);
+      return { run: 'r', available: true, samples: [] };
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/j1/telemetry?run=2026-01-01T00%3A00%3A00Z' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().available).toBe(true);
+    expect(seen).toContainEqual(['get-run-telemetry', { jobId: 'j1', run: '2026-01-01T00:00:00Z' }]);
+    await app.close();
+  });
+
   it('answers 503 daemon-not-running, as the dashboard server does, when the daemon is down', async () => {
     const { app } = await boot(async () => { throw new DaemonUnavailableError(); });
 

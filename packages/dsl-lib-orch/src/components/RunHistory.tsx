@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { FileText } from 'lucide-react';
-import { ColumnHelpers, DataTable, type TableColumn } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunSkipped, runEndReason, type RuntimeEntry } from '../types.js';
+import { ChipButton, ColumnHelpers, DataTable, type TableColumn } from '@wadeck-app/dsl-ui';
+import { getErrorMessage, isRunActive, isRunCancelled, isRunSkipped, latestRun, runEndReason, type RuntimeEntry } from '../types.js';
+import { getApiBase } from '../runtime-config.js';
+import { RunTelemetry } from './RunTelemetry.js';
+import { PeakCell, type PeakVerdict } from './PeakCell.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
 import { LateMarker } from './LateMarker.js';
 import { JobStatusPill } from './JobStatusPill.js';
@@ -12,6 +15,68 @@ export interface RunHistoryProps {
   entries: RuntimeEntry[];
   /** Enables the per-run Logs link. Without it the run cannot be addressed, so no link is shown. */
   jobId?: string;
+}
+
+/** The average peak of the job's recent successful runs, as the daemon computes it; null while it has fewer than 3. */
+interface Baseline {
+  cpuPct: number;
+  ramMb: number;
+}
+
+/** The daemon kills a run that stays over this multiple of the baseline (scheduler.ts, hardThreshold). */
+const HARD_BUDGET_FACTOR = 2;
+
+type BaselineState = { state: 'loading' } | { state: 'ready'; baseline: Baseline | null } | { state: 'failed'; message: string };
+
+/** One request per history view: the baseline is the same for every row. */
+function useBaseline(jobId: string | undefined): BaselineState {
+  const [result, setResult] = useState<BaselineState>({ state: 'loading' });
+  useEffect(() => {
+    if (jobId === undefined) {
+      return undefined;
+    }
+    let cancelled = false;
+    setResult({ state: 'loading' });
+    fetch(`${getApiBase()}/api/jobs/${encodeURIComponent(jobId)}/resource-baseline`)
+      .then(async res => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        return (await res.json()) as Baseline | null;
+      })
+      .then(baseline => { if (!cancelled) { setResult({ state: 'ready', baseline }); } })
+      .catch((err: unknown) => { if (!cancelled) { setResult({ state: 'failed', message: getErrorMessage(err) }); } });
+    return () => { cancelled = true; };
+  }, [jobId]);
+  return result;
+}
+
+/**
+ * Holds one peak against the job's budget. No baseline means no verdict and a tooltip that says so: a
+ * guessed budget would flag runs by a rule the daemon does not apply.
+ */
+function judgePeak(label: string, shown: string, peak: number | null | undefined, baselineValue: number | null | undefined, format: (n: number) => string, baseline: BaselineState): PeakVerdict {
+  if (peak == null) {
+    return { over: false, tooltip: undefined };
+  }
+  if (baseline.state === 'loading') {
+    return { over: false, tooltip: undefined };
+  }
+  if (baseline.state === 'failed') {
+    return { over: false, tooltip: `The budget could not be loaded (${baseline.message}), so this peak is not compared with it. Reload the page to retry.` };
+  }
+  if (baseline.baseline === null || baselineValue == null) {
+    return { over: false, tooltip: 'no budget yet (needs 3 measured runs)' };
+  }
+  const budget = baselineValue * HARD_BUDGET_FACTOR;
+  const over = peak > budget;
+  const how = `budget of ${format(budget)} (twice the ${format(baselineValue)} average peak of its recent successful runs)`;
+  return {
+    over,
+    tooltip: over
+      ? `Peak ${label} ${shown} is above this job's ${how}. A run that stays over it is killed.`
+      : `Peak ${label} ${shown} is within this job's ${how}.`,
+  };
 }
 
 /*
@@ -87,12 +152,30 @@ function toRow(entry: RuntimeEntry): RunRow {
  */
 export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElement {
   const rows = (entries ?? []).map(toRow);
+  const baseline = useBaseline(jobId);
+  // The run whose chart is open. Until one is picked it is the newest, which is the one a reader opens the page for.
+  const [picked, setPicked] = useState<string | null>(null);
+  const newest = latestRun(entries ?? []);
+  const shownRun = picked !== null && (entries ?? []).some(e => e.startedAt === picked) ? picked : newest?.startedAt ?? null;
+  const shownEntry = (entries ?? []).find(e => e.startedAt === shownRun) ?? null;
 
   const columns: TableColumn<RunRow>[] = [
     ColumnHelpers.text<RunRow>('started', 'Started'),
     ColumnHelpers.text<RunRow>('duration', 'Duration', { muted: true }),
-    ColumnHelpers.text<RunRow>('peakCpu', 'Peak CPU', { muted: true }),
-    ColumnHelpers.text<RunRow>('peakRam', 'Peak RAM', { muted: true }),
+    {
+      key: 'peakCpu',
+      label: 'Peak CPU',
+      render: ({ entry, peakCpu }) => (
+        <PeakCell shown={peakCpu} verdict={judgePeak('CPU', peakCpu, entry.peakCpuPct, baseline.state === 'ready' ? baseline.baseline?.cpuPct : null, n => `${n.toFixed(1)}%`, baseline)} />
+      ),
+    },
+    {
+      key: 'peakRam',
+      label: 'Peak RAM',
+      render: ({ entry, peakRam }) => (
+        <PeakCell shown={peakRam} verdict={judgePeak('RAM', peakRam, entry.peakRamMb, baseline.state === 'ready' ? baseline.baseline?.ramMb : null, n => `${n.toFixed(0)}MB`, baseline)} />
+      ),
+    },
     {
       key: 'result',
       label: 'Result',
@@ -144,8 +227,35 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
     });
   }
 
+  if (jobId !== undefined) {
+    columns.push({
+      key: 'chart',
+      label: 'Chart',
+      render: ({ entry }) => (
+        <ChipButton
+          active={entry.startedAt === shownRun}
+          onClick={() => setPicked(entry.startedAt)}
+          aria-pressed={entry.startedAt === shownRun}
+          aria-label={`Show the CPU and RAM chart of the run started ${entry.startedAt}`}
+        >
+          Chart
+        </ChipButton>
+      ),
+    });
+  }
+
   // DataTable owns the empty state now, so the early return is gone. Deliberately no `selectable` and
   // no `sortable`: a run history has nothing to act on in bulk, and every text column here holds a
   // formatted string that would sort lexically.
-  return <DataTable rows={rows} columns={columns} emptyMessage="No runs yet" />;
+  return (
+    <div className="space-y-3">
+      <DataTable rows={rows} columns={columns} emptyMessage="No runs yet" />
+      {jobId !== undefined && shownEntry !== null && (
+        <section aria-label="CPU and RAM of a run" className="space-y-1">
+          <h3 className="text-sm font-medium">Telemetry of the run started {rows.find(r => r.entry === shownEntry)?.started ?? shownEntry.startedAt}</h3>
+          <RunTelemetry jobId={jobId} run={shownEntry.startedAt} running={isRunActive(shownEntry)} />
+        </section>
+      )}
+    </div>
+  );
 }

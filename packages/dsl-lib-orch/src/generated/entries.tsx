@@ -121,6 +121,7 @@ import { RunHistory } from '../components/RunHistory.js'
 import { RunningAlertDetail } from '../components/RunningAlertDetail.js'
 import { RunningBannerDetail } from '../components/RunningBannerDetail.js'
 import { RunningInlineDetail } from '../components/RunningInlineDetail.js'
+import { RunTelemetry } from '../components/RunTelemetry.js'
 import { ScheduleTimeline } from '../components/ScheduleTimeline.js'
 import { TriggerBadge } from '../components/TriggerBadge.js'
 import { TriggerButton } from '../components/TriggerButton.js'
@@ -1868,6 +1869,17 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const RunTelemetryEntry: ComponentRegistryEntry = {
+	name: 'RunTelemetry', category: 'composite', tags: ["telemetry","chart","cpu","ram","run"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['jobId']
+		const run = resolveExpressionValue(node['run'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['run']
+		const running = resolveExpressionValue(node['running'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['running']
+		return <RunTelemetry jobId={jobId} run={run} running={running} />
+	},
+}
+
 export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	name: 'ScheduleTimeline', category: 'composite', tags: ["schedule","timeline","cron","firings"],
 	nodeSchema: null as never,
@@ -2018,6 +2030,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	RunningAlertDetailEntry,
 	RunningBannerDetailEntry,
 	RunningInlineDetailEntry,
+	RunTelemetryEntry,
 	ScheduleTimelineEntry,
 	TriggerBadgeEntry,
 	TriggerButtonEntry,

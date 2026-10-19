@@ -31,6 +31,16 @@ describe('createRouteAdapter', () => {
     expect(ctx.registerRoute.mock.calls[0]?.[2]).toBe(handler);
   });
 
+  it('refuses a route registered twice instead of passing both to the host', () => {
+    const ctx = fakeCtx();
+    const { app } = createRouteAdapter(ctx, ['GET /api/jobs/:jobId/telemetry']);
+
+    app.get('/api/jobs/:jobId/telemetry', handler);
+
+    expect(() => app.get('/api/jobs/:jobId/telemetry', handler)).toThrow(/registered twice/);
+    expect(ctx.registerRoute).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts the (path, options, handler) form Fastify also allows', () => {
     const ctx = fakeCtx();
     const { app } = createRouteAdapter(ctx, ['GET /api/jobs']);

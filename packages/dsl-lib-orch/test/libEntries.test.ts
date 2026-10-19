@@ -12,7 +12,7 @@ import { LIB_ENTRIES } from '../src/paths.js';
 const EXPECTED = [
   'AuditEntryIcon', 'AuditEntryRow', 'AuditList', 'DesignSwitcher', 'EnableToggle', 'FailureOverlay', 'JobCard',
   'JobCardGrid', 'JobConfigDisplay', 'JobFilterChips', 'JobForm', 'JobFormSection', 'JobStatusBadge', 'JobToggle',
-  'LogPageBreadcrumb', 'LogViewer', 'MutationFeedback', 'NavStats', 'NextFireCountdown', 'RunHistory',
+  'LogPageBreadcrumb', 'LogViewer', 'MutationFeedback', 'NavStats', 'NextFireCountdown', 'RunHistory', 'RunTelemetry',
   'RunningAlertDetail', 'RunningBannerDetail', 'RunningInlineDetail', 'ScheduleTimeline', 'SearchBar',
   'TriggerBadge', 'TriggerButton',
 ];
@@ -20,8 +20,8 @@ const EXPECTED = [
 describe('createOrchLibEntries', () => {
   const entries = createOrchLibEntries({ apiBase: '/api/modules/orchestrator', routeBase: '/modules/orchestrator' });
 
-  it('exports the 27 components the module has always shipped', () => {
-    expect(EXPECTED).toHaveLength(27);
+  it('exports the 28 components the module ships (RunTelemetry is the newest)', () => {
+    expect(EXPECTED).toHaveLength(28);
     expect(entries.map(e => e.name).sort()).toEqual(EXPECTED);
   });
 

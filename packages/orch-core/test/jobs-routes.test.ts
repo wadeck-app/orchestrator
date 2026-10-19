@@ -536,3 +536,66 @@ describe('GET /api/health failure rule', () => {
     expect(body.status).toBe('degraded');
   });
 });
+
+describe('GET /api/jobs/:jobId/telemetry', () => {
+  let app: FastifyInstance;
+  let sent: Array<{ cmd: string; payload: unknown }>;
+  let send: (cmd: string, payload?: unknown) => Promise<unknown>;
+
+  beforeEach(async () => {
+    app = fastify();
+    sent = [];
+    send = async (cmd, payload) => {
+      sent.push({ cmd, payload });
+      if (cmd === 'get-run-telemetry') {
+        return { run: '2026-01-01T00:00:00Z', available: true, samples: [] };
+      }
+      throw new Error(`Unknown command: ${cmd}`);
+    };
+    await app.register(jobsRoutes, { proxy: { send: (cmd: string, payload?: unknown) => send(cmd, payload) }, idleTimer: { reset: () => {} } });
+    await app.ready();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('asks the daemon for the newest run when no run is given', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/telemetry' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().available).toBe(true);
+    expect(sent).toEqual([{ cmd: 'get-run-telemetry', payload: { jobId: 'job1' } }]);
+  });
+
+  it('passes the run asked for', async () => {
+    await app.inject({ method: 'GET', url: `/api/jobs/job1/telemetry?run=${encodeURIComponent('2026-01-01T00:00:00Z')}` });
+    expect(sent).toEqual([{ cmd: 'get-run-telemetry', payload: { jobId: 'job1', run: '2026-01-01T00:00:00Z' } }]);
+  });
+
+  it('refuses a repeated or empty run with a 400 that says what to send, and does not bother the daemon', async () => {
+    const twice = await app.inject({ method: 'GET', url: '/api/jobs/job1/telemetry?run=a&run=b' });
+    const empty = await app.inject({ method: 'GET', url: '/api/jobs/job1/telemetry?run=' });
+    expect(twice.statusCode).toBe(400);
+    expect(empty.statusCode).toBe(400);
+    expect(twice.json().error).toMatch(/run must be/);
+    expect(sent).toEqual([]);
+  });
+
+  it('returns 503 when the daemon is not running, like its neighbours', async () => {
+    send = async () => { throw new DaemonUnavailableError(); };
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/telemetry' });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe('daemon-not-running');
+  });
+
+  it('lets the daemon refusing the id surface as an error, not as an empty success', async () => {
+    send = async () => { throw new Error('Job not found: "ghost"'); };
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/ghost/telemetry' });
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('is not swallowed by the neighbouring /api/jobs/:id and /api/jobs/export routes, whatever their order', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/export' });
+    expect(res.statusCode).toBe(500);
+    // export asks for list-jobs; had :id taken it, the daemon would have been asked get-job.
+    expect(sent.map(s => s.cmd)).toEqual(['list-jobs']);
+  });
+});

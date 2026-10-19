@@ -264,6 +264,20 @@ export async function jobsRoutes(
     });
   });
 
+  // One run's resource curve. `run` is a run's startedAt; without it the daemon answers the newest run.
+  // A malformed run is refused here, with the way to fix it, instead of reaching the daemon as a guess.
+  fastify.get('/api/jobs/:jobId/telemetry', async (req, reply) => {
+    const { run } = req.query as { run?: unknown };
+    if (run !== undefined && (typeof run !== 'string' || run === '')) {
+      return reply.code(400).send({ error: 'run must be a single run startedAt (an ISO timestamp from the run history), or omitted for the newest run' });
+    }
+    return guard(reply, async () => {
+      const { jobId } = req.params as { jobId: string };
+      const telemetry = await proxy.send('get-run-telemetry', run === undefined ? { jobId } : { jobId, run });
+      return reply.send(telemetry);
+    });
+  });
+
   fastify.post('/api/jobs/:id/dry-run', async (req, reply) => {
     return guard(reply, async () => {
       const result = await proxy.send('dry-run-job', { id: (req.params as { id: string }).id });

@@ -121,6 +121,7 @@ import { RunHistory } from '../../../dsl-lib-orch/src/components/RunHistory.js'
 import { RunningAlertDetail } from '../../../dsl-lib-orch/src/components/RunningAlertDetail.js'
 import { RunningBannerDetail } from '../../../dsl-lib-orch/src/components/RunningBannerDetail.js'
 import { RunningInlineDetail } from '../../../dsl-lib-orch/src/components/RunningInlineDetail.js'
+import { RunTelemetry } from '../../../dsl-lib-orch/src/components/RunTelemetry.js'
 import { ScheduleTimeline } from '../../../dsl-lib-orch/src/components/ScheduleTimeline.js'
 import { TriggerBadge } from '../../../dsl-lib-orch/src/components/TriggerBadge.js'
 import { TriggerButton } from '../../../dsl-lib-orch/src/components/TriggerButton.js'
@@ -1742,7 +1743,8 @@ export const JobStatusBadgeEntry: ComponentRegistryEntry = {
 		const running = resolveExpressionValue(node['running'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['running']
 		const cancelled = resolveExpressionValue(node['cancelled'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['cancelled']
 		const skipped = resolveExpressionValue(node['skipped'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['skipped']
-		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} skipped={skipped} />
+		const endReason = resolveExpressionValue(node['endReason'], ctx) as import('../../../dsl-lib-orch/src/components/JobStatusBadge.js').JobStatusBadgeProps['endReason']
+		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} skipped={skipped} endReason={endReason} />
 	},
 }
 
@@ -1867,6 +1869,17 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const RunTelemetryEntry: ComponentRegistryEntry = {
+	name: 'RunTelemetry', category: 'composite', tags: ["telemetry","chart","cpu","ram","run"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/RunTelemetry.js').RunTelemetryProps['jobId']
+		const run = resolveExpressionValue(node['run'], ctx) as import('../../../dsl-lib-orch/src/components/RunTelemetry.js').RunTelemetryProps['run']
+		const running = resolveExpressionValue(node['running'], ctx) as import('../../../dsl-lib-orch/src/components/RunTelemetry.js').RunTelemetryProps['running']
+		return <RunTelemetry jobId={jobId} run={run} running={running} />
+	},
+}
+
 export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	name: 'ScheduleTimeline', category: 'composite', tags: ["schedule","timeline","cron","firings"],
 	nodeSchema: null as never,
@@ -1878,7 +1891,7 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 }
 
 export const TriggerBadgeEntry: ComponentRegistryEntry = {
-	name: 'TriggerBadge', category: 'atomic', tags: ["badge","trigger","source","manual","cron"],
+	name: 'TriggerBadge', category: 'atomic', tags: ["badge","trigger","source","manual","cron","retry"],
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const source = resolveExpressionValue(node['source'], ctx) as import('../../../dsl-lib-orch/src/components/TriggerBadge.js').TriggerBadgeProps['source']
@@ -2017,6 +2030,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	RunningAlertDetailEntry,
 	RunningBannerDetailEntry,
 	RunningInlineDetailEntry,
+	RunTelemetryEntry,
 	ScheduleTimelineEntry,
 	TriggerBadgeEntry,
 	TriggerButtonEntry,

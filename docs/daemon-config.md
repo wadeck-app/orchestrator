@@ -136,8 +136,8 @@ warning follows the same baseline. Nothing to configure and nothing lost: the ol
 
 ### Telemetry file
 
-Every sample is also kept in `<configDir>/telemetry/<jobId>.ndjson`, one JSON object per line, so a
-UI can draw a job's history and an incident can be read after the fact. It is a record only: failing
+Every sample is also kept in `<configDir>/telemetry/<jobId>.ndjson`, one JSON object per line. The
+dashboard draws it (see below) and an incident can be read after the fact. It is a record only: failing
 to write it is reported once in the job's log and never affects the run.
 
 | `kind` | When | Fields besides `t`, `run`, `pid` |
@@ -151,6 +151,24 @@ to write it is reported once in the job's log and never affects the run.
 file are told apart. The file is rotated at 2 MiB to `<jobId>.1.ndjson`, and only that one older file
 is kept: at most about 4 MiB per job. It sits beside the logs but outside the logs folder, because the
 log viewer lists a job's runs by file name.
+
+#### Reading it
+
+| Layer | Entry point |
+|-------|-------------|
+| Daemon RPC | `get-run-telemetry` `{ jobId, run? }` |
+| HTTP | `GET /api/jobs/:jobId/telemetry?run=<startedAt>`, also published by the app-core module |
+| UI | `RunTelemetry` chart under the run history of the job page; the `Chart` button of a row picks the run (newest by default) |
+
+- `run` is the run's `startedAt`; without it the newest run in the files. `jobId` must be a known job (letters, digits, `-`).
+- Answer: `{ run, available, reason?, samples: [{ t, cpuPct, ramMb }], soft, hard, kill?, end?, truncated, bucketSeconds, rawSamples }`.
+- `available: false` always carries a `reason` (no file, run rotated away, no sample taken yet).
+- At most 600 points: a longer run is bucketed and each point keeps the **max** of its bucket, so a spike survives. `bucketSeconds` is `null` when every point is a raw sample.
+- `truncated: true`: the run's `start` line was rotated away, so the chart begins late.
+- Retention: 2 MiB per file, one older file (about 4 MiB per job). Older runs are gone: the UI says so.
+- Cost: both files are streamed once and only the wanted run's lines are parsed; about 15-25 ms for 4.5 MiB measured on this machine, regardless of where the run sits in the files.
+- The chart refreshes every 5 s while the run is going; a finished run is read once.
+- The run history marks a peak above the hard budget (2x the average peak of the last successful runs, `GET /api/jobs/:jobId/resource-baseline`); with fewer than 3 measured runs the tooltip says "no budget yet".
 
 ## app-core module
 

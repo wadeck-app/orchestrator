@@ -48,6 +48,11 @@ export function createRouteAdapter(
         skipped.push(key);
         return;
       }
+      // A second registration of one method and path would shadow or race the first inside the host;
+      // it means a route file lists the route twice, which is a bug to fix there, not to paper over.
+      if (registered.has(key)) {
+        throw new Error(`app-module-orchestrator: "${key}" was registered twice by orch-core's route files. Remove the duplicate; a module cannot tell which handler should win.`);
+      }
       registered.add(key);
       ctx.registerRoute(verb.toUpperCase(), path, handler);
     };

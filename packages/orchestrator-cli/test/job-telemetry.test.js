@@ -1,7 +1,7 @@
 'use strict';
 
-// What the resource monitor sees of a job is kept next to the job, one file per job, so a UI can later
-// draw it and an incident ("why was this job killed at 09:34?") can be read after the fact instead of
+// What the resource monitor sees of a job is kept next to the job, one file per job, so a UI can draw it and
+// an incident ("why was this job killed at 09:34?") can be read after the fact instead of
 // guessed. These tests hold the file to being readable, bounded and never in the job's way.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');

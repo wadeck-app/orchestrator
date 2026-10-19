@@ -13,6 +13,7 @@ import type { EventPublisher } from './event-publisher.js';
 import type { ExecManager } from './exec-manager.js';
 import { getNextFirings } from './cronNext.js';
 import { SecretsManager } from './secrets.js';
+import { readRunTelemetry } from './run-telemetry.js';
 
 // Same rule as registry.add and the logs route's path-traversal guard (P-7); do not relax it here.
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
@@ -222,6 +223,23 @@ export function makeCommands(
     'get-resource-baseline': (p) => {
       const { jobId } = p as { jobId: string };
       return state.getResourceBaseline(jobId) ?? null;
+    },
+
+    'get-run-telemetry': (p) => {
+      const { jobId, run } = (p ?? {}) as { jobId?: unknown; run?: unknown };
+      if (typeof jobId !== 'string' || !JOB_ID_RE.test(jobId)) {
+        throw new Error(
+          `get-run-telemetry needs a job id made of letters, digits and "-" (got ${JSON.stringify(jobId)}). `
+          + 'Run `orch list` to see the available job ids.',
+        );
+      }
+      if (!registry.get(jobId)) {
+        throw new Error(`Job not found: "${jobId}". Run \`orch list\` to see the available job ids.`);
+      }
+      if (run !== undefined && (typeof run !== 'string' || run === '')) {
+        throw new Error(`get-run-telemetry: run must be a run's startedAt (an ISO timestamp as shown in the run history), got ${JSON.stringify(run)}.`);
+      }
+      return readRunTelemetry(configDir, jobId, run);
     },
 
     'get-schedule': () => {
