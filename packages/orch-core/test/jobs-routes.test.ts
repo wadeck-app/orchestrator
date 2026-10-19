@@ -60,6 +60,16 @@ describe('Jobs API Routes', () => {
             return { triggered: true };
           case 'skip-next-firing':
             return { skipped: true };
+          case 'restart-job': {
+            const id = (payload as { id?: string })?.id;
+            if (id === 'job1') {
+              return { id, wasRunning: true, killed: 1, started: true, pid: 4242 };
+            }
+            if (id === 'job2') {
+              return { id, wasRunning: true, killed: 1, started: false, pid: null, skipped: 'liveness', reason: 'still alive' };
+            }
+            throw new Error('Job not found: "' + String(id) + '". Run `orch list` to see the available job ids.');
+          }
           case 'kill-job':
             if ((payload as { id?: string })?.id === 'job1') {
               return { killed: true };
@@ -393,6 +403,88 @@ describe('Jobs API Routes', () => {
 
       expect(res.statusCode).toBe(503);
     });
+  });
+});
+
+describe('POST /api/jobs/:id/restart', () => {
+  let app: FastifyInstance;
+  let sent: Array<{ cmd: string; payload: unknown; options: unknown }>;
+  let send: (cmd: string, payload?: unknown, options?: unknown) => Promise<unknown>;
+
+  beforeEach(async () => {
+    app = fastify();
+    sent = [];
+    send = async (cmd, payload, options) => {
+      sent.push({ cmd, payload, options });
+      const id = (payload as { id?: string }).id;
+      if (id === 'job1') {
+        return { id, wasRunning: true, killed: 1, started: true, pid: 4242 };
+      }
+      if (id === 'job2') {
+        return { id, wasRunning: true, killed: 1, started: false, pid: null, skipped: 'liveness', reason: 'still alive' };
+      }
+      throw new Error('Job not found: "' + String(id) + '". Run `orch list` to see the available job ids.');
+    };
+    await app.register(jobsRoutes, { proxy: { send } as Pick<DaemonProxy, 'send'>, idleTimer: { reset: () => {} } });
+    await app.ready();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('proxies restart-job with the id, the caller and a timeout longer than the default 5 s', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/jobs/job1/restart', headers: { 'user-agent': 'vitest' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ id: 'job1', wasRunning: true, killed: 1, started: true, pid: 4242 });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.cmd).toBe('restart-job');
+    expect(sent[0]!.payload).toMatchObject({ id: 'job1', userAgent: 'vitest' });
+    // The daemon answers once the old instance is gone, which can take longer than the proxy's 5 s default.
+    expect((sent[0]!.options as { timeoutMs: number }).timeoutMs).toBeGreaterThan(5000);
+  });
+
+  it('a refused start is a 200 carrying the reason, not an error', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/jobs/job2/restart' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ started: false, skipped: 'liveness', reason: 'still alive' });
+  });
+
+  // fastify's own 500 body carries the sentence under `message`; the dashboard reads `error`, so a refusal would have
+  // shown as "Internal Server Error".
+  it('an unknown job is a 404 whose error is the daemon sentence', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/jobs/ghost/restart' });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: expect.stringMatching(/Job not found: "ghost".*orch list/) });
+  });
+
+  it('a job the daemon refuses to restart (disabled, spent) is a 409 whose error is the daemon sentence', async () => {
+    send = async () => { throw new Error('Job "off" is disabled, so it is not restarted. Enable it with `orch enable off` first.'); };
+    const refusing = fastify();
+    await refusing.register(jobsRoutes, { proxy: { send: (...a: [string, unknown?, unknown?]) => send(...a) } as Pick<DaemonProxy, 'send'>, idleTimer: { reset: () => {} } });
+    await refusing.ready();
+
+    const res = await refusing.inject({ method: 'POST', url: '/api/jobs/off/restart' });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: expect.stringMatching(/disabled.*orch enable off/) });
+    await refusing.close();
+  });
+
+  it('returns 503 when the daemon is not running', async () => {
+    send = async () => { throw new DaemonUnavailableError(); };
+    const down = fastify();
+    await down.register(jobsRoutes, { proxy: { send: (...a: [string, unknown?, unknown?]) => send(...a) } as Pick<DaemonProxy, 'send'>, idleTimer: { reset: () => {} } });
+    await down.ready();
+
+    const res = await down.inject({ method: 'POST', url: '/api/jobs/job1/restart' });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ error: 'daemon-not-running' });
+    await down.close();
   });
 });
 

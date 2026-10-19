@@ -44,6 +44,25 @@ describe('AuditEntryIcon tones', () => {
   });
 });
 
+describe('AuditEntryIcon job.restarted', () => {
+  const fallback = icon('something.unknown').shape;
+
+  it('has a shape of its own, apart from the fallback clock and from a daemon restart', () => {
+    const restarted = icon('job.restarted', { started: true }).shape;
+    expect(restarted).not.toBe(fallback);
+    expect(restarted).not.toBe(icon('daemon.restart').shape);
+  });
+
+  it('is primary when the job was started again', () => {
+    expect(icon('job.restarted', { started: true }).tone).toBe('text-primary');
+  });
+
+  // The old instance was ended and nothing replaced it: worth a look, like a refused trigger.
+  it('is a warning when the restart ended the job but did not start it again', () => {
+    expect(icon('job.restarted', { started: false }).tone).toBe('text-warning');
+  });
+});
+
 describe('AuditEntryIcon shapes', () => {
   // Anything unknown falls back to the clock; an event that matters must not share it.
   const fallback = icon('something.unknown').shape;

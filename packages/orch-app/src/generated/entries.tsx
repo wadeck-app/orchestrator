@@ -1838,10 +1838,11 @@ export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
+		const onRestart = resolveExpressionValue(node['onRestart'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onRestart']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../dsl-lib-orch/src/components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
-		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1855,10 +1856,11 @@ export const RunningBannerDetailEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
+		const onRestart = resolveExpressionValue(node['onRestart'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onRestart']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../dsl-lib-orch/src/components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
-		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1872,10 +1874,11 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
+		const onRestart = resolveExpressionValue(node['onRestart'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onRestart']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../../../dsl-lib-orch/src/components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
-		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 

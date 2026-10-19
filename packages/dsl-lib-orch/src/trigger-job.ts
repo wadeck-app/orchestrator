@@ -1,4 +1,4 @@
-import { isTriggerRefused, type TriggerRefused } from './types.js';
+import { isTriggerRefused, type RestartResult, type TriggerRefused } from './types.js';
 import { getApiBase } from './runtime-config.js';
 
 async function postRun(
@@ -58,6 +58,21 @@ export async function postDryRun(id: string, apiBase = getApiBase()): Promise<Dr
     throw new Error(body.error);
   }
   return body;
+}
+
+/**
+ * Asks the dashboard server to restart a job: end its running instances, wait until they are gone, start it
+ * again. Resolves with the daemon's answer, a refused start included (`started: false` with a `reason`: the old
+ * instance is gone and the caller has to say so). Rejects with the server's own message when the request fails
+ * or the daemon refuses the job itself (unknown, disabled, spent).
+ */
+export async function postRestart(id: string, apiBase = getApiBase()): Promise<RestartResult> {
+  const res = await fetch(`${apiBase}/api/jobs/${id}/restart`, { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
+    throw new Error(body.error ?? res.statusText);
+  }
+  return await res.json() as RestartResult;
 }
 
 /**

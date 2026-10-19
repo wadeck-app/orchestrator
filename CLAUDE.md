@@ -9,6 +9,7 @@ orch start [--no-follow] / stop / restart / status
 orch add cron <id> --schedule "0 9 * * *" --command "node script.js"
 orch trigger <id>            # fire now
 orch kill <id>               # stop a running job (alias: orch terminate)
+orch restart-job <id>        # end a job's running instances, then start it again (orch restart = the daemon)
 orch server start            # web dashboard
 orch logs [--follow]
 orch cli update              # update orch itself -- never `npm install -g` by hand

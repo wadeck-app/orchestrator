@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { postDryRun, postTrigger, postTriggerEarly } from './trigger-job.js';
+import { postDryRun, postRestart, postTrigger, postTriggerEarly } from './trigger-job.js';
 
 function stubFetch(response: { status: number; ok?: boolean; json?: unknown }): ReturnType<typeof vi.fn> {
   const fn = vi.fn().mockResolvedValue({
@@ -125,5 +125,45 @@ describe('postDryRun', () => {
     stubFetch({ status: 200, json: { error: 'Job "j1" does not declare dryRunSupported: true' } });
 
     await expect(postDryRun('j1')).rejects.toThrow('dryRunSupported');
+  });
+});
+
+describe('postRestart', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('posts to the restart route of the job and resolves with the daemon answer', async () => {
+    const answer = { id: 'j1', wasRunning: true, killed: 1, started: true, pid: 42 };
+    const fetchFn = stubFetch({ status: 200, json: answer });
+
+    await expect(postRestart('j1')).resolves.toEqual(answer);
+    expect(fetchFn).toHaveBeenCalledWith('/api/jobs/j1/restart', { method: 'POST' });
+  });
+
+  it('uses the configured api base', async () => {
+    const fetchFn = stubFetch({ status: 200, json: { id: 'j1', wasRunning: false, killed: 0, started: true, pid: 1 } });
+
+    await postRestart('j1', '/api/modules/orchestrator');
+
+    expect(fetchFn.mock.calls[0][0]).toBe('/api/modules/orchestrator/api/jobs/j1/restart');
+  });
+
+  // A start the daemon refused is an answer to show (the old instance is gone), not an error to throw.
+  it('resolves with a refused start, reason included', async () => {
+    const answer = { id: 'j1', wasRunning: true, killed: 1, started: false, pid: null, skipped: 'liveness', reason: 'still alive' };
+    stubFetch({ status: 200, json: answer });
+
+    await expect(postRestart('j1')).resolves.toEqual(answer);
+  });
+
+  it('throws with the server message when the request fails', async () => {
+    stubFetch({ status: 409, json: { error: 'Job "j1" is disabled' } });
+
+    await expect(postRestart('j1')).rejects.toThrow('Job "j1" is disabled');
+  });
+
+  it('throws with the status text when the failure has no body', async () => {
+    stubFetch({ status: 503 });
+
+    await expect(postRestart('j1')).rejects.toThrow('Status text');
   });
 });

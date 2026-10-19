@@ -17,7 +17,7 @@ import pidusage from 'pidusage';
 // a wrapper (cmd.exe / sh) that stays idle: sampling it alone reports ~0% CPU and only
 // the wrapper's own few MB of RAM. The real work happens in its descendants.
 import pidtree from 'pidtree';
-import { PEAK_MEASURE_VERSION, type Job, type TriggerResult, type TriggerSource } from './types.js';
+import { PEAK_MEASURE_VERSION, type Job, type RestartResult, type TriggerResult, type TriggerSource } from './types.js';
 import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -140,6 +140,8 @@ interface SchedulerOptions {
   /** How often runs another daemon follows are checked for that daemon having gone (default 3000 ms). */
   ownerWatchMs?:          number;
   catchUpStaggerMs?:      number;
+  /** How long restartJob waits for the ended instances to be gone before giving up (default 15 s). Lowered in tests. */
+  restartGraceMs?:        number;
   hookDispatcher?:        HookDispatcher;
   /** How often a running job's resource peaks are written to state. Lowered in tests. */
   peakFlushMs?:           number;
@@ -400,6 +402,7 @@ export class Scheduler extends EventEmitter {
   private _spawn:              SpawnFn;
   private readonly _supervisor:  SupervisorFn | null;
   private readonly _liveness:  LivenessFn;
+  private readonly _restartGraceMs: number;
   private readonly _now:       () => Date;
   private readonly _time:      TimeService;
   private readonly _configDir: string;
@@ -489,6 +492,7 @@ export class Scheduler extends EventEmitter {
     this._processStarts         = options.processStarts         ?? processStartsOf;
     this._ownerWatchMs          = options.ownerWatchMs          ?? 3000;
     this._catchUpStaggerMs      = options.catchUpStaggerMs      ?? 300_000;
+    this._restartGraceMs        = options.restartGraceMs        ?? 15_000;
     this._hookDispatcher        = options.hookDispatcher        ?? null;
     this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
     this._sampleUsage           = options.sampleUsage           ?? sampleProcessTree;
@@ -897,7 +901,7 @@ export class Scheduler extends EventEmitter {
     id: string,
     source: TriggerSource = { kind: 'manual' },
     wait = false,
-    options: { force?: boolean } = {},
+    options: { force?: boolean; detach?: boolean } = {},
   ): Promise<TriggerResult> {
     const job = this._registry.get(id);
     if (!job) {
@@ -939,7 +943,9 @@ export class Scheduler extends EventEmitter {
       this.unscheduleJob(job.id);
     }
 
-    const result = await this._fire(job, source, wait);
+    // `detach`: answer once the run has started even if the job's own triggerMode is "wait". A restart replies
+    // with the new pid; waiting for a long-running job to end would never reply.
+    const result = await this._fire(options.detach === true ? { ...job, triggerMode: 'fire-and-forget' } : job, source, wait);
 
     // After the fire, mirroring the scheduled path, so a `wait` trigger still has its job in place
     // while it runs.
@@ -1084,6 +1090,71 @@ export class Scheduler extends EventEmitter {
       return { killed: true, count: open.length };
     }
     return { killed: false, count: 0 };
+  }
+
+  /**
+   * Ends every live instance of the job, waits until each is really gone, then starts a new run as a manual trigger.
+   *
+   * The wait is on the scheduler's own count, which only drops when the child's 'close' has been seen: killJob
+   * answers once the kill has been delivered, which is earlier. Starting before that put a second copy next to the
+   * one being ended (two servers on one port, or a refusal by maxConcurrency of a job that is going away).
+   *
+   * Unlike a plain manual trigger this one asks the liveness check: after the kill the target should be down, so a
+   * target still answering is something else holding the port, and a new start would collide with it.
+   *
+   * Never throws for a refusal: the instances were ended, and the answer has to say so. `id` is for the caller to add.
+   */
+  async restartJob(id: string, source: TriggerSource = { kind: 'manual' }): Promise<Omit<RestartResult, 'id'>> {
+    const job = this._registry.get(id);
+    if (!job) {
+      throw new Error(`Job not found: "${id}"`);
+    }
+    const { killed: wasRunning, count: killed } = await this.killJob(id);
+    const refused = (reason: string, skipped?: RestartResult['skipped']): Omit<RestartResult, 'id'> =>
+      ({ wasRunning, killed, started: false, pid: null, ...(skipped === undefined ? {} : { skipped }), reason });
+
+    const gone = await this._waitUntilNoneRunning(id, this._restartGraceMs);
+    if (!gone) {
+      return refused(
+        `the ended instance of "${id}" is still running ${Math.round(this._restartGraceMs / 1000)}s after it was told to stop, so no second copy was started. `
+        + `Check what is holding it, then run: orch kill ${id} and orch trigger ${id}.`,
+      );
+    }
+    if (this._hasFollowedRun(id)) {
+      return refused(
+        `a run of "${id}" is followed by another daemon, which this daemon cannot end, so no second copy was started. `
+        + 'Stop the other daemon (orch stop on its config dir), then run the restart again.',
+        'adopted',
+      );
+    }
+    if (await this._liveness(job)) {
+      return refused(
+        `the liveness check of "${id}" says its target is still alive after the instance was ended (something else holds the port or the pid file), so it was not started. `
+        + `Free it, then run: orch trigger ${id}.`,
+        'liveness',
+      );
+    }
+    const result = await this.trigger(id, source, false, { detach: true });
+    if (result.status === 'already-running') {
+      return refused(
+        `"${id}" is at its limit (${result.running} of ${result.maxConcurrency} running), so it was not started. `
+        + `Run orch kill ${id}, then orch trigger ${id}.`,
+        'concurrency',
+      );
+    }
+    return { wasRunning, killed, started: true, pid: result.status === 'started' ? result.pid : null };
+  }
+
+  /** Resolves true once no instance of the job is registered as running, false after `ms`. Real timers: it waits on real processes. */
+  private async _waitUntilNoneRunning(id: string, ms: number): Promise<boolean> {
+    const deadline = Date.now() + ms;
+    while ((this._running.get(id) ?? 0) > 0) {
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+    return true;
   }
 
   skipNextFiring(id: string): void {

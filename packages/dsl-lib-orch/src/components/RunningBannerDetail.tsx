@@ -4,6 +4,7 @@ import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type RuntimeE
 import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
+import { RestartButton } from './RestartButton.js';
 import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -28,6 +29,8 @@ export interface RunningBannerDetailProps {
   onAfterTrigger?: () => void;
   onDelete?: () => void;
   onDryRun?: () => void;
+  /** Fired, after the confirmation, instead of the component posting the restart itself. Only a running job with no timeout offers Restart. */
+  onRestart?: () => void;
   onViewLogs?: () => void;
   onEdit?: () => void;
   onKill?: () => void;
@@ -37,7 +40,7 @@ export interface RunningBannerDetailProps {
  * @registryCategory composite
  * @registryTags job detail running banner design-a
  */
-export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onViewLogs, onEdit }: RunningBannerDetailProps): React.ReactElement | null {
+export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningBannerDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -146,6 +149,7 @@ export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, on
               </>
             )}
           </span>
+          <RestartButton job={job} jobId={jobId} running={isRunning} onRestart={onRestart} />
           <ButtonAction label="Kill process" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
         </div>
       )}

@@ -15,10 +15,12 @@ const CLI_TYPES = path.resolve(here, '../../orchestrator-cli/src/types.ts');
 const UI_ONLY: Record<string, Record<string, string>> = {
   Job: {},
   RuntimeEntry: {},
+  RestartResult: {},
 };
 const CLI_ONLY: Record<string, Record<string, string>> = {
   Job: {},
   RuntimeEntry: {},
+  RestartResult: {},
 };
 
 /** Top-level field names of `export interface <name>`, comments stripped. Throws when the interface is missing. */
@@ -60,7 +62,7 @@ function fieldsOf(file: string, name: string): string[] {
   return fields;
 }
 
-describe.each(['Job', 'RuntimeEntry'])('%s: UI types.ts vs orchestrator-cli types.ts', (name) => {
+describe.each(['Job', 'RuntimeEntry', 'RestartResult'])('%s: UI types.ts vs orchestrator-cli types.ts', (name) => {
   const ui = fieldsOf(UI_TYPES, name);
   const cli = fieldsOf(CLI_TYPES, name);
 

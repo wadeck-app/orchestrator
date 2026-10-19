@@ -2,7 +2,7 @@ import React from 'react';
 import {
   CheckCircle, XCircle, Play, Clock, Plus, Trash2,
   Pencil, ToggleLeft, ToggleRight, Power, RefreshCw, Square,
-  SkipForward, Ban, AlertTriangle,
+  SkipForward, Ban, AlertTriangle, RotateCw,
 } from 'lucide-react';
 import type { AuditEntry } from './AuditEntryRow.js';
 
@@ -49,6 +49,10 @@ export function AuditEntryIcon({ event, entry }: AuditEntryIconProps): React.Rea
   }
   if (event === 'job.triggered_manual') {
     return <Play size={sz} className="text-primary" />;
+  }
+  // A restart asked for by hand. A warning when the old instance was ended and nothing took its place.
+  if (event === 'job.restarted') {
+    return <RotateCw size={sz} className={entry.started === false ? 'text-warning' : 'text-primary'} />;
   }
   if (event === 'job.killed_manual')    {
     return <Square size={sz} className="text-warning" />;

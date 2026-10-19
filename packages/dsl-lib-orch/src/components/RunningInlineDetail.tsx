@@ -4,6 +4,7 @@ import { isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../t
 import { postTrigger } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
+import { RestartButton } from './RestartButton.js';
 import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -30,6 +31,8 @@ export interface RunningInlineDetailProps {
   onAfterTrigger?: () => void;
   onDelete?: () => void;
   onDryRun?: () => void;
+  /** Fired, after the confirmation, instead of the component posting the restart itself. Only a running job with no timeout offers Restart. */
+  onRestart?: () => void;
   onViewLogs?: () => void;
   onEdit?: () => void;
   onKill?: () => void;
@@ -39,7 +42,7 @@ export interface RunningInlineDetailProps {
  * @registryCategory composite
  * @registryTags job detail running inline design-c
  */
-export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
+export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -130,6 +133,7 @@ export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, on
               Running &middot; {formatElapsed(currentRun.startedAt, Date.now())}
               {currentRun.pid != null && <span className="opacity-70">&middot; {currentRun.pid}</span>}
             </span>
+            <RestartButton job={job} jobId={jobId} running={isRunning} onRestart={onRestart} />
             {/* violations-suppress: react/no-raw-button pill-style kill button -- Button component cannot render this shape */}
             <button onClick={() => { void handleKill(); }} disabled={killing} className={KILL_BTN_CLS}>
               <Square size={10} />

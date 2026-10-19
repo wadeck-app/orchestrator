@@ -164,6 +164,36 @@ export async function jobsRoutes(
     });
   });
 
+  /*
+   * Ends the running instances of the job, waits until they are gone, starts a new run.
+   *
+   * Always 200 with the daemon's answer, like a refused trigger: a restart that ended the instance and could not
+   * start the next one has to say so (`started: false` and `reason`), and an error status would hide that the old
+   * instance is gone. An unknown, disabled or spent job is the daemon's error, relayed as the neighbours do.
+   *
+   * The daemon answers once the old process is gone (up to 15 s), hence the longer timeout.
+   */
+  fastify.post('/api/jobs/:id/restart', async (req, reply) => {
+    return guard(reply, async () => {
+      const { id } = req.params as { id: string };
+      const ip        = req.ip;
+      const userAgent = req.headers['user-agent'];
+      try {
+        const result = await proxy.send('restart-job', { id, ip, userAgent }, { timeoutMs: 30_000 });
+        return reply.code(200).send(result);
+      } catch (err) {
+        if (err instanceof DaemonUnavailableError) {
+          throw err;
+        }
+        // The daemon's sentence under `error`, which is where the dashboard reads it: left to fastify it would
+        // be a 500 whose sentence is under `message`, shown as "Internal Server Error".
+        // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.code(message.startsWith('Job not found') ? 404 : 409).send({ error: message });
+      }
+    });
+  });
+
   fastify.post('/api/jobs/:id/enable', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };

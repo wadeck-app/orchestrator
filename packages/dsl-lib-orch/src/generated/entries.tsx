@@ -119,10 +119,10 @@ import { MutationFeedback } from '../components/MutationFeedback.js'
 import { NavStats } from '../components/NavStats.js'
 import { NextFireCountdown } from '../components/NextFireCountdown.js'
 import { RunHistory } from '../components/RunHistory.js'
+import { RunTelemetry } from '../components/RunTelemetry.js'
 import { RunningAlertDetail } from '../components/RunningAlertDetail.js'
 import { RunningBannerDetail } from '../components/RunningBannerDetail.js'
 import { RunningInlineDetail } from '../components/RunningInlineDetail.js'
-import { RunTelemetry } from '../components/RunTelemetry.js'
 import { ScheduleTimeline } from '../components/ScheduleTimeline.js'
 import { TriggerBadge } from '../components/TriggerBadge.js'
 import { TriggerButton } from '../components/TriggerButton.js'
@@ -1828,6 +1828,17 @@ export const RunHistoryEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const RunTelemetryEntry: ComponentRegistryEntry = {
+	name: 'RunTelemetry', category: 'composite', tags: ["telemetry","chart","cpu","ram","run"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['jobId']
+		const run = resolveExpressionValue(node['run'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['run']
+		const running = resolveExpressionValue(node['running'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['running']
+		return <RunTelemetry jobId={jobId} run={run} running={running} />
+	},
+}
+
 export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 	name: 'RunningAlertDetail', category: 'composite', tags: ["job","detail","running","alert","design-b"],
 	nodeSchema: null as never,
@@ -1838,10 +1849,11 @@ export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
+		const onRestart = resolveExpressionValue(node['onRestart'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onRestart']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
-		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1855,10 +1867,11 @@ export const RunningBannerDetailEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
+		const onRestart = resolveExpressionValue(node['onRestart'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onRestart']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
-		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1872,21 +1885,11 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
+		const onRestart = resolveExpressionValue(node['onRestart'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onRestart']
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
-		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
-	},
-}
-
-export const RunTelemetryEntry: ComponentRegistryEntry = {
-	name: 'RunTelemetry', category: 'composite', tags: ["telemetry","chart","cpu","ram","run"],
-	nodeSchema: null as never,
-	render: ({ node, ctx }: RegistryRenderProps) => {
-		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['jobId']
-		const run = resolveExpressionValue(node['run'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['run']
-		const running = resolveExpressionValue(node['running'], ctx) as import('../components/RunTelemetry.js').RunTelemetryProps['running']
-		return <RunTelemetry jobId={jobId} run={run} running={running} />
+		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -2038,10 +2041,10 @@ export const allEntries: ComponentRegistryEntry[] = [
 	NavStatsEntry,
 	NextFireCountdownEntry,
 	RunHistoryEntry,
+	RunTelemetryEntry,
 	RunningAlertDetailEntry,
 	RunningBannerDetailEntry,
 	RunningInlineDetailEntry,
-	RunTelemetryEntry,
 	ScheduleTimelineEntry,
 	TriggerBadgeEntry,
 	TriggerButtonEntry,

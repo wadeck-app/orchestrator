@@ -281,6 +281,23 @@ export type TriggerResult =
   | { status: 'finished'; exitCode: number | null; consumed?: boolean }
   | { status: 'already-running'; running: number; maxConcurrency: number };
 
+/**
+ * What `restart-job` answers. A refused start is a result, not an error (the instances were still ended, and
+ * the caller needs to know that): `started: false` carries `reason`, and `skipped` names the refusal when it is
+ * one of the scheduler's own. `skipped` is absent when the old instance would not end in time.
+ */
+export interface RestartResult {
+  id: string;
+  wasRunning: boolean;
+  /** Instances ended by this restart. */
+  killed: number;
+  started: boolean;
+  pid: number | null;
+  skipped?: 'liveness' | 'concurrency' | 'adopted';
+  /** A plain sentence saying why nothing started and what to do. */
+  reason?: string;
+}
+
 /** What `get-daemon-info` answers. No job command, environment or secret is ever part of it. */
 export interface DaemonInfo {
   version: string;
@@ -309,6 +326,7 @@ export type OrchestratorCommands = {
   'edit-job':    (payload?: unknown) => Job;
   'trigger-job': (payload?: unknown) => Promise<TriggerResult>;
   'kill-job':          (payload?: unknown) => Promise<{ killed: boolean; count: number }>;
+  'restart-job':       (payload?: unknown) => Promise<RestartResult>;
   'skip-next-firing':  (payload?: unknown) => Record<string, never>;
   'list-state':  (payload?: unknown) => Record<string, RuntimeEntry[]>;
   'list-failures': (payload?: unknown) => Array<{ jobId: string; entry: RuntimeEntry }>;

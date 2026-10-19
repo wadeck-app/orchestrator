@@ -115,6 +115,20 @@ export interface TriggerRefused {
   maxConcurrency: number;
 }
 
+/**
+ * What `POST /api/jobs/:id/restart` answers (the daemon's `restart-job`). A refused start is a normal answer:
+ * the old instance was still ended, so `killed` says so and `reason` says what to do.
+ */
+export interface RestartResult {
+  id: string;
+  wasRunning: boolean;
+  killed: number;
+  started: boolean;
+  pid: number | null;
+  skipped?: 'liveness' | 'concurrency' | 'adopted';
+  reason?: string;
+}
+
 export function isTriggerRefused(result: unknown): result is TriggerRefused {
   return typeof result === 'object' && result !== null
     && (result as { status?: unknown }).status === 'already-running';

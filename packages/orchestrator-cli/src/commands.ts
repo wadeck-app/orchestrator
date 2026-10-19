@@ -180,6 +180,47 @@ export function makeCommands(
       return scheduler.killJob(id);
     },
 
+    /*
+     * Ends every running instance of the job, waits until it is gone, starts a new run. Generic: any job, not only
+     * a long-running one (timeoutSeconds 0); that restriction belongs to the dashboard button.
+     *
+     * The ended runs keep the record `kill-job` gives them (cancelledByUser, reason manual-kill): the scheduler
+     * announces that itself, so this only adds the one line saying a restart was asked for and what came of it.
+     * Written after the work, not before like its neighbours, because wasRunning and killed are only known then.
+     */
+    'restart-job': async (p: unknown) => {
+      const { id, ip, userAgent } = (p ?? {}) as { id?: unknown; ip?: string; userAgent?: string };
+      if (typeof id !== 'string' || !JOB_ID_RE.test(id)) {
+        throw new Error(
+          `restart-job needs a job id made of letters, digits and "-" (got ${JSON.stringify(id)}). `
+          + 'Run `orch list` to see the available job ids.',
+        );
+      }
+      const job = registry.get(id);
+      if (!job) {
+        throw new Error(`Job not found: "${id}". Run \`orch list\` to see the available job ids.`);
+      }
+      if (!job.enabled) {
+        throw new Error(`Job "${id}" is disabled, so it is not restarted. Enable it with \`orch enable ${id}\` first.`);
+      }
+      if (job.spent === true) {
+        throw new Error(
+          `Job "${id}" is a one-shot job that already ran, so there is nothing to restart. `
+          + `Run it again with \`orch trigger ${id}\`.`,
+        );
+      }
+      const result = await scheduler.restartJob(id, { kind: 'manual', ip, userAgent });
+      audit?.log('job.restarted', {
+        jobId: id, label: job.label, wasRunning: result.wasRunning, killed: result.killed,
+        started: result.started, ...(result.skipped === undefined ? {} : { skipped: result.skipped }), ip, userAgent,
+      });
+      events?.publish('job.restarted', {
+        jobId: id, label: job.label, wasRunning: result.wasRunning, killed: result.killed,
+        started: result.started, ip: ip ?? null, userAgent: userAgent ?? null,
+      });
+      return { id, ...result };
+    },
+
     'skip-next-firing': (p) => {
       const { id } = p as { id: string };
       const job = registry.get(id);

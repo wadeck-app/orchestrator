@@ -74,7 +74,11 @@ export class DaemonProxy {
     this._configDir = configDir;
   }
 
-  async send(command: string, payload?: unknown): Promise<unknown> {
+  /**
+   * `timeoutMs` defaults to 5 s, enough for every command that answers from memory. A command that waits for a
+   * process to end (restart-job) passes more, or it would be reported as "daemon not running" while it works.
+   */
+  async send(command: string, payload?: unknown, options: { timeoutMs?: number } = {}): Promise<unknown> {
     const port = readDaemonPort(this._configDir);
     const token = readHealthToken(this._configDir);
     const url = `http://127.0.0.1:${port}/${command}`;
@@ -87,7 +91,7 @@ export class DaemonProxy {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(payload ?? {}),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 5000),
       });
     } catch {
       // fetch throws on ECONNREFUSED, ETIMEDOUT, AbortError -- all mean daemon unreachable

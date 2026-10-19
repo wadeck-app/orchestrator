@@ -115,6 +115,31 @@ describe('serving the dashboard routes through the module', () => {
     await app.close();
   });
 
+  it('publishes the restart of a job: the id reaches the daemon and its answer comes back whole', async () => {
+    const seen: unknown[] = [];
+    const answer = { id: 'j1', wasRunning: true, killed: 1, started: false, pid: null, skipped: 'liveness', reason: 'still alive' };
+    const { app } = await boot(async (command, payload) => {
+      seen.push([command, payload]);
+      return answer;
+    });
+
+    const res = await app.inject({ method: 'POST', url: '/api/jobs/j1/restart' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(answer);
+    expect(seen).toContainEqual(['restart-job', expect.objectContaining({ id: 'j1' })]);
+    await app.close();
+  });
+
+  it('answers 503 daemon-not-running to a restart when the daemon is down', async () => {
+    const { app } = await boot(async () => { throw new DaemonUnavailableError(); });
+
+    const res = await app.inject({ method: 'POST', url: '/api/jobs/j1/restart' });
+
+    expect(res.statusCode).toBe(503);
+    await app.close();
+  });
+
   it('serves the telemetry of one run, the run passed through, from the daemon', async () => {
     const seen: unknown[] = [];
     const { app } = await boot(async (command, payload) => {

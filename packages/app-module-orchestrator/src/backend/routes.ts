@@ -20,6 +20,7 @@ export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'POST /api/jobs/:id/trigger',
   'POST /api/jobs/:id/trigger-early',
   'POST /api/jobs/:id/kill',
+  'POST /api/jobs/:id/restart',
   'POST /api/jobs/:id/enable',
   'POST /api/jobs/:id/disable',
   'POST /api/jobs/:id/dry-run',

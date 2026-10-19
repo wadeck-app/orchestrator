@@ -405,7 +405,7 @@ Daemon lifecycle:
   orch stop [--kill-jobs]      Stop the daemon. Jobs run under their own supervisor keep running and are
                                followed again at the next start; the jobs named in the answer do.
                                --kill-jobs  End every running job first
-  orch restart                 Restart the daemon
+  orch restart                 Restart the daemon (not a job: use restart-job <id>)
   orch status [--json]         Show daemon pid, port, uptime. Never starts the daemon: when it is not
                                running, says so and exits 1 (JSON: {"running":false})
                                JSON fields: pid, port, uptime (seconds)
@@ -487,6 +487,13 @@ Manual execution:
                                started (reported, exit 0); --force starts another instance anyway
   orch kill <id>               Stop a job that is currently running
   orch terminate <id>          Alias for kill, for shells that block the word
+  orch restart-job <id> [--json]
+                               End every running instance of the job, wait until it is gone, then start
+                               it again; a job that was not running is simply started. Meant for a
+                               long-running job (--timeout 0, a process that must stay up) but accepts
+                               any job. Exit 1, with the reason and the fix, when nothing was started
+                               (liveness check still says alive, at --max-concurrency, the old instance
+                               would not end). Not "orch restart", which restarts the daemon
   orch exec "<cmd>" [--wait]   Run a one-shot command via the daemon (for agent delegation)
 
 Dashboard:
@@ -698,6 +705,14 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'restart': {
+      // `orch restart my-job` used to restart the whole daemon and ignore the id: every job that keeps
+      // running under the daemon's care would have been affected by a typo for restart-job.
+      const jobArg = rest.find(a => !a.startsWith('-'));
+      if (jobArg !== undefined) {
+        console.error(`orch restart restarts the daemon and takes no job id (got "${jobArg}"); nothing was restarted.
+To restart the job, run: orch restart-job ${jobArg}`);
+        process.exit(1);
+      }
       await send('restart');
       console.log('Orchestrator restarted.');
       break;
@@ -1195,6 +1210,32 @@ Use --wait to block until the command finishes.`);
       // so a script does not read silence as "killed". `count` is absent from an older daemon.
       const instances = count !== undefined && count > 1 ? ` (${count} instances)` : '';
       console.log(killed ? `Job "${id}" killed${instances}.` : `Job "${id}" is not running.`);
+      break;
+    }
+
+    case 'restart-job': {
+      const [id] = rest;
+      if (id === undefined || id.startsWith('-')) {
+        console.error('Usage: orch restart-job <id> [--json]   (orch restart restarts the daemon, not a job)');
+        process.exit(1);
+      }
+      const r = await send('restart-job', { id }) as {
+        wasRunning?: boolean; killed?: number; started?: boolean; pid?: number | null; reason?: string;
+      };
+      const ended = (r.killed ?? 0) === 1 ? '1 instance' : `${r.killed ?? 0} instances`;
+      if (forceJson) {
+        console.log(JSON.stringify(r));
+      } else if (r.started === true) {
+        console.log(r.wasRunning === true
+          ? `Job "${id}" restarted (was running, ${ended} ended; new pid ${r.pid ?? '?'}).`
+          : `Job "${id}" was not running, started (pid ${r.pid ?? '?'}).`);
+      } else {
+        console.error(`Job "${id}" was ${r.wasRunning === true ? `ended (${ended}) but ` : ''}not started: ${r.reason ?? 'the daemon gave no reason'}`);
+      }
+      // A restart that started nothing is not a success, whichever way it is printed.
+      if (r.started !== true) {
+        process.exit(1);
+      }
       break;
     }
 
@@ -1719,7 +1760,8 @@ export async function main(): Promise<void> {
         return client.version() as Promise<unknown>;
       }
       const c = client as { send(cmd: string, p?: unknown, opts?: { timeoutMs?: number }): Promise<unknown> };
-      return c.send(command, payload, isWaitPayload ? { timeoutMs: 0 } : undefined);
+      // restart-job answers after the old instance is really gone (up to 15 s), well past the 5 s idle default.
+      return c.send(command, payload, isWaitPayload ? { timeoutMs: 0 } : command === 'restart-job' ? { timeoutMs: 30_000 } : undefined);
     };
 
     return doSend().catch(async (e: unknown) => {

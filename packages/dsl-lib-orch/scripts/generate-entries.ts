@@ -43,10 +43,34 @@ function resolveWatchDirs(): WatchDir[] {
   ];
 }
 
+/**
+ * Runs the generator with fs.readdirSync answering in byte order.
+ *
+ * dsl-renderer finds the component files with readdirSync and never sorts, so the entries came out in the file
+ * system's order: case-insensitive on Windows (RunningAlertDetail before RunTelemetry), byte order on Linux and
+ * macOS (the reverse). A file generated on one machine then differed from what CI generated on another, and
+ * generateEntries.test.ts failed on ubuntu and macOS only. Sorting here makes the file the same everywhere.
+ */
+function withByteOrderListing<T>(run: () => T): T {
+  const real = fs.readdirSync;
+  fs.readdirSync = ((...args: Parameters<typeof fs.readdirSync>) => {
+    const result = (real as (...a: unknown[]) => unknown).apply(fs, args);
+    // Only plain name lists: a listing with file types (Dirent) is left as it came.
+    return Array.isArray(result) && result.every((entry) => typeof entry === 'string')
+      ? [...result].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      : result;
+  }) as typeof fs.readdirSync;
+  try {
+    return run();
+  } finally {
+    fs.readdirSync = real;
+  }
+}
+
 /** The content of src/generated/entries.tsx, nothing written. */
 export function generateEntries(): string {
   // Package imports ('@wadeck-app/dsl-ui/dist/...'), not monorepo-relative ones: dsl-ui is an installed package here.
-  return buildEntriesFile(PACKAGE_DIR, resolveWatchDirs(), undefined, { usePackageImports: true });
+  return withByteOrderListing(() => buildEntriesFile(PACKAGE_DIR, resolveWatchDirs(), undefined, { usePackageImports: true }));
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {

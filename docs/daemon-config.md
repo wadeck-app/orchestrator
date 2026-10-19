@@ -90,6 +90,24 @@ A firing that finds `n` runs already alive is refused, whatever started it: sche
 
 `orch kill <id>` stops every live instance of the job and reports how many (`Job "x" killed (3 instances).`); each killed run is recorded as a manual kill in its own history entry and log. The job counts as running while any instance is alive, in the tray and in `/health`.
 
+## Restarting a long-running job
+
+A job is long-running when `timeoutSeconds` is `0` (a process that must stay up). Restart ends every running instance, waits until each is gone, then starts a new run as a manual trigger.
+
+| Surface | Entry point |
+|---|---|
+| CLI | `orch restart-job <id> [--json]` (`orch restart` restarts the daemon; `orch restart <id>` is refused) |
+| Daemon RPC | `restart-job { id }` |
+| HTTP | `POST /api/jobs/:id/restart`, also published by the app module |
+| Dashboard | "Restart" button, shown only for a running job with `timeoutSeconds` 0; asks first. A page may declare `$outputs.onRestart` to handle it instead |
+
+- Any job is accepted by the RPC and the CLI; only the button is limited to long-running jobs. A job that was not running is simply started (`wasRunning: false`).
+- Answer: `{ id, wasRunning, killed, started, pid, skipped?, reason? }`. HTTP status is 200 for a refused start too.
+- A start is refused (`started: false`, `skipped` = `liveness` | `concurrency` | `adopted`, `reason` says the fix) when the liveness check still says the target is alive, the job is at `maxConcurrency`, or the run is followed by another daemon. With no `skipped`, the old instance did not end within 15 s and no second copy was started. The old instance was ended in every case; the CLI exits 1.
+- Unknown, disabled and spent (`once`) jobs are errors (HTTP 404 for unknown, 409 for the others), nothing is audited.
+- The ended run keeps its normal manual-kill record. One `job.restarted` audit line is written (`jobId`, `label`, `wasRunning`, `killed`, `started`, `skipped?`).
+- Unlike a plain `orch trigger`, restart runs the liveness check before starting.
+
 ## Example
 
 ```yaml
