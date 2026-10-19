@@ -1,5 +1,6 @@
 import React from 'react';
 import { Badge } from '@wadeck-app/dsl-ui';
+import type { RunEndReason } from '../types.js';
 
 /**
  * The states this app shows for a job in a list.
@@ -8,7 +9,8 @@ import { Badge } from '@wadeck-app/dsl-ui';
  * active window has not opened yet. That job is enabled and correctly doing nothing, and it used to
  * show "Never run" -- true, and indistinguishable from a job that is broken.
  */
-export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never' | 'pending' | 'interrupted';
+export type JobStatusKind = 'running' | 'ok' | 'failed' | 'cancelled' | 'skipped' | 'never' | 'pending' | 'interrupted'
+  | 'timed-out' | 'killed' | 'resource-killed';
 
 /**
  * Which design-system variant each state maps to.
@@ -32,6 +34,18 @@ export const JOB_STATUS_VARIANT: Record<JobStatusKind, 'success' | 'danger' | 'w
   // Amber like Cancelled: it asks for a glance (the daemon died mid-run) without being the job's fault.
   interrupted: 'warning',
   pending:   'default',
+  // The three forced ends, one tone each. A timeout is the job's own overrun and is counted as a failure, so red.
+  // A resource-limit kill is the daemon stepping in: amber, a glance. A kill by the user asked for nothing: neutral.
+  'timed-out':       'danger',
+  'resource-killed': 'warning',
+  killed:            'default',
+};
+
+/** The pill for a forced end: one wording per reason, so the three are never folded back into "Cancelled". */
+export const END_REASON_PILL: Record<RunEndReason, { kind: JobStatusKind; label: string }> = {
+  'timeout':        { kind: 'timed-out', label: 'Timed out' },
+  'manual-kill':    { kind: 'killed', label: 'Killed by you' },
+  'resource-limit': { kind: 'resource-killed', label: 'Killed: resource limit' },
 };
 
 /**

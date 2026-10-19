@@ -12,6 +12,8 @@ interface JobFinishedEvent {
   skipped?: boolean;
   durationMs?: number;
   trigger?: { kind: string };
+  endReason?: 'timeout' | 'manual-kill' | 'resource-limit';
+  late?: boolean;
 }
 
 /** A firing that was due and never spawned anything; see Scheduler._announceSkip. */
@@ -41,6 +43,10 @@ export function wireAuditEvents(scheduler: EventEmitter, audit: AuditSink): void
         // The only run the scheduler reports as skipped through job-finished is one whose exit code the
         // job declared in skipExitCodes; a liveness skip never spawns, so never reaches here.
         ...(ev.skipped ? { reason: 'skipExitCodes' } : {}),
+        // How a forced end happened, so the audit view can tell a timeout from a kill.
+        ...(!ev.skipped && ev.endReason ? { reason: ev.endReason } : {}),
+        // The daemon learned of the end after the fact; the entry's time is when it really happened.
+        ...(ev.late ? { late: true } : {}),
       });
     } catch (err) {
       // The audit trail is a side channel. A failure to write it must not propagate into the

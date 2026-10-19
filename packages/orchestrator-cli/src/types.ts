@@ -225,6 +225,16 @@ export interface RuntimeEntry {
   peakMeasure?: number;
   cancelledByUser?: boolean;
   /**
+   * Why the run was ended by force: the job's timeout, a user's kill, or the resource limit. Absent for a run that
+   * ended on its own. `cancelledByUser` stays for entries and readers that predate it.
+   */
+  endReason?: 'timeout' | 'manual-kill' | 'resource-limit';
+  /**
+   * The daemon learned of this run's end after the fact (it ended while the daemon was down), so `finishedAt` is
+   * when it really ended, not when it was noticed. Absent for a run the daemon watched end.
+   */
+  late?: boolean;
+  /**
    * Set when the daemon deliberately did not do the work: the liveness check found the target
    * already alive, or the child exited with one of the job's `skipExitCodes`.
    *

@@ -1644,6 +1644,8 @@ export class Scheduler extends EventEmitter {
         peakRamMb:  peakRamMb  > 0 ? peakRamMb  : undefined,
         peakMeasure: peakRamMb > 0 || peakCpuPct > 0 ? PEAK_MEASURE_VERSION : undefined,
         cancelledByUser: cancelledByUser || undefined,
+        endReason: reason,
+        late: finish.late || undefined,
         skipped: skipped || undefined,
       });
       telemetry?.event('end', { exitCode, durationMs, reason });
@@ -1657,7 +1659,7 @@ export class Scheduler extends EventEmitter {
         ? `[job:skipped] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s reason=skipExitCodes`
         : `[job:finished] exitCode=${exitCode} duration=${Math.round(durationMs / 100) / 10}s${finishedReason}`, endedAt);
       // `skipped` and `cancelledByUser` travel with the event because the systray classifies on these alone.
-      this.emit('job-finished', { id: job.id, exitCode, job, skipped, cancelledByUser, durationMs, trigger, late: finish.late });
+      this.emit('job-finished', { id: job.id, exitCode, job, skipped, cancelledByUser, endReason: reason, durationMs, trigger, late: finish.late });
       if (ledger !== undefined) {
         // The exit code is the one fact that cannot be learned again once the run folder is gone.
         this._state.flushNow();

@@ -1742,7 +1742,8 @@ export const JobStatusBadgeEntry: ComponentRegistryEntry = {
 		const running = resolveExpressionValue(node['running'], ctx) as import('../components/JobStatusBadge.js').JobStatusBadgeProps['running']
 		const cancelled = resolveExpressionValue(node['cancelled'], ctx) as import('../components/JobStatusBadge.js').JobStatusBadgeProps['cancelled']
 		const skipped = resolveExpressionValue(node['skipped'], ctx) as import('../components/JobStatusBadge.js').JobStatusBadgeProps['skipped']
-		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} skipped={skipped} />
+		const endReason = resolveExpressionValue(node['endReason'], ctx) as import('../components/JobStatusBadge.js').JobStatusBadgeProps['endReason']
+		return <JobStatusBadge exitCode={exitCode} running={running} cancelled={cancelled} skipped={skipped} endReason={endReason} />
 	},
 }
 

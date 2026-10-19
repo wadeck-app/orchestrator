@@ -32,7 +32,10 @@ Fields on `job.completed` and `job.skipped`:
 | `exitCode` | The real exit code, also for skipped runs |
 | `durationMs` | Wall-clock run time |
 | `trigger` | What started the run: `cron`, `manual`, `retry`, `dependency`, ... |
-| `reason` | `job.skipped` only: `skipExitCodes` |
+| `reason` | `job.skipped`: `skipExitCodes`. `job.completed` of a run ended by force: `timeout`, `manual-kill` or `resource-limit` (absent otherwise) |
+| `late` | `true` when the run ended while the daemon was down and it learned of it at its next start (absent otherwise) |
+
+The same two facts are stored on each history entry in `state.json` as `endReason` (same values as `reason`) and `late`. `cancelledByUser` is kept for older readers. Entries recorded before these fields existed have neither: a legacy null exit code is shown as "Cancelled", never as a timeout.
 
 `orch trigger` with an empty, malformed or unknown job id is refused with an error and writes no audit entry.
 

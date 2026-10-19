@@ -1,8 +1,9 @@
 import React from 'react';
 import { FileText } from 'lucide-react';
 import { ColumnHelpers, DataTable, type TableColumn } from '@wadeck-app/dsl-ui';
-import { isRunActive, isRunCancelled, isRunSkipped, type RuntimeEntry } from '../types.js';
+import { isRunActive, isRunCancelled, isRunSkipped, runEndReason, type RuntimeEntry } from '../types.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
+import { LateMarker } from './LateMarker.js';
 import { JobStatusPill } from './JobStatusPill.js';
 import { TriggerBadge } from './TriggerBadge.js';
 import { RunLogLink } from './RunLogLink.js';
@@ -110,8 +111,10 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
               running={isRunActive(entry)}
               cancelled={isRunCancelled(entry)}
               skipped={isRunSkipped(entry)}
+              endReason={runEndReason(entry)}
             />
           )}
+          {entry.late === true && !isRunActive(entry) && <LateMarker />}
           {entry.supervised === true && (
             <span
               className="text-xs px-1.5 py-0.5 rounded bg-muted/20 text-muted"

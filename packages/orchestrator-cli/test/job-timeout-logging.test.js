@@ -224,3 +224,24 @@ describe('manual-kill logging', () => {
       `reason=manual-kill must not appear for a normal exit:\n${log}`);
   });
 });
+
+describe('history entry of a live run', () => {
+  test('a timeout is recorded as endReason=timeout and is not late', async () => {
+    const dir = tmpDir();
+    const registry = new Registry(path.join(dir, 'registry.json'));
+    const state    = new State(path.join(dir, 'state.json'));
+    registry.load();
+    const job = { ...BASE_JOB, id: 'sync-r', timeoutSeconds: 1 };
+    registry.add(job);
+    const time  = new FakeTime(Date.now());
+    const sched = new Scheduler(registry, state, { spawn: () => hangingChild(1), liveness: async () => false, configDir: dir, time });
+
+    const fired = sched._fire(job);
+    await time.advanceAsync(1000, 100);
+    await fired;
+
+    const entry = state.get('sync-r');
+    assert.equal(entry.endReason, 'timeout');
+    assert.ok(!entry.late, 'a run the daemon watched end is not late');
+  });
+});

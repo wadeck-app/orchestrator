@@ -99,3 +99,33 @@ describe('wireAuditEvents maps a finished run to the right audit event', () => {
     assert.doesNotThrow(() => scheduler.emit('job-finished', { id: 'wa', exitCode: 0, job: JOB }));
   });
 });
+
+describe('wireAuditEvents says how a run ended', () => {
+  for (const reason of ['timeout', 'manual-kill', 'resource-limit']) {
+    test(`a run ended by ${reason} carries it as the reason`, () => {
+      const { scheduler, logged } = wire();
+
+      scheduler.emit('job-finished', { id: 'wa', exitCode: 1, job: JOB, endReason: reason });
+
+      assert.equal(logged[0].event, 'job.completed');
+      assert.equal(logged[0].payload.reason, reason);
+    });
+  }
+
+  test('an end the daemon learned late is flagged late', () => {
+    const { scheduler, logged } = wire();
+
+    scheduler.emit('job-finished', { id: 'wa', exitCode: 0, job: JOB, late: true });
+
+    assert.equal(logged[0].payload.late, true);
+  });
+
+  test('a live, ordinary run carries neither key', () => {
+    const { scheduler, logged } = wire();
+
+    scheduler.emit('job-finished', { id: 'wa', exitCode: 0, job: JOB, late: false });
+
+    assert.equal('reason' in logged[0].payload, false);
+    assert.equal('late' in logged[0].payload, false);
+  });
+});

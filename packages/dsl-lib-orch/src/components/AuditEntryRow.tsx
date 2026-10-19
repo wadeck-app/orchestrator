@@ -35,7 +35,7 @@ function durationOf(entry: AuditEntry): number | null {
 // Fields rendered as words by formatDetails; the rest of the entry falls through as key=value.
 const RENDERED_FIELDS = new Set([
   'ts', 'event', 'label', 'jobId', 'userAgent',
-  'exitCode', 'finishedAt', 'startedAt', 'durationMs', 'trigger', 'reason', 'ip',
+  'exitCode', 'finishedAt', 'startedAt', 'durationMs', 'trigger', 'reason', 'late', 'ip',
 ]);
 
 function formatDetails(entry: AuditEntry): string {
@@ -61,6 +61,10 @@ function formatDetails(entry: AuditEntry): string {
   }
   if (entry.reason) {
     parts.push(String(entry.reason));
+  }
+  // The entry's time is when the daemon noticed; the run itself ended earlier, while the daemon was down.
+  if (entry.late === true) {
+    parts.push('late');
   }
   if (entry.ip) {
     parts.push(`from ${entry.ip}`);

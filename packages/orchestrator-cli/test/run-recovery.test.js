@@ -349,3 +349,59 @@ describe('edge cases of the folder and the job', () => {
     assert.equal(report.finalized, 1);
   });
 });
+
+// The dashboard cannot tell a timeout from a manual kill from a resource-limit kill, nor that the daemon learned of
+// an end late, unless the history entry says so.
+describe('what the history entry records about how a recovered run ended', () => {
+  test('a run that ended normally is late and has no end reason', async () => {
+    const env = makeEnv([cronJob()]);
+    leaveRun(env, { status: { exitCode: 0 } });
+
+    await env.sched.recoverRuns();
+
+    const entry = env.state.get('job');
+    assert.equal(entry.late, true);
+    assert.equal(entry.endReason, undefined);
+  });
+
+  for (const [label, status, expected] of [
+    ['a timeout', { exitCode: 1, killed: true, killReason: 'timeout', timedOut: true }, 'timeout'],
+    ['a manual kill', { exitCode: 1, killed: true, killReason: 'manual' }, 'manual-kill'],
+    ['a resource-limit kill', { exitCode: 1, killed: true, killReason: 'resource-limit' }, 'resource-limit'],
+  ]) {
+    test(`${label} is recorded as ${expected}, and as late`, async () => {
+      const env = makeEnv([cronJob()]);
+      leaveRun(env, { status });
+
+      await env.sched.recoverRuns();
+
+      const entry = env.state.get('job');
+      assert.equal(entry.endReason, expected);
+      assert.equal(entry.late, true);
+    });
+  }
+
+  test('both fields reach the state file, not only the memory', async () => {
+    const env = makeEnv([cronJob()]);
+    leaveRun(env, { status: { exitCode: 1, killed: true, killReason: 'timeout', timedOut: true } });
+
+    await env.sched.recoverRuns();
+
+    const onDisk = JSON.parse(fs.readFileSync(path.join(env.dir, 'state.json'), 'utf8'));
+    assert.equal(onDisk.jobs.job[0].endReason, 'timeout');
+    assert.equal(onDisk.jobs.job[0].late, true);
+  });
+
+  test('the job-finished event carries the end reason for the audit trail', async () => {
+    const env = makeEnv([cronJob()]);
+    leaveRun(env, { status: { exitCode: 1, killed: true, killReason: 'resource-limit' } });
+    const seen = [];
+    env.sched.on('job-finished', (ev) => seen.push(ev));
+
+    await env.sched.recoverRuns();
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].endReason, 'resource-limit');
+    assert.equal(seen[0].late, true);
+  });
+});

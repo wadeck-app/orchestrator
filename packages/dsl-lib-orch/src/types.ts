@@ -146,6 +146,16 @@ export interface RuntimeEntry {
   peakRamMb?: number;
   cancelledByUser?: boolean;
   /**
+   * Why the run was ended by force: the job's timeout, a user's kill, or the resource limit. Absent for a run that
+   * ended on its own, and on history recorded before it existed (see `runEndReason`).
+   */
+  endReason?: 'timeout' | 'manual-kill' | 'resource-limit';
+  /**
+   * The daemon learned of this run's end after the fact (it ended while the daemon was down), so `finishedAt` is
+   * when it really ended, not when it was noticed.
+   */
+  late?: boolean;
+  /**
    * The daemon deliberately did no work, or the child exited with a code the job declares as
    * "not a failure" (a scraper exiting 2 because a sibling already holds its lock).
    *
@@ -218,6 +228,21 @@ export function isRunCancelled(entry: RuntimeEntry | null): boolean {
     return false;
   }
   return entry.cancelledByUser === true || entry.exitCode === null;
+}
+
+export type RunEndReason = NonNullable<RuntimeEntry['endReason']>;
+
+/**
+ * Why a finished run was ended by force, or undefined when it ended on its own.
+ *
+ * A legacy `cancelledByUser` entry reads as a manual kill, which is what it always meant. A legacy entry that
+ * only has a null exit code stays undefined: nothing says it was a timeout, and guessing would mislabel old data.
+ */
+export function runEndReason(entry: RuntimeEntry | null): RunEndReason | undefined {
+  if (entry === null || isRunActive(entry) || isRunSkipped(entry)) {
+    return undefined;
+  }
+  return entry.endReason ?? (entry.cancelledByUser === true ? 'manual-kill' : undefined);
 }
 
 // Only a real non-zero exit code is a failure: null means killed, not failed.

@@ -307,3 +307,27 @@ describe('getResourceBaseline', () => {
     assert.equal(s.getResourceBaseline('job-r'), null, 'only 2 runs have resource data - should be null');
   });
 });
+
+describe('how a run ended', () => {
+  test('endReason and late survive a save and a reload', () => {
+    const f = tmpFile();
+    const s = new State(f);
+    s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 1, pid: 1, endReason: 'timeout', late: true });
+    s.flushNow();
+
+    const entry = new State(f).get('job-a');
+
+    assert.equal(entry.endReason, 'timeout');
+    assert.equal(entry.late, true);
+  });
+
+  test('an entry without them carries no such keys', () => {
+    const s = new State(tmpFile());
+    s.record('job-a', { startedAt: '2026-08-22T08:00:00Z', exitCode: 0, pid: 1, endReason: undefined, late: undefined });
+
+    const entry = s.get('job-a');
+
+    assert.equal('endReason' in entry, false);
+    assert.equal('late' in entry, false);
+  });
+});

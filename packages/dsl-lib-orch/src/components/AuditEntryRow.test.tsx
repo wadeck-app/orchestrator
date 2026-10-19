@@ -82,3 +82,24 @@ describe('AuditEntryRow details', () => {
     expect(details({ event: 'job.skipped', durationMs: 0, reason: 'liveness' })).not.toContain('durationMs=');
   });
 });
+
+describe('AuditEntryRow - how a run ended', () => {
+  function text(entry: Record<string, unknown>): string {
+    const { container } = render(<AuditEntryRow entry={{ ts: new Date().toISOString(), event: 'job.completed', ...entry }} />);
+    return container.textContent ?? '';
+  }
+
+  it('shows the end reason', () => {
+    expect(text({ exitCode: 1, reason: 'timeout' })).toContain('timeout');
+  });
+
+  it('tags an end the daemon learned late, as a word and not late=true', () => {
+    const t = text({ exitCode: 0, late: true });
+    expect(t).toContain('late');
+    expect(t).not.toContain('late=');
+  });
+
+  it('has no late tag otherwise', () => {
+    expect(text({ exitCode: 0 })).not.toContain('late');
+  });
+});

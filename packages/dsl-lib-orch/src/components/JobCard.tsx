@@ -1,10 +1,11 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
-import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
+import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, runEndReason, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
 import { windowStateAt } from '../active-window.js';
 import { describeAgo } from '../relative-time.js';
-import { JobStatusPill } from './JobStatusPill.js';
+import { END_REASON_PILL, JobStatusPill } from './JobStatusPill.js';
+import { LateMarker } from './LateMarker.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
 import { EnableToggle } from './EnableToggle.js';
@@ -125,6 +126,13 @@ function jobListBadge(job: Job, runHistory: RuntimeEntry[], nowMs: number): Reac
   if (isRunSkipped(last)) {
     return <JobStatusPill kind="skipped" label="Skipped" />;
   }
+  // Ahead of the exitCode test: a timeout keeps the child's code and would be counted into "Nx failed".
+  const endReason = runEndReason(last);
+  if (endReason !== undefined) {
+    const { kind, label } = END_REASON_PILL[endReason];
+    return <JobStatusPill kind={kind} label={label} />;
+  }
+  // Only a legacy entry reaches here: a null exit code with no recorded reason.
   if (isRunCancelled(last)) {
     return <JobStatusPill kind="cancelled" label="Cancelled" />;
   }
@@ -248,6 +256,7 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               })()
             : 'Last run: Never'}
         </p>
+        {latestRun(runHistory)?.late === true && !isJobRunning(runHistory) && <LateMarker />}
         {/* Last 5 runs as coloured dots. The tooltip is what makes them readable: five 6px
             dots with no legend told the reader nothing about what they were looking at. */}
         {/* ml-auto has to sit on the outermost element to push the dots to the card edge.

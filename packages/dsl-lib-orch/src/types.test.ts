@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, type RuntimeEntry } from './types.js';
+import { isRunActive, isRunCancelled, isRunFailed, isRunSkipped, runEndReason, type RuntimeEntry } from './types.js';
 
 function run(over: Partial<RuntimeEntry>): RuntimeEntry {
   return { startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:00:01Z', exitCode: 0, pid: 1, ...over };
@@ -40,5 +40,27 @@ describe('skipped runs are neither failed nor cancelled', () => {
 
   it('is not active: a skipped run has finished', () => {
     expect(isRunActive(run({ skipped: true, exitCode: null }))).toBe(false);
+  });
+});
+
+describe('runEndReason', () => {
+  const finished = (extra: Partial<RuntimeEntry>): RuntimeEntry => ({ startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:01:00Z', exitCode: 1, pid: 1, ...extra });
+
+  it('returns the recorded reason', () => {
+    expect(runEndReason(finished({ endReason: 'timeout' }))).toBe('timeout');
+  });
+
+  it('reads a legacy cancelledByUser entry as a manual kill', () => {
+    expect(runEndReason(finished({ exitCode: null, cancelledByUser: true }))).toBe('manual-kill');
+  });
+
+  it('never invents a reason for a legacy null exit code', () => {
+    expect(runEndReason(finished({ exitCode: null }))).toBeUndefined();
+  });
+
+  it('has none for a skipped, an active or a missing run', () => {
+    expect(runEndReason(finished({ skipped: true, endReason: 'timeout' }))).toBeUndefined();
+    expect(runEndReason({ startedAt: '2026-09-02T10:00:00Z', exitCode: null, pid: 1, endReason: 'timeout' })).toBeUndefined();
+    expect(runEndReason(null)).toBeUndefined();
   });
 });

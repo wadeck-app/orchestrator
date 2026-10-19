@@ -1,11 +1,14 @@
 import React from 'react';
-import { JobStatusPill } from './JobStatusPill.js';
+import type { RunEndReason } from '../types.js';
+import { END_REASON_PILL, JobStatusPill } from './JobStatusPill.js';
 
 export interface JobStatusBadgeProps {
   exitCode: number | null;
   running?: boolean;
   cancelled?: boolean;
   skipped?: boolean;
+  /** Why the run was ended by force; wins over the exit code, a timeout still carries the child's own. */
+  endReason?: RunEndReason;
 }
 
 /**
@@ -18,7 +21,7 @@ export interface JobStatusBadgeProps {
  * @registryCategory atomic
  * @registryTags badge status job
  */
-export function JobStatusBadge({ exitCode, running, cancelled, skipped }: JobStatusBadgeProps): React.ReactElement {
+export function JobStatusBadge({ exitCode, running, cancelled, skipped, endReason }: JobStatusBadgeProps): React.ReactElement {
   if (running) {
     return <JobStatusPill kind="running" label="Running" />;
   }
@@ -26,6 +29,11 @@ export function JobStatusBadge({ exitCode, running, cancelled, skipped }: JobSta
   // child's real exit code, or none at all, and either would be reported as an alarm.
   if (skipped) {
     return <JobStatusPill kind="skipped" label="Skipped" />;
+  }
+  // A timeout and a resource-limit kill keep the child's exit code, so this has to precede the exitCode checks too.
+  if (endReason !== undefined) {
+    const { kind, label } = END_REASON_PILL[endReason];
+    return <JobStatusPill kind={kind} label={label} />;
   }
   // Must come before the exitCode checks: a killed run has no exit code and would
   // otherwise fall through to "Never run".

@@ -143,6 +143,8 @@ export class State {
       ...(entry.peakRamMb       !== undefined && { peakRamMb:       entry.peakRamMb       }),
       ...(entry.peakMeasure     !== undefined && { peakMeasure:     entry.peakMeasure     }),
       ...(entry.cancelledByUser !== undefined && { cancelledByUser: entry.cancelledByUser }),
+      ...(entry.endReason       !== undefined && { endReason:       entry.endReason       }),
+      ...(entry.late            !== undefined && { late:            entry.late            }),
       ...(entry.orphaned        !== undefined && { orphaned:        entry.orphaned        }),
       ...(entry.skipped         !== undefined && { skipped:         entry.skipped         }),
       ...(entry.supervised      !== undefined && { supervised:      entry.supervised      }),

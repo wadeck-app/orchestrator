@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, ButtonLink, Checkbox, ColumnHelpers, DataTable, IconButton, Spinner, type TableColumn } from '@wadeck-app/dsl-ui';
-import { getErrorMessage, isJobRunning, isRunCancelled, isRunFailed, isRunSkipped, latestRun, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isJobRunning, isRunCancelled, isRunFailed, isRunSkipped, latestRun, runEndReason, type RuntimeEntry } from '../types.js';
 import { postTrigger } from '../trigger-job.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
@@ -339,7 +339,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
       label: 'Status',
       render: ({ item }) => {
         const last = latestRun(item.runHistory);
-        return <JobStatusBadge exitCode={last?.exitCode ?? null} running={isJobRunning(item.runHistory)} cancelled={isRunCancelled(last)} skipped={isRunSkipped(last)} />;
+        return <JobStatusBadge exitCode={last?.exitCode ?? null} running={isJobRunning(item.runHistory)} cancelled={isRunCancelled(last)} skipped={isRunSkipped(last)} endReason={runEndReason(last)} />;
       },
     },
     ColumnHelpers.text<JobRow>('lastRun', 'Last run', { muted: true }),
