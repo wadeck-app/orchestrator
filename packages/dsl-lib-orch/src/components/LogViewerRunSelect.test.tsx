@@ -102,26 +102,47 @@ describe('the log run selector', () => {
 		expect(screen.getAllByRole('option')[0]!.textContent).toContain(RUNS[0]!.name);
 	});
 
-	it('lists every run', async () => {
+	// The tail option already names the newest run ("Live - <newest run>"), so listing that run again
+	// showed the same run twice in the dropdown, once as "follow" and once as "pin", with nothing telling
+	// the two apart. The newest run is the tail option; the list below it holds the older ones.
+	it('lists each run once: the newest is the tail option, not repeated below it', async () => {
+		stubFetch(RUNS, RUNNING);
 		await renderViewer();
-		// One per run, plus the live option.
-		expect(screen.getAllByRole('option')).toHaveLength(RUNS.length + 1);
+		await waitFor(() => expect(screen.getAllByRole('option')[0]!.textContent).toMatch(/Live/));
+
+		const options = screen.getAllByRole('option');
+		expect(options).toHaveLength(RUNS.length);
+		expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['', RUNS[1]!.name]);
 	});
 
-	it('selecting a run pins it', async () => {
+	it('selecting an older run pins it', async () => {
 		const select = await renderViewer();
 
-		fireEvent.change(select, { target: { value: RUNS[0]!.name } });
+		fireEvent.change(select, { target: { value: RUNS[1]!.name } });
 
-		expect(select).toHaveValue(RUNS[0]!.name);
+		expect(select).toHaveValue(RUNS[1]!.name);
 	});
 
 	it('selecting the empty value returns to the live tail', async () => {
 		const select = await renderViewer();
 
-		fireEvent.change(select, { target: { value: RUNS[0]!.name } });
+		fireEvent.change(select, { target: { value: RUNS[1]!.name } });
 		fireEvent.change(select, { target: { value: '' } });
 
+		expect(select).toHaveValue('');
+	});
+
+	// A link or a bookmark can pin the newest run (?run=<newest>). It has no option of its own any more, so
+	// the selector shows the tail option, which is that same run, rather than going blank.
+	it('shows the tail option for a pin on the newest run', async () => {
+		render(
+			<MemoryRouter initialEntries={[`/?run=${encodeURIComponent(RUNS[0]!.name)}`]}>
+				<LogViewer jobId="j1" />
+			</MemoryRouter>,
+		);
+		const select = await waitFor(() => screen.getByLabelText('Which run to show'));
+
+		await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(RUNS.length));
 		expect(select).toHaveValue('');
 	});
 

@@ -372,12 +372,15 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false }: LogVi
            * come back yet) that is untrue - the same false signal the status chip was fixed for.
            */
           <span className="mr-2">
+            {/* The tail option names the newest run, so the list holds the older ones only: listing the newest again
+                showed the same run twice, once to follow and once to pin, with nothing to tell the two apart. A pin on
+                the newest run (a link carrying ?run=) has no option of its own and shows the tail option, which is it. */}
             <CompactSelect
-              value={selectedRun}
+              value={selectedRun === latestRunName ? '' : selectedRun}
               onChange={handleSelectRun}
               ariaLabel="Which run to show"
               placeholder={`${isJobRunning === true ? 'Live' : 'Latest'}${latestRunName ? ` - ${fmtRunName(latestRunName, 0, runs.length)}` : ''}`}
-              options={runs.map((r, i) => ({ value: r.name, label: fmtRunName(r.name, i, runs.length) }))}
+              options={runs.flatMap((r, i) => (r.name === latestRunName ? [] : [{ value: r.name, label: fmtRunName(r.name, i, runs.length) }]))}
             />
           </span>
         )}

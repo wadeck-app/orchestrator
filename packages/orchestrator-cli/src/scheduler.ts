@@ -1181,7 +1181,7 @@ export class Scheduler extends EventEmitter {
     // The daemon has just come back and this run is still going from before: a startup or catch-up firing would
     // start a second copy of it (two servers on one port). A cron firing is left alone, as it is for a live run.
     if (atStart && this._hasFollowedRun(job.id)) {
-      this._recordSkip(job, 'adopted');
+      this._refuseForAdoption(job);
       return;
     }
     if (trigger.kind !== 'manual') {
@@ -1226,6 +1226,23 @@ export class Scheduler extends EventEmitter {
     });
   }
 
+  /**
+   * Reports a startup or catch-up firing refused because the job's run is still going from before the restart.
+   *
+   * Not _recordSkip, for the reason _refuseForConcurrency gives: a history entry and a log file of its own are
+   * "the newest run" to the readers. This was recorded that way at first, and every daemon restart then buried a
+   * live server under a 119-byte "run": the dashboard read the job as ended and the log page named the empty one
+   * "Live". The refusal goes in the log of the run that is going, when this daemon follows it, and in an event.
+   */
+  private _refuseForAdoption(job: Job): void {
+    this._liveLogger.get(job.id)?.write(
+      '[job:skipped] reason=adopted -- still running from before the restart, not started a second time',
+    );
+    this._eventPublisher.publish('job.skipped', {
+      jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason: 'adopted',
+    });
+  }
+
   /** A firing that does not come from the schedule (retry, dependency), held to the same limit. */
   private _fireUnlessFull(job: Job, trigger: TriggerSource): void {
     const full = this._atLimit(job);
@@ -1244,7 +1261,7 @@ export class Scheduler extends EventEmitter {
    * with exitCode null, because no process ran, and finishedAt set, so it does not read as a run
    * still in flight.
    */
-  private _recordSkip(job: Job, reason: 'liveness' | 'adopted'): void {
+  private _recordSkip(job: Job, reason: 'liveness'): void {
     const at = this._now().toISOString();
     this._state.record(job.id, {
       startedAt: at, finishedAt: at, exitCode: null, pid: null, skipped: true,
@@ -1252,9 +1269,7 @@ export class Scheduler extends EventEmitter {
     // Same per-run log file layout as a real run, so the skip shows up in `orch logs --job <id>`
     // right where the run would have been.
     const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, at);
-    jobLogger.write(`[job:skipped] reason=${reason} -- ${reason === 'adopted'
-      ? 'still running from before the restart, not started a second time'
-      : 'target already alive, nothing was done'}`);
+    jobLogger.write(`[job:skipped] reason=${reason} -- target already alive, nothing was done`);
     jobLogger.close();
     this._eventPublisher.publish('job.skipped', {
       jobId: job.id, label: job.label, exitCode: null, durationMs: 0, reason,

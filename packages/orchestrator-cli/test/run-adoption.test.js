@@ -231,6 +231,31 @@ describe('a startup job whose run is still going (case 11)', () => {
     assert.match(runLog(dir, 'job'), /still running from before the restart/);
     await b.sched.killJob('job');
   });
+
+  // Seen live: every daemon restart wrote a history entry and a log file of its own for the refused startup firing.
+  // That "run" was then the newest one, so the dashboard showed the server as ended (it decides from the newest
+  // entry) and the log page labelled the empty one "Live" and pulled the tail off the real server's output.
+  // The refusal belongs where a refusal for concurrency already goes: an event, and a line in the log of the run
+  // that holds the slot.
+  test('leaves no run of its own: the followed run stays the newest entry and the only log file', async () => {
+    const dir = tmpDir();
+    const job = { ...cronJob(dir, 'setInterval(() => {}, 1000)'), type: 'startup', delaySeconds: 0, schedule: undefined };
+    await startAndLeave(dir, job);
+    const b = daemon(dir, [job], { supervisor: () => { throw new Error('a second copy was started'); } });
+    await b.sched.recoverRuns();
+    const followed = b.state.getOpenRuns('job')[0];
+
+    await b.sched.start();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const runs = b.state.getAll()['job'] ?? [];
+    assert.equal(runs.length, 1, `a skip was recorded as a run: ${JSON.stringify(runs)}`);
+    assert.equal(runs[0].startedAt, followed.startedAt);
+    assert.equal(runs[0].skipped, undefined);
+    assert.equal(fs.readdirSync(path.join(dir, 'logs', 'jobs', 'job')).filter((f) => f.endsWith('.log')).length, 1, 'the skip got a log file of its own');
+    assert.match(runLog(dir, 'job'), /reason=adopted/);
+    await b.sched.killJob('job');
+  });
 });
 
 describe('finding the runs again takes one look at the process table, not one per run', () => {
