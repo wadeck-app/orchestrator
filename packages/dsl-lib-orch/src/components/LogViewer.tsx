@@ -65,6 +65,16 @@ const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-bg text-green-400 font-mono 
 // Matches file:/// URLs, http(s) URLs, and Windows absolute paths with known extensions.
 const URL_RE = /(file:\/\/\/[^\s\r\n]+|https?:\/\/[^\s\r\n]+|[A-Za-z]:[\\\/][^\s\r\n]+\.(?:html?|json|csv|txt|log))/gi;
 
+/*
+ * Colour and cursor sequences (ESC [ ... final byte) a job wrote into its log. The pane paints with its own palette, so
+ * they showed up as "[90m[2m(client)[22m[39m" around the text. The log file keeps them: this only cleans what is shown.
+ */
+const ESCAPE_SEQUENCE_RE = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+
+function stripEscapeSequences(line: string): string {
+  return line.replace(ESCAPE_SEQUENCE_RE, '');
+}
+
 function toFileUrl(raw: string): string {
   if (raw.startsWith('file:///') || raw.startsWith('http')) {
     return raw;
@@ -257,7 +267,7 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false }: LogVi
     es.onmessage = (ev) => {
       setConnected(true);
       if (ev.data) {
-        setLines((prev) => [...prev, ev.data as string]);
+        setLines((prev) => [...prev, stripEscapeSequences(ev.data as string)]);
       }
     };
     // The server sends this when the live tail switches to a new run file. Clear the pane so the

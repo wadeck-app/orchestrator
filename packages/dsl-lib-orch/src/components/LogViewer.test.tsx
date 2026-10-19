@@ -204,6 +204,22 @@ describe('LogViewer', () => {
     expect(screen.queryByText('Connecting...')).toBeNull();
   });
 
+  // A job that writes colour (vite, npm, most dev servers when their output is not a TTY but FORCE_COLOR or CI is
+  // set) puts escape sequences in its log. The pane has its own palette and cannot paint them, so they showed
+  // as "[90m[2m(client)[22m[39m" around the text.
+  it('shows the text of a coloured line without its escape sequences', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    renderInRouter(<LogViewer jobId="j1" />);
+    const es = MockEventSource.instance!;
+
+    act(() => {
+      es.onopen!();
+      es.onmessage!({ data: '[frontend] \u001b[2m20:38:39\u001b[22m \u001b[36m\u001b[1m[vite]\u001b[22m\u001b[39m \u001b[90m(client)\u001b[39m hmr update' });
+    });
+
+    expect(screen.getByText('[frontend] 20:38:39 [vite] (client) hmr update')).toBeInTheDocument();
+  });
+
   it('shows "No log output yet" when connected but no lines received', () => {
     vi.stubGlobal('EventSource', MockEventSource);
     renderInRouter(<LogViewer jobId="j1" />);
