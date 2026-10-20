@@ -63,9 +63,10 @@ export function validateJob(job: Partial<Job>): void {
     // silent truncation would drop the end of what someone wrote without telling them.
     const length = job.description.trim().length;
     if (length > DESCRIPTION_MAX_LENGTH) {
+      const excess = length - DESCRIPTION_MAX_LENGTH;
       throw new Error(
         `Job description must be ${DESCRIPTION_MAX_LENGTH} characters or fewer (got: ${length}). `
-        + `Shorten it by ${length - DESCRIPTION_MAX_LENGTH} characters.`,
+        + `Shorten it by ${excess} ${excess === 1 ? 'character' : 'characters'}.`,
       );
     }
   }

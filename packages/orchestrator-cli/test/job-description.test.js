@@ -95,6 +95,11 @@ describe('the 2000 character limit', () => {
     );
   });
 
+  test('the message says how much to cut, in the singular for one character', () => {
+    assert.throws(() => validateJob(cronJob({ description: 'x'.repeat(2001) })), /Shorten it by 1 character\./);
+    assert.throws(() => validateJob(cronJob({ description: 'x'.repeat(2005) })), /Shorten it by 5 characters\./);
+  });
+
   test('the limit applies to the trimmed text, so padding does not count', () => {
     const { registry } = makeEnv(cronJob({ description: `  ${'x'.repeat(2000)}  ` }));
     assert.equal(registry.get('j1').description.length, 2000);
