@@ -153,13 +153,14 @@ No job command, environment, `cwd` or secret is in the reply. `/api/health` take
 ## Resource monitor
 
 While a job runs, the daemon samples the CPU and RAM of its whole process tree every 2 seconds. From
-the job's third successful run on it holds the run to twice that baseline (the hard budget) and kills
-it after 3 consecutive samples over it. Everything it sees is in the job's own log
-(`orch logs --job <id>`):
+the job's third successful run on it holds the run to 3 times that baseline (the hard budget) and kills
+it once it stays over for 30 seconds (15 consecutive samples). Warning budget (soft): 1.5 times the
+baseline. All of this is tunable per job, see "Per-job limits". Everything it sees is in the job's own
+log (`orch logs --job <id>`):
 
 ```
-[resource-monitor] Over hard budget 1/3 (CPU: ... / RAM: 147MB threshold: 130MB)
-[resource-monitor] Hard limit exceeded for 3/3 consecutive samples (...) - killing the process tree
+[resource-monitor] Over hard budget 1/15 (CPU: ... / RAM: 147MB threshold: 130MB)
+[resource-monitor] Hard limit exceeded for 15/15 consecutive samples (...) - killing the process tree
 [resource-monitor] Process tree at kill: 3 of 4 processes counted; biggest: pid 4242 node.exe (parent 1000) 120MB, ...
 [job:finished] exitCode=1 duration=41.2s reason=resource-limit
 ```
@@ -168,6 +169,32 @@ it after 3 consecutive samples over it. Everything it sees is in the job's own l
 processes counted" part says how many processes the tree walk offered against how many were attributed
 to the job: a process refused as not the job's (it predates the job, or hangs off a recycled pid) is
 the difference between a total that is the job's and one that is not.
+
+### Per-job limits -- `resourceLimits`
+
+Optional object on a job; every key is optional, a missing key takes the default. Defaults are more
+tolerant than before (2x / 1.2x / 3 samples = 6 s).
+
+| Key | Meaning | Allowed | Default |
+|-----|---------|---------|---------|
+| `enforce` | What a sustained breach does | `kill`, `warn`, `off` | `kill` |
+| `hardFactor` | Hard budget, times the baseline | number > 1 and <= 100 | 3 |
+| `softFactor` | Warning budget, times the baseline | number > 1 and < `hardFactor` | 1.5 |
+| `sustainSeconds` | How long the hard budget must stay exceeded; samples needed = `ceil(sustainSeconds / 2)` | integer 2-3600 | 30 |
+| `maxCpuPct` | Absolute CPU ceiling, replaces the factor-derived hard CPU budget | number > 0 | none |
+| `maxRamMb` | Absolute RAM ceiling, replaces the factor-derived hard RAM budget | number > 0 | none |
+
+- Factors need the baseline (3 measured runs). A ceiling does not: with `maxRamMb` set the hard RAM budget exists from the first run. A resource with neither has no hard budget.
+- A refused value names the field, the value and the range; `softFactor`/`hardFactor` are compared with the defaults for the one you did not set.
+- `enforce: warn`: a sustained breach writes `[resource-monitor] ... would be killed (enforce: warn)` in the job log and publishes `job.resource_hard_limit` with `enforced: false`, once per continuous breach (again after the job went back under). Nothing is killed and the run is not marked `resource-limit`.
+- `enforce: off`: no soft or hard threshold is checked. Peaks, telemetry and history are still recorded.
+- `job.resource_hard_limit` carries `enforced` (`true` when the run is being killed). `hardThreshold` sides without a definition are `null`.
+
+| Where | How |
+|-------|-----|
+| CLI | `orch add/edit <id> --resource-enforce kill|warn|off --hard-factor 4 --soft-factor 2 --sustain 60 --max-cpu 150 --max-ram 2048`; an edit changes only the keys given |
+| Clear | `orch edit <id> --unset resourceLimits` (all) or `--unset resourceLimits.<key>` (one) |
+| Inspect | `orch show <id>` (JSON field `resourceLimits`); also in `get-job`, `list-jobs`, export/import, `edit-job` (`updates.resourceLimits` replaces the whole object) |
 
 ### What the baseline is made of
 
@@ -192,7 +219,7 @@ to write it is reported once in the job's log and never affects the run.
 
 | `kind` | When | Fields besides `t`, `run`, `pid` |
 |--------|------|----------------------------------|
-| `start` | The run begins | `soft`, `hard`: the `{ cpuPct, ramMb }` thresholds it is held to, or `null` before there is a baseline |
+| `start` | The run begins | `soft`, `hard`: the `{ cpuPct, ramMb }` thresholds it is held to, or `null` (a side of `hard` is `null` when only the other has a ceiling); `enforce`; `sustainSamples` |
 | `sample` | Every 2 s | `cpuPct`, `ramMb`, `walked`, `counted`, and the 5 biggest `processes` (`pid`, `ppid`, `ramMb`, `cpuPct`) |
 | `resource-kill` | The monitor decides to kill | `consecutiveSamples`, `cpuPct`, `ramMb` |
 | `end` | The run closes | `exitCode`, `durationMs`, `reason` (`timeout`, `manual-kill`, `resource-limit`, absent for an ordinary finish) |
@@ -218,7 +245,28 @@ log viewer lists a job's runs by file name.
 - Retention: 2 MiB per file, one older file (about 4 MiB per job). Older runs are gone: the UI says so.
 - Cost: both files are streamed once and only the wanted run's lines are parsed; about 15-25 ms for 4.5 MiB measured on this machine, regardless of where the run sits in the files.
 - The chart refreshes every 5 s while the run is going; a finished run is read once.
-- The run history marks a peak above the hard budget (2x the average peak of the last successful runs, `GET /api/jobs/:jobId/resource-baseline`); with fewer than 3 measured runs the tooltip says "no budget yet".
+- The run history marks a peak above the hard budget (the baseline times 3 by default, `GET /api/jobs/:jobId/resource-baseline`); with fewer than 3 measured runs the tooltip says "no budget yet".
+
+### Consumption history
+
+One line per closed run (also killed, timed-out and late-found runs) in `<configDir>/resource-history/<jobId>.ndjson`, kept far longer than the telemetry: the newest 500 per job (the file is rewritten atomically when it grows past that). A write failure is reported once in the run's log and never affects the run. The file is not removed when the job is deleted (same as the telemetry files).
+
+```json
+{ "startedAt": "...", "finishedAt": "...", "durationMs": 41200, "exitCode": 0, "endReason": "resource-limit",
+  "peakCpuPct": 35.2, "peakRamMb": 410.5, "avgCpuPct": 12.1, "avgRamMb": 188.4, "samples": 20,
+  "soft": { "cpuPct": 15, "ramMb": 150 }, "hard": { "cpuPct": 30, "ramMb": 300 }, "enforce": "kill" }
+```
+
+- `endReason` is absent for an ordinary end; `exitCode` is `null` for a cancelled run.
+- `avgCpuPct`/`avgRamMb`: mean of the samples this daemon took; `null` (and `samples: 0`) when it took none, e.g. a run found already ended after a restart. A run followed again after a restart averages only the samples taken since.
+- `soft`/`hard`: the budgets the run was held to, `null` when none existed; a side of `hard` is `null` when undefined. Always `null` for a run found already ended.
+
+| Layer | Entry point |
+|-------|-------------|
+| Daemon RPC | `get-resource-history` `{ jobId, limit? }`, `limit` a whole number 1-500, default 100 |
+| HTTP | `GET /api/jobs/:jobId/resource-history?limit=` |
+
+Answer: `{ runs: [...newest first], total, retention: 500 }`. `total` is the number of runs stored; a job without history answers `{ runs: [], total: 0, retention: 500 }`. An unknown job is refused like `get-run-telemetry`.
 
 ## app-core module
 

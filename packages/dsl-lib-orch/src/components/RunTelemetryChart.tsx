@@ -4,9 +4,10 @@ import React from 'react';
  * The picture and the words around it, apart from the component that fetches the data: nothing here
  * touches the network, so it is drawn from a payload alone.
  */
+/** A side is null when nothing defines it: an absolute ceiling for the other resource only, and no baseline yet. */
 interface Threshold {
-  cpuPct: number;
-  ramMb: number;
+  cpuPct: number | null;
+  ramMb: number | null;
 }
 
 /** The payload of GET /api/jobs/:jobId/telemetry; see orchestrator-cli/src/run-telemetry.ts. */

@@ -155,6 +155,32 @@ describe('serving the dashboard routes through the module', () => {
     await app.close();
   });
 
+  it('serves the resource history of a job, the limit passed through, from the daemon', async () => {
+    const seen: unknown[] = [];
+    const { app } = await boot(async (command, payload) => {
+      seen.push([command, payload]);
+      return { runs: [], total: 0, retention: 500 };
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/j1/resource-history?limit=20' });
+
+    // A 404 here means the route is not in ALLOWED_ROUTES: published routes are the only ones the module serves.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ runs: [], total: 0, retention: 500 });
+    expect(seen).toContainEqual(['get-resource-history', { jobId: 'j1', limit: 20 }]);
+    await app.close();
+  });
+
+  it('refuses an out-of-range resource history limit with a 400 that names the range', async () => {
+    const { app } = await boot(async () => ({}));
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/j1/resource-history?limit=501' });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/1 to 500/);
+    await app.close();
+  });
+
   it('serves the daemon status from get-daemon-info', async () => {
     const seen: unknown[] = [];
     const { app } = await boot(async (command, payload) => {

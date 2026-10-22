@@ -11,6 +11,7 @@ export { TriggerButton } from './components/TriggerButton.js';
 export { EnableToggle } from './components/EnableToggle.js';
 export { RunHistory } from './components/RunHistory.js';
 export { RunTelemetry } from './components/RunTelemetry.js';
+export { ResourceHistory } from './components/ResourceHistory.js';
 export { DaemonStatus } from './components/DaemonStatus.js';
 export { JobCard } from './components/JobCard.js';
 export { JobForm } from './components/JobForm.js';

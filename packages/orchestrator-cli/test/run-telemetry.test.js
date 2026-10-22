@@ -56,6 +56,16 @@ describe('readRunTelemetry', () => {
     assert.deepEqual(result.samples.map(s => [s.cpuPct, s.ramMb]), [[50, 500]]);
   });
 
+  test('a threshold side nothing defines (an absolute RAM ceiling and no baseline) is null, the other side stays', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', [start(RUN_A, { hard: { cpuPct: null, ramMb: 512 } }), sample(RUN_A, 2, 10, 100)]);
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.deepEqual(result.hard, { cpuPct: null, ramMb: 512 });
+    assert.equal(result.soft, null);
+  });
+
   test('answers the run asked for, by its startedAt', async () => {
     const dir = tmpDir();
     write(dir, 'j', [start(RUN_A), sample(RUN_A, 2, 10, 100), start(RUN_B), sample(RUN_B, 2, 50, 500)]);

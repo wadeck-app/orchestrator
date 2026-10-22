@@ -27,6 +27,8 @@ import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
+import { resolveResourceLimits, RESOURCE_LIMIT_DEFAULTS, type EffectiveResourceLimits } from './resource-limits.js';
+import { appendResourceHistory, type ResourceHistoryRecord } from './resource-history.js';
 import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
 
@@ -37,7 +39,16 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
 }
 
 /** What following a run needs to know about it. */
-type MonitorContext = Omit<RunContext, 'telemetry'>;
+type MonitorContext = Omit<RunContext, 'telemetry' | 'usage'>;
+
+/** What the monitor saw of one run, handed to the end of the run for the long consumption history. */
+interface RunUsage {
+  samples: number;
+  cpuSum:  number;
+  ramSum:  number;
+  /** The budgets the run was held to. */
+  limits:  EffectiveResourceLimits;
+}
 
 /** What a run found again after a restart brings with it. */
 interface ResumeState {
@@ -53,6 +64,8 @@ interface RunContext {
   pid:       number | null;
   jobLogger: RunLogger;
   telemetry: JobTelemetry | null;
+  /** Absent for a run the daemon did not watch (found already ended after a restart). */
+  usage?:    RunUsage;
   /** Whether the run before this one failed, read before this one was recorded. */
   previousRunFailed: boolean;
 }
@@ -107,6 +120,8 @@ interface FinishOptions {
 }
 
 const LIVE_FINISH: FinishOptions = { late: false, actionsAllowed: true };
+
+type RunHistoryReason = ResourceHistoryRecord['endReason'];
 
 /** How a run ended. `exitCode` is null for a run the user cancelled. */
 interface RunOutcome {
@@ -165,6 +180,12 @@ interface SchedulerOptions {
    * sampler for longer than that to provoke it.
    */
   sampleIntervalMs?:      number;
+  /**
+   * Replaces, for every job, the number of consecutive samples over the hard budget that make a breach
+   * sustained (normally resourceLimits.sustainSeconds divided by the sample interval, 15 by default).
+   * Lowered in tests, which would otherwise wait the 2 seconds that is the smallest sustainSeconds.
+   */
+  sustainSamples?:        number;
   /**
    * The passage of time. Defaults to the real clock.
    *
@@ -454,6 +475,7 @@ export class Scheduler extends EventEmitter {
   private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
   private readonly _processName:     (pid: number) => Promise<string | undefined>;
   private readonly _sampleIntervalMs: number;
+  private readonly _sustainSamples: number | undefined;
   private readonly _retryCounters  = new Map<string, number>();
   /**
    * Live processes per job, for maxConcurrency and runningCount(). A counter of its own so that the
@@ -498,6 +520,7 @@ export class Scheduler extends EventEmitter {
     this._sampleUsage           = options.sampleUsage           ?? sampleProcessTree;
     this._processName           = options.processName           ?? lookupProcessName;
     this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
+    this._sustainSamples        = options.sustainSamples;
     // Said out loud rather than swallowed: a deadline callback that throws is a job that will not run,
     // and the queue keeps going so one broken job cannot stop the others. Silence here would make the
     // difference invisible.
@@ -1002,6 +1025,36 @@ export class Scheduler extends EventEmitter {
     } catch (err) {
       jobLogger.write(`[resource-monitor] no telemetry kept for this run: ${getErrorMessage(err)}`);
       return null;
+    }
+  }
+
+  /**
+   * Appends this run to the job's long consumption history. A record, never a duty: a failure is said once
+   * in the run's own log (a run writes one record, so once is every time) and the run is untouched.
+   * A run the daemon did not watch has no samples: its peaks come from what was saved, its averages are null.
+   */
+  private _recordResourceHistory(ctx: RunContext, outcome: RunOutcome, reason: RunHistoryReason): void {
+    const { job, startedAt, jobLogger, usage } = ctx;
+    const round1 = (n: number): number => Math.round(n * 10) / 10;
+    const samples = usage?.samples ?? 0;
+    try {
+      appendResourceHistory(this._configDir, job.id, {
+        startedAt,
+        finishedAt: outcome.finishedAt,
+        durationMs: outcome.durationMs,
+        exitCode:   outcome.exitCode,
+        ...(reason !== undefined ? { endReason: reason } : {}),
+        peakCpuPct: round1(outcome.peakCpuPct),
+        peakRamMb:  round1(outcome.peakRamMb),
+        avgCpuPct:  usage !== undefined && samples > 0 ? round1(usage.cpuSum / samples) : null,
+        avgRamMb:   usage !== undefined && samples > 0 ? round1(usage.ramSum / samples) : null,
+        samples,
+        soft:       usage?.limits.soft ?? null,
+        hard:       usage?.limits.hard ?? null,
+        enforce:    usage?.limits.enforce ?? job.resourceLimits?.enforce ?? RESOURCE_LIMIT_DEFAULTS.enforce,
+      });
+    } catch (err) {
+      jobLogger.write(`[resource-monitor] the resource history of job "${job.id}" could not be written (${getErrorMessage(err)}); the run is unaffected, only this record is lost. Check that ${path.join(this._configDir, 'resource-history')} is a writable directory.`);
     }
   }
 
@@ -1758,6 +1811,7 @@ export class Scheduler extends EventEmitter {
         skipped: skipped || undefined,
       });
       telemetry?.event('end', { exitCode, durationMs, reason });
+      this._recordResourceHistory(ctx, outcome, reason);
       // For an end the daemon learned late, the line says when it really happened.
       const endedAt = finish.late ? new Date(finishedAt) : undefined;
       if (finish.late && timedOut) {
@@ -1978,18 +2032,25 @@ export class Scheduler extends EventEmitter {
     let peakCpuPct = resume?.peakCpuPct ?? 0;
     let peakRamMb  = resume?.peakRamMb  ?? 0;
     let softAlertSent = false;
-    // CPU% is spiky by nature, so the hard budget only kills once the breach is sustained
-    // over this many consecutive samples (2s apart). A single spike must never kill a job.
-    // 3 matches the consecutive-failure threshold used elsewhere (NOTIF-02).
+    // CPU% is spiky by nature, so the hard budget only counts once the breach is sustained over this
+    // many consecutive samples. A single spike must never kill a job. The number comes from the job's
+    // resourceLimits.sustainSeconds (default 30 s), see resource-limits.ts.
     let hardBreaches = 0;
-    const HARD_BREACHES_TO_KILL = 3;
-    const baseline      = this._state.getResourceBaseline(job.id);
-    const softThreshold = baseline ? { cpuPct: baseline.cpuPct * 1.2, ramMb: baseline.ramMb * 1.2 } : null;
-    const hardThreshold = baseline ? { cpuPct: baseline.cpuPct * 2.0, ramMb: baseline.ramMb * 2.0 } : null;
+    let warnedThisBreach = false;
+    const baseline = this._state.getResourceBaseline(job.id);
+    const resolved = resolveResourceLimits(job.resourceLimits, baseline, this._sampleIntervalMs);
+    const limits   = this._sustainSamples === undefined ? resolved : { ...resolved, sustainSamples: this._sustainSamples };
+    const softThreshold = limits.soft;
+    const hardThreshold = limits.hard;
+    const HARD_BREACHES_TO_KILL = limits.sustainSamples;
+    const checkThresholds = limits.enforce !== 'off';
+    const runUsage: RunUsage = { samples: 0, cpuSum: 0, ramSum: 0, limits };
     // What the monitor sees of this run, kept next to the job for later. Opened here so the thresholds
     // it enforces are the first thing in the record.
     const telemetry = this._openTelemetry(job.id, startedAt, pid, jobLogger);
-    telemetry?.event(resume === undefined ? 'start' : 'adopt', { soft: softThreshold, hard: hardThreshold });
+    telemetry?.event(resume === undefined ? 'start' : 'adopt', {
+      soft: softThreshold, hard: hardThreshold, enforce: limits.enforce, sustainSamples: limits.sustainSamples,
+    });
     /**
      * Writes the peaks measured so far onto the in-flight entry.
      *
@@ -2075,15 +2136,18 @@ export class Scheduler extends EventEmitter {
         this._sampleUsage(pid!).finally(() => {
           // A walk that was overtaken leaves the marker to whoever overtook it.
           if (walk === currentWalk) { samplingSince = null; }
-        }).then(usage => {
+        }).then(tree => {
           // Every pid in the tree vanished between the walk and the sample: the job is
           // finishing. Keep the timer -- the exit handler owns clearing it.
-          if (usage === null) {
+          if (tree === null) {
             return;
           }
-          const cpuPct = usage.cpuPct;
-          const ramMb  = usage.ramMb;
-          telemetry?.sample({ cpuPct, ramMb, walked: usage.walked, counted: usage.counted, processes: usage.processes });
+          const cpuPct = tree.cpuPct;
+          const ramMb  = tree.ramMb;
+          telemetry?.sample({ cpuPct, ramMb, walked: tree.walked, counted: tree.counted, processes: tree.processes });
+          runUsage.samples++;
+          runUsage.cpuSum += cpuPct;
+          runUsage.ramSum += ramMb;
           if (cpuPct > peakCpuPct) { peakCpuPct = cpuPct; peakDirty = true; }
           if (ramMb  > peakRamMb)  { peakRamMb  = ramMb;  peakDirty = true; }
           // Throttled here rather than inside flushPeaks, so the kill paths below can force a
@@ -2091,10 +2155,18 @@ export class Scheduler extends EventEmitter {
           if (peakDirty && Date.now() - peakFlushedAt >= this._peakFlushMs) {
             flushPeaks();
           }
-          const overHard = hardThreshold !== null && (cpuPct > hardThreshold.cpuPct || ramMb > hardThreshold.ramMb);
+          // enforce: off checks nothing; the peaks, the telemetry and the history above are still kept.
+          if (!checkThresholds) {
+            return;
+          }
+          const overHard = hardThreshold !== null
+            && ((hardThreshold.cpuPct !== null && cpuPct > hardThreshold.cpuPct)
+              || (hardThreshold.ramMb !== null && ramMb > hardThreshold.ramMb));
           // Any sample back under the hard budget means the spike was transient.
           if (!overHard) {
             hardBreaches = 0;
+            // A breach that ended and begins again is a new one: announced again in warn mode.
+            warnedThisBreach = false;
           }
           // Warn on the soft budget independently of the hard one. Gating this behind "not over
           // hard" meant a job that jumped straight past the hard threshold was killed on the
@@ -2108,10 +2180,20 @@ export class Scheduler extends EventEmitter {
           }
           if (overHard) {
             hardBreaches++;
-            const over = `CPU: ${cpuPct.toFixed(1)}% threshold: ${hardThreshold!.cpuPct.toFixed(1)}% / RAM: ${ramMb.toFixed(0)}MB threshold: ${hardThreshold!.ramMb.toFixed(0)}MB`;
+            const cpuLimit = hardThreshold!.cpuPct === null ? 'none' : `${hardThreshold!.cpuPct.toFixed(1)}%`;
+            const ramLimit = hardThreshold!.ramMb  === null ? 'none' : `${hardThreshold!.ramMb.toFixed(0)}MB`;
+            const over = `CPU: ${cpuPct.toFixed(1)}% threshold: ${cpuLimit} / RAM: ${ramMb.toFixed(0)}MB threshold: ${ramLimit}`;
             if (hardBreaches < HARD_BREACHES_TO_KILL) {
               // Over budget but not yet sustained: record it and leave the job alone.
               jobLogger.write(`[resource-monitor] Over hard budget ${hardBreaches}/${HARD_BREACHES_TO_KILL} (${over})`);
+            } else if (limits.enforce === 'warn') {
+              // Said once per continuous breach, not every sample: the log would otherwise repeat the
+              // same sentence every two seconds for as long as the job stays heavy.
+              if (!warnedThisBreach) {
+                warnedThisBreach = true;
+                jobLogger.write(`[resource-monitor] Hard limit exceeded for ${hardBreaches}/${HARD_BREACHES_TO_KILL} consecutive samples (${over}) - would be killed (enforce: warn), nothing is killed`);
+                this._eventPublisher.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches, enforced: false });
+              }
             } else if (!killing) {
               // Guarded even with the in-flight check above: a walk that had already resolved when
               // the kill started must not announce a second one. One kill, one event, one _killChild.
@@ -2123,7 +2205,7 @@ export class Scheduler extends EventEmitter {
               // that left only that read as the job failing by itself ("Over hard budget 2/3", then
               // "[job:finished] exitCode=1").
               jobLogger.write(`[resource-monitor] Hard limit exceeded for ${hardBreaches}/${HARD_BREACHES_TO_KILL} consecutive samples (${over}) - killing the process tree`);
-              this._eventPublisher.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches });
+              this._eventPublisher.publish('job.resource_hard_limit', { jobId: job.id, label: job.label, cpuPct, ramMb, hardThreshold, consecutiveSamples: hardBreaches, enforced: true });
               resourceTimer?.cancel();
               // Forced before the kill: the numbers that justified killing this job are the ones
               // most worth keeping, and clearing the timer above means no later sample will write.
@@ -2131,7 +2213,7 @@ export class Scheduler extends EventEmitter {
               telemetry?.event('resource-kill', { consecutiveSamples: hardBreaches, cpuPct, ramMb });
               // Names are looked up while the processes are still alive, so the kill waits for them,
               // bounded. A job that ended on its own meanwhile is left alone.
-              void this._describeTree(usage).then((line) => {
+              void this._describeTree(tree).then((line) => {
                 if (line !== null) {
                   jobLogger.write(line);
                 }
@@ -2210,7 +2292,7 @@ export class Scheduler extends EventEmitter {
         // daemon does not find it and do it all again.
         const ledger = child instanceof SupervisedChild ? new EffectLedger(path.join(child.runDir, 'effects.json')) : undefined;
         this._finishRun(
-          { job, trigger, startedAt, pid, jobLogger, telemetry, previousRunFailed },
+          { job, trigger, startedAt, pid, jobLogger, telemetry, usage: runUsage, previousRunFailed },
           { exitCode, finishedAt, durationMs, cancelledByUser, timedOut, killedByResourceLimit, peakCpuPct, peakRamMb },
           ledger === undefined ? LIVE_FINISH : { ...LIVE_FINISH, ledger },
         );

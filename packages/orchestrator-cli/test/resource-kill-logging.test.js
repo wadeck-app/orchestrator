@@ -73,7 +73,7 @@ async function runKilledJob(dir, id, extra = {}) {
   seedTinyBaseline(state, id);
   registry.add(busyJob(dir, id, 20000));
   const sched = new Scheduler(registry, state, {
-    configDir: dir, liveness: async () => false, sampleIntervalMs: 25,
+    configDir: dir, liveness: async () => false, sampleIntervalMs: 25, sustainSamples: 3,
     sampleUsage: async () => OVER_BUDGET,
     processName: async (pid) => ({ 4242: 'chatgpt-scraper.exe', 4243: 'node.exe' })[pid],
     ...extra,

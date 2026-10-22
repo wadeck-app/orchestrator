@@ -12,7 +12,7 @@ import { LIB_ENTRIES } from '../src/paths.js';
 const EXPECTED = [
   'AuditEntryIcon', 'AuditEntryRow', 'AuditList', 'DaemonStatus', 'DesignSwitcher', 'EnableToggle', 'FailureOverlay', 'JobCard',
   'JobCardGrid', 'JobConfigDisplay', 'JobFilterChips', 'JobForm', 'JobFormSection', 'JobStatusBadge', 'JobToggle',
-  'LogPageBreadcrumb', 'LogViewer', 'MutationFeedback', 'NavStats', 'NextFireCountdown', 'RunHistory', 'RunTelemetry',
+  'LogPageBreadcrumb', 'LogViewer', 'MutationFeedback', 'NavStats', 'NextFireCountdown', 'ResourceHistory', 'RunHistory', 'RunTelemetry',
   'RunningAlertDetail', 'RunningBannerDetail', 'RunningInlineDetail', 'ScheduleTimeline', 'SearchBar',
   'TriggerBadge', 'TriggerButton',
 ];
@@ -20,8 +20,8 @@ const EXPECTED = [
 describe('createOrchLibEntries', () => {
   const entries = createOrchLibEntries({ apiBase: '/api/modules/orchestrator', routeBase: '/modules/orchestrator' });
 
-  it('exports the 29 components the module ships (DaemonStatus is the newest)', () => {
-    expect(EXPECTED).toHaveLength(29);
+  it('exports the 30 components the module ships (ResourceHistory is the newest)', () => {
+    expect(EXPECTED).toHaveLength(30);
     expect(entries.map(e => e.name).sort()).toEqual(EXPECTED);
   });
 

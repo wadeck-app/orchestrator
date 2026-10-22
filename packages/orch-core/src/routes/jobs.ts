@@ -332,7 +332,34 @@ export async function jobsRoutes(
     });
   });
 
-  fastify.post('/api/jobs/:id/dry-run', async (req, reply) => {
+  // The peaks, averages and thresholds of the job's last runs, newest first. `limit` is the daemon's own
+  // 1..500 (it keeps 500 runs); a value outside it is refused here with the range, not clamped or passed on.
+  fastify.get('/api/jobs/:jobId/resource-history', async (req, reply) => {
+    const { limit } = req.query as { limit?: unknown };
+    let parsedLimit: number | undefined;
+    if (limit !== undefined) {
+      if (typeof limit !== 'string' || !/^[0-9]+$/.test(limit) || Number(limit) < 1 || Number(limit) > 500) {
+        return reply.code(400).send({ error: 'limit must be an integer from 1 to 500 (the number of runs to return), or omitted for the daemon default of 100' });
+      }
+      parsedLimit = Number(limit);
+    }
+    return guard(reply, async () => {
+      const { jobId } = req.params as { jobId: string };
+      try {
+        const history = await proxy.send('get-resource-history', parsedLimit === undefined ? { jobId } : { jobId, limit: parsedLimit });
+        return reply.send(history);
+      } catch (err) {
+        // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+        const message = err instanceof Error ? err.message : String(err);
+        if (!(err instanceof DaemonUnavailableError) && message.startsWith('Job not found')) {
+          return reply.code(404).send({ error: message });
+        }
+        throw err;
+      }
+    });
+  });
+
+  fastify.post('/api/jobs/:id/dry-run',async (req, reply) => {
     return guard(reply, async () => {
       const result = await proxy.send('dry-run-job', { id: (req.params as { id: string }).id });
       return reply.send(result);

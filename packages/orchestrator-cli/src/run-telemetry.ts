@@ -6,9 +6,10 @@ import { rotatedPath, telemetryPath, type TelemetryLine } from './job-telemetry.
 /** The most points one answer carries, whatever the length of the run: a UI cannot draw more than that legibly. */
 export const MAX_TELEMETRY_POINTS = 600;
 
+/** A side is null when nothing defines it: an absolute ceiling for the other resource only, and no baseline yet. */
 export interface TelemetryThreshold {
-  cpuPct: number;
-  ramMb: number;
+  cpuPct: number | null;
+  ramMb: number | null;
 }
 
 export interface RunTelemetryPoint {
@@ -98,7 +99,9 @@ function asThreshold(v: unknown): TelemetryThreshold | null {
     return null;
   }
   const { cpuPct, ramMb } = v as { cpuPct?: unknown; ramMb?: unknown };
-  return typeof cpuPct === 'number' && typeof ramMb === 'number' ? { cpuPct, ramMb } : null;
+  const cpu = typeof cpuPct === 'number' ? cpuPct : null;
+  const ram = typeof ramMb === 'number' ? ramMb : null;
+  return cpu === null && ram === null ? null : { cpuPct: cpu, ramMb: ram };
 }
 
 function num(v: unknown): number {

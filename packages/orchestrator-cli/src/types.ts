@@ -16,6 +16,29 @@ export interface LivenessConfig {
   command?: string;
 }
 
+/** What the resource monitor does when a run stays over its hard budget. */
+export const RESOURCE_ENFORCE_MODES = ['kill', 'warn', 'off'] as const;
+export type ResourceEnforce = typeof RESOURCE_ENFORCE_MODES[number];
+
+/**
+ * Per-job tuning of the resource monitor. Every key is optional; see resource-limits.ts for the defaults,
+ * the ranges and how they combine.
+ */
+export interface ResourceLimits {
+  /** kill (default): end the run on a sustained breach. warn: log and publish, kill nothing. off: no threshold is checked. */
+  enforce?: ResourceEnforce;
+  /** Hard budget as a multiple of the baseline (mean of the last peaks). Finite, > 1, <= 100. Default 3. */
+  hardFactor?: number;
+  /** Soft (warning-only) budget as a multiple of the baseline. Finite, > 1, below hardFactor. Default 1.5. */
+  softFactor?: number;
+  /** How long the hard budget must stay exceeded before it counts. Integer 2..3600. Default 30. */
+  sustainSeconds?: number;
+  /** Absolute CPU ceiling in percent (> 0). Replaces the factor-derived hard CPU threshold; needs no baseline. */
+  maxCpuPct?: number;
+  /** Absolute RAM ceiling in MB (> 0). Replaces the factor-derived hard RAM threshold; needs no baseline. */
+  maxRamMb?: number;
+}
+
 /** The longest description a job may have, counted on the trimmed text. */
 export const DESCRIPTION_MAX_LENGTH = 2000;
 
@@ -35,6 +58,8 @@ export interface Job {
    * on scheduling.
    */
   description?: string;
+  /** Tunes the resource monitor for this job. Absent means the defaults. Clear it with `--unset resourceLimits`. */
+  resourceLimits?: ResourceLimits;
   enabled: boolean;
   /**
    * The window a cron job is allowed to fire in. Both ISO timestamps, both optional.
@@ -151,6 +176,7 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
   secrets:            'delete',
   dryRunSupported:    'delete',
   description:        'delete',
+  resourceLimits:     'delete',
   label:              (job) => job.id,
   triggerMode:        () => 'fire-and-forget',
 };
@@ -355,6 +381,8 @@ export type OrchestratorCommands = {
   'get-resource-baseline':  (payload?: unknown) => { cpuPct: number; ramMb: number } | null;
   /** One run's resource curve from the telemetry file; see run-telemetry.ts. `run` is its startedAt, default the newest. */
   'get-run-telemetry':      (payload?: unknown) => Promise<import('./run-telemetry.js').RunTelemetry>;
+  /** The newest runs' consumption, from <configDir>/resource-history; see resource-history.ts. `limit` 1..500, default 100. */
+  'get-resource-history':   (payload?: unknown) => import('./resource-history.js').ResourceHistory;
   'dry-run-job':   (payload?: unknown) => Promise<{ pid: number | null } | { exitCode: number | null } | { error: string }>;
   'list-secrets':  (payload?: unknown) => string[];
   'set-secret':    (payload?: unknown) => void;

@@ -242,3 +242,32 @@ describe('JobCard description', () => {
     expect(p.textContent).toBe('Visible text');
   });
 });
+
+// Resource limits matter on a card only when they depart from the defaults: a badge saying so, the values in its
+// title. A default job must not get an extra element or a taller card.
+describe('JobCard resource limits badge', () => {
+  function cardWith(resourceLimits: Job['resourceLimits']) {
+    return render(
+      <MemoryRouter>
+        <JobCard job={{ ...BASE_JOB, resourceLimits }} runHistory={[]} onTrigger={vi.fn()} onToggle={vi.fn()} />
+      </MemoryRouter>
+    );
+  }
+
+  it('names the enforcement when it is not kill, and lists the values in the title', () => {
+    const { container } = cardWith({ enforce: 'warn', hardFactor: 5 });
+
+    const badge = container.querySelector('[data-resource-limits]')!;
+    expect(badge.textContent).toBe('Resource limits: warn only');
+    expect(badge.getAttribute('title')).toContain('Hard factor: 5');
+    expect(badge.getAttribute('title')).toContain('Sustained for: 30 s');
+  });
+
+  it('says custom when only values are set', () => {
+    expect(cardWith({ maxRamMb: 512 }).container.querySelector('[data-resource-limits]')!.textContent).toBe('Resource limits: custom');
+  });
+
+  it.each([undefined, {}, { enforce: 'kill' as const }])('adds no element for the defaults (%j)', (limits) => {
+    expect(cardWith(limits).container.querySelector('[data-resource-limits]')).toBeNull();
+  });
+});

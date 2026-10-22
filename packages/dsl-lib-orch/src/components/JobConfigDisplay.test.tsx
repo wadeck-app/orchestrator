@@ -61,3 +61,20 @@ describe('JobConfigDisplay description', () => {
     expect(screen.queryByText('Description')).toBeNull();
   });
 });
+
+describe('JobConfigDisplay resource limits', () => {
+  it('lists the effective values when they are customised', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, resourceLimits: { enforce: 'warn', hardFactor: 5, maxRamMb: 512 } }} />);
+
+    expect(screen.getByText('Resource limits')).toBeInTheDocument();
+    expect(screen.getByText('Enforcement: warn only (the monitor never ends a run)')).toBeInTheDocument();
+    expect(screen.getByText('Hard factor: 5')).toBeInTheDocument();
+    expect(screen.getByText('Max RAM: 512 MB')).toBeInTheDocument();
+  });
+
+  it.each([undefined, {}, { enforce: 'kill' as const }])('shows nothing about them for the defaults (%j)', (limits) => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, resourceLimits: limits }} />);
+
+    expect(screen.queryByText('Resource limits')).toBeNull();
+  });
+});

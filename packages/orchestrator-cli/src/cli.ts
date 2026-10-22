@@ -2,7 +2,8 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, LivenessConfig, RuntimeEntry } from './types.js';
-import { UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
+import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits } from './types.js';
+import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
@@ -90,7 +91,8 @@ function has(argv: string[], name: string): boolean {
 interface FieldFlag {
   flag:  string;
   field: string;
-  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence';
+  /** 'resource' flags build the nested resourceLimits object, see resourceLimitFlags. */
+  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence' | 'resource';
 }
 
 const JOB_FIELD_FLAGS: FieldFlag[] = [
@@ -114,6 +116,12 @@ const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--env',                  field: 'env',                kind: 'map'         },
   { flag: '--on-exit-code',         field: 'onExitCode',         kind: 'map'         },
   { flag: '--dry-run-supported',    field: 'dryRunSupported',    kind: 'presence'    },
+  { flag: '--resource-enforce',     field: 'enforce',            kind: 'resource'    },
+  { flag: '--hard-factor',          field: 'hardFactor',         kind: 'resource'    },
+  { flag: '--soft-factor',          field: 'softFactor',         kind: 'resource'    },
+  { flag: '--sustain',              field: 'sustainSeconds',     kind: 'resource'    },
+  { flag: '--max-cpu',              field: 'maxCpuPct',          kind: 'resource'    },
+  { flag: '--max-ram',              field: 'maxRamMb',           kind: 'resource'    },
 ];
 
 /** Flags accepted alongside the field flags, so the unknown-flag check does not reject them. */
@@ -182,6 +190,10 @@ function mapFlag(argv: string[], name: string): Record<string, string> | undefin
 function collectFieldFlags(argv: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const { flag: name, field, kind } of JOB_FIELD_FLAGS) {
+    // Several flags, one nested field: read by resourceLimitFlags.
+    if (kind === 'resource') {
+      continue;
+    }
     if (kind === 'presence') {
       if (has(argv, name)) {
         out[field] = true;
@@ -228,6 +240,51 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
     }
   }
   return out;
+}
+
+const RESOURCE_FLAGS = JOB_FIELD_FLAGS.filter(f => f.kind === 'resource');
+
+/** The flag that sets a resourceLimits key, for an error that names what to type. */
+function resourceFlagOf(key: string): string | undefined {
+  return RESOURCE_FLAGS.find(f => f.field === key)?.flag;
+}
+
+/**
+ * The resourceLimits keys given as flags; undefined when none is. A flag with no value, or a number that
+ * is not one, is an error here; ranges are checked by resourceLimitsError on the whole object.
+ */
+function resourceLimitFlags(argv: string[]): ResourceLimits | undefined {
+  const out: Record<string, unknown> = {};
+  for (const { flag: name, field } of RESOURCE_FLAGS) {
+    if (!has(argv, name)) {
+      continue;
+    }
+    const raw = flag(argv, name);
+    if (raw === undefined) {
+      throw new Error(`${name} needs a value, but was followed by nothing.`);
+    }
+    if (field === 'enforce') {
+      out[field] = raw;
+      continue;
+    }
+    const n = raw.trim() === '' ? NaN : Number(raw);
+    if (!Number.isFinite(n)) {
+      throw new Error(`${name} expects a number, but got "${raw}".`);
+    }
+    out[field] = n;
+  }
+  return Object.keys(out).length === 0 ? undefined : out as ResourceLimits;
+}
+
+/** Throws the validation sentence for `limits`, with the flag to change appended; no-op when valid. */
+function checkResourceLimits(limits: ResourceLimits): void {
+  const problem = resourceLimitsError(limits);
+  if (problem === null) {
+    return;
+  }
+  const key = /resourceLimits\.(\w+)/.exec(problem)?.[1];
+  const flagName = key === undefined ? undefined : resourceFlagOf(key);
+  throw new Error(flagName === undefined ? problem : `${problem} (flag: ${flagName})`);
 }
 
 /**
@@ -426,7 +483,8 @@ Job inspection:
   orch show <id> [--json]      Show full job detail
                                JSON fields: id, type, label, command, schedule,
                                description (when set), delaySeconds, cwd, enabled,
-                               triggerMode, missedFiring, liveness, tags, timeoutSeconds
+                               triggerMode, missedFiring, liveness, tags, timeoutSeconds,
+                               resourceLimits (when set)
                                (orch list stays one line per job and does not show it;
                                orch list --json carries it)
   orch --pid                   Show daemon pid/port (no daemon required)
@@ -466,6 +524,18 @@ Job mutation:
   --dry-run-supported          Command accepts --dry-run (clear it with --unset)
   --retry-on-exit-codes, --retry-delays, --skip-exit-codes   See the sections below
 
+  Resource monitor, per job (stored as resourceLimits, shown by orch show). The monitor compares a run
+  with the mean of the job's last 10 successful peaks (the baseline, needs 3 runs); a run that stays over
+  the hard budget for --sustain seconds is acted on. Each edit changes only the keys you give:
+  --resource-enforce <mode>    kill | warn | off (default: kill). warn: log the breach and publish
+                               job.resource_hard_limit with enforced=false, kill nothing. off: no threshold checked
+  --hard-factor <x>            Hard budget = x times the baseline (default: 3; greater than 1, at most 100)
+  --soft-factor <x>            Warning budget = x times the baseline (default: 1.5; greater than 1, below --hard-factor)
+  --sustain <seconds>          How long the hard budget must stay exceeded (default: 30; whole number 2-3600)
+  --max-cpu <pct>              Absolute CPU ceiling, replaces the hard CPU budget; needs no baseline
+  --max-ram <mb>               Absolute RAM ceiling, replaces the hard RAM budget; needs no baseline
+  Clear them with: orch edit <id> --unset resourceLimits   (or --unset resourceLimits.<key>, e.g. resourceLimits.maxRamMb)
+
   An unrecognised flag is refused, not ignored: --timeout used to be silently dropped.
   orch add startup <id> --command <cmd> [--delay <seconds>] [--cwd <p>] [--label <t>]
   orch add --once <id> --delay <duration> --command <cmd> [--cwd <p>] [--label <t>]
@@ -478,7 +548,8 @@ Job mutation:
                                [--unset <field>[,<field>...]]  Clear an option instead of changing it
                                Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
                                maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
-                               skipExitCodes, liveness, label, triggerMode, description
+                               skipExitCodes, liveness, label, triggerMode, description, resourceLimits
+                               (resourceLimits.<key> clears one key)
                                Example: orch edit my-job --unset cwd
 
 Schedule format (cron jobs): standard 5-field cron -- min hour day month weekday
@@ -963,6 +1034,15 @@ Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
       }
+      try {
+        const resourceLimits = resourceLimitFlags(addRest);
+        if (resourceLimits !== undefined) {
+          checkResourceLimits(resourceLimits);
+          body['resourceLimits'] = resourceLimits;
+        }
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
       const liveness = buildLiveness(addRest);
       if (liveness) {
         body['liveness'] = liveness;
@@ -1114,6 +1194,50 @@ Usage: orch edit <id> --unset <field>[,<field>...]
 Example: orch edit my-job --unset cwd
 
 Fields that can be unset: ${Object.keys(UNSETTABLE_FIELDS).join(', ')}`, 4);
+      }
+      // An edit is a patch of the resourceLimits object too: the flags and the `resourceLimits.<key>`
+      // unsets are applied to the job's current limits here, and the result is sent as a whole.
+      const keyUnsets = unset.filter(f => f.startsWith('resourceLimits.'));
+      unset = unset.filter(f => !f.startsWith('resourceLimits.'));
+      let resourceFlags: ResourceLimits | undefined;
+      try {
+        resourceFlags = resourceLimitFlags(editRest);
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
+      if (unset.includes('resourceLimits') && (resourceFlags !== undefined || keyUnsets.length > 0)) {
+        errorExit(`Cannot clear resourceLimits (--unset resourceLimits) and change it in the same command -- drop `
+          + `--unset resourceLimits or the ${resourceFlags !== undefined ? 'resource flags' : '--unset resourceLimits.<key>'}.`, 4);
+      }
+      for (const entry of keyUnsets) {
+        const key = entry.slice('resourceLimits.'.length);
+        if (!(RESOURCE_LIMIT_KEYS as readonly string[]).includes(key)) {
+          errorExit(`Unknown resourceLimits key in "--unset ${entry}": "${key}". Keys: ${RESOURCE_LIMIT_KEYS.join(', ')}. `
+            + 'To clear all of them: orch edit <id> --unset resourceLimits', 4);
+        }
+        if (resourceFlags !== undefined && key in resourceFlags) {
+          errorExit(`Cannot set and unset resourceLimits.${key} in the same command -- drop one of ${resourceFlagOf(key)} and --unset ${entry}.`, 4);
+        }
+      }
+      if (resourceFlags !== undefined || keyUnsets.length > 0) {
+        const job = await send('get-job', { id }) as { resourceLimits?: ResourceLimits } | null;
+        if (!job) {
+          errorExit(`Job not found: "${id}". Run \`orch list\` to see the available job ids.`, 3);
+        }
+        const merged: Record<string, unknown> = { ...(job.resourceLimits ?? {}), ...(resourceFlags ?? {}) };
+        for (const entry of keyUnsets) {
+          delete merged[entry.slice('resourceLimits.'.length)];
+        }
+        if (Object.keys(merged).length === 0) {
+          unset.push('resourceLimits');
+        } else {
+          try {
+            checkResourceLimits(merged as ResourceLimits);
+          } catch (e) {
+            errorExit(getErrorMessage(e), 4);
+          }
+          updates['resourceLimits'] = merged;
+        }
       }
       for (const field of unset) {
         const problem = unsettableFieldError(field);

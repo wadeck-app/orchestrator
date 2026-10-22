@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Plus, Wand2 } from 'lucide-react';
 import { DESCRIPTION_MAX_LENGTH, getErrorMessage, type Job, type JobFormPayload, type MissedFiring, type LivenessConfig, type LivenessStrategy, type UnsettableJobField } from '../types.js';
 import { describeCron } from '../cron-describe.js';
+import { inputsFromLimits, limitsFromInputs, validateResourceLimitFields, type ResourceLimitErrors } from '../resource-limits.js';
+import { ResourceLimitsFields } from './ResourceLimitsFields.js';
 import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, FieldTextarea, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
@@ -85,6 +87,7 @@ interface FormErrors {
   schedule?: string;
   onceMoment?: string;
   activePeriod?: string;
+  resourceLimits?: ResourceLimitErrors;
 }
 
 // registry.ts validateJob() enforces this. Checked here too, so the field that is wrong gets named
@@ -213,6 +216,9 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     to: initial?.activeUntil ? new Date(initial.activeUntil) : null,
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // Collapsed unless the job already has limits: most jobs run on the defaults and the section is long.
+  const [limitInputs, setLimitInputs] = useState(() => inputsFromLimits(initial?.resourceLimits));
+  const [showLimits, setShowLimits] = useState(() => wasConfigured(initial?.resourceLimits));
   const [showBuilder, setShowBuilder] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>();
@@ -289,6 +295,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       else if (!schedule.trim()) {
         e.schedule = 'Schedule is required for cron jobs';
       }
+    }
+    // Same rules as the daemon, by field. A section left collapsed opens, or the refusal would be invisible.
+    const limitErrors = validateResourceLimitFields(limitsFromInputs(limitInputs));
+    if (Object.keys(limitErrors).length > 0) {
+      e.resourceLimits = limitErrors;
+      setShowLimits(true);
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -457,6 +469,16 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       }
       else {
         clearIfWasConfigured('dryRunSupported', initial?.dryRunSupported || undefined);
+      }
+
+      // Resource limits travel as one object. Boxes left empty are not sent (the daemon's defaults apply), and
+      // emptying all of them is how a stored object is cleared.
+      const limits = limitsFromInputs(limitInputs);
+      if (Object.keys(limits).length > 0) {
+        data.resourceLimits = limits;
+      }
+      else {
+        clearIfWasConfigured('resourceLimits', initial?.resourceLimits);
       }
 
       // Only when there is something to clear: an empty array would still reach the daemon and read
@@ -740,6 +762,16 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
             <label htmlFor="dryRunSupported" className="text-sm text-content">Supports dry run (appends --dry-run to command)</label>
           </div>
         </div>
+      )}
+
+      <div>
+        {/* violations-suppress: react/no-raw-button text-link toggle - same pattern as the advanced options toggle */}
+        <button type="button" className="text-xs text-primary hover:underline" aria-expanded={showLimits} onClick={() => setShowLimits(v => !v)}>
+          {showLimits ? '(hide) Resource limits' : '(show) Resource limits'}
+        </button>
+      </div>
+      {showLimits && (
+        <ResourceLimitsFields inputs={limitInputs} onChange={setLimitInputs} errors={errors?.resourceLimits ?? {}} />
       )}
 
       {/* Directly above the button that failed, so the cause is where the eye already is.

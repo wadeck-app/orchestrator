@@ -5,6 +5,7 @@ import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, l
 import { windowStateAt } from '../active-window.js';
 import { descriptionFirstLine } from '../job-description.js';
 import { describeAgo } from '../relative-time.js';
+import { describeResourceLimits, hasCustomLimits, limitsBadgeLabel } from '../resource-limits.js';
 import { END_REASON_PILL, JobStatusPill } from './JobStatusPill.js';
 import { LateMarker } from './LateMarker.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
@@ -245,6 +246,13 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
       {descriptionLine !== undefined && (
         <p data-job-description className="text-xs text-muted truncate -mt-1 mb-2" title={job.description}>
           {descriptionLine}
+        </p>
+      )}
+
+      {/* Only when the limits depart from the defaults, so a default card gains nothing. The values are the native title, like the description. */}
+      {job.resourceLimits !== undefined && hasCustomLimits(job.resourceLimits) && (
+        <p data-resource-limits className="text-xs text-muted mb-2" title={describeResourceLimits(job.resourceLimits).join('\n')}>
+          {limitsBadgeLabel(job.resourceLimits)}
         </p>
       )}
 

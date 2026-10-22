@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Job } from '../types.js';
+import { describeResourceLimits, hasCustomLimits } from '../resource-limits.js';
 
 export interface JobConfigDisplayProps { job: Job; }
 
@@ -27,6 +28,14 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
       <div><span className={LABEL_CLS}>Trigger mode</span><p className="mt-1 text-sm text-content">{job.triggerMode}</p></div>
       {job.missedFiring && <div><span className={LABEL_CLS}>Missed firing</span><p className="mt-1 text-sm text-content">{job.missedFiring}</p></div>}
       <div><span className={LABEL_CLS}>Timeout</span><p className="mt-1 text-sm text-content">{job.timeoutSeconds === 0 ? 'Disabled' : `${job.timeoutSeconds ?? 300}s`}</p></div>
+      {job.resourceLimits !== undefined && hasCustomLimits(job.resourceLimits) && (
+        <div>
+          <span className={LABEL_CLS}>Resource limits</span>
+          <ul className="mt-1 text-sm text-content">
+            {describeResourceLimits(job.resourceLimits).map(line => <li key={line}>{line}</li>)}
+          </ul>
+        </div>
+      )}
       {job.maxConcurrency !== undefined && <div><span className={LABEL_CLS}>Max concurrent runs</span><p className="mt-1 text-sm text-content">{job.maxConcurrency}</p></div>}
     </div>
   );

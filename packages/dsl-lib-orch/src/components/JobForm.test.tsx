@@ -767,3 +767,145 @@ describe('JobForm description', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
   });
 });
+
+// Resource limits: a collapsed section, closed unless the job already has some. Empty fields are not sent
+// (the daemon's defaults apply); emptying every field clears the whole object through `unset`.
+describe('JobForm resource limits', () => {
+  const openLimits = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: /Resource limits/ }));
+  };
+
+  it('is collapsed for a job with no limits, and opens on demand', () => {
+    renderEditForm(EXISTING_CRON, vi.fn().mockResolvedValue(undefined));
+
+    expect(screen.getByRole('button', { name: /Resource limits/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText(/^Hard factor/)).toBeNull();
+
+    openLimits();
+
+    expect(screen.getByLabelText(/^Hard factor/)).toBeInTheDocument();
+  });
+
+  it('is open, with the values, for a job that has limits', () => {
+    renderEditForm({ ...EXISTING_CRON, resourceLimits: { enforce: 'warn', hardFactor: 5, maxRamMb: 512 } }, vi.fn().mockResolvedValue(undefined));
+
+    expect(screen.getByRole('button', { name: /Resource limits/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText(/^Hard factor/)).toHaveValue(5);
+    expect(screen.getByLabelText(/^Max RAM/)).toHaveValue(512);
+    expect(screen.getByLabelText(/^Enforcement/)).toHaveValue('warn');
+  });
+
+  it('shows the daemon defaults as placeholders and explains each enforcement', () => {
+    renderEditForm(EXISTING_CRON, vi.fn().mockResolvedValue(undefined));
+    openLimits();
+
+    expect(screen.getByLabelText(/^Hard factor/)).toHaveAttribute('placeholder', '3');
+    expect(screen.getByLabelText(/^Soft factor/)).toHaveAttribute('placeholder', '1.5');
+    expect(screen.getByLabelText(/^Sustain/)).toHaveAttribute('placeholder', '30');
+    const select = screen.getByLabelText(/^Enforcement/);
+    expect(screen.getByText(/ends a run that stays over its hard limit/)).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: 'warn' } });
+    expect(screen.getByText(/never ends it/)).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: 'off' } });
+    expect(screen.getByText(/No limit is checked/)).toBeInTheDocument();
+  });
+
+  it('sends nothing when the section was never touched', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit)).not.toHaveProperty('resourceLimits');
+    expect(submitted(onSubmit)).not.toHaveProperty('unset');
+  });
+
+  it('sends only the fields filled in', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+    openLimits();
+
+    fireEvent.change(screen.getByLabelText(/^Enforcement/), { target: { value: 'warn' } });
+    fill(/^Hard factor/, '4.5');
+    fill(/^Sustain/, '60');
+    fill(/^Max CPU/, '150');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).resourceLimits).toEqual({ enforce: 'warn', hardFactor: 4.5, sustainSeconds: 60, maxCpuPct: 150 });
+  });
+
+  it('does not send the default enforcement on its own', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+    openLimits();
+
+    fill(/^Max RAM/, '256');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).resourceLimits).toEqual({ maxRamMb: 256 });
+  });
+
+  it('sends resourceLimits in unset, and not in the body, when every field of an existing one is emptied', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, resourceLimits: { enforce: 'warn', hardFactor: 5 } }, onSubmit);
+
+    fireEvent.change(screen.getByLabelText(/^Enforcement/), { target: { value: 'kill' } });
+    fill(/^Hard factor/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).unset).toEqual(['resourceLimits']);
+    expect(submitted(onSubmit)).not.toHaveProperty('resourceLimits');
+  });
+
+  it('refuses invalid values before submit, names each field, opens the section, and sends nothing', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+    openLimits();
+
+    fill(/^Hard factor/, '1');
+    fill(/^Soft factor/, '1');
+    fill(/^Sustain/, '1');
+    fill(/^Max CPU/, '0');
+    fill(/^Max RAM/, '-5');
+    saveButton().click();
+
+    const alerts = await screen.findAllByRole('alert');
+    const text = alerts.map(a => a.textContent).join('\n');
+    expect(text).toMatch(/hard factor/i);
+    expect(text).toMatch(/soft factor/i);
+    expect(text).toMatch(/2 to 3600/);
+    expect(text).toMatch(/max cpu/i);
+    expect(text).toMatch(/max ram/i);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('opens a collapsed section when a hidden value is invalid', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, resourceLimits: { hardFactor: 5 } }, onSubmit);
+    fill(/^Hard factor/, '500');
+    fireEvent.click(screen.getByRole('button', { name: /Resource limits/ }));
+    expect(screen.queryByLabelText(/^Hard factor/)).toBeNull();
+
+    saveButton().click();
+
+    expect(await screen.findByLabelText(/^Hard factor/)).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a soft factor not below a hard factor typed in the same form', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+    openLimits();
+
+    fill(/^Hard factor/, '2');
+    fill(/^Soft factor/, '2.5');
+    saveButton().click();
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/below the hard factor \(2\)/);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

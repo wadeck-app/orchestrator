@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const UI_TYPES = path.resolve(here, '../src/types.ts');
-const CLI_TYPES = path.resolve(here, '../../orchestrator-cli/src/types.ts');
+const CLI_SRC = path.resolve(here, '../../orchestrator-cli/src');
+const CLI_TYPES = path.join(CLI_SRC, 'types.ts');
 
 /*
  * The UI keeps its own copy of the daemon's types (it cannot import orchestrator-cli). A field the daemon
@@ -16,11 +17,30 @@ const UI_ONLY: Record<string, Record<string, string>> = {
   Job: {},
   RuntimeEntry: {},
   RestartResult: {},
+  ResourceLimits: {},
+  ResourceHistory: {},
+  ResourceHistoryRun: {},
 };
 const CLI_ONLY: Record<string, Record<string, string>> = {
   Job: {},
   RuntimeEntry: {},
   RestartResult: {},
+  ResourceLimits: {},
+  ResourceHistory: {},
+  ResourceHistoryRun: {},
+};
+
+/*
+ * Where the daemon declares each interface, and under which name when it differs from the UI's. The resource
+ * history is read from disk by resource-history.ts, which is why it is not in types.ts like the rest.
+ */
+const CLI_DECL: Record<string, { file: string; name: string }> = {
+  Job: { file: CLI_TYPES, name: 'Job' },
+  RuntimeEntry: { file: CLI_TYPES, name: 'RuntimeEntry' },
+  RestartResult: { file: CLI_TYPES, name: 'RestartResult' },
+  ResourceLimits: { file: CLI_TYPES, name: 'ResourceLimits' },
+  ResourceHistory: { file: path.join(CLI_SRC, 'resource-history.ts'), name: 'ResourceHistory' },
+  ResourceHistoryRun: { file: path.join(CLI_SRC, 'resource-history.ts'), name: 'ResourceHistoryRecord' },
 };
 
 /** Top-level field names of `export interface <name>`, comments stripped. Throws when the interface is missing. */
@@ -62,9 +82,9 @@ function fieldsOf(file: string, name: string): string[] {
   return fields;
 }
 
-describe.each(['Job', 'RuntimeEntry', 'RestartResult'])('%s: UI types.ts vs orchestrator-cli types.ts', (name) => {
+describe.each(Object.keys(CLI_DECL))('%s: UI types.ts vs the daemon declaration', (name) => {
   const ui = fieldsOf(UI_TYPES, name);
-  const cli = fieldsOf(CLI_TYPES, name);
+  const cli = fieldsOf(CLI_DECL[name].file, CLI_DECL[name].name);
 
   it('has no CLI field missing from the UI copy', () => {
     const missing = cli.filter((f) => !ui.includes(f) && !(f in CLI_ONLY[name]));

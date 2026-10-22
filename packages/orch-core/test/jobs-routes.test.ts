@@ -829,3 +829,70 @@ describe('GET /api/health uptime and GET /api/daemon', () => {
     expect(res.json()).toEqual({ error: 'daemon-not-running' });
   });
 });
+
+describe('GET /api/jobs/:jobId/resource-history', () => {
+  let app: FastifyInstance;
+  let sent: Array<{ cmd: string; payload: unknown }>;
+  let send: (cmd: string, payload?: unknown) => Promise<unknown>;
+
+  beforeEach(async () => {
+    app = fastify();
+    sent = [];
+    send = async (cmd, payload) => {
+      sent.push({ cmd, payload });
+      if (cmd === 'get-resource-history') {
+        return { runs: [], total: 0, retention: 500 };
+      }
+      throw new Error(`Unknown command: ${cmd}`);
+    };
+    await app.register(jobsRoutes, { proxy: { send: (cmd: string, payload?: unknown) => send(cmd, payload) }, idleTimer: { reset: () => {} } });
+    await app.ready();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('relays the daemon answer and asks without a limit when none is given (the daemon default applies)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/resource-history' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ runs: [], total: 0, retention: 500 });
+    expect(sent).toEqual([{ cmd: 'get-resource-history', payload: { jobId: 'job1' } }]);
+  });
+
+  it('passes the limit as a number', async () => {
+    await app.inject({ method: 'GET', url: '/api/jobs/job1/resource-history?limit=100' });
+    expect(sent).toEqual([{ cmd: 'get-resource-history', payload: { jobId: 'job1', limit: 100 } }]);
+  });
+
+  it.each(['0', '501', '-1', '1.5', 'abc', '', '10x'])('refuses limit=%s with a 400 that says the accepted range, and does not bother the daemon', async (limit) => {
+    const res = await app.inject({ method: 'GET', url: `/api/jobs/job1/resource-history?limit=${limit}` });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/limit must be an integer from 1 to 500/);
+    expect(sent).toEqual([]);
+  });
+
+  it('refuses a repeated limit', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/resource-history?limit=5&limit=6' });
+    expect(res.statusCode).toBe(400);
+    expect(sent).toEqual([]);
+  });
+
+  it('returns 503 when the daemon is not running, like its neighbours', async () => {
+    send = async () => { throw new DaemonUnavailableError(); };
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/resource-history' });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe('daemon-not-running');
+  });
+
+  it('answers 404 with the daemon sentence for an unknown job', async () => {
+    send = async () => { throw new Error('Job not found: "ghost"'); };
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/ghost/resource-history' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('Job not found: "ghost"');
+  });
+
+  it('lets any other daemon failure surface as an error, not as an empty success', async () => {
+    send = async () => { throw new Error('boom'); };
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/resource-history' });
+    expect(res.statusCode).toBe(500);
+  });
+});

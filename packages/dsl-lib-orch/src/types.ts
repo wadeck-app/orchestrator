@@ -37,6 +37,8 @@ export interface Job {
   scheduledAt?: string;
   command: string;
   cwd?: string | null;
+  /** How the resource monitor treats this job's runs. Absent means all defaults (kill at 3x the baseline held for 30 s). */
+  resourceLimits?: ResourceLimits;
   /** What the job is for: plain text, may contain line breaks, at most DESCRIPTION_MAX_LENGTH characters. Absent when none. */
   description?: string;
   enabled: boolean;
@@ -96,7 +98,7 @@ export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
   | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
-  | 'label' | 'triggerMode' | 'maxConcurrency' | 'description'
+  | 'label' | 'triggerMode' | 'maxConcurrency' | 'description' | 'resourceLimits'
   // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it
   // active now. Both are ordinary edits, so both must be clearable rather than only replaceable.
   | 'activeFrom' | 'activeUntil';
@@ -270,4 +272,59 @@ export function isRunFailed(entry: RuntimeEntry | null): boolean {
     return false;
   }
   return entry !== null && entry.exitCode != null && entry.exitCode !== 0;
+}
+
+/** What a job does when a run stays over its resource budget. Mirrors orchestrator-cli's types.ts. */
+export type ResourceEnforce = 'kill' | 'warn' | 'off';
+
+/**
+ * A job's resource-limit settings; every key is optional and an absent one takes the daemon's default
+ * (enforce 'kill', hardFactor 3, softFactor 1.5, sustainSeconds 30). The daemon refuses an invalid value
+ * with a sentence naming the field. Mirrors orchestrator-cli's types.ts.
+ */
+export interface ResourceLimits {
+  enforce?: ResourceEnforce;
+  /** Over baseline x this, for sustainSeconds, is a breach. Greater than 1 and at most 100. */
+  hardFactor?: number;
+  /** Warning threshold, baseline x this. Greater than 1 and below the hard factor. */
+  softFactor?: number;
+  /** How long a breach must last, whole seconds, 2 to 3600. */
+  sustainSeconds?: number;
+  /** Absolute CPU ceiling in percent, instead of a baseline-derived one. Greater than 0. */
+  maxCpuPct?: number;
+  /** Absolute RAM ceiling in MB, instead of a baseline-derived one. Greater than 0. */
+  maxRamMb?: number;
+}
+
+/** A pair of limits; a side is null when nothing defines it (an absolute ceiling for the other resource only, and no baseline yet). */
+export interface ResourceThreshold {
+  cpuPct: number | null;
+  ramMb: number | null;
+}
+
+/** One measured run in the answer of `GET /api/jobs/:jobId/resource-history` (the daemon's `get-resource-history`). */
+export interface ResourceHistoryRun {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  exitCode: number | null;
+  endReason?: 'timeout' | 'manual-kill' | 'resource-limit';
+  peakCpuPct: number | null;
+  peakRamMb: number | null;
+  avgCpuPct: number | null;
+  avgRamMb: number | null;
+  samples: number;
+  /** The thresholds this run was held to; null when none existed (no baseline yet, nothing absolute set), and a side may be null. */
+  soft: ResourceThreshold | null;
+  hard: ResourceThreshold | null;
+  enforce: ResourceEnforce;
+}
+
+/** The answer of `GET /api/jobs/:jobId/resource-history`: runs newest first. */
+export interface ResourceHistory {
+  runs: ResourceHistoryRun[];
+  /** Runs the daemon has for the job, which can exceed `runs.length` when a limit was asked for. */
+  total: number;
+  /** How many runs per job the daemon keeps. */
+  retention: number;
 }

@@ -118,6 +118,7 @@ import { LogViewer } from '../components/LogViewer.js'
 import { MutationFeedback } from '../components/MutationFeedback.js'
 import { NavStats } from '../components/NavStats.js'
 import { NextFireCountdown } from '../components/NextFireCountdown.js'
+import { ResourceHistory } from '../components/ResourceHistory.js'
 import { RunHistory } from '../components/RunHistory.js'
 import { RunTelemetry } from '../components/RunTelemetry.js'
 import { RunningAlertDetail } from '../components/RunningAlertDetail.js'
@@ -1818,6 +1819,15 @@ export const NextFireCountdownEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const ResourceHistoryEntry: ComponentRegistryEntry = {
+	name: 'ResourceHistory', category: 'composite', tags: ["resource","history","chart","cpu","ram","runs"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/ResourceHistory.js').ResourceHistoryProps['jobId']
+		return <ResourceHistory jobId={jobId} />
+	},
+}
+
 export const RunHistoryEntry: ComponentRegistryEntry = {
 	name: 'RunHistory', category: 'composite', tags: ["history","table","runs"],
 	nodeSchema: null as never,
@@ -2040,6 +2050,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	MutationFeedbackEntry,
 	NavStatsEntry,
 	NextFireCountdownEntry,
+	ResourceHistoryEntry,
 	RunHistoryEntry,
 	RunTelemetryEntry,
 	RunningAlertDetailEntry,

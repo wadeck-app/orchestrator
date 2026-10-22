@@ -486,7 +486,7 @@ describe('hard resource budget', () => {
     };
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25, sustainSamples: 3,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     await sched.trigger('burst');
@@ -516,7 +516,7 @@ describe('hard resource budget', () => {
     const sampleUsage = async () => ({ cpuPct: 5000, ramMb: 5000 });
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25, sustainSamples: 3,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     await sched.trigger('loud');
@@ -564,7 +564,7 @@ describe('hard resource budget', () => {
     };
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50, sustainSamples: 3,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     await sched.trigger('slowsample');
@@ -614,7 +614,7 @@ describe('hard resource budget', () => {
     };
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 50, sustainSamples: 3,
     });
     await sched.trigger('hung');
     await sched.stop();
@@ -764,7 +764,7 @@ describe('hard resource budget', () => {
     const sampleUsage = async () => ({ cpuPct: 5000, ramMb: 5000 });
 
     const sched = new Scheduler(registry, state, {
-      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25,
+      configDir: dir, liveness: async () => false, sampleUsage, sampleIntervalMs: 25, sustainSamples: 3,
       eventPublisher: { publish: (topic, payload) => events.push({ topic, payload }) },
     });
     const startedMs = Date.now();
@@ -801,26 +801,38 @@ describe('sampleProcessTree', () => {
     const { registry, state } = makeDeps(dir);
     const scriptPath = path.join(dir, 'busy.js');
     // Deriving a CPU percentage needs two samples of the same pid, so the job has to outlive
-    // at least two 2s ticks. It runs 10s rather than 3s because pidusage shells out to WMI on
-    // Windows, and on a CI runner that is slow enough that a 3s job ended with a single
-    // usable sample -- peakCpuPct stayed 0 and was recorded as undefined.
+    // at least two 2s ticks, and pidusage shells out to WMI on Windows: on a loaded CI runner a
+    // fixed-length job (3s, then 10s) still ended with a single usable sample, and peakCpuPct
+    // stayed 0 and was recorded as undefined (runs 427 and 436 for the 10s one). Lowering
+    // sampleIntervalMs did not help either (passed 4/4 locally, failed on the runner).
     //
-    // Do not shorten this, and do not shorten it by lowering sampleIntervalMs either. That was
-    // tried (250ms interval, 3s job) on the reasoning that serialised walks make a short interval
-    // buy MORE attempts: it passed 4/4 locally and then failed on the Windows runner with exactly
-    // the `undefined` this comment already described. What sets the floor here is WMI latency on a
-    // loaded runner, which a local machine does not reproduce, so local green proves nothing about
-    // it. 7s of suite time is the price of the only end-to-end check that the Peak CPU column is
-    // fed by the real path.
-    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 10000);');
+    // So the job does not have a length: it burns CPU until the test has SEEN a peak in the state
+    // (peakFlushMs: 0 writes a new peak at once) and then is told to stop through a file. A slow
+    // runner makes the test longer, not red; the 120s cap in the job and the 100s wait below keep a
+    // sampler that never answers a failure with a message instead of a hang.
+    const stopFile = path.join(dir, 'stop');
+    fs.writeFileSync(scriptPath, `
+      const fs = require('node:fs');
+      const t = Date.now();
+      while (Date.now() - t < 120000 && !fs.existsSync(${JSON.stringify(stopFile)})) {
+        const spin = Date.now();
+        while (Date.now() - spin < 200);
+      }
+    `);
     registry.add({
       id: 'cpu-burner', type: 'startup', delaySeconds: 0,
       command: `"${process.execPath}" "${scriptPath}"`,
       enabled: true, triggerMode: 'wait', liveness: null,
     });
 
-    const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false });
-    await sched.trigger('cpu-burner');
+    const sched = new Scheduler(registry, state, { configDir: dir, liveness: async () => false, peakFlushMs: 0 });
+    const finished = sched.trigger('cpu-burner');
+    const deadline = Date.now() + 100_000;
+    while (!((state.get('cpu-burner')?.peakCpuPct ?? 0) > 0) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    fs.writeFileSync(stopFile, 'stop');
+    await finished;
     await sched.stop();
 
     const entry = state.get('cpu-burner');

@@ -118,6 +118,7 @@ import { LogViewer } from '../../../dsl-lib-orch/src/components/LogViewer.js'
 import { MutationFeedback } from '../../../dsl-lib-orch/src/components/MutationFeedback.js'
 import { NavStats } from '../../../dsl-lib-orch/src/components/NavStats.js'
 import { NextFireCountdown } from '../../../dsl-lib-orch/src/components/NextFireCountdown.js'
+import { ResourceHistory } from '../../../dsl-lib-orch/src/components/ResourceHistory.js'
 import { RunHistory } from '../../../dsl-lib-orch/src/components/RunHistory.js'
 import { RunningAlertDetail } from '../../../dsl-lib-orch/src/components/RunningAlertDetail.js'
 import { RunningBannerDetail } from '../../../dsl-lib-orch/src/components/RunningBannerDetail.js'
@@ -1818,6 +1819,15 @@ export const NextFireCountdownEntry: ComponentRegistryEntry = {
 	},
 }
 
+export const ResourceHistoryEntry: ComponentRegistryEntry = {
+	name: 'ResourceHistory', category: 'composite', tags: ["resource","history","chart","cpu","ram","runs"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/ResourceHistory.js').ResourceHistoryProps['jobId']
+		return <ResourceHistory jobId={jobId} />
+	},
+}
+
 export const RunHistoryEntry: ComponentRegistryEntry = {
 	name: 'RunHistory', category: 'composite', tags: ["history","table","runs"],
 	nodeSchema: null as never,
@@ -2040,6 +2050,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	MutationFeedbackEntry,
 	NavStatsEntry,
 	NextFireCountdownEntry,
+	ResourceHistoryEntry,
 	RunHistoryEntry,
 	RunningAlertDetailEntry,
 	RunningBannerDetailEntry,

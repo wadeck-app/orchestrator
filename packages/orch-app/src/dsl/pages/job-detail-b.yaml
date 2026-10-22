@@ -75,3 +75,10 @@ sections:
         entries: $sources.jobData.runHistory
         # Turns each row into a link to that run's own output.
         jobId: $route.id
+  # CPU and RAM of the last runs next to the limits each was held to: the answer to "why was it killed?" and to
+  # "is its budget still right?". Read on its own from the job id, so it is not part of the polled job source.
+  - $type: Section
+    title: Resource history
+    items:
+      - $type: ResourceHistory
+        jobId: $route.id

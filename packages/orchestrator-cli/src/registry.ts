@@ -6,6 +6,7 @@ import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES, DESCRIPT
          UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 import { activeWindowError } from './active-window.js';
+import { resourceLimitsError } from './resource-limits.js';
 
 /*
  * The shape a cron expression must have: five space-separated fields.
@@ -68,6 +69,13 @@ export function validateJob(job: Partial<Job>): void {
         `Job description must be ${DESCRIPTION_MAX_LENGTH} characters or fewer (got: ${length}). `
         + `Shorten it by ${excess} ${excess === 1 ? 'character' : 'characters'}.`,
       );
+    }
+  }
+
+  if (job.resourceLimits !== undefined && job.resourceLimits !== null) {
+    const problem = resourceLimitsError(job.resourceLimits);
+    if (problem !== null) {
+      throw new Error(problem);
     }
   }
 

@@ -14,6 +14,7 @@ import type { ExecManager } from './exec-manager.js';
 import { getNextFirings } from './cronNext.js';
 import { SecretsManager } from './secrets.js';
 import { readRunTelemetry } from './run-telemetry.js';
+import { readResourceHistory, RESOURCE_HISTORY_DEFAULT_LIMIT, RESOURCE_HISTORY_RETENTION } from './resource-history.js';
 import { summarizeTimers } from './scheduler.js';
 import type { DaemonConfig } from './daemonConfig.js';
 import type { SupervisorState } from './supervised-run.js';
@@ -296,6 +297,26 @@ export function makeCommands(
         throw new Error(`get-run-telemetry: run must be a run's startedAt (an ISO timestamp as shown in the run history), got ${JSON.stringify(run)}.`);
       }
       return readRunTelemetry(configDir, jobId, run);
+    },
+
+    'get-resource-history': (p) => {
+      const { jobId, limit } = (p ?? {}) as { jobId?: unknown; limit?: unknown };
+      if (typeof jobId !== 'string' || !JOB_ID_RE.test(jobId)) {
+        throw new Error(
+          `get-resource-history needs a job id made of letters, digits and "-" (got ${JSON.stringify(jobId)}). `
+          + 'Run `orch list` to see the available job ids.',
+        );
+      }
+      if (!registry.get(jobId)) {
+        throw new Error(`Job not found: "${jobId}". Run \`orch list\` to see the available job ids.`);
+      }
+      if (limit !== undefined
+        && (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > RESOURCE_HISTORY_RETENTION)) {
+        throw new Error(
+          `get-resource-history: limit must be a whole number from 1 to ${RESOURCE_HISTORY_RETENTION} (got: ${JSON.stringify(limit)}).`,
+        );
+      }
+      return readResourceHistory(configDir, jobId, limit ?? RESOURCE_HISTORY_DEFAULT_LIMIT);
     },
 
     'get-schedule': () => {
