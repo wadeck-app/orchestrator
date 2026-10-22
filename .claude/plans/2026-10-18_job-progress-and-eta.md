@@ -1,6 +1,8 @@
 # Plan: job progress and estimated end time
 
-Status: draft, nothing implemented. Spec-first (guiding-principles.md): the open questions in section 9 must be answered before phase 1 starts.
+Status: phase 1 (history only) implemented, rest draft. Spec-first (guiding-principles.md): the remaining open questions in section 9 must be answered before the phases that need them.
+
+Implemented (history only): `get-progress` RPC, `history` strategy with `auto` as its single candidate, `progress` on `GET /api/jobs`, `GET /api/jobs/:id` and `GET /api/jobs/:id/progress`, `JobProgress` UI, `orch status` line; see `docs/daemon-config.md`. NOT in this slice: the `progress` job key, its CLI flag and form section, `JobConfigDisplay` row, the replay harness, learned-data store, log-based strategies, external plugins (phases 2-4).
 
 ## Decisions (proposed)
 
@@ -190,12 +192,12 @@ Rules: tests first, committed failing; test the installed `orch` for the end-to-
 
 Questions for the user:
 1. Supervisor contract: file names, whether `[job:started]`/`[job:finished]` and the `[YYYY-MM-DD HH:MM:SS]` prefix remain, who writes the finish time. Phase 0 depends on it.
-2. Where should the engine run: in the daemon (this plan) or computed by `orch-core` from files (the module's `logsRoutes` already receives `configDir`)? The first keeps one implementation and P-6; the second avoids new RPC load on the daemon.
+2. ANSWERED: in the daemon (`orchestrator-cli/src/progress/`), exposed by RPC `get-progress`; the controllers only proxy it through `orch-core`.
 3. Is a job allowed to write `##orch-progress` lines / a progress file (a job-side convention that mildly conflicts with "orch takes the program at its word", P-8, though it only reads what the job volunteers)?
 4. Learning depth: history is 20 runs (`state.ts:5`) but logs can reach 100 files; may the engine learn from log files older than history (needs duration from the log's markers)?
 5. Telemetry retention (2 files, `job-telemetry.ts:10`) blocks `resource`; is a retention increase acceptable, or is `resource` dropped?
 6. Plugins: allowed to execute arbitrary code in the daemon (opt-in via `config.yml`), or must they be declarative (patterns/JSON only) for v1?
-7. Default aggressiveness of `auto`: show a low-confidence estimate with a `~` or show nothing below a confidence floor?
+7. ANSWERED: low-confidence estimates are shown (lighter style, "low confidence" in the text); `confidence` is `low` under 5 usable runs or a score under 0.5.
 8. Can real job logs be copied into the test corpus (secrets risk), or must fixtures be synthetic only?
 9. Which jobs matter first (names), so the replay corpus covers real shapes: short (< 10 s, 1 s log resolution is too coarse), long, input-dependent?
 10. CLI flag naming for `progress` options, and whether `orch edit --unset progress` is the only way back to `auto`.
@@ -204,8 +206,8 @@ Risks:
 - Log timestamps have 1 s resolution (`logger.ts:36`): jobs shorter than about 10 s get no useful interpolation; S2/S3 should declare a minimum duration and say so in `reason`.
 - Stdout buffering by the job (block-buffered when piped) delays log lines and makes milestones late; undetectable from outside, only mitigated by confidence from replay.
 - Jobs with unbounded duration (`timeoutSeconds: 0`, `types.ts:52-55`) have no meaningful ETA; `reason` must say "no completion expected".
-- Parallel runs (`maxConcurrency` > 1, `types.ts:65`): one estimate per open run, not per job; the API must key by `startedAt` (the field in the payload above is per job in v1: decision needed, folds into question 2's design).
+- Parallel runs (`maxConcurrency` > 1, `types.ts:65`): DECIDED for v1: one estimate per job, from the OLDEST open run. Per-run estimates keyed by `startedAt` stay a later option.
 - Sticky `auto` choice and learned data can drift silently; the replay report and the `reason` string are the controls.
 - Learning cost on large logs (up to 100 files): bounded by a byte cap per file and by learning only the 20 newest usable runs; confirm with measurements in phase 2.
 - Two copies of the types in `dsl-lib-orch` and orchestrator-cli can diverge (they already differ, see the Facts table); mitigated by the contract test in section 6.
-- Side effects found while reading, worth a separate decision: the existing anomaly check (`scheduler.ts:1444`) and the new engine will both define "usual duration"; they should share one function to avoid two different medians/averages.
+- Two definitions of "usual duration" exist, kept apart on purpose: the anomaly check (`state.ts` `getRollingAvgDurationMs`) averages the last 10 finished runs with an exit code, failures included, and needs 3; the `history` strategy takes the median of the last 10 usable runs (exit code 0 only). Sharing one function would change what the anomaly check alerts on, so it was left alone. Decide separately if they should converge.

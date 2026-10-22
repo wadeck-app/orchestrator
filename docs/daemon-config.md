@@ -165,6 +165,33 @@ Reply:
 
 No job command, environment, `cwd` or secret is in the reply. `/api/health` takes its `uptime` (seconds) from `uptimeSeconds`; it is `null` when the daemon cannot answer `get-daemon-info`, and the rest of the health reply is unaffected.
 
+## Progress and ETA
+
+For a running job the dashboard and `orch status` show a progress percentage and an estimated end time. Advisory only: it never affects running, killing, retrying or alerting. No config key: every job is `auto`.
+
+**Limits of this release.** One strategy, `history`. There is no `progress` job setting (no CLI flag, no form section), no log-based, declared or ratio strategy, and no external plugins. Plan: `.claude/plans/2026-10-18_job-progress-and-eta.md`.
+
+| Layer | Entry point |
+|-------|-------------|
+| Daemon RPC | `get-progress` `{ jobIds?: string[] }`: one estimate per job with an open run; other jobs are absent. Unknown id or malformed payload: error |
+| HTTP | `GET /api/jobs` and `GET /api/jobs/:id` carry `progress`; `GET /api/jobs/:jobId/progress` (also published by the module) answers one estimate, `null` when the job is not running |
+| CLI | `orch status` prints `<job>: 42% ~14:32 (low confidence)`, the overdue sentence, or `no estimate - <reason>` |
+| UI | `JobProgress`, on the running banner of the job page and on the running job card |
+
+How `history` estimates:
+
+- Usual duration D: median of the last 10 usable runs. Usable: exit code 0, not skipped, not cancelled, not orphaned, no `endReason` (timeout, manual kill, resource limit), has `finishedAt`.
+- Fewer than 3 usable runs: no estimate, reason `needs 3 usable runs, has k`.
+- `progress` = elapsed / D, capped at 0.99. `etaAt` = start + D.
+- Past D: `progress` stays 0.99, `etaAt` is `null`, reason `longer than usual (usual: X)`.
+- `confidenceScore` = 1 - MAD / median, clamped to 0..1. `confidence` is `low` under 5 usable runs or a score under 0.5, `medium` under 0.8, else `high`. Low-confidence estimates are shown, marked in the UI.
+- `timeoutSeconds: 0` (long-running): no estimate, reason `no completion expected (no timeout)`.
+- Several open runs of one job (`maxConcurrency` above 1): one estimate per job, from the oldest open run.
+
+Every estimate carries `reason`; with a null `progress` it says why and what to do. `etaAt` is an absolute ISO time and `serverNow` the daemon clock, so a client counts down without trusting its own clock. When the daemon cannot answer, the HTTP `progress` of a running job is an estimate with `progress: null` and reason `progress unavailable: <message>`.
+
+The 3x anomaly check (`job.anomaly`) is a separate rule: it averages every finished run, failures included. The two do not share a definition of "usual duration".
+
 ## Resource monitor
 
 While a job runs, the daemon samples the CPU and RAM of its whole process tree every 2 seconds. From

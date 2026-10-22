@@ -57,6 +57,8 @@ sections:
     jobId: $route.id
     job: $sources.jobData.job
     runHistory: $sources.jobData.runHistory
+    # Progress and ETA of the running job, polled with the job (30 s); the component counts down between polls.
+    progress: $sources.jobData.progress
     $outputs:
       onAfterTrigger: [_]
       onKill: [_]

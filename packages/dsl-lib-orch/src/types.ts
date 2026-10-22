@@ -329,3 +329,25 @@ export interface ResourceHistory {
   /** How many runs per job the daemon keeps. */
   retention: number;
 }
+
+export type ProgressConfidence = 'high' | 'medium' | 'low' | 'none';
+
+/**
+ * Progress and ETA of a running job, as the daemon's get-progress and `progress` on GET /api/jobs answer.
+ * Mirrors orchestrator-cli's progress/types.ts (types-parity.test.ts compares the fields).
+ */
+export interface ProgressEstimate {
+  /** null when no strategy ran: a long-running job, or the daemon could not compute it. */
+  strategyId: string | null;
+  /** 0..1, or null when there is no estimate. */
+  progress: number | null;
+  /** Absolute ISO time; null when there is no estimate or the run is past its usual duration. */
+  etaAt: string | null;
+  confidence: ProgressConfidence;
+  confidenceScore: number;
+  /** Always set. With a null progress it says why and what to do. */
+  reason: string;
+  /** The daemon clock when this was computed; remaining time is measured against it, not against this machine's clock. */
+  serverNow: string;
+  detail?: Record<string, unknown>;
+}

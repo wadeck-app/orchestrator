@@ -96,6 +96,7 @@ describe('serving the dashboard routes through the module', () => {
       job: { id: 'j1', type: 'cron', command: 'echo' },
       runHistory: [{ startedAt: '2026-01-01T00:00:00Z', exitCode: 0 }],
       uptimePercent: null,
+      progress: null,
     }]);
     expect(calls).toEqual(expect.arrayContaining(['list-jobs', 'list-state']));
     await app.close();
@@ -178,6 +179,23 @@ describe('serving the dashboard routes through the module', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/1 to 500/);
+    await app.close();
+  });
+
+  it('serves the progress of a job from get-progress, for that job only', async () => {
+    const seen: unknown[] = [];
+    const estimate = { strategyId: 'history', progress: 0.5, etaAt: '2026-01-01T00:10:00.000Z', confidence: 'high', confidenceScore: 1, reason: 'auto: history', serverNow: '2026-01-01T00:05:00.000Z' };
+    const { app } = await boot(async (command, payload) => {
+      seen.push([command, payload]);
+      return { j1: estimate };
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/j1/progress' });
+
+    // A 404 here means the route is not in ALLOWED_ROUTES: published routes are the only ones the module serves.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(estimate);
+    expect(seen).toContainEqual(['get-progress', { jobIds: ['j1'] }]);
     await app.close();
   });
 

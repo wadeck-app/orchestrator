@@ -18,6 +18,7 @@ import { readResourceHistory, RESOURCE_HISTORY_DEFAULT_LIMIT, RESOURCE_HISTORY_R
 import { summarizeTimers } from './scheduler.js';
 import type { DaemonConfig } from './daemonConfig.js';
 import type { SupervisorState } from './supervised-run.js';
+import { estimateProgress } from './progress/engine.js';
 
 // Same rule as registry.add and the logs route's path-traversal guard (P-7); do not relax it here.
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
@@ -277,6 +278,34 @@ export function makeCommands(
         result[job.id] = state.getUptimePercent(job.id);
       }
       return result;
+    },
+
+    /*
+     * Progress and ETA of the jobs that have an open run; see progress/engine.ts. Advisory: nothing here touches a
+     * run. A bad payload or an unknown job is refused with the fix, never answered with an empty object.
+     */
+    'get-progress': (p) => {
+      const jobIds = (p as { jobIds?: unknown } | undefined)?.jobIds;
+      if (jobIds !== undefined) {
+        if (!Array.isArray(jobIds)) {
+          throw new Error('get-progress: jobIds must be an array of job ids, or omitted for every running job.');
+        }
+        for (const id of jobIds) {
+          if (typeof id !== 'string' || !JOB_ID_RE.test(id)) {
+            throw new Error(`get-progress: ${JSON.stringify(id)} is not a valid job id (letters, digits and dashes only).`);
+          }
+          if (!registry.get(id)) {
+            throw new Error(`Job not found: "${id}". Run \`orch list\` to see the available job ids.`);
+          }
+        }
+      }
+      return estimateProgress({
+        jobs: registry.list(),
+        history: state.getAll(),
+        now: () => new Date(),
+        ...(jobIds ? { jobIds: jobIds as string[] } : {}),
+        log: (line) => { try { process.stderr.write(`${line}\n`); } catch { /* EPIPE */ } },
+      });
     },
 
     'get-resource-baseline': (p) => {

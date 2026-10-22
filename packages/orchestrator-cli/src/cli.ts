@@ -2,6 +2,7 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
+import type { ProgressEstimate } from './progress/types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits } from './types.js';
 import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
 import { WindowsTask } from './windows/WindowsTask.js';
@@ -67,6 +68,25 @@ function describeDaemonInfo(info: DaemonInfo): string[] {
     }
   }
   return lines;
+}
+
+/**
+ * The lines `orch status` prints for running jobs: "42% ~14:32" (the ~ marks a time that is an estimate), the
+ * overdue sentence, or the reason there is no estimate. Local time, like the rest of the CLI output.
+ */
+export function describeProgress(progress: Record<string, ProgressEstimate>): string[] {
+  return Object.entries(progress).map(([id, e]) => {
+    if (e.progress === null) {
+      return `  ${id}: no estimate - ${e.reason}`;
+    }
+    const pct = `${Math.round(e.progress * 100)}%`;
+    if (e.etaAt === null) {
+      return `  ${id}: ${pct} ${e.reason}`;
+    }
+    const eta = new Date(e.etaAt);
+    const hhmm = `${String(eta.getHours()).padStart(2, '0')}:${String(eta.getMinutes()).padStart(2, '0')}`;
+    return `  ${id}: ${pct} ~${hhmm}${e.confidence === 'low' ? ' (low confidence)' : ''}`;
+  });
 }
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
@@ -500,7 +520,8 @@ Daemon lifecycle:
   orch restart                 Restart the daemon (not a job: use restart-job <id>)
   orch status [--json]         Show daemon pid, port, uptime. Never starts the daemon: when it is not
                                running, says so and exits 1 (JSON: {"running":false})
-                               JSON fields: pid, port, uptime (seconds)
+                               plus the progress and end time of each running job ("42% ~14:32")
+                               JSON fields: pid, port, uptime (seconds), info, progress
   orch install                 Register orchestrator in OS startup
   orch uninstall               Remove from OS startup
 
@@ -760,8 +781,20 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         info = undefined;
         infoError = getErrorMessage(e);
       }
+      // Progress of the running jobs. Advisory: a daemon that cannot answer it (an older one) still gets its status
+      // printed, with the failure said in words.
+      let progress: Record<string, ProgressEstimate> | undefined;
+      let progressError: string | undefined;
+      try {
+        progress = await send('get-progress', undefined, { autoStart: false }) as Record<string, ProgressEstimate>;
+      } catch (e) {
+        progressError = getErrorMessage(e);
+      }
       if (forceJson || !process.stdout.isTTY) {
-        console.log(JSON.stringify({ ...data, ...(info ? { info } : {}), ...(infoError !== undefined ? { infoError } : {}) }));
+        console.log(JSON.stringify({
+          ...data, ...(info ? { info } : {}), ...(infoError !== undefined ? { infoError } : {}),
+          ...(progress ? { progress } : {}), ...(progressError !== undefined ? { progressError } : {}),
+        }));
       } else {
         console.log(`pid=${data.pid}  port=${data.port}  uptime=${data.uptime ?? '?'}s`);
         if (info) {
@@ -769,6 +802,15 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
             console.log(line);
           }
         }
+        if (progress && Object.keys(progress).length > 0) {
+          console.log('progress  :');
+          for (const line of describeProgress(progress)) {
+            console.log(line);
+          }
+        }
+      }
+      if (progressError !== undefined && !(forceJson || !process.stdout.isTTY)) {
+        console.error(`warning: could not read the progress of the running jobs (${progressError}). If the daemon is older than this CLI, run: orch cli update`);
       }
       if (infoError !== undefined && !(forceJson || !process.stdout.isTTY)) {
         console.error(`warning: could not read the daemon details (${infoError}). The supervisor state and the timer health are unknown; if the daemon is older than this CLI, run: orch restart (or orch cli update).`);

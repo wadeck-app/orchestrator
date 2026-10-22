@@ -390,6 +390,8 @@ export type OrchestratorCommands = {
   /** The daemon's own status; see DaemonInfo and docs/daemon-config.md. */
   'get-daemon-info':        (payload?: unknown) => DaemonInfo;
   'get-uptime':             (payload?: unknown) => Record<string, number | null>;
+  /** Progress and ETA per job with an open run (others are absent); see progress/engine.ts. `jobIds` restricts it. */
+  'get-progress':           (payload?: unknown) => Record<string, import('./progress/types.js').ProgressEstimate>;
   'get-resource-baseline':  (payload?: unknown) => { cpuPct: number; ramMb: number } | null;
   /** One run's resource curve from the telemetry file; see run-telemetry.ts. `run` is its startedAt, default the newest. */
   'get-run-telemetry':      (payload?: unknown) => Promise<import('./run-telemetry.js').RunTelemetry>;

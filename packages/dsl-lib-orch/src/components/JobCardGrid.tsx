@@ -413,6 +413,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
           {visible.map((item) => (
             <JobCard key={item.job.id} job={item.job} runHistory={item.runHistory}
               uptimePercent={uptimeMap?.[item.job.id] ?? item.uptimePercent}
+              progress={item.progress}
               consecutiveFailures={getConsecutiveFailures(item.runHistory)}
               onClick={() => onJobClick ? onJobClick(item.job.id) : navigate(appPath(`/jobs/${item.job.id}`))}
               onTrigger={handleTrigger} onToggle={handleToggle}

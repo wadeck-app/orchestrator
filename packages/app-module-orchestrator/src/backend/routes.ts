@@ -24,6 +24,7 @@ export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'POST /api/jobs/:id/enable',
   'POST /api/jobs/:id/disable',
   'POST /api/jobs/:id/dry-run',
+  'GET /api/jobs/:jobId/progress',
   'GET /api/jobs/:jobId/resource-baseline',
   'GET /api/jobs/:jobId/telemetry',
   'GET /api/jobs/:jobId/resource-history',

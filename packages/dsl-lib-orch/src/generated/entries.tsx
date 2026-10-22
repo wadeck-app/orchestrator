@@ -111,6 +111,7 @@ import { JobConfigDisplay } from '../components/JobConfigDisplay.js'
 import { JobFilterChips } from '../components/JobFilterChips.js'
 import { JobForm } from '../components/JobForm.js'
 import { JobFormSection } from '../components/JobFormSection.js'
+import { JobProgress } from '../components/JobProgress.js'
 import { JobStatusBadge } from '../components/JobStatusBadge.js'
 import { JobToggle } from '../components/JobToggle.js'
 import { LogPageBreadcrumb } from '../components/LogPageBreadcrumb.js'
@@ -1667,6 +1668,7 @@ export const JobCardEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../components/JobCard.js').JobCardProps['job']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../components/JobCard.js').JobCardProps['runHistory']
 		const uptimePercent = resolveExpressionValue(node['uptimePercent'], ctx) as import('../components/JobCard.js').JobCardProps['uptimePercent']
+		const progress = resolveExpressionValue(node['progress'], ctx) as import('../components/JobCard.js').JobCardProps['progress']
 		const consecutiveFailures = resolveExpressionValue(node['consecutiveFailures'], ctx) as import('../components/JobCard.js').JobCardProps['consecutiveFailures']
 		const onTrigger = resolveExpressionValue(node['onTrigger'], ctx) as import('../components/JobCard.js').JobCardProps['onTrigger']
 		const onToggle = resolveExpressionValue(node['onToggle'], ctx) as import('../components/JobCard.js').JobCardProps['onToggle']
@@ -1674,7 +1676,7 @@ export const JobCardEntry: ComponentRegistryEntry = {
 		const selected = resolveExpressionValue(node['selected'], ctx) as import('../components/JobCard.js').JobCardProps['selected']
 		const onSelect = resolveExpressionValue(node['onSelect'], ctx) as import('../components/JobCard.js').JobCardProps['onSelect']
 		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../components/JobCard.js').JobCardProps['nowMs']
-		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} consecutiveFailures={consecutiveFailures} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} selected={selected} onSelect={onSelect} nowMs={nowMs} />
+		return <JobCard job={job} runHistory={runHistory} uptimePercent={uptimePercent} progress={progress} consecutiveFailures={consecutiveFailures} onTrigger={onTrigger} onToggle={onToggle} onClick={onClick} selected={selected} onSelect={onSelect} nowMs={nowMs} />
 	},
 }
 
@@ -1743,6 +1745,16 @@ export const JobFormSectionEntry: ComponentRegistryEntry = {
 		const onCancel = resolveExpressionValue(node['onCancel'], ctx) as import('../components/JobFormSection.js').JobFormSectionProps['onCancel']
 		const saving = resolveExpressionValue(node['saving'], ctx) as import('../components/JobFormSection.js').JobFormSectionProps['saving']
 		return <JobFormSection jobId={jobId} initial={initial} onSubmit={onSubmit} onCancel={onCancel} saving={saving} />
+	},
+}
+
+export const JobProgressEntry: ComponentRegistryEntry = {
+	name: 'JobProgress', category: 'composite', tags: ["job","progress","eta","running"],
+	nodeSchema: null as never,
+	render: ({ node, ctx }: RegistryRenderProps) => {
+		const progress = resolveExpressionValue(node['progress'], ctx) as import('../components/JobProgress.js').JobProgressProps['progress']
+		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../components/JobProgress.js').JobProgressProps['nowMs']
+		return <JobProgress progress={progress} nowMs={nowMs} />
 	},
 }
 
@@ -1874,6 +1886,7 @@ export const RunningBannerDetailEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['jobId']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['runHistory']
+		const progress = resolveExpressionValue(node['progress'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['progress']
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onDryRun']
@@ -1881,7 +1894,7 @@ export const RunningBannerDetailEntry: ComponentRegistryEntry = {
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../components/RunningBannerDetail.js').RunningBannerDetailProps['onKill']
-		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningBannerDetail job={job} jobId={jobId} runHistory={runHistory} progress={progress} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -2043,6 +2056,7 @@ export const allEntries: ComponentRegistryEntry[] = [
 	JobFilterChipsEntry,
 	JobFormEntry,
 	JobFormSectionEntry,
+	JobProgressEntry,
 	JobStatusBadgeEntry,
 	JobToggleEntry,
 	LogPageBreadcrumbEntry,

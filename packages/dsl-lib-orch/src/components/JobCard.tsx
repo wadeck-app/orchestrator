@@ -1,12 +1,13 @@
 import React from 'react';
 import { Flame, AlertTriangle, FileText, Play } from 'lucide-react';
 import { ButtonLink, Checkbox, Progress, Tooltip } from '@wadeck-app/dsl-ui';
-import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, runEndReason, type Job, type RuntimeEntry, type TriggerRefused } from '../types.js';
+import { isJobRunning, isRunActive, isRunCancelled, isRunFailed, isRunSkipped, latestRun, runEndReason, type Job, type ProgressEstimate, type RuntimeEntry, type TriggerRefused } from '../types.js';
 import { windowStateAt } from '../active-window.js';
 import { descriptionFirstLine } from '../job-description.js';
 import { describeAgo } from '../relative-time.js';
 import { describeResourceLimits, hasCustomLimits, limitsBadgeLabel } from '../resource-limits.js';
 import { END_REASON_PILL, JobStatusPill } from './JobStatusPill.js';
+import { JobProgress } from './JobProgress.js';
 import { LateMarker } from './LateMarker.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
@@ -17,6 +18,8 @@ export interface JobCardProps {
   job: Job;
   runHistory: RuntimeEntry[];
   uptimePercent?: number | null;
+  /** The job's `progress` from GET /api/jobs; shown only while the job is running. */
+  progress?: ProgressEstimate | null;
   consecutiveFailures?: number;
   onTrigger: (id: string, opts?: { force: true }) => Promise<void | TriggerRefused>;
   onToggle: (id: string, enabled: boolean) => Promise<void>;
@@ -195,7 +198,7 @@ function failureStreakSince(runHistory: RuntimeEntry[], count: number): string |
  * @registryCategory composite
  * @registryTags job card
  */
-export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, onTrigger, onToggle, onClick, selected, onSelect, nowMs }: JobCardProps): React.ReactElement {
+export function JobCard({ job, runHistory, uptimePercent, progress, consecutiveFailures, onTrigger, onToggle, onClick, selected, onSelect, nowMs }: JobCardProps): React.ReactElement {
   const streak = successStreak(runHistory);
   const now = nowMs ?? Date.now();
   const descriptionLine = descriptionFirstLine(job.description);
@@ -354,6 +357,7 @@ export function JobCard({ job, runHistory, uptimePercent, consecutiveFailures, o
               />
             </Tooltip>
           )}
+          {progress != null && isJobRunning(runHistory) && <JobProgress progress={progress} />}
           {/* From 2, not from alertAfterFailures: at 1 the status pill already says Failed, at 2 it has become
               a pattern. alertAfterFailures stays what it was, the point where the daemon alerts. */}
           {consecutiveFailures !== undefined && consecutiveFailures >= 2 && (

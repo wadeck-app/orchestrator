@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Zap } from 'lucide-react';
-import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type ProgressEstimate, type RuntimeEntry } from '../types.js';
 import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
 import { RestartButton } from './RestartButton.js';
 import { JobToggle } from './JobToggle.js';
+import { JobProgress } from './JobProgress.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
@@ -21,6 +22,8 @@ export interface RunningBannerDetailProps {
   job: Job;
   jobId: string;
   runHistory?: RuntimeEntry[];
+  /** The `progress` of the job source: shown next to the elapsed time while the job runs, nothing otherwise. */
+  progress?: ProgressEstimate | null;
   /**
    * Fired once a Run now this component ran itself has settled, started or refused. The component
    * posts the trigger itself because a page-owned brain cannot see a refusal (a 200 body, not a
@@ -40,7 +43,7 @@ export interface RunningBannerDetailProps {
  * @registryCategory composite
  * @registryTags job detail running banner design-a
  */
-export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningBannerDetailProps): React.ReactElement | null {
+export function RunningBannerDetail({ job, jobId, runHistory, progress, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningBannerDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -145,6 +148,12 @@ export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, on
               <>
                 <span className="text-muted text-sm">&middot;</span>
                 <span className="text-xs text-muted">PID {currentRun.pid}</span>
+              </>
+            )}
+            {progress != null && (
+              <>
+                <span className="text-muted text-sm">&middot;</span>
+                <JobProgress progress={progress} />
               </>
             )}
           </span>

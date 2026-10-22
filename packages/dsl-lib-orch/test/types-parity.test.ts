@@ -20,6 +20,7 @@ const UI_ONLY: Record<string, Record<string, string>> = {
   ResourceLimits: {},
   ResourceHistory: {},
   ResourceHistoryRun: {},
+  ProgressEstimate: {},
 };
 const CLI_ONLY: Record<string, Record<string, string>> = {
   Job: {},
@@ -28,6 +29,7 @@ const CLI_ONLY: Record<string, Record<string, string>> = {
   ResourceLimits: {},
   ResourceHistory: {},
   ResourceHistoryRun: {},
+  ProgressEstimate: {},
 };
 
 /*
@@ -41,6 +43,7 @@ const CLI_DECL: Record<string, { file: string; name: string }> = {
   ResourceLimits: { file: CLI_TYPES, name: 'ResourceLimits' },
   ResourceHistory: { file: path.join(CLI_SRC, 'resource-history.ts'), name: 'ResourceHistory' },
   ResourceHistoryRun: { file: path.join(CLI_SRC, 'resource-history.ts'), name: 'ResourceHistoryRecord' },
+  ProgressEstimate: { file: path.join(CLI_SRC, 'progress', 'types.ts'), name: 'ProgressEstimate' },
 };
 
 /** Top-level field names of `export interface <name>`, comments stripped. Throws when the interface is missing. */

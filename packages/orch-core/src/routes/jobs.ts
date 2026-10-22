@@ -25,6 +25,39 @@ function newestRun(entries: HealthRunEntry[] | undefined): HealthRunEntry | null
 }
 
 /**
+ * What the daemon's get-progress answers per job (orchestrator-cli/src/progress/types.ts, which orch-core must not
+ * import). Only the fields this file builds itself are spelled out; the rest travels untouched.
+ */
+interface ProgressEstimateWire {
+  strategyId: string | null;
+  progress: number | null;
+  etaAt: string | null;
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  confidenceScore: number;
+  reason: string;
+  serverNow: string;
+  [key: string]: unknown;
+}
+
+/**
+ * The estimate shown when the daemon could not compute one. Progress is advisory, so the job list still loads, but
+ * the failure is stated in the estimate's reason instead of swallowed into an empty object.
+ */
+function progressFailure(err: unknown): ProgressEstimateWire {
+  // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    strategyId: null, progress: null, etaAt: null, confidence: 'none', confidenceScore: 0,
+    reason: `progress unavailable: ${message}. Check: orch logs (an older daemon does not know get-progress: orch cli update)`,
+    serverNow: new Date().toISOString(),
+  };
+}
+
+function hasOpenRun(entries: unknown): boolean {
+  return Array.isArray(entries) && entries.some(e => (e as { finishedAt?: string }).finishedAt == null);
+}
+
+/**
  * Only what these handlers actually touch: one method from each collaborator.
  *
  * Structural rather than the concrete classes, because `DaemonProxy` carries private state that a
@@ -71,17 +104,44 @@ export async function jobsRoutes(
     return reply.code(message.startsWith('Job not found') ? 404 : 400).send({ error: message });
   }
 
+  /**
+   * get-progress, with a daemon that is down still propagating (guard answers 503) and any other failure kept as a
+   * value the caller turns into progressFailure for the jobs that are running.
+   */
+  function fetchProgress(payload?: unknown): Promise<{ ok: true; value: Record<string, ProgressEstimateWire> } | { ok: false; error: unknown }> {
+    return proxy.send('get-progress', payload).then(
+      (value) => ({ ok: true as const, value: (value ?? {}) as Record<string, ProgressEstimateWire> }),
+      (error: unknown) => {
+        if (error instanceof DaemonUnavailableError) {
+          throw error;
+        }
+        return { ok: false as const, error };
+      },
+    );
+  }
+
+  function progressFor(
+    id: string, entries: unknown, progress: Awaited<ReturnType<typeof fetchProgress>>,
+  ): ProgressEstimateWire | null {
+    if (!progress.ok) {
+      return hasOpenRun(entries) ? progressFailure(progress.error) : null;
+    }
+    return progress.value[id] ?? null;
+  }
+
   fastify.get('/api/jobs', async (_req, reply) => {
     return guard(reply, async () => {
-      const [jobs, state, uptime] = await Promise.all([
+      const [jobs, state, uptime, progress] = await Promise.all([
         proxy.send('list-jobs') as Promise<{ id: string }[]>,
         proxy.send('list-state') as Promise<Record<string, unknown>>,
         proxy.send('get-uptime').catch(() => ({})) as Promise<Record<string, number | null>>,
+        fetchProgress(),
       ]);
       const result = jobs.map((job) => ({
         job,
         runHistory: (state[job.id] as unknown[] | undefined) ?? [],
         uptimePercent: (uptime as Record<string, number | null>)[job.id] ?? null,
+        progress: progressFor(job.id, state[job.id], progress),
       }));
       return reply.send(result);
     });
@@ -90,11 +150,16 @@ export async function jobsRoutes(
   fastify.get('/api/jobs/:id', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };
-      const [job, state] = await Promise.all([
+      const [job, state, progress] = await Promise.all([
         proxy.send('get-job', { id }),
         proxy.send('list-state') as Promise<Record<string, unknown>>,
+        fetchProgress({ jobIds: [id] }),
       ]);
-      return reply.send({ job, runHistory: (state[id] as unknown[] | undefined) ?? [] });
+      return reply.send({
+        job,
+        runHistory: (state[id] as unknown[] | undefined) ?? [],
+        progress: progressFor(id, state[id], progress),
+      });
     });
   });
 
@@ -307,6 +372,28 @@ export async function jobsRoutes(
     return guard(reply, async () => {
       const uptime = await proxy.send('get-uptime');
       return reply.send(uptime);
+    });
+  });
+
+  // Faster poll for the detail page than the whole job. A job without an open run answers null; an unknown job is a 404
+  // with the daemon's sentence; a daemon that cannot compute it answers an estimate whose reason says so.
+  fastify.get('/api/jobs/:jobId/progress', async (req, reply) => {
+    return guard(reply, async () => {
+      const { jobId } = req.params as { jobId: string };
+      try {
+        const result = await proxy.send('get-progress', { jobIds: [jobId] }) as Record<string, ProgressEstimateWire> | undefined;
+        return reply.send(result?.[jobId] ?? null);
+      } catch (err) {
+        if (err instanceof DaemonUnavailableError) {
+          throw err;
+        }
+        // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.startsWith('Job not found')) {
+          return reply.code(404).send({ error: message });
+        }
+        return reply.send(progressFailure(err));
+      }
     });
   });
 
