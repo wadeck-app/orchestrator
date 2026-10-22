@@ -3,6 +3,9 @@ $sources:
     url: GET /api/modules/orchestrator/api/jobs/{id}
     params:
       id: $route.id
+    # The log is live, so the progress and end time shown in its toolbar are re-read every few seconds; the
+    # component counts down between two answers.
+    poll: 5s
 
 $type: PageContent
 # The shell stops constraining the width, because on this page the width is the reader's choice: the
@@ -14,4 +17,6 @@ sections:
   # way back, and the height such a row would take goes to the log pane (`fill`).
   - $type: orchestrator:LogViewer
     jobId: $route.id
+    # Progress and ETA of the running job, in the toolbar (nothing is drawn when the job has no open run).
+    progress: $sources.jobData.progress
     fill: true

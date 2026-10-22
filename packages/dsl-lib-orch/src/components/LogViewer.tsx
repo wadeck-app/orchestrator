@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { X, ArrowDown, Pause, CircleOff, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
 import { ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 // Aliased: `isJobRunning` is already this component's state value.
-import { getErrorMessage, isJobRunning as jobHasOpenRun, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isJobRunning as jobHasOpenRun, type ProgressEstimate, type RuntimeEntry } from '../types.js';
+import { JobProgress } from './JobProgress.js';
 import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
 import { useConfirm } from '../use-confirm.js';
@@ -154,13 +155,15 @@ export interface LogViewerProps {
   apiBase?: string;
   /** Grow to the host's height instead of stopping at the 75vh fallback cap. */
   fill?: boolean;
+  /** The job's `progress` (GET /api/jobs/{id}), shown at the end of the toolbar. The module's log page passes it; the standalone app's does not. */
+  progress?: ProgressEstimate | null;
 }
 
 /**
  * @registryCategory composite
  * @registryTags log viewer streaming sse
  */
-export function LogViewer({ jobId, apiBase = getApiBase(), fill = false }: LogViewerProps): React.ReactElement {
+export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progress }: LogViewerProps): React.ReactElement {
   const [lines, setLines] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [search, setSearch] = useState('');
@@ -511,6 +514,8 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false }: LogVi
             debounceMs={0}
             size="sm"
           />
+          {/* Nothing is drawn without an estimate, so a page that passes none keeps its toolbar as it was. */}
+          <JobProgress progress={progress} />
         </div>
       </div>
       <pre ref={containerRef} onScroll={handleScroll} className={LOG_BODY_CLS}>

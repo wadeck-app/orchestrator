@@ -42,3 +42,11 @@ describe('src/dsl-views', () => {
     }
   });
 });
+
+describe('the module log page', () => {
+  it('shows the progress and estimated end of the running job, polled so it keeps moving', () => {
+    const page = read('job-logs.yaml');
+    expect(page).toMatch(/\$type:\s*orchestrator:LogViewer[\s\S]*progress:\s*\$sources\.jobData\.progress/);
+    expect(page).toMatch(/jobData:[\s\S]*poll:\s*\d+s/);
+  });
+});

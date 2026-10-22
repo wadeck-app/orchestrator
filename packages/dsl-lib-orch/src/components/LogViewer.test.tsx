@@ -560,3 +560,39 @@ describe('LogViewer', () => {
     });
   });
 });
+
+// The log page of the app-core module shows the progress and the estimated end of the run in its toolbar, the same
+// JobProgress the job page shows. It is a prop, so the standalone app's page (which does not pass it) is unchanged.
+describe('LogViewer progress', () => {
+  afterEach(() => {
+    MockEventSource.instance = null;
+    vi.unstubAllGlobals();
+  });
+
+  const estimate = {
+    strategyId: 'history', progress: 0.42, etaAt: '2026-10-23T10:06:00.000Z', confidence: 'high' as const,
+    confidenceScore: 0.9, reason: 'auto: history (median of the last 5 usable runs: 10 min)', serverNow: '2026-10-23T10:00:00.000Z',
+  };
+
+  it('shows the percentage and the end time of the running job in the toolbar', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    renderInRouter(<LogViewer jobId="j1" progress={estimate} />);
+
+    expect(screen.getByText(/ends ~/)).toBeInTheDocument();
+    expect(document.querySelector('[data-progress-state="estimate"]')).not.toBeNull();
+  });
+
+  it('shows nothing about progress when there is no estimate', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    renderInRouter(<LogViewer jobId="j1" progress={null} />);
+
+    expect(document.querySelector('[data-progress-state]')).toBeNull();
+  });
+
+  it('says why there is no estimate instead of leaving the place blank', () => {
+    vi.stubGlobal('EventSource', MockEventSource);
+    renderInRouter(<LogViewer jobId="j1" progress={{ ...estimate, progress: null, etaAt: null, confidence: 'none', confidenceScore: 0, reason: 'needs 3 usable runs, has 1' }} />);
+
+    expect(screen.getByText('needs 3 usable runs, has 1')).toBeInTheDocument();
+  });
+});
