@@ -23,8 +23,6 @@ $brains:
 
 $type: PageContent
 sections:
-  - $type: BackLink
-    label: Back to job
   - $type: orchestrator:MutationFeedback
     pending: $brains.updateJob.$pending
     error: $brains.updateJob.$error

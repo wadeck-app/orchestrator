@@ -10,12 +10,8 @@ $type: PageContent
 # themselves, so they stay aligned with each other instead of with the shell.
 maxWidth: full
 sections:
-  # One compact row instead of a BackLink, a text-2xl PageHeader and a redundant
-  # "Logs" subtitle stacked over each other: those pushed the first log line to
-  # y=243 on a 900px viewport. `fill` hands the reclaimed height to the log pane.
-  - $type: orchestrator:LogPageBreadcrumb
-    jobId: $route.id
-    jobLabel: $sources.jobData.job.label
+  # No back link or title row: the shell's breadcrumb above the page (Orchestrator > Jobs > Job > Job logs) is the
+  # way back, and the height such a row would take goes to the log pane (`fill`).
   - $type: orchestrator:LogViewer
     jobId: $route.id
     fill: true

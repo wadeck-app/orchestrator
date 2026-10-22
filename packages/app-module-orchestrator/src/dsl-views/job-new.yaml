@@ -18,9 +18,6 @@ $brains:
 
 $type: PageContent
 sections:
-  - $type: BackLink
-    to: /modules/orchestrator/
-    label: Back to jobs
   # Every action gets a reaction: the button shows a spinner while the request is in flight, a
   # failure is announced where it happened, and the success is carried across the redirect.
   - $type: orchestrator:MutationFeedback

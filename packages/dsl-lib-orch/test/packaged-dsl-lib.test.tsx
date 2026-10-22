@@ -95,6 +95,23 @@ describe('the packaged dsl-lib', () => {
     expect(published[0]!.slice(0, 2)).toEqual(['bar', 'onChange']);
   });
 
+  /*
+   * dsl-renderer does not remount a page when only its document changes (two pages without route params share the
+   * same React instance), so the vars the new page declares are never applied and `value: $vars.search` reaches the
+   * component as undefined. dsl-ui's SearchBar throws on that and the whole jobs page went blank after "Back to
+   * jobs" or Schedule -> Jobs (reproduced in app-core; the upstream bug is reported to the renderer's owner). An
+   * empty search is what the page declares, so a missing value is that.
+   */
+  it('renders the search field, empty, when the page\'s search variable has not been applied yet', () => {
+    const searchBar = entries.find(e => e.name === 'SearchBar')!;
+    const ctx = { $publishOutput: () => {} };
+    const node = { $type: 'SearchBar', $id: 'bar', $outputs: { onChange: ['value'] }, placeholder: 'Search', debounceMs: 0 };
+
+    render(<>{searchBar.render({ node, registry: {}, ctx } as never)}</>);
+
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
   it('calls the module\'s own API, not /api: its components and the entry that configures them share one config', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     const toggle = entries.find(e => e.name === 'JobToggle')!;

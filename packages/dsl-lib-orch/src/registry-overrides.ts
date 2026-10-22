@@ -133,7 +133,11 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
   // dsl-ui's component, replacing a hand-rolled JobSearchBar that wrapped a raw input.
   const jsb = registry['SearchBar'];
   if (jsb) {
-    jsb.render = withOutputCallbacks(jsb.render, ['onChange']);
+    const wired = withOutputCallbacks(jsb.render, ['onChange']);
+    // dsl-renderer keeps the previous page's vars when two pages without route params follow each other, so the
+    // jobs page's `value: $vars.search` can arrive undefined, and the component throws on that (a blank page after
+    // "Back to jobs"). The page declares an empty search, so a missing value is that. Upstream bug reported.
+    jsb.render = (props) => (props.node['value'] === undefined ? wired({ ...props, node: { ...props.node, value: '' } }) : wired(props));
   }
 
   // JobFilterChips: expose onChange as DSL $output (wires $vars.filter updates)
