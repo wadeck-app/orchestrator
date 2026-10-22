@@ -9,10 +9,19 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-test-config-'));
+process.on('exit', () => {
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* a process of a test may still hold a file */ }
+});
+
 if (!process.env.ORCH_CONFIG_DIR) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-test-config-'));
   process.env.ORCH_CONFIG_DIR = dir;
-  process.on('exit', () => {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* a process of a test may still hold a file */ }
-  });
+}
+
+// A daemon started by a test (config-dir.test.js starts the real bundle) registers its module with app-core at
+// start. Left alone it finds the user's live ~/.config/app-core and registers a manifest that lives in the test's
+// throwaway dir; the test then deletes it and the dashboard loses its orchestrator tab. A folder that does not
+// exist makes the daemon log "app-core is not installed" and register nothing.
+if (!process.env.APP_CORE_CONFIG_DIR) {
+  process.env.APP_CORE_CONFIG_DIR = path.join(dir, 'no-app-core');
 }
