@@ -222,7 +222,12 @@ jobs:
               # the runner waited forever on children that could not exit. With the trees torn
               # down the whole suite finishes in about a minute (measured 2026-10-18: 66s macOS, 69s ubuntu, 2min windows), so it belongs back in CI: several
               # regressions shipped on 2026-09-15 would have been caught here.
-              timeout-minutes: 5
+              #
+              # 10 minutes, for the five suites together. The limit was 5 while the Windows leg took 4m02 to 4m43
+              # (runs 435-436, 3e369e1); run d1b2cb4 was cut at 5:00 with no test failing and tests still running
+              # (the last result was logged at 4:06, then nothing until the runner's ^C). A hung test is caught by
+              # the per-test --test-timeout=120000 of npm test, so this limit only has to hold the sum.
+              timeout-minutes: 10
 
             - name: Report the process table (tests failed)
               if: failure() && runner.os != 'Windows'
