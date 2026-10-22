@@ -802,7 +802,7 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       )}
 
       <div className="flex justify-end gap-2 pt-2">
-        {/* dsl-ui's ButtonCancel renders a <button> with no type, which inside a <form> is a submit button: clicking
+        {/* dsl-ui's ButtonCancel renders a button with no type, which inside a form is a submit button: clicking
             Cancel saved the form (edits of a job, or a new job) and then cancelled. ButtonCancel hands its onCancel
             straight to onClick, so the click event arrives here and preventDefault stops the submission. */}
         <ButtonCancel onCancel={cancelWithoutSubmitting(onCancel)} />

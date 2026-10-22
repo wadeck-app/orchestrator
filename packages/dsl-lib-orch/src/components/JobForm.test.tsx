@@ -910,9 +910,9 @@ describe('JobForm resource limits', () => {
   });
 });
 
-// Cancel must only cancel. dsl-ui's ButtonCancel renders a <button> without a type, which inside a <form> is a submit
+// Cancel must only cancel. dsl-ui's ButtonCancel renders a button without a type, which inside a form is a submit
 // button: clicking Cancel on the edit page submitted the form (the job was saved with the edits) and then called
-// onCancel. Reported by the user: "si je fais cancel c'est quand meme sauvegardé".
+// onCancel. Reported by the user as: cancelling an edit still saved it.
 describe('JobForm Cancel', () => {
   function renderWith(initial: Job | undefined, onSubmit: (data: unknown) => Promise<void>, onCancel: () => void) {
     return render(

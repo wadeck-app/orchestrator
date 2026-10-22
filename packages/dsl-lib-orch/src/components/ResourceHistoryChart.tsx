@@ -7,6 +7,8 @@ import { formatSpan, niceMax } from './RunTelemetryChart.js';
  * the network, so it is drawn from the daemon's answer alone. Same helpers and palette as RunTelemetryChart.
  */
 
+const TOOLTIP_CLS = 'pointer-events-none absolute top-0 z-10 w-72 rounded border border-border bg-surface p-2 text-xs text-content shadow';
+
 /** Who ended the run: the monitor (red), a timeout or a person (grey), or nobody (the base tone). */
 export type RunKind = 'resource-limit' | 'stopped' | 'normal';
 
@@ -63,6 +65,7 @@ function describeEnd(run: ResourceHistoryRun): string {
 export function describeRun(run: ResourceHistoryRun): string[] {
   const measured = (value: number | null, unit: string): string => (value === null ? 'not measured' : `${fmt(value)}${unit}`);
   return [
+    // violations-suppress: ts/no-locale-date display-only time in a tooltip, locale acceptable
     new Date(run.startedAt).toLocaleString(),
     `Duration ${formatSpan(run.durationMs)}, ${run.exitCode === null ? 'no exit code' : `exit ${run.exitCode}`}, ${describeEnd(run)}`,
     `Peak CPU ${measured(run.peakCpuPct, '%')}, Peak RAM ${measured(run.peakRamMb, ' MB')}`,
@@ -215,7 +218,7 @@ export function ResourceHistoryChart({ runs }: { runs: ResourceHistoryRun[] }): 
       {hoveredRun && hovered !== null && (
         <div
           role="tooltip"
-          className="pointer-events-none absolute top-0 z-10 w-72 rounded border border-border bg-surface p-2 text-xs text-content shadow"
+          className={TOOLTIP_CLS}
           // Beside the run, flipped to the left half of the chart so it never leaves the container.
           style={{ left: `${(centre(hovered) / W) * 100}%`, transform: hovered > runs.length / 2 ? 'translateX(calc(-100% - 8px))' : 'translateX(8px)' }}
         >

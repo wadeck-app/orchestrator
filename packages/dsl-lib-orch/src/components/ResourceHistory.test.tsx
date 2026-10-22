@@ -188,6 +188,7 @@ describe('ResourceHistory - hovering a run', () => {
     fireEvent.mouseEnter(container.querySelector('[data-testid="hover-1"]')!);
 
     const tip = screen.getByRole('tooltip');
+    // violations-suppress: ts/no-locale-date the tooltip uses the same locale formatting; the test must build the same text
     expect(tip).toHaveTextContent(new Date(T0 + 3_600_000).toLocaleString());
     expect(tip).toHaveTextContent('Duration 2m 05s');
     expect(tip).toHaveTextContent('no exit code');

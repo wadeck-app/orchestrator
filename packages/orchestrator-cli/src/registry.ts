@@ -111,9 +111,9 @@ export function validateJob(job: Partial<Job>): void {
   if (job.type === 'manual') {
     // Refused rather than ignored: a schedule on a job that never fires by itself looks configured and
     // does nothing, the failure this project keeps having to chase.
-    const record = job as Record<string, unknown>;
+    const given = new Map(Object.entries(job));
     for (const field of MANUAL_REFUSED_FIELDS) {
-      if (record[field] !== undefined && record[field] !== null) {
+      if (given.get(field) !== undefined && given.get(field) !== null) {
         throw new Error(
           `Manual jobs have no schedule: "${field}" is not accepted on a manual job. `
           + 'Remove it, or use a cron job (orch add cron) to run on a schedule.',

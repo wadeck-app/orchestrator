@@ -7,7 +7,9 @@ describe('the generated entries file', () => {
   it('is what the generator produces now (run "npm run entries --workspace=packages/dsl-lib-orch" if not)', () => {
     expect(fs.existsSync(LIB_ENTRIES), `${LIB_ENTRIES} is missing: run "npm run entries --workspace=packages/dsl-lib-orch"`).toBe(true);
     expect(fs.readFileSync(LIB_ENTRIES, 'utf8').replace(/\r\n/g, '\n')).toBe(generateEntries());
-  }, 60_000);
+    // Same limit as the Windows-listing test below: a generation parses every component with ts-morph and took 61 s
+    // on a loaded macOS runner (run c49883d, "Test timed out in 60000ms", nothing failing), 45 s for its sibling.
+  }, 240_000);
 });
 
 /*

@@ -27,7 +27,7 @@ export function resourceLimitsError(value: unknown): string | null {
     return `Job resourceLimits must be an object such as { "enforce": "warn", "hardFactor": 4 } (got: ${show(value)}). `
       + 'To remove it, clear it: orch edit <id> --unset resourceLimits';
   }
-  const v = value as Record<string, unknown>;
+  const v: { [key: string]: unknown } = Object.fromEntries(Object.entries(value));
   for (const key of Object.keys(v)) {
     if (!(RESOURCE_LIMIT_KEYS as readonly string[]).includes(key)) {
       return `Job resourceLimits.${key} is unknown. Allowed keys: ${RESOURCE_LIMIT_KEYS.join(', ')}.`;
