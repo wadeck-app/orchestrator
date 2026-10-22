@@ -909,3 +909,46 @@ describe('JobForm resource limits', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });
+
+// Cancel must only cancel. dsl-ui's ButtonCancel renders a <button> without a type, which inside a <form> is a submit
+// button: clicking Cancel on the edit page submitted the form (the job was saved with the edits) and then called
+// onCancel. Reported by the user: "si je fais cancel c'est quand meme sauvegardé".
+describe('JobForm Cancel', () => {
+  function renderWith(initial: Job | undefined, onSubmit: (data: unknown) => Promise<void>, onCancel: () => void) {
+    return render(
+      <MemoryRouter>
+        <JobForm onSubmit={onSubmit} onCancel={onCancel} initial={initial} />
+      </MemoryRouter>,
+    );
+  }
+
+  it('does not save the edits of a job, and cancels once', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    renderWith({ id: 'j1', type: 'cron', command: 'node -v', label: 'Original', schedule: '0 9 * * *', enabled: true, triggerMode: 'fire-and-forget' }, onSubmit, onCancel);
+    fireEvent.change(screen.getByRole('textbox', { name: /^Label/ }), { target: { value: 'Edited, then cancelled' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    // A submit is asynchronous: give it the time it would need before saying nothing happened.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('does not create a job when the new-job form is cancelled', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onCancel = vi.fn();
+    renderWith(undefined, onSubmit, onCancel);
+    fireEvent.change(screen.getByRole('textbox', { name: /^Id/ }), { target: { value: 'half-typed' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Label/ }), { target: { value: 'Half typed' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Command/ }), { target: { value: 'node -v' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Schedule/ }), { target: { value: '0 9 * * *' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

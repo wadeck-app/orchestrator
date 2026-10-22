@@ -176,6 +176,14 @@ function parseCron(expr: string): string | null {
   return null;
 }
 
+/** The Cancel click, without the form submission a typeless button would also cause (see the Cancel button). */
+function cancelWithoutSubmitting(onCancel: () => void): () => void {
+  return ((event?: { preventDefault?: () => void }) => {
+    event?.preventDefault?.();
+    onCancel();
+  }) as () => void;
+}
+
 /**
  * @registryCategory composite
  * @registryTags form job edit create
@@ -794,7 +802,10 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       )}
 
       <div className="flex justify-end gap-2 pt-2">
-        <ButtonCancel onCancel={onCancel} />
+        {/* dsl-ui's ButtonCancel renders a <button> with no type, which inside a <form> is a submit button: clicking
+            Cancel saved the form (edits of a job, or a new job) and then cancelled. ButtonCancel hands its onCancel
+            straight to onClick, so the click event arrives here and preventDefault stops the submission. */}
+        <ButtonCancel onCancel={cancelWithoutSubmitting(onCancel)} />
         {/* `loading || busy`: under the DSL the brain owns the request, so `onSubmit` resolves
             immediately and the internal `loading` flickers off while the save is still in flight.
             `busy` carries the brain's own $pending, which is the only thing that knows. */}
