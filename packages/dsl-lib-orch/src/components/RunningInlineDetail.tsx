@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Square } from 'lucide-react';
 import { isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
-import { postTrigger } from '../trigger-job.js';
+import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
 import { RestartButton } from './RestartButton.js';
@@ -98,8 +98,7 @@ export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, on
       }
       const res = await fetch(`${getApiBase()}/api/jobs/${jobId}/kill`, { method: 'POST' });
       if (!res.ok) {
-        const e = await res.json().catch(() => ({})) as { error?: string };
-        setError(e.error ?? `Failed to kill job (HTTP ${res.status})`);
+        setError(await readErrorSentence(res, `Failed to kill job (HTTP ${res.status})`));
         return;
       }
       setJustKilled(true);

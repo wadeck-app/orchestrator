@@ -1,7 +1,7 @@
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
-import type { CliDeps, LivenessConfig, RuntimeEntry } from './types.js';
+import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits } from './types.js';
 import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
 import { WindowsTask } from './windows/WindowsTask.js';
@@ -39,6 +39,34 @@ function runningJobs(state: Record<string, RuntimeEntry[]>): { all: string[]; su
     }
   }
   return { all, supervised };
+}
+
+/**
+ * The lines `orch status` adds under pid/port/uptime. The supervisor line is explicit in its three states: an
+ * unavailable supervisor (asked for, not found) is the one that silently changes behaviour, since jobs then die
+ * with the daemon, so it carries the daemon's own sentence, which names the fix.
+ */
+function describeDaemonInfo(info: DaemonInfo): string[] {
+  const { supervisor, runs, scheduler } = info;
+  const lines = [
+    `version   : ${info.version}  (started ${info.startedAt})`,
+    `runs      : ${runs.running} running (${runs.supervised} supervised)`,
+  ];
+  if (!supervisor.requested) {
+    lines.push('supervisor: off (supervisedJobs is false in config.yml; jobs stop with the daemon)');
+  } else if (supervisor.active) {
+    lines.push('supervisor: on (jobs outlive a daemon restart)');
+  } else {
+    lines.push(`supervisor: requested but UNAVAILABLE - jobs run unsupervised and stop with the daemon. ${supervisor.note ?? 'No reason was reported; check: orch logs'}`);
+  }
+  lines.push(`timers    : ${scheduler.armed} armed of ${scheduler.desired} desired`);
+  if (scheduler.problems.length > 0) {
+    lines.push(`${scheduler.problems.length} timer problem(s), see: orch timers`);
+    for (const p of scheduler.problems) {
+      lines.push(`  ${p.jobId}: ${p.problem}`);
+    }
+  }
+  return lines;
 }
 
 /** Contents of the dashboard pid file, or null when it does not exist. */
@@ -714,10 +742,32 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         process.exitCode = 1;
         break;
       }
+      // The daemon's own details (supervisor, run counts, timer health). Same rule as above: no auto-start. A daemon
+      // that answers `version` but not this (an older one, or a wiring fault) still gets its pid/port/uptime
+      // reported, with the failure said in words rather than the details silently missing.
+      let info: DaemonInfo | undefined;
+      let infoError: string | undefined;
+      try {
+        info = await send('get-daemon-info', undefined, { autoStart: false }) as DaemonInfo;
+        if (typeof info !== 'object' || info === null || !info.supervisor || !info.scheduler || !info.runs) {
+          throw new Error('the answer has no supervisor, runs or scheduler section');
+        }
+      } catch (e) {
+        info = undefined;
+        infoError = getErrorMessage(e);
+      }
       if (forceJson || !process.stdout.isTTY) {
-        console.log(JSON.stringify(data));
+        console.log(JSON.stringify({ ...data, ...(info ? { info } : {}), ...(infoError !== undefined ? { infoError } : {}) }));
       } else {
         console.log(`pid=${data.pid}  port=${data.port}  uptime=${data.uptime ?? '?'}s`);
+        if (info) {
+          for (const line of describeDaemonInfo(info)) {
+            console.log(line);
+          }
+        }
+      }
+      if (infoError !== undefined && !(forceJson || !process.stdout.isTTY)) {
+        console.error(`warning: could not read the daemon details (${infoError}). The supervisor state and the timer health are unknown; if the daemon is older than this CLI, run: orch restart (or orch cli update).`);
       }
       break;
     }
@@ -914,6 +964,12 @@ To restart the job, run: orch restart-job ${jobArg}`);
         dueAt: string | null; windowEndsAt: string | null; nextFiring: string | null;
         windowState: string | null; spent: boolean; problem: string | null;
       }>;
+
+      // On stderr in both modes: piped, stdout stays the bare JSON array an agent parses, and the warning is still seen.
+      const failing = rows.filter(r => r.problem !== null);
+      if (failing.length > 0) {
+        console.error(`warning: ${failing.length} job(s) will not fire as configured: ${failing.map(r => r.jobId).join(', ')}. Each one's "problem" says why.`);
+      }
 
       if (forceJson || !process.stdout.isTTY) {
         output(rows, forceJson);

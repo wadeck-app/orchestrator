@@ -8,6 +8,7 @@ import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
 import { useConfirm } from '../use-confirm.js';
 import { getApiBase } from '../runtime-config.js';
+import { readErrorSentence } from '../trigger-job.js';
 
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
@@ -317,9 +318,8 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false }: LogVi
     try {
       const res = await fetch(`${apiBase}/api/jobs/${jobId}/kill`, { method: 'POST' });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string };
         // The app's own dialog, for the same reason as the confirmation above. See useConfirm.
-        notify({ title: 'Could not kill the process', message: err.error ?? `Failed to kill job (HTTP ${res.status})` });
+        notify({ title: 'Could not kill the process', message: await readErrorSentence(res, `Failed to kill job (HTTP ${res.status})`) });
         return;
       }
       // Hide the button right away; the status poll re-shows it if a new run starts.

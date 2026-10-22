@@ -9,7 +9,8 @@ const fs   = require('node:fs');
 const path = require('node:path');
 const os   = require('node:os');
 
-const { JobTelemetry, readJobTelemetry, telemetryPath } = require('../src/job-telemetry');
+const { JobTelemetry, telemetryPath } = require('../src/job-telemetry');
+const { readTelemetryLines } = require('./helpers/read-telemetry');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'orch-telemetry-'));
@@ -47,7 +48,7 @@ describe('JobTelemetry', () => {
 
     t.sample({ cpuPct: 1, ramMb: 800, processes });
 
-    const [line] = readJobTelemetry(dir, 'wide');
+    const [line] = readTelemetryLines(dir, 'wide');
     assert.equal(line.processes.length, 5);
     assert.deepEqual(line.processes.map(p => p.pid), [10, 11, 12, 13, 14]);
   });
@@ -60,7 +61,7 @@ describe('JobTelemetry', () => {
     t.sample({ cpuPct: 50, ramMb: 147 });
     t.event('resource-kill', { consecutiveSamples: 3 });
 
-    const lines = readJobTelemetry(dir, 'killed');
+    const lines = readTelemetryLines(dir, 'killed');
     assert.deepEqual(lines.map(l => l.kind), ['start', 'sample', 'resource-kill']);
     assert.deepEqual(lines[0].hard, { cpuPct: 100, ramMb: 130 });
     assert.equal(lines[2].consecutiveSamples, 3);
@@ -80,32 +81,6 @@ describe('JobTelemetry', () => {
     assert.ok(fs.existsSync(older), 'the previous file is kept');
     assert.deepEqual(fs.readdirSync(path.join(dir, 'telemetry')).sort(), ['long.1.ndjson', 'long.ndjson'],
       'never more than the live file and one older one');
-  });
-
-  test('reads rotated and live files back oldest first', () => {
-    const dir = tmpDir();
-    const t = new JobTelemetry(dir, 'order', RUN, 1, { maxBytes: 500 });
-
-    for (let i = 0; i < 30; i++) {
-      t.sample({ cpuPct: i, ramMb: i });
-    }
-
-    const cpu = readJobTelemetry(dir, 'order').map(l => l.cpuPct);
-    assert.deepEqual(cpu, [...cpu].sort((a, b) => a - b), 'chronological');
-    assert.equal(cpu[cpu.length - 1], 29);
-  });
-
-  test('a torn last line, from a crash mid-write, is skipped instead of losing the file', () => {
-    const dir = tmpDir();
-    const t = new JobTelemetry(dir, 'torn', RUN, 1);
-    t.sample({ cpuPct: 1, ramMb: 1 });
-    fs.appendFileSync(telemetryPath(dir, 'torn'), '{"kind":"sample","cpuPct":');
-
-    assert.equal(readJobTelemetry(dir, 'torn').length, 1);
-  });
-
-  test('reads nothing, without failing, for a job that never had any', () => {
-    assert.deepEqual(readJobTelemetry(tmpDir(), 'never'), []);
   });
 
   test('never throws into the job: a folder it cannot create is reported once, and the job runs on', () => {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ButtonAction } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, type Job } from '../types.js';
 import { postRestart } from '../trigger-job.js';
+import { isLongRunning } from '../long-running.js';
 import { useConfirm } from '../use-confirm.js';
 
 export interface RestartButtonProps {
@@ -28,7 +29,7 @@ export function RestartButton({ job, jobId, running, onRestart }: RestartButtonP
   const [restarting, setRestarting] = useState(false);
   const { ask, notify, dialog } = useConfirm();
 
-  if (!running || job.timeoutSeconds !== 0) {
+  if (!running || !isLongRunning(job)) {
     return null;
   }
 

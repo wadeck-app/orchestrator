@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Job } from '../types.js';
+import { isLongRunning } from '../long-running.js';
 import { describeResourceLimits, hasCustomLimits } from '../resource-limits.js';
 
 export interface JobConfigDisplayProps { job: Job; }
@@ -27,7 +28,7 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
       {job.type === 'startup' && job.delaySeconds !== undefined && <div><span className={LABEL_CLS}>Startup delay</span><p className="mt-1 text-sm text-content">{job.delaySeconds}s</p></div>}
       <div><span className={LABEL_CLS}>Trigger mode</span><p className="mt-1 text-sm text-content">{job.triggerMode}</p></div>
       {job.missedFiring && <div><span className={LABEL_CLS}>Missed firing</span><p className="mt-1 text-sm text-content">{job.missedFiring}</p></div>}
-      <div><span className={LABEL_CLS}>Timeout</span><p className="mt-1 text-sm text-content">{job.timeoutSeconds === 0 ? 'Disabled' : `${job.timeoutSeconds ?? 300}s`}</p></div>
+      <div><span className={LABEL_CLS}>Timeout</span><p className="mt-1 text-sm text-content">{isLongRunning(job) ? 'Disabled' : `${job.timeoutSeconds ?? 300}s`}</p></div>
       {job.resourceLimits !== undefined && hasCustomLimits(job.resourceLimits) && (
         <div>
           <span className={LABEL_CLS}>Resource limits</span>

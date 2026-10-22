@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Zap } from 'lucide-react';
 import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
-import { postTrigger } from '../trigger-job.js';
+import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
 import { RestartButton } from './RestartButton.js';
@@ -105,9 +105,8 @@ export function RunningBannerDetail({ job, jobId, runHistory, onAfterTrigger, on
       }
       const res = await fetch(`${getApiBase()}/api/jobs/${jobId}/kill`, { method: 'POST' });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string };
         // The app's own dialog, for the same reason as the confirmation above. See useConfirm.
-        notify({ title: 'Could not kill the process', message: err.error ?? `Failed to kill job (HTTP ${res.status})` });
+        notify({ title: 'Could not kill the process', message: await readErrorSentence(res, `Failed to kill job (HTTP ${res.status})`) });
         return;
       }
       setJustKilled(true);

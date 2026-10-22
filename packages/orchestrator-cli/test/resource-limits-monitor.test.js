@@ -16,7 +16,7 @@ const { Registry } = require('../src/registry');
 const { State }    = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
 const { PEAK_MEASURE_VERSION } = require('../src/types');
-const { readJobTelemetry } = require('../src/job-telemetry');
+const { readTelemetryLines } = require('./helpers/read-telemetry');
 const { readResourceHistory } = require('../src/resource-history');
 
 const tmpDirs = [];
@@ -80,7 +80,7 @@ describe('the defaults, recorded in the telemetry start line', () => {
       id: 'dflt', ms: 400, sampleIntervalMs: 2000,
       sampleUsage: async () => ({ cpuPct: 1, ramMb: 1 }),
     });
-    const start = readJobTelemetry(r.dir, 'dflt').find(l => l.kind === 'start');
+    const start = readTelemetryLines(r.dir, 'dflt').find(l => l.kind === 'start');
     assert.deepEqual(start.soft, { cpuPct: 15, ramMb: 150 });
     assert.deepEqual(start.hard, { cpuPct: 30, ramMb: 300 });
     assert.equal(start.enforce, 'kill');
@@ -147,7 +147,7 @@ describe('enforce: off', () => {
     const entry = r.state.get('off1');
     assert.equal(entry.exitCode, 0);
     assert.equal(entry.peakRamMb, 5000);
-    const lines = readJobTelemetry(r.dir, 'off1');
+    const lines = readTelemetryLines(r.dir, 'off1');
     assert.ok(lines.some(l => l.kind === 'sample'));
     assert.equal(lines.find(l => l.kind === 'start').enforce, 'off');
   });
@@ -161,7 +161,7 @@ describe('absolute ceilings', () => {
     });
     assert.equal(r.hardEvents.length, 1);
     assert.deepEqual(r.hardEvents[0].payload.hardThreshold, { cpuPct: null, ramMb: 100 });
-    const start = readJobTelemetry(r.dir, 'abs1').find(l => l.kind === 'start');
+    const start = readTelemetryLines(r.dir, 'abs1').find(l => l.kind === 'start');
     assert.deepEqual(start.hard, { cpuPct: null, ramMb: 100 });
     assert.equal(start.soft, null);
   });

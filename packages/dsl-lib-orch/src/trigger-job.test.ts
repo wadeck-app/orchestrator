@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { postDryRun, postRestart, postTrigger, postTriggerEarly } from './trigger-job.js';
+import { postDryRun, postRestart, postTrigger, postTriggerEarly, readErrorSentence } from './trigger-job.js';
 
 function stubFetch(response: { status: number; ok?: boolean; json?: unknown }): ReturnType<typeof vi.fn> {
   const fn = vi.fn().mockResolvedValue({
@@ -165,5 +165,49 @@ describe('postRestart', () => {
     stubFetch({ status: 503 });
 
     await expect(postRestart('j1')).rejects.toThrow('Status text');
+  });
+});
+
+// Fastify answers its own failures (an uncaught throw, a schema rejection) as
+// { statusCode, error: 'Internal Server Error', message: '<the cause>' }, while the routes answer
+// { error: '<the cause>' }. The sentence the user reads is the cause either way.
+describe.each([
+  ['postTrigger', (): Promise<unknown> => postTrigger('j1')],
+  ['postTriggerEarly', (): Promise<unknown> => postTriggerEarly('j1')],
+  ['postDryRun', (): Promise<unknown> => postDryRun('j1')],
+  ['postRestart', (): Promise<unknown> => postRestart('j1')],
+])('%s error sentence', (_name, call) => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reads the cause from `message` when the body is a Fastify error', async () => {
+    stubFetch({ status: 500, ok: false, json: { statusCode: 500, error: 'Internal Server Error', message: 'Job not found: j1' } });
+
+    await expect(call()).rejects.toThrow('Job not found: j1');
+  });
+
+  it('reads the cause from `error` when there is no `message`', async () => {
+    stubFetch({ status: 409, ok: false, json: { error: 'Job "j1" is disabled' } });
+
+    await expect(call()).rejects.toThrow('Job "j1" is disabled');
+  });
+
+  it('says the HTTP status and where to look when the body carries neither', async () => {
+    stubFetch({ status: 502, ok: false, json: {} });
+
+    await expect(call()).rejects.toThrow(/HTTP 502.*orch status/);
+  });
+});
+
+describe('readErrorSentence', () => {
+  it('uses the caller fallback when the body carries neither, so a call site keeps its own wording', async () => {
+    const res = { status: 500, statusText: 'x', json: () => Promise.resolve({}) } as unknown as Response;
+
+    await expect(readErrorSentence(res, 'Failed to stop job (HTTP 500)')).resolves.toBe('Failed to stop job (HTTP 500)');
+  });
+
+  it('ignores a blank or non-string message', async () => {
+    const res = { status: 500, statusText: '', json: () => Promise.resolve({ message: '  ', error: 42 }) } as unknown as Response;
+
+    await expect(readErrorSentence(res)).resolves.toMatch(/HTTP 500/);
   });
 });

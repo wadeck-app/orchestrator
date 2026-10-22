@@ -1,6 +1,26 @@
 import { isTriggerRefused, type RestartResult, type TriggerRefused } from './types.js';
 import { getApiBase } from './runtime-config.js';
 
+/**
+ * The sentence to show for a failed (non-ok) response, the same way for every mutation.
+ *
+ * `message` before `error`: Fastify answers its own failures as `{ statusCode, error: 'Internal Server
+ * Error', message: '<the cause>' }`, where `error` is only the HTTP reason phrase, while the daemon routes
+ * answer `{ error: '<the cause>' }` with no `message`. Same order as the dashboard fetcher in orch-app
+ * (`fetcher.ts`), which cannot be imported from here. With neither, `fallback` (a call site's own
+ * wording) or a sentence saying the status and where to look.
+ */
+export async function readErrorSentence(res: Response, fallback?: string): Promise<string> {
+  const body = await res.json().catch(() => null) as { message?: unknown; error?: unknown } | null;
+  for (const candidate of [body?.message, body?.error]) {
+    if (typeof candidate === 'string' && candidate.trim() !== '') {
+      return candidate;
+    }
+  }
+  const reason = res.statusText === '' ? '' : ` (${res.statusText})`;
+  return fallback ?? `The dashboard server answered HTTP ${res.status}${reason} with no detail; run \`orch status\` to check the daemon, then \`orch logs\`.`;
+}
+
 async function postRun(
   id: string,
   action: 'trigger' | 'trigger-early',
@@ -10,8 +30,7 @@ async function postRun(
   const query = opts?.force === true ? '?force=true' : '';
   const res = await fetch(`${apiBase}/api/jobs/${id}/${action}${query}`, { method: 'POST' });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
-    throw new Error(body.error ?? res.statusText);
+    throw new Error(await readErrorSentence(res));
   }
   if (res.status === 200) {
     const body: unknown = await res.json();
@@ -50,8 +69,7 @@ export type DryRunResult = { pid: number | null } | { exitCode: number | null };
 export async function postDryRun(id: string, apiBase = getApiBase()): Promise<DryRunResult> {
   const res = await fetch(`${apiBase}/api/jobs/${id}/dry-run`, { method: 'POST' });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
-    throw new Error(body.error ?? res.statusText);
+    throw new Error(await readErrorSentence(res));
   }
   const body = await res.json() as DryRunResult | { error: string };
   if ('error' in body) {
@@ -69,8 +87,7 @@ export async function postDryRun(id: string, apiBase = getApiBase()): Promise<Dr
 export async function postRestart(id: string, apiBase = getApiBase()): Promise<RestartResult> {
   const res = await fetch(`${apiBase}/api/jobs/${id}/restart`, { method: 'POST' });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
-    throw new Error(body.error ?? res.statusText);
+    throw new Error(await readErrorSentence(res));
   }
   return await res.json() as RestartResult;
 }

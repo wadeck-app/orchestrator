@@ -135,28 +135,3 @@ export class JobTelemetry {
   }
 }
 
-function readLines(file: string): TelemetryLine[] {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return [];
-  }
-  const lines: TelemetryLine[] = [];
-  for (const raw of text.split('\n')) {
-    if (raw.trim() === '') {
-      continue;
-    }
-    try {
-      lines.push(JSON.parse(raw) as TelemetryLine);
-    } catch {
-      // A line cut off by a crash mid-write. The rest of the file is still good.
-    }
-  }
-  return lines;
-}
-
-/** A job's telemetry, oldest first: the older file, then the live one. Empty when it never had any. */
-export function readJobTelemetry(configDir: string, jobId: string): TelemetryLine[] {
-  return [...readLines(rotatedPath(configDir, jobId)), ...readLines(telemetryPath(configDir, jobId))];
-}

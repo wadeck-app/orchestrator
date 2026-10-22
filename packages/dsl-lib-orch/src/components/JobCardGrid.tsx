@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, ButtonLink, Checkbox, ColumnHelpers, DataTable, IconButton, Spinner, type TableColumn } from '@wadeck-app/dsl-ui';
 import { getErrorMessage, isJobRunning, isRunCancelled, isRunFailed, isRunSkipped, latestRun, runEndReason, type RuntimeEntry } from '../types.js';
-import { postTrigger } from '../trigger-job.js';
+import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
@@ -193,7 +193,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   const handleToggle = useCallback(async (id: string, enabled: boolean) => {
     if (onToggle) { onToggle(id, enabled); return; }
     const res = await fetch(`${getApiBase()}/api/jobs/${id}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
-    if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error((e as { error: string }).error ?? res.statusText); }
+    if (!res.ok) { throw new Error(await readErrorSentence(res)); }
   }, [onToggle]);
 
   const handleBulkEnable  = useCallback(async () => {

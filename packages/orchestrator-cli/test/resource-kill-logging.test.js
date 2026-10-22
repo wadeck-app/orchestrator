@@ -183,13 +183,13 @@ describe('sampleProcessTree breakdown', () => {
 });
 
 describe('the telemetry file of a killed job', () => {
-  const { readJobTelemetry } = require('../src/job-telemetry');
+  const { readTelemetryLines } = require('./helpers/read-telemetry');
 
   test('keeps what the monitor saw: the thresholds at the start, every sample, the kill and the end', async () => {
     const dir = tmpDir();
     await runKilledJob(dir, 'telemetry-a');
 
-    const lines = readJobTelemetry(dir, 'telemetry-a');
+    const lines = readTelemetryLines(dir, 'telemetry-a');
     const kinds = lines.map(l => l.kind);
     assert.equal(kinds[0], 'start', `kinds: ${kinds.join(',')}`);
     assert.ok(kinds.filter(k => k === 'sample').length >= 3, 'the three samples that led to the kill');
@@ -221,7 +221,7 @@ describe('the telemetry file of a killed job', () => {
     await sched.trigger('telemetry-b');
     await sched.stop();
 
-    const lines = readJobTelemetry(dir, 'telemetry-b');
+    const lines = readTelemetryLines(dir, 'telemetry-b');
     assert.ok(lines.some(l => l.kind === 'sample'));
     const end = lines[lines.length - 1];
     assert.equal(end.kind, 'end');

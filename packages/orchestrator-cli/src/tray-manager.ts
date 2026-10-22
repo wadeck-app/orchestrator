@@ -12,6 +12,7 @@ import type { Registry } from './registry.js';
 import { getErrorMessage } from './fsUtil.js';
 import type { Scheduler } from './scheduler.js';
 import type { Job } from './types.js';
+import { isLongRunning } from './long-running.js';
 import type { DashboardManager } from './dashboard-manager.js';
 
 const MAX_FAILURES = 5;
@@ -337,7 +338,8 @@ export class TrayManager extends EventEmitter {
   private _jobStarted(id: string): void {
     this._runningJobIds.add(id);
     this._clearLongRunningTimer(id);
-    if (this._registry.get(id)?.timeoutSeconds === 0) {
+    const job = this._registry.get(id);
+    if (job && isLongRunning(job)) {
       this._longRunningTimers.set(id, setTimeout(() => {
         this._longRunningTimers.delete(id);
         this._runningJobIds.delete(id);
