@@ -77,14 +77,33 @@ test('a daemon that detached from a supervised job with a timeout and a resource
   child.stderr.on('data', (d) => { err += d.toString(); });
 
   const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)));
+  // The 20 s are counted from the daemon's own "SHUTDOWN_DONE", as the failure message says. Counting them from
+  // the spawn also counted tsx compiling the scheduler and the 2.5 s of monitoring, and on a loaded Windows runner
+  // (run 3e369e1) the test failed at 20.8 s with SHUTDOWN_DONE printed: whether the exit was slow or only the start
+  // was, the log could not tell. The start gets its own, longer, limit and a message of its own.
+  const shutDown = await Promise.race([
+    exited.then(() => 'exited'),
+    new Promise((resolve) => {
+      const poll = setInterval(() => {
+        if (out.includes('SHUTDOWN_DONE')) { clearInterval(poll); resolve('shutdown'); }
+      }, 50);
+      setTimeout(() => { clearInterval(poll); resolve('start-timed-out'); }, 90_000);
+    }),
+  ]);
+  if (shutDown === 'start-timed-out') {
+    child.kill();
+  }
+  assert.notEqual(shutDown, 'start-timed-out', `the daemon script did not reach its shutdown within 90 s (stdout: ${out.trim()} stderr: ${err.trim()})`);
+  const shutDownAt = Date.now();
   const verdict = await Promise.race([
     exited.then((code) => ({ code })),
     new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 20_000)),
   ]);
+  const exitTookMs = Date.now() - shutDownAt;
 
   const jobPid = Number(/JOB_PID=(\d+)/.exec(out)?.[1]);
   try {
-    assert.ok(!verdict.timedOut, `the daemon process did not exit within 20 s of shutting down (stdout: ${out.trim()} stderr: ${err.trim()}): something it started keeps it alive`);
+    assert.ok(!verdict.timedOut, `the daemon process did not exit within 20 s of shutting down (${exitTookMs} ms waited; stdout: ${out.trim()} stderr: ${err.trim()}): something it started keeps it alive`);
     assert.equal(verdict.code, 0, `the daemon exited with ${verdict.code}: ${err}`);
     assert.ok(Number.isInteger(jobPid) && jobPid > 0, `no job pid reported: ${out}`);
     assert.equal(isAlive(jobPid), true, 'the job must outlive the daemon that started it');
