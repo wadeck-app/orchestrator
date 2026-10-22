@@ -55,7 +55,7 @@ function toJobRow(item: JobWithUptime): JobRow {
     id: item.job.id,
     label: item.job.label,
     type: item.job.type,
-    schedule: item.job.schedule ?? `${item.job.delaySeconds ?? 0}s`,
+    schedule: item.job.type === 'manual' ? 'Trigger only' : (item.job.schedule ?? `${item.job.delaySeconds ?? 0}s`),
     lastRun: last ? relativeTime(last.startedAt) : 'Never',
     item,
   };
@@ -281,6 +281,7 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
         (filter === 'cron'    && job.type === 'cron')    ||
         (filter === 'startup' && job.type === 'startup') ||
         (filter === 'once'    && job.type === 'once')    ||
+        (filter === 'manual'  && job.type === 'manual')  ||
         (filter === 'failed'  && isRunFailed(last))
       );
     return matchSearch && matchFilter;

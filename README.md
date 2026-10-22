@@ -1,6 +1,6 @@
 # @wadeck-app/orchestrator-cli
 
-Cross-platform job orchestrator daemon and CLI - schedules cron, startup, and one-shot jobs, auto-restarts the daemon on update, and serves an optional web dashboard.
+Cross-platform job orchestrator daemon and CLI - schedules cron, startup, and one-shot jobs (plus manual jobs that only run when triggered), auto-restarts the daemon on update, and serves an optional web dashboard.
 
 ## Install
 
@@ -22,7 +22,7 @@ orch server start                               # open web dashboard
 ## Commands
 
 - **Daemon:** `orch start` / `stop` / `restart` / `status` / `install` / `uninstall`
-- **Jobs:** `orch list` / `show <id>` / `add cron|startup <id>` / `remove` / `enable` / `disable` / `edit` / `trigger`
+- **Jobs:** `orch list` / `show <id>` / `add cron|startup|manual <id>` / `remove` / `enable` / `disable` / `edit` / `trigger`
 - **Dashboard:** `orch server start|stop|status`
 - **Logs:** `orch logs [--follow]`
 

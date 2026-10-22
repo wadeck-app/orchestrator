@@ -38,6 +38,8 @@ export const TYPE_COLORS: Record<Job['type'], string> = {
   cron:    'bg-tag-cron-bg text-tag-cron',
   startup: 'bg-tag-startup-bg text-tag-startup',
   once:    'bg-tag-once-bg text-tag-once',
+  // Neutral tokens that already exist: no new colour to add to the three Tailwind/CSS copies.
+  manual:  'bg-muted-bg text-muted',
 };
 
 // Tag color palette (6 semantic tokens added to tailwind.config + index.css)

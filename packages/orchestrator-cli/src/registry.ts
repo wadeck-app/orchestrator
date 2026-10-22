@@ -2,7 +2,7 @@ import fs   from 'node:fs';
 // The same validator the scheduler uses, so what the registry accepts is what can actually be run.
 import cron from 'node-cron';
 import type { Job, RegistryData } from './types.js';
-import { JOB_TYPES, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES, DESCRIPTION_MAX_LENGTH,
+import { JOB_TYPES, MANUAL_REFUSED_FIELDS, MANUAL_DROPPED_ON_CONVERSION, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES, DESCRIPTION_MAX_LENGTH,
          UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 import { activeWindowError } from './active-window.js';
@@ -44,7 +44,7 @@ export function validateJob(job: Partial<Job>): void {
     throw new Error(`Job id must contain only letters, digits, and hyphens (got: "${job.id}")`);
   }
   if (!job.type || !VALID_TYPES.has(job.type))         {
-    throw new Error(`Job type must be "cron", "startup", or "once" (got: ${job.type})`);
+    throw new Error(`Job type must be "cron", "startup", "once", or "manual" (got: ${job.type})`);
   }
   if (!job.command || typeof job.command !== 'string') {
     throw new Error('Job command must be a non-empty string');
@@ -105,6 +105,20 @@ export function validateJob(job: Partial<Job>): void {
     }
     if (!cron.validate(schedule)) {
       throw new Error(`Invalid cron schedule: "${job.schedule}" - a field is out of range (minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7)`);
+    }
+  }
+
+  if (job.type === 'manual') {
+    // Refused rather than ignored: a schedule on a job that never fires by itself looks configured and
+    // does nothing, the failure this project keeps having to chase.
+    const record = job as Record<string, unknown>;
+    for (const field of MANUAL_REFUSED_FIELDS) {
+      if (record[field] !== undefined && record[field] !== null) {
+        throw new Error(
+          `Manual jobs have no schedule: "${field}" is not accepted on a manual job. `
+          + 'Remove it, or use a cron job (orch add cron) to run on a schedule.',
+        );
+      }
     }
   }
 
@@ -471,8 +485,11 @@ export class Registry {
    * Patches a job: fields in `updates` are overwritten, fields named in `unset` are cleared, and
    * everything else is left alone. Clearing is separate from updating because a patch has no way to
    * say "remove this" through a value -- see UNSETTABLE_FIELDS for what each field clears to.
+   *
+   * Returns the names of the fields dropped because the new type has no use for them (an edit into a
+   * `manual` job drops its schedule), so the caller can say so instead of changing the job silently.
    */
-  edit(id: string, updates: Partial<Job>, unset: readonly string[] = []): void {
+  edit(id: string, updates: Partial<Job>, unset: readonly string[] = []): string[] {
     this._ensure();
     const idx = this._jobs!.findIndex((j) => j.id === id);
     if (idx === -1) {
@@ -480,6 +497,24 @@ export class Registry {
     }
     // Indexable, because unsetting reaches fields by name -- still a Job for validation.
     const merged = { ...this._jobs![idx], ...updates } as Job & Record<string, unknown>;
+
+    const cleared: string[] = [];
+    if (updates.type !== undefined && updates.type !== this._jobs![idx]!.type) {
+      if (updates.type === 'manual') {
+        // Only what the caller did not send in the same edit: a schedule sent beside type manual is a
+        // contradiction to refuse, not a field to drop.
+        for (const field of MANUAL_DROPPED_ON_CONVERSION) {
+          if (merged[field] !== undefined && !Object.prototype.hasOwnProperty.call(updates, field)) {
+            delete merged[field];
+            cleared.push(field);
+          }
+        }
+      }
+      // The origin of a once job's delay, as add() stamps it: without it the delay has nothing to count from.
+      if (updates.type === 'once' && merged.scheduledAt === undefined) {
+        merged.scheduledAt = new Date(this._now()).toISOString();
+      }
+    }
 
     for (const field of unset) {
       const problem = unsettableFieldError(field);
@@ -505,6 +540,7 @@ export class Registry {
     validateJob(normalized);
     this._jobs![idx] = normalized;
     this._write({ version: SUPPORTED_VERSION, jobs: this._jobs! });
+    return cleared;
   }
 
   private _patch(id: string, updates: Partial<Job>): void {

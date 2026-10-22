@@ -6,7 +6,7 @@ import { FilterChips } from '@wadeck-app/dsl-ui';
  * still have work ahead of them, and this one switches to the ones that do not. A spent `once` job is
  * excluded from all the others, so "Once" means "still to fire" and stays a useful view.
  */
-export type JobFilterType = 'all' | 'cron' | 'startup' | 'once' | 'failed' | 'past-once';
+export type JobFilterType = 'all' | 'cron' | 'startup' | 'once' | 'manual' | 'failed' | 'past-once';
 
 export interface JobFilterChipsProps {
   selected?: JobFilterType;
@@ -20,6 +20,7 @@ const OPTIONS: { value: JobFilterType; label: string }[] = [
   { value: 'cron',    label: 'Cron' },
   { value: 'startup', label: 'Startup' },
   { value: 'once',    label: 'Once' },
+  { value: 'manual',  label: 'Manual' },
   { value: 'failed',  label: 'Failed' },
   // Last, because it is the only one that looks backwards. Adjacent to "Once" so the pair reads as
   // "still to fire" / "already fired".

@@ -268,12 +268,12 @@ export interface TimerReport {
  * What the dashboard says about the timers, reduced from the same report `list-timers` returns.
  *
  * `desired` counts the jobs that should have a timer: enabled, not a spent `once`, not a `startup` job (it fires
- * once at start, nothing to arm) and not past its active period. `armed` is how many of those have one.
+ * once at start, nothing to arm), not a `manual` job (it only runs when triggered) and not past its active period. `armed` is how many of those have one.
  * `problems` is every report that carries a problem, whether or not it counts as desired.
  */
 export function summarizeTimers(reports: TimerReport[]): { armed: number; desired: number; problems: Array<{ jobId: string; problem: string }> } {
   const desired = reports.filter(r =>
-    r.enabled && !r.spent && r.type !== 'startup' && r.windowState !== 'expired');
+    r.enabled && !r.spent && r.type !== 'startup' && r.type !== 'manual' && r.windowState !== 'expired');
   return {
     armed:    desired.filter(r => r.armed !== null).length,
     desired:  desired.length,
@@ -737,6 +737,7 @@ export class Scheduler extends EventEmitter {
     }
     // `startup` means "when the daemon starts". A startup job added while it is already running has
     // nothing to schedule now, and firing it here would contradict the type's own meaning.
+    // `manual` is never fired by the scheduler: nothing is armed, now or at daemon start.
   }
 
   /**
@@ -893,6 +894,10 @@ export class Scheduler extends EventEmitter {
     if (job.type === 'startup') {
       return null;
     }           // fires once at daemon start, nothing to arm
+    // Runs only when triggered, so nothing armed is the correct state, not a job that was lost.
+    if (job.type === 'manual') {
+      return null;
+    }
     if (windowState === 'expired') {
       return 'its active period has ended -- enabled but nothing armed; re-enable it to resume';
     }

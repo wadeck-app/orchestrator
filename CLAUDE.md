@@ -1,6 +1,6 @@
 # orchestrator
 
-Cross-platform job orchestrator daemon (`@wadeck-app/orchestrator-cli`) + optional web dashboard (`orch-server`). Schedules cron, startup, and one-shot jobs; auto-restarts on update.
+Cross-platform job orchestrator daemon (`@wadeck-app/orchestrator-cli`) + optional web dashboard (`orch-server`). Schedules cron, startup, and one-shot jobs (and holds manual jobs that run only when triggered); auto-restarts on update.
 
 ## Quick reference
 

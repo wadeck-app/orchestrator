@@ -484,7 +484,8 @@ Concepts:
   job           A scheduled or startup task with an id, command, and schedule
   cron          Runs on a cron schedule (5-field: min hour day month weekday)
   startup       Runs once when the daemon starts, with optional delay
-  once          Runs once after a delay, then self-deletes
+  once          Runs once after a delay, then is marked as fired (hidden from orch list, see --past)
+  manual        Never scheduled: runs only when triggered (orch trigger <id>, the dashboard, the API)
   liveness      Optional check: if target is already alive, skip firing the job
 
 Usage: orch <command> [options]
@@ -567,6 +568,9 @@ Job mutation:
   An unrecognised flag is refused, not ignored: --timeout used to be silently dropped.
   orch add startup <id> --command <cmd> [--delay <seconds>] [--cwd <p>] [--label <t>]
   orch add --once <id> --delay <duration> --command <cmd> [--cwd <p>] [--label <t>]
+  orch add manual <id> --command <cmd> [--cwd <p>] [--label <t>]
+                               Takes the shared options below, but no --schedule, --delay,
+                               --missed-firing or --active-*: a manual job has no schedule
                                Fire once after <duration> (e.g. 30s, 2m, 1h, 1d), then self-delete
   orch remove <id>             Remove a job
   orch enable <id>             Enable a job
@@ -932,6 +936,8 @@ To restart the job, run: orch restart-job ${jobArg}`);
               j['delayMs'] === undefined ? undefined : Number(j['delayMs']),
               Date.now(),
             );
+        } else if (j['type'] === 'manual') {
+          scheduleDisplay = `run with: orch trigger ${String(j['id'])}`;
         } else {
           scheduleDisplay = j['schedule'] != null ? String(j['schedule']) : String(j['delaySeconds']) + 's';
         }
@@ -987,10 +993,11 @@ To restart the job, run: orch restart-job ${jobArg}`);
         // which is the same words for a finished job and for one the scheduler had lost track of.
         const when = r.spent
           ? 'already fired'
+          : r.type === 'manual' && due === null ? 'trigger only'
           : due !== null ? `${due} (${describeMoment(due, Date.now())})` : 'nothing scheduled';
         // violations-suppress: shared/no-emoji local/no-unicode-symbol CLI terminal indicator - marks the armed/not-armed state the way `orch list` marks enabled/disabled
         const mark = r.problem === null ? '✓' : '✗';
-        const armedCol = r.spent ? 'spent' : (r.armed ?? 'not armed');
+        const armedCol = r.spent ? 'spent' : (r.armed ?? (r.type === 'manual' ? 'manual' : 'not armed'));
         console.log(`${mark} ${r.jobId.padEnd(24)} ${r.type.padEnd(8)} ${armedCol.padEnd(14)} ${when}`);
         if (r.windowState !== null && r.windowState !== 'active') {
           console.log(`    window: ${r.windowState}`);
@@ -1065,13 +1072,26 @@ Usage patterns:
   orch add cron <id> --schedule "..." --command "..."
   orch add startup <id> --command "..."
   orch add --once <id> --delay <duration> --command "..."
+  orch add manual <id> --command "..."
 
 Examples:
   orch add cron backup --schedule "0 2 * * *" --command "/home/user/backup.sh"
   orch add startup check-health --command "curl http://localhost:8080/health"
-  orch add --once report --delay 1h --command "node scripts/report.js"`, 4);
+  orch add --once report --delay 1h --command "node scripts/report.js"
+  orch add manual deploy --command "node scripts/deploy.js"`, 4);
       }
       rejectUnknownFlags(addRest, EXTRA_ADD_FLAGS, 'orch add');
+      if (type === 'manual') {
+        const scheduling = ['--schedule', '--delay', '--missed-firing', '--active-for', '--active-from', '--active-until']
+          .find(name => addRest.includes(name));
+        if (scheduling !== undefined) {
+          errorExit(`${scheduling} is not accepted on a manual job: manual jobs have no schedule, they run only when triggered.
+
+To run on a schedule, create a cron job instead:
+  orch add cron <id> --schedule "<expr>" --command "..."
+To run this one, drop ${scheduling}, then: orch trigger <id>`, 4);
+        }
+      }
       const command = flag(addRest, '--command');
       if (!command) {
         errorExit(`--command is required for all job types.

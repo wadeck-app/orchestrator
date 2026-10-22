@@ -13,7 +13,8 @@ export const DESCRIPTION_MAX_LENGTH = 2000;
 
 export interface Job {
   id: string;
-  type: 'cron' | 'startup' | 'once';
+  /** `manual` is never fired by the scheduler: no schedule, no delay, it runs only when triggered. */
+  type: 'cron' | 'startup' | 'once' | 'manual';
   label: string;
   schedule?: string;
   /** `startup` only: how long after the daemon starts. May be 0. */

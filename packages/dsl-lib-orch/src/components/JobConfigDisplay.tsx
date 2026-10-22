@@ -26,6 +26,7 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
       {job.cwd && <div><span className={LABEL_CLS}>Working directory</span><p className={VALUE_CLS}>{job.cwd}</p></div>}
       {job.type === 'cron' && job.schedule && <div><span className={LABEL_CLS}>Schedule</span><p className={VALUE_CLS}>{job.schedule}</p></div>}
       {job.type === 'startup' && job.delaySeconds !== undefined && <div><span className={LABEL_CLS}>Startup delay</span><p className="mt-1 text-sm text-content">{job.delaySeconds}s</p></div>}
+      {job.type === 'manual' && <div><span className={LABEL_CLS}>Schedule</span><p className="mt-1 text-sm text-content">None: runs only when triggered</p></div>}
       <div><span className={LABEL_CLS}>Trigger mode</span><p className="mt-1 text-sm text-content">{job.triggerMode}</p></div>
       {job.missedFiring && <div><span className={LABEL_CLS}>Missed firing</span><p className="mt-1 text-sm text-content">{job.missedFiring}</p></div>}
       <div><span className={LABEL_CLS}>Timeout</span><p className="mt-1 text-sm text-content">{isLongRunning(job) ? 'Disabled' : `${job.timeoutSeconds ?? 300}s`}</p></div>

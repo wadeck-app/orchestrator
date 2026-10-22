@@ -20,7 +20,11 @@ const TYPE_OPTIONS: FieldSelectOption[] = [
   { value: 'cron',    label: 'Cron' },
   { value: 'startup', label: 'Startup' },
   { value: 'once',    label: 'Once' },
+  { value: 'manual',  label: 'Manual' },
 ];
+
+// Under the picker when `manual` is chosen: the one type with nothing to configure on the form's schedule side.
+const MANUAL_TYPE_HINT = 'Never scheduled: runs only when you press Trigger (or call the API / orch trigger).';
 
 const TRIGGER_MODE_OPTIONS: FieldSelectOption[] = [
   { value: 'fire-and-forget', label: 'Fire and forget' },
@@ -313,7 +317,11 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     }
     setLoading(true);
     try {
-      const data: JobFormPayload = { label: label.trim(), type, command: command.trim(), triggerMode, missedFiring };
+      const data: JobFormPayload = { label: label.trim(), type, command: command.trim(), triggerMode };
+      // A manual job is never caught up, and the daemon refuses the field on it.
+      if (type !== 'manual') {
+        data.missedFiring = missedFiring;
+      }
       // Only on create: the edit route reads the id from the URL, so sending it would let a body and
       // a path disagree about which job is being written.
       if (isCreating) {
@@ -551,6 +559,7 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         onChange={v => setType(v as JobType)}
         options={TYPE_OPTIONS}
       />
+      {type === 'manual' && <p className="-mt-3 text-xs text-muted">{MANUAL_TYPE_HINT}</p>}
 
       <FieldText label="Command" value={command} onChange={setCommand} placeholder="node script.js" error={errors?.command} required />
       <FieldText label="Working directory" value={cwd} onChange={setCwd} placeholder="/optional/path" />
@@ -669,12 +678,14 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
             onChange={optionalNumericSetter(setMaxConcurrency)}
             min={1}
           />
-          <FieldSelect
-            label="Missed firing"
-            value={missedFiring}
-            onChange={v => setMissedFiring(v as MissedFiring)}
-            options={MISSED_FIRING_OPTIONS}
-          />
+          {type !== 'manual' && (
+            <FieldSelect
+              label="Missed firing"
+              value={missedFiring}
+              onChange={v => setMissedFiring(v as MissedFiring)}
+              options={MISSED_FIRING_OPTIONS}
+            />
+          )}
 
           <FieldSelect
             label="Liveness check"

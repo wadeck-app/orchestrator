@@ -126,7 +126,7 @@ export function makeCommands(
           + `got ${fields === undefined ? 'nothing' : JSON.stringify(fields)}`,
         );
       }
-      registry.edit(id, fields, unset ?? []);
+      const cleared = registry.edit(id, fields, unset ?? []);
       const updatedJob = registry.get(id);
       // An edited schedule has to replace the running one. scheduleJob clears the old timer or cron
       // task first, so editing a job does not leave two.
@@ -136,6 +136,8 @@ export function makeCommands(
       audit?.log('job.edited', {
         jobId: id, label: updatedJob?.label,
         changes: Object.keys(fields), ...(unset?.length ? { unset } : {}),
+        // Said in the trail: a type change that dropped fields (cron to manual drops the schedule) must not look like a plain edit.
+        ...(cleared.length ? { clearedForType: cleared, note: `type ${updatedJob?.type}: dropped ${cleared.join(', ')}, which no longer apply` } : {}),
       });
       return updatedJob!;
     },

@@ -37,6 +37,10 @@ export function NextFireCountdown({ job, nowMs }: NextFireCountdownProps): React
   if (job.type === 'startup') {
     return <span className="text-sm text-muted">On startup</span>;
   }
+  // Nothing is ever armed for it, so there is no time to count down to.
+  if (job.type === 'manual') {
+    return <span className="text-sm text-muted">Never scheduled; run with Trigger</span>;
+  }
   if (job.type === 'once') {
     return <span className="text-sm text-muted">{onceWording(job, now)}</span>;
   }

@@ -1,5 +1,17 @@
 // Enum values - single source of truth
-export const JOB_TYPES = ['cron', 'startup', 'once'] as const;
+export const JOB_TYPES = ['cron', 'startup', 'once', 'manual'] as const;
+
+/**
+ * Job fields that only mean something to a job the scheduler fires by itself.
+ *
+ * A `manual` job is never fired by the scheduler, so it refuses these (validateJob) and loses them when a
+ * job is edited into one (Registry.edit). `spent` and `spentAt` are the once job's own state: not refused
+ * on a manual job, which a daemon never writes them to, but dropped when a spent once job becomes manual.
+ */
+export const MANUAL_REFUSED_FIELDS = [
+  'schedule', 'delaySeconds', 'delayMs', 'scheduledAt', 'missedFiring', 'activeFrom', 'activeUntil',
+] as const;
+export const MANUAL_DROPPED_ON_CONVERSION = [...MANUAL_REFUSED_FIELDS, 'spent', 'spentAt'] as const;
 export const TRIGGER_MODES = ['fire-and-forget', 'wait'] as const;
 export const MISSED_FIRINGS = ['catch-up', 'skip'] as const;
 export const LIVENESS_STRATEGIES = ['none', 'portFile', 'pidFile', 'command'] as const;

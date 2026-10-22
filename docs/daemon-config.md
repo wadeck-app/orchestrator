@@ -65,6 +65,21 @@ so its run history and audit entries still have a definition to point at.
 Pruning applies whichever bound is reached first, on daemon start and after each firing. `orch list`
 hides spent jobs (use `--past`); the dashboard has a "Past once" filter chip.
 
+## Manual jobs
+
+`orch add manual <id> --command "..."` creates a job the scheduler never fires: nothing is armed at
+daemon start or when it is added, it is never caught up, and `orch timers` / `orch status` /
+`get-daemon-info` report no problem for it. It runs only on `orch trigger <id>`, `POST /api/jobs/:id/trigger`
+or the dashboard Trigger button.
+
+| Aspect | Behaviour |
+|---|---|
+| After a run | Kept (not spent, unlike `once`); history, logs, telemetry and resource history accumulate |
+| Retry | `retryOnExitCodes` / `retryDelays` apply to a failed triggered run, as for every type |
+| Refused fields | `schedule`, `delaySeconds`, `delayMs`, `scheduledAt`, `missedFiring`, `activeFrom`, `activeUntil`: error "Manual jobs have no schedule" |
+| Everything else | `timeoutSeconds`, `maxConcurrency`, `skipExitCodes`, `liveness`, `resourceLimits`, `env`, `cwd`, `triggerMode`, `description` |
+| Type change via the API (`edit-job` `updates.type`) | To `manual`: the fields above are dropped and named in the `job.edited` audit entry (`clearedForType`, `note`). From `manual`: the new type's required fields must be sent (cron needs `schedule`, once needs `delayMs`; `scheduledAt` is stamped). `orch edit` has no `--type` flag |
+
 ## Catch-up behaviour
 
 On startup, for each cron job with `missedFiring: catch-up`, the scheduler compares the last expected firing time (computed from the cron schedule, up to 48h back) against the last recorded run. If the last expected firing is more recent than the last run, the job was missed and is queued for catch-up.
@@ -146,7 +161,7 @@ Reply:
 | `config` | `supervisedJobs`, `lateActionWindowMinutes`, `autoUpdate`, `appCore`, `catchUpInitialDelaySeconds`, `catchUpStaggerSeconds` as read at start |
 | `supervisor` | `requested` (`supervisedJobs`), `active` (the executable was found), `note` when requested but not active: the daemon-start warning, with the platform and the fix |
 | `runs` | `running` now, how many of them `supervised`, and `followedAgain` (runs this daemon found going and adopted since it started) |
-| `scheduler` | `armed` of `desired` timers, and `problems` `[{ jobId, problem }]`. Desired: enabled, not a spent `once`, not `startup`, not past its active period. Same data as `list-timers` |
+| `scheduler` | `armed` of `desired` timers, and `problems` `[{ jobId, problem }]`. Desired: enabled, not a spent `once`, not `startup`, not `manual`, not past its active period. Same data as `list-timers` |
 
 No job command, environment, `cwd` or secret is in the reply. `/api/health` takes its `uptime` (seconds) from `uptimeSeconds`; it is `null` when the daemon cannot answer `get-daemon-info`, and the rest of the health reply is unaffected.
 
