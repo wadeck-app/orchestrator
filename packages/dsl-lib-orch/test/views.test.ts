@@ -50,3 +50,14 @@ describe('the module log page', () => {
     expect(page).toMatch(/jobData:[\s\S]*poll:\s*\d+s/);
   });
 });
+
+describe('the module edit page', () => {
+  it('gives the Cancel navigation the id it puts in its address', () => {
+    // `to: .../jobs/{id}` has nothing to fill {id} with unless the brain is given it: Cancel went nowhere, and it only
+    // seemed to work because the button also submitted the form, whose save navigated to the list.
+    const page = read('job-edit.yaml');
+    const cancel = /navigateCancel:\n([\s\S]*?)\n\S/.exec(page + '\nend')?.[1] ?? '';
+    expect(cancel).toContain('/modules/orchestrator/jobs/{id}');
+    expect(cancel).toMatch(/\n?\s*id:\s*\$route\.id/);
+  });
+});

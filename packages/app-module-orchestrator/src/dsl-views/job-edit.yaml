@@ -19,6 +19,8 @@ $brains:
   navigateCancel:
     $brain: $brains.$ctx.navigate
     to: /modules/orchestrator/jobs/{id}
+    # {id} is filled from this: the cancel event carries no payload, and a brain is given only what it names.
+    id: $route.id
     _event: $outputs.jobForm.onCancel
 
 $type: PageContent

@@ -480,3 +480,24 @@ describe('the new checks are looking at something', () => {
     expect(placeholders(undefined)).toEqual([]);
   });
 });
+
+describe('a Cancel navigation can fill its own address', () => {
+  // The cancel event carries no payload, so `to: /jobs/{id}` has nothing to fill {id} with unless the brain names it.
+  // Cancel went nowhere on the edit page, and only seemed to work because the button also submitted the form.
+  it('gives every placeholder of a cancel brain\'s address a value of its own', () => {
+    const checked: string[] = [];
+    for (const [file, page] of pages) {
+      const brains = (page['$brains'] ?? {}) as Record<string, Node>;
+      for (const [name, brain] of Object.entries(brains)) {
+        const event = String(brain['_event'] ?? '');
+        const to = String(brain['to'] ?? '');
+        if (!event.endsWith('.onCancel')) { continue; }
+        for (const match of to.matchAll(/\{(\w+)\}/g)) {
+          checked.push(`${file}:${name}:${match[1]}`);
+          expect(brain[match[1]!], `${file}: brain ${name} navigates to ${to} but gives no ${match[1]} to fill {${match[1]}}`).toBeDefined();
+        }
+      }
+    }
+    expect(checked.length, 'no cancel brain with a placeholder was found: the check looks at nothing').toBeGreaterThan(0);
+  });
+});
