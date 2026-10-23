@@ -312,7 +312,7 @@ Answer: `{ runs: [...newest first], total, retention: 500 }`. `total` is the num
 
 ## Events pushed to the queue
 
-The daemon pushes events to the `queue` daemon (`POST /push`), so `queue wait <event>` and subscribers in `subscribers.yml` can react (patterns: `job.*`, `**`).
+The daemon pushes events to the `queue` daemon (`POST /push`), so `queue wait <event>` and subscribers in `subscribers.yml` can react. `queue wait` takes an exact event name (`queue wait job.completed --when "payload.jobId=<id>"`; several `--when` must all hold); patterns (`job.*`, `**`) exist only in `subscribers.yml`.
 
 | Event | When | Payload |
 |---|---|---|
