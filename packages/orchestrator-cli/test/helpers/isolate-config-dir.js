@@ -17,6 +17,12 @@ process.on('exit', () => {
 // The event publisher pushes to the queue daemon found in QUEUE_CONFIG_DIR (default: the user's real ~/.config/queue,
 // where it would read the real token and add test events to the real history). A folder with no config.port makes
 // every publish fail with a logged "queue daemon not running" instead.
+// The `queue push` fallback used when that daemon is down would run the real `queue` CLI: off here. The tests of
+// the fallback itself unset it and put a fake CLI on PATH.
+if (!process.env.ORCH_QUEUE_CLI) {
+  process.env.ORCH_QUEUE_CLI = 'off';
+}
+
 if (!process.env.QUEUE_CONFIG_DIR) {
   process.env.QUEUE_CONFIG_DIR = path.join(dir, 'no-queue');
 }
