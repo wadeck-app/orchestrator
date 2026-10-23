@@ -199,7 +199,11 @@ async function main(): Promise<void> {
       maxBytes: daemonCfg.auditMaxBytes,
       maxFiles: daemonCfg.auditMaxFiles,
     });
-    const events      = new EventPublisher();
+    // A job's events carry its own cwd (its project's .queue/subscribers.yml then applies), the others the config dir.
+    const events      = new EventPublisher('orchestrator', daemonLog, {
+      cwd: CONFIG_DIR,
+      jobCwd: (id) => registry.get(id)?.cwd,
+    });
     const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
     const supervisorSetup = resolveSupervisor({
       enabled:   daemonCfg.supervisedJobs,

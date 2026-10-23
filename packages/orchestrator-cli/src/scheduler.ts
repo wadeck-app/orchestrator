@@ -507,7 +507,10 @@ export class Scheduler extends EventEmitter {
       // violations-suppress: shared/no-out-of-repo-path the documented config dir; both a constructor option and ORCH_CONFIG_DIR override it
       process.env['ORCH_CONFIG_DIR'] ?? path.join(os.homedir(), '.config', 'orchestrator')
     );
-    this._eventPublisher    = options.eventPublisher ?? new EventPublisher();
+    this._eventPublisher    = options.eventPublisher ?? new EventPublisher('orchestrator', undefined, {
+      cwd: this._configDir,
+      jobCwd: (id) => this._registry.get(id)?.cwd,
+    });
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
     this._lateActionWindowMs    = options.lateActionWindowMs    ?? 30 * 60_000;

@@ -310,6 +310,34 @@ One line per closed run (also killed, timed-out and late-found runs) in `<config
 
 Answer: `{ runs: [...newest first], total, retention: 500 }`. `total` is the number of runs stored; a job without history answers `{ runs: [], total: 0, retention: 500 }`. An unknown job is refused like `get-run-telemetry`.
 
+## Events pushed to the queue
+
+The daemon pushes events to the `queue` daemon (`POST /push`), so `queue wait <event>` and subscribers in `subscribers.yml` can react (patterns: `job.*`, `**`).
+
+| Event | When | Payload |
+|---|---|---|
+| `job.started` | run spawned | `jobId, label, pid, trigger` |
+| `job.completed` / `job.failed` | run ended, exit 0 / not 0 | `jobId, label, exitCode, durationMs` |
+| `job.skipped` | not run (`skipExitCodes`, concurrency) | `jobId, label, exitCode, durationMs, reason` |
+| `job.recovered` | exit 0 after a failed run | `jobId, label` |
+| `job.timed_out`, `job.killed_manual` | timeout / `orch kill` | `jobId, label, timeoutSeconds` / `durationMs` |
+| `job.anomaly` | duration over 3x the average | `jobId, label, durationMs, avgMs, multiplier` |
+| `job.resource_soft_limit`, `job.resource_hard_limit` | resource limits | `jobId, label, cpuPct, ramMb, softThreshold` / `hardThreshold, consecutiveSamples, enforced` |
+| `job.triggered_manual`, `job.restarted` | `orch trigger`, `orch restart-job` | `jobId, label, ip, userAgent` (+ `wasRunning, killed, started`) |
+| `job.window_expired` | `activeUntil` passed | `jobId, label, activeUntil` |
+| `alert.consecutive_failures`, `alert.retry_exhausted`, `alert.sla_breach` | alerts | `jobId, label` + `consecutiveFailures, threshold` / `exitCode, attempts` / `scheduledAt, windowMinutes` |
+| `exec.started`, `exec.completed`, `exec.failed` | `orch exec` runs | `runId, command, label` + `pid` / `exitCode, durationMs` |
+| `daemon.started`, `daemon.restarted` | daemon start / `orch restart` | `pid` (+ `version` on start) |
+
+A run the daemon learns about late carries `late: true` and the real `finishedAt`.
+
+How it is sent (the queue daemon's contract):
+
+- Port from `<queue config dir>/config.port`, host `127.0.0.1`. Queue config dir: `$QUEUE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/queue`, else `~/.config/queue`.
+- Header `Authorization: Bearer <health_token>` from the same dir; the token changes at each queue daemon start, so a 401 triggers one re-read and retry.
+- Body `{ event, payload, cwd }`. `cwd` selects the project: the queue walks up from it to `.queue/subscribers.yml`. A job's events use the job's `cwd` when it is absolute, every other event (and a job without `cwd`) the orchestrator config dir.
+- Failures never block a job. The first failure of a streak is one line in `orch logs` (`[event-publisher] Failed to publish ...`) with the cause and what to run (`queue start`, `queue status`); the next accepted event logs `Queue delivery recovered`. The queue daemon stops itself when idle: while it is down, events are lost and logged.
+
 ## app-core module
 
 At every start the daemon tells app-core where the dashboard module lives

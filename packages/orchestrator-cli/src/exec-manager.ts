@@ -36,7 +36,7 @@ export class ExecManager {
   private readonly _events: EventPublisher;
   constructor(configDir: string, events?: EventPublisher) {
     this._configDir = configDir;
-    this._events = events ?? new EventPublisher();
+    this._events = events ?? new EventPublisher('orchestrator', undefined, { cwd: configDir });
   }
 
   /**

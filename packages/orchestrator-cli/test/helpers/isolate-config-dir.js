@@ -14,6 +14,13 @@ process.on('exit', () => {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* a process of a test may still hold a file */ }
 });
 
+// The event publisher pushes to the queue daemon found in QUEUE_CONFIG_DIR (default: the user's real ~/.config/queue,
+// where it would read the real token and add test events to the real history). A folder with no config.port makes
+// every publish fail with a logged "queue daemon not running" instead.
+if (!process.env.QUEUE_CONFIG_DIR) {
+  process.env.QUEUE_CONFIG_DIR = path.join(dir, 'no-queue');
+}
+
 if (!process.env.ORCH_CONFIG_DIR) {
   process.env.ORCH_CONFIG_DIR = dir;
 }
