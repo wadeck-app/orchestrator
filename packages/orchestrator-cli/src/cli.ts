@@ -10,6 +10,7 @@ import { getErrorMessage } from './fsUtil.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
 import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
+import { parseJobLogsArgs, runJobLogs } from './job-logs.js';
 
 /** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
 const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -658,8 +659,24 @@ Exit codes that are not failures:
   already alive -- see --liveness-strategy above.
 
 Logs:
+  orch job-logs <id> [-f] [-n <N>] [--run <which>] [--list-runs] [--json]
+                               A job's run log as plain text, exactly as written; the newest run by default
+                               -f, --follow     Keep streaming the running job until it ends or Ctrl+C; the
+                                                end prints the exit code. A job that is not running: shows its
+                                                last run, says so on stderr, exits 0
+                               -n, --tail <N>   Only the last N lines (default: all); the cut is said on stderr
+                               --run <which>    latest (default) | previous | 1, 2, 3... (1 = latest, 2 = the
+                                                run before) | a start time as printed by --list-runs
+                               --list-runs      The retained runs, newest first: start (UTC), exit code or
+                                                running, duration, trigger, and the --run to read each
+                               --json           Lines as {t,text} (one array; -f: one object per line); with
+                               --list-runs an array of runs
+                               Exit: 1 job unknown / no log yet / no such run, 4 bad flag or value
+                               Example: orch job-logs nightly-backup
+                               Example: orch job-logs nightly-backup -f
+
   orch logs [--follow] [--job <id>] [--tail <N>] [--json]
-                               Read today's orchestrator or job log file
+                               Read today's orchestrator or job log file (for a job, prefer: orch job-logs <id> [-f])
                                --follow     Tail log in real-time (Ctrl+C to stop)
                                --job <id>   Show logs for specific job (default: daemon logs)
                                --tail <N>   Show last N lines (default: all)
@@ -1876,6 +1893,19 @@ Use --wait to block until the command finishes.`);
           process.on('SIGINT', () => { fsLogs.unwatchFile(watchedFile!); resolve(); });
         }
       });
+      return;
+    }
+
+    case 'job-logs': {
+      const parsed = parseJobLogsArgs(rest, forceJson);
+      if (!parsed.ok) {
+        console.error(parsed.error);
+        process.exit(4);
+      }
+      const code = await runJobLogs(parsed.options, { send, configDir, ...deps.jobLogs });
+      if (code !== 0) {
+        process.exit(code);
+      }
       return;
     }
 
