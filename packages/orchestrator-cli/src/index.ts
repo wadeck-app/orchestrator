@@ -364,6 +364,8 @@ async function main(): Promise<void> {
           // that had just finished, or the resource peaks of one still running. Last, so anything
           // the calls above record still lands.
           state.shutdown();
+          // Best effort (the kit's hook is synchronous): pushes in flight get 3 s.
+          void events.flush(3000);
         },
       },
     });

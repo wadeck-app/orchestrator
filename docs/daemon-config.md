@@ -331,16 +331,13 @@ The daemon pushes events to the `queue` daemon (`POST /push`), so `queue wait <e
 
 A run the daemon learns about late carries `late: true` and the real `finishedAt`.
 
-How it is sent (the queue daemon's contract):
+Transport is `@wadeck-app/queue-sdk` (finding the daemon, token, `queue start` when it stopped itself, retries, protocol checks); see its `docs/reference.md` and `docs/troubleshooting.md` in the queue repo. Orchestrator decides:
 
-- Port from `<queue config dir>/config.port`, host `127.0.0.1`. Queue config dir: `$QUEUE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/queue`, else `~/.config/queue`.
-- Header `Authorization: Bearer <health_token>` from the same dir; the token changes at each queue daemon start, so a 401 triggers one re-read and retry.
-- Body `{ event, payload, cwd }`. `cwd` selects the project: the queue walks up from it to `.queue/subscribers.yml`. A job's events use the job's `cwd` when it is absolute, every other event (and a job without `cwd`) the orchestrator config dir.
-- The queue daemon stops itself after 60 s without work, and only the `queue` CLI starts it. When there is no `config.port` or the connection is refused (not on a 401 or any other HTTP answer), the daemon runs `queue push <event> <json>` instead, with the same absolute `cwd`. The CLI is looked up on `PATH` (on Windows through the npm `queue.cmd` shim, run as `node <queue.js>` without a shell), hidden and detached, killed after 15 s.
-  - Limits: 4 at once, one spawn per second, a buffer of 50 events; beyond it the oldest are dropped with one log line giving the count. A payload over 6000 characters is not sent this way and is logged as too long.
-  - No `queue` on `PATH`: one line, `queue daemon not running and the queue CLI was not found on PATH: events are lost; install queue or start its daemon`.
-  - `ORCH_QUEUE_CLI=off` disables the fallback (the test suite sets it).
-- Failures never block a job. The first failure of a streak is one line in `orch logs` (`[event-publisher] Failed to publish ...`) with the cause and what to run (`queue start`, `queue status`); the next accepted event logs `Queue delivery recovered`.
+- `cwd`, which selects the project's `.queue/subscribers.yml`: a job's events use the job's `cwd` when it is absolute, every other event (and a job without `cwd`) the orchestrator config dir.
+- Failures never block a job. The first failure of a streak is one line in `orch logs` (`[event-publisher] Failed to publish ...`) with the SDK's kind and what to do; the next accepted event logs `Queue delivery recovered`.
+- On shutdown the daemon gives the pushes in flight up to 3 s (best effort).
+- The `queue` CLI must be on `PATH` for events to survive a stopped queue daemon (`not-installed` in the log otherwise).
+
 ## app-core module
 
 At every start the daemon tells app-core where the dashboard module lives

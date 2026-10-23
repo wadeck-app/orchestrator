@@ -1,6 +1,6 @@
 'use strict';
 
-const { test, describe, after, beforeEach } = require('node:test');
+const { test, describe, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -14,21 +14,17 @@ const { Registry } = require('../src/registry');
 const { State } = require('../src/state');
 
 /*
- * The queue daemon's POST /push is authenticated (Authorization: Bearer <health_token>), listens on 127.0.0.1
- * only, picks its port from <queueConfigDir>/config.port and needs `cwd` in the body. The fake below enforces
- * all of it, on 127.0.0.1 only, so a publisher that guesses `localhost` or skips the header fails here.
+ * Transport (daemon discovery, token, `queue start`, retries) is @wadeck-app/queue-sdk's. These tests use the real
+ * SDK against a fake queue daemon on 127.0.0.1 that answers /version and /push like the real one (see queue's
+ * docs/push-protocol.md), reached through a QUEUE_CONFIG_DIR with config.port + health_token. They check what
+ * orchestrator decides: which cwd, the log lines, flush, never throwing.
  */
 
 const CWD = path.resolve(os.tmpdir(), 'orch-default-cwd');
-const fwd = (p) => p.split(path.sep).join('/');
 const TOKEN = 'fake-token-0000000000000000000000';
+const originalPath = process.env.PATH;
 const dirs = [];
 const servers = [];
-
-after(async () => {
-  for (const s of servers) { await new Promise((r) => s.close(r)); }
-  for (const d of dirs) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ } }
-});
 
 function tmp(prefix) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -36,182 +32,153 @@ function tmp(prefix) {
   return d;
 }
 
-// `acceptedToken` can change during a test: the real daemon rewrites health_token at every start.
-async function fakeQueue({ acceptedToken = TOKEN } = {}) {
-  const state = { received: [], acceptedToken, status: null };
+// The SDK would run a `queue` found on PATH to start a stopped daemon: none is visible to these tests.
+beforeEach(() => { process.env.PATH = tmp('orch-no-queue-bin-'); });
+afterEach(() => { process.env.PATH = originalPath; });
+after(async () => {
+  for (const s of servers) { s.closeAllConnections?.(); await new Promise((r) => s.close(r)); }
+  for (const d of dirs) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ } }
+});
+
+const fwd = (p) => path.normalize(p);
+
+async function fakeQueue({ acceptedToken = TOKEN, hang = false } = {}) {
+  const dir = tmp('orch-queue-cfg-');
+  const state = { received: [], acceptedToken, dir };
   const server = http.createServer((req, res) => {
+    const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (req.method === 'GET' && req.url === '/version') {
+      return send(200, {
+        version: '2026.10.23-fake', pid: process.pid, config_dir: dir, sdkVersion: 1, port: state.port,
+        queueProtocol: { version: '1.0.0', accepts: '^1.0.0' },
+      });
+    }
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
-      const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      if (hang) { return; }
       if (req.method !== 'POST' || req.url !== '/push') { return send(404, { error: 'Unknown' }); }
       if (req.headers.authorization !== `Bearer ${state.acceptedToken}`) { return send(401, { error: 'Unauthorized' }); }
-      if (state.status !== null) { return send(state.status, { error: 'boom' }); }
       const parsed = JSON.parse(body);
       if (typeof parsed.cwd !== 'string') { return send(500, { error: 'The "path" argument must be of type string' }); }
       state.received.push(parsed);
-      send(200, { ok: true, result: { status: 'queued' } });
+      send(200, { ok: true, result: { status: 'queued', eventId: `e${state.received.length}`, subscriberCount: 0 } });
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   servers.push(server);
   state.port = server.address().port;
+  fs.writeFileSync(path.join(dir, 'config.port'), JSON.stringify({ sdkVersion: 1, port: state.port, pid: process.pid, startedAt: new Date().toISOString() }));
+  fs.writeFileSync(path.join(dir, 'health_token'), TOKEN);
   return state;
 }
 
-function queueDir(fake, token = TOKEN) {
-  const dir = tmp('orch-queue-cfg-');
-  fs.writeFileSync(path.join(dir, 'config.port'), JSON.stringify({ sdkVersion: 1, port: fake.port, pid: process.pid, startedAt: new Date().toISOString() }));
-  if (token !== null) { fs.writeFileSync(path.join(dir, 'health_token'), token); }
-  return dir;
+function withQueueDir(dir, fn) {
+  const previous = process.env.QUEUE_CONFIG_DIR;
+  process.env.QUEUE_CONFIG_DIR = dir;
+  try { return fn(); } finally {
+    if (previous === undefined) { delete process.env.QUEUE_CONFIG_DIR; } else { process.env.QUEUE_CONFIG_DIR = previous; }
+  }
 }
 
-function makeLog() {
+// The SDK reads QUEUE_CONFIG_DIR when the publisher is built (the first publish), so it is set around the build.
+function makePublisher(queueDir, options = {}) {
   const lines = [];
-  return { lines, write: (l) => lines.push(l) };
+  const publisher = withQueueDir(queueDir, () => {
+    const p = new EventPublisher('orchestrator', { write: (l) => lines.push(l) }, { cwd: CWD, ...options });
+    p.publish('orch.warmup', {});
+    return p;
+  });
+  return { publisher, lines };
 }
 
-async function until(pred, what) {
-  const end = Date.now() + 3000;
+async function until(pred, what, ms = 5000) {
+  const end = Date.now() + ms;
   while (Date.now() < end) {
     if (pred()) { return; }
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 15));
   }
   assert.fail(`timed out waiting for: ${what}`);
 }
 
-describe('EventPublisher: delivery to the queue daemon', () => {
-  test('sends the Bearer token, cwd and {event, payload} to 127.0.0.1:<port from config.port>', async () => {
-    const fake = await fakeQueue();
-    const pub = new EventPublisher('orchestrator', makeLog(), { queueConfigDir: queueDir(fake), cwd: CWD });
-    pub.publish('job.started', { jobId: 'a', label: 'A' });
-    await until(() => fake.received.length === 1, 'the event at the fake queue');
-    assert.equal(fake.received[0].event, 'job.started');
-    assert.deepEqual(fake.received[0].payload, { jobId: 'a', label: 'A' });
-    assert.equal(fake.received[0].cwd, fwd(CWD));
-  });
-
-  test('honours QUEUE_CONFIG_DIR when no directory is given', async () => {
-    const fake = await fakeQueue();
-    const dir = queueDir(fake);
-    const previous = process.env.QUEUE_CONFIG_DIR;
-    process.env.QUEUE_CONFIG_DIR = dir;
-    try {
-      new EventPublisher('orchestrator', makeLog(), { cwd: CWD }).publish('job.completed', { jobId: 'a' });
-      await until(() => fake.received.length === 1, 'the event at the fake queue');
-    } finally {
-      if (previous === undefined) { delete process.env.QUEUE_CONFIG_DIR; } else { process.env.QUEUE_CONFIG_DIR = previous; }
-    }
-  });
-
-  test('re-reads the token after a 401 and retries once (the daemon rewrites it at each start)', async () => {
-    const fake = await fakeQueue({ acceptedToken: 'rotated-token' });
-    const dir = queueDir(fake, TOKEN);
-    const log = makeLog();
-    const pub = new EventPublisher('orchestrator', log, { queueConfigDir: dir, cwd: CWD });
-    fs.writeFileSync(path.join(dir, 'health_token'), 'rotated-token');
-    pub.publish('job.started', { jobId: 'a' });
-    await until(() => fake.received.length === 1, 'delivery after the token changed');
-    assert.deepEqual(log.lines, [], 'a recovered 401 must not be reported as a failure');
-  });
-});
-
-describe('EventPublisher: a failure is never silent', () => {
-  test('a rejected token is logged once per streak with status, path and hint, then recovery is logged', async () => {
-    const fake = await fakeQueue({ acceptedToken: 'something-else' });
-    const dir = queueDir(fake);
-    const log = makeLog();
-    const pub = new EventPublisher('orchestrator', log, { queueConfigDir: dir, cwd: CWD });
-    pub.publish('job.started', { jobId: 'a' });
-    pub.publish('job.completed', { jobId: 'a' });
-    await until(() => log.lines.length >= 1, 'the failure line');
-    await new Promise((r) => setTimeout(r, 150));
-    assert.equal(log.lines.length, 1, `one line per streak, got: ${JSON.stringify(log.lines)}`);
-    assert.match(log.lines[0], /401/);
-    assert.ok(log.lines[0].includes(path.join(dir, 'health_token')), log.lines[0]);
-    assert.match(log.lines[0], /queue status/);
-    assert.ok(!log.lines[0].includes(TOKEN), 'the token must never be logged');
-
-    fake.acceptedToken = TOKEN;
-    pub.publish('job.failed', { jobId: 'a' });
-    await until(() => log.lines.length >= 2, 'the recovery line');
-    assert.match(log.lines[1], /recovered/i);
-    assert.equal(fake.received.length, 1);
-  });
-
-  test('a non-2xx answer is a failure, whatever the status', async () => {
-    const fake = await fakeQueue();
-    fake.status = 503;
-    const log = makeLog();
-    new EventPublisher('orchestrator', log, { queueConfigDir: queueDir(fake), cwd: CWD }).publish('job.started', { jobId: 'a' });
-    await until(() => log.lines.length === 1, 'the failure line');
-    assert.match(log.lines[0], /503/);
-  });
-
-  test('a missing token file is its own explicit message', async () => {
-    const fake = await fakeQueue();
-    const dir = queueDir(fake, null);
-    const log = makeLog();
-    new EventPublisher('orchestrator', log, { queueConfigDir: dir, cwd: CWD }).publish('job.started', { jobId: 'a' });
-    await until(() => log.lines.length === 1, 'the failure line');
-    assert.ok(log.lines[0].includes(path.join(dir, 'health_token')), log.lines[0]);
-    assert.match(log.lines[0], /queue start|queue status/);
-  });
-
-  test('a missing port file says the queue daemon is not running', async () => {
-    const dir = tmp('orch-queue-empty-');
-    const log = makeLog();
-    new EventPublisher('orchestrator', log, { queueConfigDir: dir, cwd: CWD }).publish('job.started', { jobId: 'a' });
-    await until(() => log.lines.length === 1, 'the failure line');
-    assert.ok(log.lines[0].includes(path.join(dir, 'config.port')), log.lines[0]);
-    assert.match(log.lines[0], /not running/);
-    assert.match(log.lines[0], /queue start|queue status/);
-  });
-
-  test('a job event carries its own job cwd, other events the default one', async () => {
+describe('EventPublisher on the queue SDK', () => {
+  test('delivers {event, payload, cwd}: a job event with its own cwd, the others with the default', async () => {
     const fake = await fakeQueue();
     const jobDir = path.resolve(os.tmpdir(), 'proj-with-queue');
-    const pub = new EventPublisher('orchestrator', makeLog(), {
-      queueConfigDir: queueDir(fake), cwd: CWD, jobCwd: (id) => (id === 'withcwd' ? jobDir : undefined),
-    });
-    pub.publish('job.started', { jobId: 'withcwd' });
-    pub.publish('job.started', { jobId: 'nocwd' });
-    pub.publish('daemon.started', { pid: 1 });
-    await until(() => fake.received.length === 3, 'three events');
-    const cwds = Object.fromEntries(fake.received.map((r) => [r.payload.jobId ?? r.event, r.cwd]));
-    for (const c of Object.values(cwds)) { assert.equal(typeof c, 'string'); assert.ok(path.isAbsolute(c), c); }
-    assert.equal(cwds.withcwd, fwd(jobDir));
-    assert.equal(cwds.nocwd, fwd(CWD));
-    assert.equal(cwds['daemon.started'], fwd(CWD));
+    const { publisher, lines } = makePublisher(fake.dir, { jobCwd: (id) => (id === 'withcwd' ? jobDir : (id === 'rel' ? 'relative/dir' : undefined)) });
+    publisher.publish('job.started', { jobId: 'withcwd', label: 'A' });
+    publisher.publish('job.started', { jobId: 'nocwd' });
+    publisher.publish('job.started', { jobId: 'rel' });
+    publisher.publish('daemon.started', { pid: 1 });
+    await until(() => fake.received.length === 5, 'five events (warmup included)');
+    const byKey = Object.fromEntries(fake.received.map((r) => [r.payload.jobId ?? r.event, r]));
+    for (const r of fake.received) { assert.ok(path.isAbsolute(r.cwd), r.cwd); }
+    assert.equal(path.normalize(byKey.withcwd.cwd), fwd(jobDir));
+    assert.deepEqual(byKey.withcwd.payload, { jobId: 'withcwd', label: 'A' });
+    assert.equal(path.normalize(byKey.nocwd.cwd), fwd(CWD));
+    assert.equal(path.normalize(byKey.rel.cwd), fwd(CWD), 'a relative job cwd means nothing to the daemon');
+    assert.equal(path.normalize(byKey['daemon.started'].cwd), fwd(CWD));
+    assert.deepEqual(lines, []);
   });
 
-  test('a relative job cwd falls back to the default one; no determinable cwd is a logged failure', async () => {
+  test('a rejected token is logged once per streak, then recovery is logged', async () => {
+    const fake = await fakeQueue({ acceptedToken: 'something-else' });
+    const { publisher, lines } = makePublisher(fake.dir);
+    publisher.publish('job.started', { jobId: 'a' });
+    publisher.publish('job.completed', { jobId: 'a' });
+    await until(() => lines.length >= 1, 'the failure line');
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(lines.length, 1, `one line per streak, got: ${JSON.stringify(lines)}`);
+    assert.match(lines[0], /unauthorized|401|token|config/i);
+    assert.ok(!lines[0].includes(TOKEN));
+
+    fake.acceptedToken = TOKEN;
+    publisher.publish('job.failed', { jobId: 'a' });
+    await until(() => lines.length >= 2, 'the recovery line');
+    assert.match(lines[1], /recovered/i);
+  });
+
+  test('daemon stopped and no queue CLI: one explicit line with what to do', async () => {
+    const dir = tmp('orch-queue-empty-');
+    const { publisher, lines } = makePublisher(dir);
+    publisher.publish('job.started', { jobId: 'a' });
+    await until(() => lines.length >= 1, 'the failure line');
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(lines.length, 1, JSON.stringify(lines));
+    assert.match(lines[0], /not-installed|queue/i);
+  });
+
+  test('no absolute cwd is a logged failure and nothing is sent', async () => {
     const fake = await fakeQueue();
-    const dir = queueDir(fake);
-    const pub = new EventPublisher('orchestrator', makeLog(), { queueConfigDir: dir, cwd: CWD, jobCwd: () => 'relative/dir' });
-    pub.publish('job.started', { jobId: 'a' });
-    await until(() => fake.received.length === 1, 'the event');
-    assert.equal(fake.received[0].cwd, fwd(CWD));
-
-    const log = makeLog();
-    new EventPublisher('orchestrator', log, { queueConfigDir: dir }).publish('job.started', { jobId: 'a' });
-    await until(() => log.lines.length === 1, 'the failure line');
-    assert.match(log.lines[0], /cwd/);
-    assert.equal(fake.received.length, 1, 'nothing may be sent without a cwd');
+    const lines = [];
+    const publisher = withQueueDir(fake.dir, () => new EventPublisher('orchestrator', { write: (l) => lines.push(l) }, {}));
+    publisher.publish('job.started', { jobId: 'a' });
+    await until(() => lines.length === 1, 'the failure line');
+    assert.match(lines[0], /cwd/);
+    assert.equal(fake.received.length, 0);
   });
 
-  test('the answer body is part of the failure line', async () => {
-    const fake = await fakeQueue();
-    fake.status = 500;
-    const log = makeLog();
-    new EventPublisher('orchestrator', log, { queueConfigDir: queueDir(fake), cwd: CWD }).publish('job.started', { jobId: 'a' });
-    await until(() => log.lines.length === 1, 'the failure line');
-    assert.match(log.lines[0], /boom/);
+  test('publish never throws and does not wait for the queue', async () => {
+    const fake = await fakeQueue({ hang: true });
+    const { publisher } = makePublisher(fake.dir);
+    const t0 = Date.now();
+    assert.doesNotThrow(() => publisher.publish('job.started', { jobId: 'a' }));
+    assert.ok(Date.now() - t0 < 100);
   });
 
-  test('publish never throws', () => {
-    const pub = new EventPublisher('orchestrator', makeLog(), { queueConfigDir: path.join(os.tmpdir(), 'orch-nonexistent-queue-dir'), cwd: CWD });
-    assert.doesNotThrow(() => pub.publish('job.failed', { jobId: 'x' }));
+  test('flush waits for the pushes in flight, bounded when the queue hangs', async () => {
+    const live = await fakeQueue();
+    const a = makePublisher(live.dir);
+    a.publisher.publish('job.completed', { jobId: 'a' });
+    await a.publisher.flush(3000);
+    assert.equal(live.received.some((r) => r.event === 'job.completed'), true, 'flush returned before the push landed');
+
+    const hung = await fakeQueue({ hang: true });
+    const b = makePublisher(hung.dir);
+    b.publisher.publish('job.completed', { jobId: 'a' });
+    const t0 = Date.now();
+    await b.publisher.flush(300);
+    assert.ok(Date.now() - t0 < 1500, `flush took ${Date.now() - t0} ms`);
   });
 });
 
@@ -241,9 +208,7 @@ describe('Scheduler runs reach the queue through the real publisher', () => {
     const fake = await fakeQueue();
     const jobDir = path.resolve(os.tmpdir(), 'orch-job-cwd');
     fs.mkdirSync(jobDir, { recursive: true });
-    const publisher = new EventPublisher('orchestrator', makeLog(), {
-      queueConfigDir: queueDir(fake), cwd: CWD, jobCwd: (id) => registry.get(id)?.cwd ?? undefined,
-    });
+    const { publisher } = makePublisher(fake.dir, { jobCwd: (id) => registry.get(id)?.cwd ?? undefined });
     const { registry, sched } = makeEnv([0, 3], publisher);
     registry.add({ id: 'm1', type: 'manual', command: 'echo run', label: 'M', enabled: true, triggerMode: 'fire-and-forget', cwd: jobDir });
     await sched.start();
@@ -254,8 +219,9 @@ describe('Scheduler runs reach the queue through the real publisher', () => {
     } finally {
       await sched.stop();
     }
-    for (const r of fake.received) { assert.equal(r.cwd, fwd(jobDir), `${r.event} must carry the job's cwd`); }
-    const by = (name) => fake.received.filter((r) => r.event === name);
+    const jobEvents = fake.received.filter((r) => r.event.startsWith('job.'));
+    for (const r of jobEvents) { assert.equal(path.normalize(r.cwd), fwd(jobDir), `${r.event} must carry the job's cwd`); }
+    const by = (name) => jobEvents.filter((r) => r.event === name);
     assert.equal(by('job.started').length, 2);
     const started = by('job.started')[0].payload;
     assert.equal(started.jobId, 'm1');
@@ -263,7 +229,6 @@ describe('Scheduler runs reach the queue through the real publisher', () => {
     assert.equal(started.pid, 4242);
     assert.ok('trigger' in started);
     const completed = by('job.completed')[0].payload;
-    assert.equal(completed.jobId, 'm1');
     assert.equal(completed.exitCode, 0);
     assert.equal(typeof completed.durationMs, 'number');
     const failed = by('job.failed')[0].payload;

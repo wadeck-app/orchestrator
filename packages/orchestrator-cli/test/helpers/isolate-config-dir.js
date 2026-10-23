@@ -14,14 +14,17 @@ process.on('exit', () => {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* a process of a test may still hold a file */ }
 });
 
-// The event publisher pushes to the queue daemon found in QUEUE_CONFIG_DIR (default: the user's real ~/.config/queue,
-// where it would read the real token and add test events to the real history). A folder with no config.port makes
-// every publish fail with a logged "queue daemon not running" instead.
-// The `queue push` fallback used when that daemon is down would run the real `queue` CLI: off here. The tests of
-// the fallback itself unset it and put a fake CLI on PATH.
-if (!process.env.ORCH_QUEUE_CLI) {
-  process.env.ORCH_QUEUE_CLI = 'off';
-}
+// The event publisher (@wadeck-app/queue-sdk) pushes to the queue daemon found in QUEUE_CONFIG_DIR (default: the
+// user's real ~/.config/queue, with the real token and history). A folder with no config.port makes every publish
+// fail with a logged error instead. The SDK then runs the first `queue` on PATH with `start` to wake the daemon: a stub
+// that only fails comes first, so the real CLI never starts a daemon from a test. A test that needs another `queue`
+// (a fake) puts it in front of PATH itself.
+const stubBin = path.join(dir, 'stub-bin');
+fs.mkdirSync(stubBin, { recursive: true });
+fs.writeFileSync(path.join(stubBin, 'queue.cmd'), ['@echo the test suite blocks the real queue CLI 1>&2', '@exit /b 1', ''].join('\r\n'));
+fs.writeFileSync(path.join(stubBin, 'queue'), ['#!/bin/sh', 'echo "the test suite blocks the real queue CLI" >&2', 'exit 1', ''].join('\n'), { mode: 0o755 });
+const pathKey = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+process.env[pathKey] = stubBin + path.delimiter + (process.env[pathKey] ?? '');
 
 if (!process.env.QUEUE_CONFIG_DIR) {
   process.env.QUEUE_CONFIG_DIR = path.join(dir, 'no-queue');
