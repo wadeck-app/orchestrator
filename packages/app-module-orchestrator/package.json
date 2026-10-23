@@ -24,8 +24,8 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/react": "^19.0.0",
-    "@wadeck-app/app-core-cli": "latest",
-    "@wadeck-app/app-core-sdk": "latest",
+    "@wadeck-app/app-core-cli": ">=2026.10.22-075-f7ea6949",
+    "@wadeck-app/app-core-sdk": ">=2026.10.22-075-f7ea6949",
     "fastify": "^5.0.0",
     "typescript": "*",
     "vitest": "*"

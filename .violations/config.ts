@@ -65,14 +65,6 @@ export default {
         'packages/app-module-*/src/dsl-components/index.ts',
       ],
     },
-    // This rule (scoped to the package.json next to the manifest) validates manifest.json against the schema of
-    // the PACKAGED manifest (version, backendEntryPath and dslLib.entry required). The source manifest of the
-    // new module layout has none of them by design: `package` writes them into dist-module/manifest.json.
-    // `app-core-cli check` (npm run check) validates the source manifest and `package` validates the packaged
-    // one, so the module is still covered.
-    'app-module/manifest-exists-and-valid': {
-      $exclude: ['packages/app-module-*/package.json'],
-    },
     // Dev scripts intentionally show build output - windowsHide would suppress it.
     // packages/*/scripts/** is the same case and was not covered: 'scripts/**' does not match
     // packages/orchestrator-cli/scripts/build-tray-binary.ts, which is a build step whose output is

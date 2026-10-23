@@ -47,7 +47,7 @@
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/static": "^8.0.0",
-    "@wadeck-app/app-core-sdk": "^2026.10.18-029-430ffa0e",
+    "@wadeck-app/app-core-sdk": ">=2026.10.22-075-f7ea6949",
     "@wadeck-app/shared-cli": "^2026.10.3-035-1e4adce3",
     "@wadeck-app/shared-updater": "^2026.10.10-017-4e04d240",
     "@wadeck-app/singleton-daemon-kit": "2026.10.11-094-73166e71",
