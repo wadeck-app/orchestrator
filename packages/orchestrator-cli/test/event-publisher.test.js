@@ -166,18 +166,28 @@ describe('EventPublisher on the queue SDK', () => {
     assert.ok(Date.now() - t0 < 100);
   });
 
+  test('off: nothing is sent and nothing is logged', async () => {
+    const fake = await fakeQueue();
+    const { publisher, lines } = makePublisher(fake.dir, { off: true });
+    publisher.publish('job.started', { jobId: 'a' });
+    await publisher.flush();
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(fake.received.length, 0);
+    assert.deepEqual(lines, []);
+  });
+
   test('flush waits for the pushes in flight, bounded when the queue hangs', async () => {
     const live = await fakeQueue();
     const a = makePublisher(live.dir);
     a.publisher.publish('job.completed', { jobId: 'a' });
-    await a.publisher.flush(3000);
+    await a.publisher.flush();
     assert.equal(live.received.some((r) => r.event === 'job.completed'), true, 'flush returned before the push landed');
 
     const hung = await fakeQueue({ hang: true });
-    const b = makePublisher(hung.dir);
+    const b = makePublisher(hung.dir, { flushBoundMs: 300 });
     b.publisher.publish('job.completed', { jobId: 'a' });
     const t0 = Date.now();
-    await b.publisher.flush(300);
+    await b.publisher.flush();
     assert.ok(Date.now() - t0 < 1500, `flush took ${Date.now() - t0} ms`);
   });
 });

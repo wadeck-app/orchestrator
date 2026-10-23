@@ -15,7 +15,8 @@ import { wireAuditEvents } from './audit-wiring.js';
 import { pruneStaleStagedBinaries, supervisorToRun } from './platform-binary.js';
 import { resolveSupervisor } from './supervised-run.js';
 import { TrayManager } from './tray-manager.js';
-import { EventPublisher } from './event-publisher.js';
+import { EventPublisher, testEventsOff } from './event-publisher.js';
+import { flushBeforeStop } from './flush-before-stop.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
@@ -203,6 +204,7 @@ async function main(): Promise<void> {
     const events      = new EventPublisher('orchestrator', daemonLog, {
       cwd: CONFIG_DIR,
       jobCwd: (id) => registry.get(id)?.cwd,
+      off: testEventsOff(),
     });
     const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
     const supervisorSetup = resolveSupervisor({
@@ -297,7 +299,8 @@ async function main(): Promise<void> {
     // Captured in onStart so versionExtra can reference it without a circular dep
     let activePort = 0;
 
-    await createDaemon<OrchestratorCommands>({
+    // The kit's onShutdown hook is synchronous: the pushes in flight are awaited by flushBeforeStop below instead.
+    const daemon = await createDaemon<OrchestratorCommands>({
       configDir:   CONFIG_DIR,
       // Not `version`: the kit writes its own `version` field after spreading versionExtra, so
       // appVersion is the only way to make `orch status` name the build. Verified in
@@ -364,11 +367,12 @@ async function main(): Promise<void> {
           // that had just finished, or the resource peaks of one still running. Last, so anything
           // the calls above record still lands.
           state.shutdown();
-          // Best effort (the kit's hook is synchronous): pushes in flight get 3 s.
-          void events.flush(3000);
         },
       },
     });
+
+    // SIGTERM/SIGINT, /quit and idle stop all go through daemon.stop: the pushes in flight finish first.
+    flushBeforeStop(daemon, () => events.flush(), (line) => daemonLog.write(line));
 
     await scheduler.start();
 
@@ -388,12 +392,13 @@ async function main(): Promise<void> {
         process.env['UPDATER_FORCE'] = prev;
       }
     });
-    trayManager.on('quit',    () => process.exit(0));
+    // The tray's quit and restart exit the process directly, past the kit's stop: they flush first (bounded).
+    trayManager.on('quit',    () => { void events.flush().finally(() => process.exit(0)); });
     trayManager.on('restart', () => {
       // Write config.restart sentinel so Go launcher restarts the daemon after exit.
       const { writeFileSync } = require('node:fs') as typeof import('node:fs');
       try { writeFileSync(path.join(CONFIG_DIR, 'config.restart'), '1'); } catch { /* ignore */ }
-      process.exit(0);
+      void events.flush().finally(() => process.exit(0));
     });
     await trayManager.start();
     // Now the tray listens: the runs found going after the restart show up as running, like any other.

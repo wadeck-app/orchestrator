@@ -335,7 +335,7 @@ Transport is `@wadeck-app/queue-sdk` (finding the daemon, token, `queue start` w
 
 - `cwd`, which selects the project's `.queue/subscribers.yml`: a job's events use the job's `cwd` when it is absolute, every other event (and a job without `cwd`) the orchestrator config dir.
 - Failures never block a job. The first failure of a streak is one line in `orch logs` (`[event-publisher] Failed to publish ...`) with the SDK's kind and what to do; the next accepted event logs `Queue delivery recovered`.
-- On shutdown the daemon gives the pushes in flight up to 3 s (best effort).
+- Before stopping (SIGTERM, `/quit`, idle, tray quit and restart) the daemon waits for the pushes in flight, at most 8 s.
 - The `queue` CLI must be on `PATH` for events to survive a stopped queue daemon (`not-installed` in the log otherwise).
 
 ## app-core module

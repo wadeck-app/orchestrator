@@ -8,7 +8,7 @@ import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
 import { ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
-import { EventPublisher } from './event-publisher.js';
+import { EventPublisher, testEventsOff } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
 // pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
@@ -510,6 +510,7 @@ export class Scheduler extends EventEmitter {
     this._eventPublisher    = options.eventPublisher ?? new EventPublisher('orchestrator', undefined, {
       cwd: this._configDir,
       jobCwd: (id) => this._registry.get(id)?.cwd,
+      off: testEventsOff(),
     });
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;

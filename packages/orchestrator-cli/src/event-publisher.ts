@@ -10,6 +10,18 @@ export interface EventPublisherOptions {
   cwd?: string;
   /** The cwd of a job, by id. An event whose payload has a `jobId` with an absolute cwd is sent with it, so that project's subscribers match. */
   jobCwd?: (jobId: string) => string | null | undefined;
+  /** Nothing is sent, started or reported (the SDK's `off`). For tests; see {@link testEventsOff}. */
+  off?: boolean;
+  /** Upper bound of `flush()`, in ms. Default 8000. */
+  flushBoundMs?: number;
+}
+
+/**
+ * True only when the test preload set ORCH_TEST_EVENTS_OFF=1. Read once by whoever builds a publisher (index.ts, the
+ * Scheduler and ExecManager defaults); production never sets it, and nothing else reads it.
+ */
+export function testEventsOff(): boolean {
+  return process.env['ORCH_TEST_EVENTS_OFF'] === '1';
 }
 
 /**
@@ -24,10 +36,14 @@ export class EventPublisher {
   private readonly _jobCwd: ((jobId: string) => string | null | undefined) | undefined;
   private _queue: QueuePublisher | null = null;
   private _failing = false;
+  private readonly _off: boolean;
+  private readonly _flushBoundMs: number;
 
   constructor(private readonly _projectName = 'orchestrator', private readonly _logger?: LogSink, options: EventPublisherOptions = {}) {
     this._cwd = options.cwd;
     this._jobCwd = options.jobCwd;
+    this._off = options.off ?? false;
+    this._flushBoundMs = options.flushBoundMs ?? 8000;
   }
 
   publish(event: string, payload: Record<string, unknown>): void {
@@ -47,13 +63,16 @@ export class EventPublisher {
     }
   }
 
-  /** Waits for the pushes in flight, at most `timeoutMs` (a hanging queue must not hold the daemon back). */
-  async flush(timeoutMs: number): Promise<void> {
+  /**
+   * Waits for the pushes in flight. The SDK's flush takes no argument and is bounded by its push timeouts; this adds an
+   * outer bound (`flushBoundMs`) so a hanging queue can never hold the daemon back.
+   */
+  async flush(): Promise<void> {
     if (this._queue === null) {
       return;
     }
     let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); });
+    const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, this._flushBoundMs); });
     try {
       await Promise.race([this._queue.flush(), timeout]);
     } finally {
@@ -65,6 +84,7 @@ export class EventPublisher {
   private _publisher(): QueuePublisher {
     this._queue ??= createQueuePublisher({
       cwd: this._cwd,
+      off: this._off,
       // The log below is the one place a failure is reported.
       silent: true,
       onError: (failure) => this._failed(`Failed to publish "${failure.event}" to the queue (${failure.kind}, ${failure.outcome}): ${failure.message}`),

@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DailyLogger } from './logger.js';
-import { EventPublisher } from './event-publisher.js';
+import { EventPublisher, testEventsOff } from './event-publisher.js';
 import { ensureTmpDir } from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
 
@@ -36,7 +36,7 @@ export class ExecManager {
   private readonly _events: EventPublisher;
   constructor(configDir: string, events?: EventPublisher) {
     this._configDir = configDir;
-    this._events = events ?? new EventPublisher('orchestrator', undefined, { cwd: configDir });
+    this._events = events ?? new EventPublisher('orchestrator', undefined, { cwd: configDir, off: testEventsOff() });
   }
 
   /**
