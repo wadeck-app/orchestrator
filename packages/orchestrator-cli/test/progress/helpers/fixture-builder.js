@@ -13,6 +13,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { progressWriter } = require('../../../src/progress/async-writer');
 
 const T0 = Date.parse('2026-10-20T10:00:00.000Z');
 const MIN = 60_000;
@@ -26,9 +27,24 @@ function tempDir(prefix = 'orch-progress-fx-') {
   return dir;
 }
 
-function cleanupTemp() {
+// Learned-data saves are asynchronous: wait for them, or one could land in a folder that is already gone.
+async function cleanupTemp() {
+  await progressWriter.whenIdle();
   for (const dir of temps.splice(0)) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
+/**
+ * Runs a writer's retry waits to the end on a FakeTime: yields to the disk, then moves the clock, until the writer is
+ * idle. The result does not depend on how long the real disk takes.
+ */
+async function drainWriter(writer, time) {
+  let idle = false;
+  void writer.whenIdle().then(() => { idle = true; });
+  while (!idle) {
+    await new Promise(resolve => setImmediate(resolve));
+    time.advance(1000);
   }
 }
 
@@ -161,4 +177,4 @@ function memoryStore() {
   };
 }
 
-module.exports = { T0, MIN, tempDir, cleanupTemp, buildCase, loadFixture, contextOf, memoryStore, ramp, formatLog, runLogName, stamp };
+module.exports = { drainWriter, T0, MIN, tempDir, cleanupTemp, buildCase, loadFixture, contextOf, memoryStore, ramp, formatLog, runLogName, stamp };

@@ -51,6 +51,13 @@ export interface ReplaySample {
   /** errorMs as a share of the run's duration. */
   errorPct: number | null;
   overdue: boolean;
+  /**
+   * The interval the estimate states around its end time: (1 - confidenceScore) x the predicted duration, on each side.
+   * Null when there is no etaAt (overdue or no estimate): nothing is stated.
+   */
+  intervalMs: number | null;
+  /** The real end is inside the stated interval; null when none is stated. */
+  inside: boolean | null;
   reason: string;
 }
 
@@ -70,6 +77,10 @@ export interface ReplayMetrics {
   maePct: number | null;
   /** The error at about 25, 50 and 75 % of the run. */
   byFraction: { 25: ErrorAt; 50: ErrorAt; 75: ErrorAt };
+  /** Samples that stated an interval (an etaAt and a confidence score). */
+  calibrated: number;
+  /** Share of those whose real end time is inside the stated interval; null when none stated one. */
+  calibration: number | null;
   /** Consecutive samples of a run where progress went down. */
   monotonicityViolations: number;
   /** Consecutive samples of a run whose end time moved by more than 20 % of the duration. */
@@ -177,6 +188,7 @@ function metricsOf(samples: readonly ReplaySample[], stepPercent: number): Repla
   }
 
   const estimated = samples.filter(s => s.progress !== null).length;
+  const stated = samples.filter(s => s.inside !== null);
   return {
     samples: samples.length,
     estimated,
@@ -184,6 +196,8 @@ function metricsOf(samples: readonly ReplaySample[], stepPercent: number): Repla
     maeSec: mean(withError.map(s => s.errorMs! / 1000)),
     maePct: mean(withError.map(s => s.errorPct!)),
     byFraction: { 25: errorAt(25), 50: errorAt(50), 75: errorAt(75) },
+    calibrated: stated.length,
+    calibration: stated.length === 0 ? null : stated.filter(s => s.inside === true).length / stated.length,
     monotonicityViolations,
     etaFlips,
   };
@@ -246,7 +260,7 @@ export function replayJob(input: ReplayInput): ReplayResult {
           options: undefined,
           store,
         }, input.options?.[strategy.id], errorsOf[strategy.id]!);
-        samplesOf[strategy.id]!.push(finishSample(sample, entry.startedAt, fraction, elapsedMs, nowMs, endMs, durationMs));
+        samplesOf[strategy.id]!.push(finishSample(sample, entry.startedAt, fraction, elapsedMs, nowMs, startMs, endMs, durationMs));
       }
     }
   }
@@ -283,20 +297,24 @@ function finishSample(
   fraction: number,
   elapsedMs: number,
   nowMs: number,
+  startMs: number,
   endMs: number,
   durationMs: number,
 ): ReplaySample {
   if (e === null || e.progress === null) {
     return {
       runStartedAt, fraction, elapsedMs, progress: null, etaAt: null, confidence: e?.confidence ?? 'none',
-      errorMs: null, errorPct: null, overdue: false, reason: e?.reason ?? 'the strategy failed (see errors)',
+      errorMs: null, errorPct: null, overdue: false, intervalMs: null, inside: null, reason: e?.reason ?? 'the strategy failed (see errors)',
     };
   }
   const overdue = e.etaAt === null;
   const predicted = e.etaAt === null ? nowMs : Date.parse(e.etaAt);
   const errorMs = Math.abs(predicted - endMs);
+  // Only an estimate that states an end time states an interval around it.
+  const intervalMs = e.etaAt === null ? null : Math.max(0, 1 - Math.min(1, Math.max(0, e.confidenceScore))) * (predicted - startMs);
   return {
     runStartedAt, fraction, elapsedMs, progress: e.progress, etaAt: e.etaAt, confidence: e.confidence,
-    errorMs, errorPct: durationMs > 0 ? errorMs / durationMs : 0, overdue, reason: e.reason,
+    errorMs, errorPct: durationMs > 0 ? errorMs / durationMs : 0, overdue,
+    intervalMs, inside: intervalMs === null ? null : errorMs <= intervalMs + 1e-6, reason: e.reason,
   };
 }

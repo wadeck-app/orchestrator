@@ -79,7 +79,8 @@ const CASES = {
       ...[0, 1].map(i => ({ agoMin: 120 * (i + 1), durationSec: 600, lines: [[120, `phase=extract n=${i}`], [300, `phase=load n=${i}`], [480, `phase=index n=${i}`]] })),
       ...steady(5).map((r, i) => ({ ...r, agoMin: 120 * (i + 3) })),
     ],
-    current: { elapsedSec: 150, lines: [[120, 'phase=extract n=9']] },
+    // Two lines: one line alone is not judged (see log-learned-format.test.js).
+    current: { elapsedSec: 320, lines: [[120, 'phase=extract n=9'], [300, 'phase=load n=9']] },
   },
   'empty logs': { runs: steady(6).map(r => ({ ...r, lines: [] })), current: { elapsedSec: 200, lines: [] } },
   'clock skew (log lines stamped before the run)': {

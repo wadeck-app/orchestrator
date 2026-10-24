@@ -82,6 +82,16 @@ export interface ProgressEstimate {
   detail?: Record<string, unknown>;
 }
 
+/** What a strategy needs to learn from the runs that ended: no open run, no options. */
+export interface LearnContext {
+  job: Job;
+  configDir: string;
+  history: ReadonlyArray<RuntimeEntry>;
+  logs: LogCorpus;
+  now(): Date;
+  store: StrategyStore;
+}
+
 export interface ProgressStrategy {
   /** [a-z0-9-]+, like a job id. */
   readonly id: string;
@@ -90,4 +100,10 @@ export interface ProgressStrategy {
   validateOptions(raw: unknown): { ok: true; value: unknown } | { ok: false; error: string };
   /** Sync, cheap, no network. Pure over its inputs and the store. */
   estimate(ctx: ProgressContext): ProgressEstimate;
+  /**
+   * Optional: reads the logs of the runs that ended into the store, within the strategy's byte budget, so the next
+   * estimate has nothing left to learn. Idempotent (a run already learned is skipped), sync, and may throw: the caller
+   * reports it. Returns how many runs it learned just now.
+   */
+  learn?(ctx: LearnContext): number;
 }

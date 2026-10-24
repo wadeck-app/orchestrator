@@ -3,7 +3,7 @@ import { declaredStrategy } from './declared-strategy.js';
 import { historyStrategy } from './history-strategy.js';
 import { createLogLearnedStrategy, learnInto, type LearnedData } from './log-learned-strategy.js';
 import { memoryStore, replayJob } from './replay.js';
-import type { LogCorpus, ProgressContext, ProgressEstimate, ProgressStrategy, StrategyStore } from './types.js';
+import type { LearnContext, LogCorpus, ProgressContext, ProgressEstimate, ProgressStrategy, StrategyStore } from './types.js';
 
 /**
  * `ensemble`: replays the member strategies on the job's own usable runs (leave-one-out, see replay.ts) and
@@ -75,10 +75,34 @@ export function createEnsembleStrategy(deps: EnsembleDeps = {}): ProgressStrateg
   const members: Record<MemberId, ProgressStrategy> = { declared: declaredStrategy, 'log-learned': logLearned, history: historyStrategy };
   const versions = Object.fromEntries(MEMBER_IDS.map(id => [id, members[id].version]));
 
+  /** The stored comparison, unless a member changed under it; a fresh one otherwise. */
+  const loadState = (store: StrategyStore): { data: EnsembleData; dirty: boolean } => {
+    const stored = store.read() as EnsembleData | undefined;
+    if (stored !== undefined && typeof stored === 'object' && stored !== null && JSON.stringify(stored.members) === JSON.stringify(versions)
+      && typeof stored.learned?.runs === 'object' && typeof stored.scores === 'object') {
+      return { data: stored, dirty: false };
+    }
+    if (stored !== undefined) {
+      store.invalidate('a member strategy changed version');
+    }
+    return { data: fresh(versions), dirty: true };
+  };
+
   return {
     id: 'ensemble',
     version: 1,
     validateOptions: (raw) => (raw === undefined ? { ok: true, value: undefined } : { ok: false, error: 'the ensemble strategy takes no options' }),
+
+    learn(ctx: LearnContext): number {
+      const past = ctx.logs.pastRuns(PAST_WINDOW);
+      const { data, dirty } = loadState(ctx.store);
+      const unknown = past.filter(p => data.learned.runs[p.entry.startedAt] === undefined).length;
+      const learned = learnInto(data.learned, past, learnBudget);
+      if (dirty || learned.changed) {
+        ctx.store.write(data, { learnedFromRuns: Object.keys(data.learned.runs) });
+      }
+      return unknown - learned.pending;
+    },
 
     estimate(ctx: ProgressContext): ProgressEstimate {
       const now = ctx.now();
@@ -102,19 +126,9 @@ export function createEnsembleStrategy(deps: EnsembleDeps = {}): ProgressStrateg
         return wrap(h, 'history', `ensemble: history (${why}): ${h.reason}`, { usableRuns: n });
       }
 
-      // The stored comparison, unless a member changed under it.
-      let data = ctx.store.read() as EnsembleData | undefined;
-      let dirty = false;
-      if (data !== undefined && (typeof data !== 'object' || data === null || JSON.stringify(data.members) !== JSON.stringify(versions)
-        || typeof data.learned?.runs !== 'object' || typeof data.scores !== 'object')) {
-        ctx.store.invalidate('a member strategy changed version');
-        data = undefined;
-      }
-      if (data === undefined) {
-        data = fresh(versions);
-        dirty = true;
-      }
-      const state = data;
+      const loaded = loadState(ctx.store);
+      let dirty = loaded.dirty;
+      const state = loaded.data;
       const learnedStore: StrategyStore = {
         read: () => state.learned,
         write: (d) => { state.learned = d as LearnedData; },

@@ -8,6 +8,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { openProgressFile, progressFilePath } = require('../../src/progress/store');
+const { progressWriter, createJsonWriter } = require('../../src/progress/async-writer');
+const { FakeTime } = require('../../src/time-service');
 const fx = require('./helpers/fixture-builder');
 
 after(fx.cleanupTemp);
@@ -20,9 +22,10 @@ function open(dir, job = JOB, lines = []) {
 }
 
 describe('learned data store', () => {
-  test('writes atomically under <configDir>/progress/<jobId>.json and reads it back through a new handle', () => {
+  test('writes atomically under <configDir>/progress/<jobId>.json and reads it back through a new handle', async () => {
     const dir = fx.tempDir();
     open(dir).storeFor(S1).write({ a: 1 }, { logFingerprint: 'fp', learnedFromRuns: ['r1'] });
+    await progressWriter.whenIdle();
 
     assert.equal(progressFilePath(dir, 'j'), path.join(dir, 'progress', 'j.json'));
     assert.equal(fs.existsSync(path.join(dir, 'progress', 'j.json.tmp')), false);
@@ -89,12 +92,16 @@ describe('learned data store', () => {
     assert.deepEqual(open(dir).storeFor({ id: 'other', version: 1 }).read(), { o: 1 });
   });
 
-  test('a write that fails is logged, not thrown', () => {
+  test('a write that fails is logged, not thrown', async () => {
     const dir = fx.tempDir();
     // A file where the directory should be makes mkdir fail.
     fs.writeFileSync(path.join(dir, 'progress'), 'in the way');
     const lines = [];
-    open(dir, JOB, lines).storeFor(S1).write({ a: 1 });
+    // The retries wait on a fake clock: the test steps it instead of sleeping.
+    const time = new FakeTime();
+    const writer = createJsonWriter({ time });
+    openProgressFile({ configDir: dir, jobId: JOB.id, job: JOB, log: l => lines.push(l), writer }).storeFor(S1).write({ a: 1 });
+    await fx.drainWriter(writer, time);
     assert.equal(lines.length, 1);
     assert.match(lines[0], /^\[progress\] job j: could not save learned log-learned data \(.+\): the estimate continues without it/);
   });
@@ -110,13 +117,15 @@ describe('the strategy chosen by auto for a run', () => {
     assert.equal(f.chosen('2026-10-20T09:30:00.000Z'), undefined);
   });
 
-  test('setting the same choice again does not rewrite the file', () => {
+  test('setting the same choice again does not rewrite the file', async () => {
     const dir = fx.tempDir();
     const f = open(dir);
     f.setChosen('r', 'history', new Date(fx.T0));
+    await progressWriter.whenIdle();
     const before = fs.statSync(progressFilePath(dir, 'j')).mtimeMs;
     const raw = fs.readFileSync(progressFilePath(dir, 'j'), 'utf8');
     open(dir).setChosen('r', 'history', new Date(fx.T0 + 60_000));
+    await progressWriter.whenIdle();
     assert.equal(fs.readFileSync(progressFilePath(dir, 'j'), 'utf8'), raw, 'chosenAt keeps the first time');
     assert.equal(fs.statSync(progressFilePath(dir, 'j')).mtimeMs, before);
   });

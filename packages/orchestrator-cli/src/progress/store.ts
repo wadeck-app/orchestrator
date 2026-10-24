@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { atomicWriteJson, getErrorMessage } from '../fsUtil.js';
+import { getErrorMessage } from '../fsUtil.js';
+import { progressWriter, type JsonWriter } from './async-writer.js';
 import type { Job } from '../types.js';
 import type { StoreMeta, StrategyStore } from './types.js';
 
@@ -43,6 +44,8 @@ export interface OpenProgressFileInput {
   jobId: string;
   job: Pick<Job, 'command' | 'cwd' | 'progress'>;
   log: (line: string) => void;
+  /** Test seam: where saves go. The daemon's non-blocking writer by default. */
+  writer?: JsonWriter;
 }
 
 export interface ProgressFile {
@@ -55,12 +58,15 @@ export function openProgressFile(input: OpenProgressFileInput): ProgressFile {
   const file = progressFilePath(input.configDir, input.jobId);
   const hash = configHashOf(input.job);
   const prefix = `[progress] job ${input.jobId}:`;
+  const writer = input.writer ?? progressWriter;
   const fresh = (): ProgressFileContent => ({ schema: PROGRESS_FILE_SCHEMA, jobId: input.jobId, configHash: hash, strategies: {} });
 
   const load = (): ProgressFileContent => {
     let raw: string;
     try {
-      raw = fs.readFileSync(file, 'utf8');
+      // A save still on its way to the disk is the newest truth: read it from the writer (read-your-writes).
+      const pending = writer.pending(file);
+      raw = pending !== undefined ? JSON.stringify(pending) : fs.readFileSync(file, 'utf8');
     } catch (err) {
       // ENOTDIR: a file stands where the progress folder should be (Linux and macOS say that, Windows says ENOENT).
       // Nothing was learned there yet; the failed save that follows is the only thing worth a log line.
@@ -94,11 +100,10 @@ export function openProgressFile(input: OpenProgressFileInput): ProgressFile {
   const get = (): ProgressFileContent => (content ??= load());
 
   const save = (what: string): void => {
-    try {
-      atomicWriteJson(file, get());
-    } catch (err) {
+    // Returns at once: the write, and its retries, happen off the caller's turn. A failure is reported when it is final.
+    writer.write(file, get(), (err) => {
       input.log(`${prefix} could not save learned ${what} (${getErrorMessage(err)}): the estimate continues without it`);
-    }
+    });
   };
 
   return {

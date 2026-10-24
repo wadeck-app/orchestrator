@@ -17,6 +17,8 @@ import { resolveSupervisor } from './supervised-run.js';
 import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { flushBeforeStop } from './flush-before-stop.js';
+import { wireLearnOnFinish } from './progress/learn-on-finish.js';
+import { systemTime } from './time-service.js';
 import { EVENT_CATALOG, EVENT_SOURCE } from './event-catalog.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
@@ -297,6 +299,10 @@ async function main(): Promise<void> {
 
     // Audit job events
     wireAuditEvents(scheduler, audit);
+
+    // Progress: the logs of a run that ended are learned right after the end, not by the first get-progress of the next run.
+    // The lazy learning stays for a run that ended while the daemon was down.
+    wireLearnOnFinish({ source: scheduler, state, configDir: CONFIG_DIR, time: systemTime, log: (line) => daemonLog.write(line) });
 
     // Captured in onStart so versionExtra can reference it without a circular dep
     let activePort = 0;

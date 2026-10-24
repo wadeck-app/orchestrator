@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getErrorMessage } from '../fsUtil.js';
 import type { Job, RuntimeEntry } from '../types.js';
+import { ENSEMBLE_COMPARE_MIN_RUNS } from './ensemble-strategy.js';
 import { createLogCorpus } from './log-corpus.js';
 import { PROGRESS_STRATEGY_IDS, STRATEGIES } from './registry.js';
 import { DEFAULT_SAMPLE_EVERY_PERCENT, memoryStore, replayJob, type ReplayMetrics } from './replay.js';
@@ -13,16 +14,22 @@ import type { ProgressStrategy } from './types.js';
  * also works on a copy of a config dir.
  */
 
-/** Replayed when --strategy is not given: the ones that need nothing configured. The job's own strategy is added. */
-const DEFAULT_REPLAY_IDS = ['declared', 'log-learned', 'history'] as const;
+/**
+ * Replayed when --strategy is not given: every strategy. One that needs options the job lacks (ratio, log-declared) is
+ * listed as "not configured" with the way to configure it, and the ensemble as not applicable until the job has enough
+ * runs to compare strategies: nothing is left out silently.
+ */
+const DEFAULT_REPLAY_IDS = ['declared', 'ratio', 'log-declared', 'log-learned', 'ensemble', 'history'] as const;
 /** Fewer usable runs than this and the first one has nothing to learn from. */
 export const REPLAY_MIN_RUNS = 3;
 const FAR_FUTURE = '9999-12-31T00:00:00.000Z';
 
 export interface StrategyReport {
   id: string;
-  /** Set when the strategy cannot be replayed for this job (it needs options); then there are no metrics. */
+  /** Set when the strategy cannot be replayed for this job (it needs options, or more runs); then there are no metrics. */
   unavailable?: string;
+  /** The strategy needs options the job does not have (as opposed to needing more runs). */
+  notConfigured?: true;
   metrics: ReplayMetrics;
   errors: string[];
 }
@@ -41,6 +48,7 @@ export interface ReplayReport {
 const EMPTY_METRICS: ReplayMetrics = {
   samples: 0, estimated: 0, coverage: 0, maeSec: null, maePct: null,
   byFraction: { 25: { maeSec: null, maePct: null }, 50: { maeSec: null, maePct: null }, 75: { maeSec: null, maePct: null } },
+  calibrated: 0, calibration: null,
   monotonicityViolations: 0, etaFlips: 0,
 };
 
@@ -128,11 +136,18 @@ export function buildReplayReport(input: ReplayReportInput): ReplayReport {
   const optionsById: Record<string, unknown> = {};
   for (const id of ids) {
     const strategy = STRATEGIES.find(s => s.id === id)!;
+    if (id === 'ensemble' && usable < ENSEMBLE_COMPARE_MIN_RUNS) {
+      strategies.push({
+        id, metrics: EMPTY_METRICS, errors: [],
+        unavailable: `the ensemble compares strategies on the job's past runs: needs ${ENSEMBLE_COMPARE_MIN_RUNS} usable runs, has ${usable}; let the job run to completion ${ENSEMBLE_COMPARE_MIN_RUNS - usable} more time(s)`,
+      });
+      continue;
+    }
     const options = optionsOf(job, id);
     const validated = strategy.validateOptions(options);
     if (!validated.ok) {
       strategies.push({
-        id, metrics: EMPTY_METRICS, errors: [],
+        id, metrics: EMPTY_METRICS, errors: [], notConfigured: true,
         unavailable: `needs options (${validated.error}); set them with: orch edit ${job.id} --progress ${id} --progress-options <json-or-@file>`,
       });
       continue;
@@ -180,10 +195,11 @@ export function formatReplayReport(report: ReplayReport): string {
     lines.push(report.verdict);
     return lines.join('\n');
   }
-  const header = ['strategy', 'cover', 'MAE s', 'MAE %', '@25%', '@50%', '@75%', 'non-monotonic', 'flips'];
-  const rows = report.strategies.map(s => s.unavailable ? [s.id, '-', '-', '-', '-', '-', '-', '-', '-'] : [
+  const header = ['strategy', 'cover', 'MAE s', 'MAE %', '@25%', '@50%', '@75%', 'calib', 'non-monotonic', 'flips'];
+  const rows = report.strategies.map(s => s.unavailable ? [s.id, s.notConfigured ? 'not configured' : 'n/a', '-', '-', '-', '-', '-', '-', '-', '-'] : [
     s.id, pct(s.metrics.coverage), s.metrics.maeSec === null ? '-' : s.metrics.maeSec.toFixed(1), pct(s.metrics.maePct),
     pct(s.metrics.byFraction[25].maePct), pct(s.metrics.byFraction[50].maePct), pct(s.metrics.byFraction[75].maePct),
+    pct(s.metrics.calibration),
     String(s.metrics.monotonicityViolations), String(s.metrics.etaFlips),
   ]);
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map(r => r[i]!.length)));
@@ -191,12 +207,13 @@ export function formatReplayReport(report: ReplayReport): string {
   lines.push(fmt(header), ...rows.map(fmt));
   for (const s of report.strategies) {
     if (s.unavailable) {
-      lines.push(`${s.id}: not replayed, ${s.unavailable}`);
+      lines.push(s.notConfigured ? `${s.id}: not configured, ${s.unavailable}` : `${s.id}: not replayed, ${s.unavailable}`);
     }
     for (const e of s.errors) {
       lines.push(`${s.id}: error during the replay: ${e}`);
     }
   }
+  lines.push('calib: share of the real end times inside the interval each estimate states, etaAt +- (1 - confidence score) x the predicted duration (an estimate with no etaAt states none and is not counted).');
   lines.push(report.verdict);
   return lines.join('\n');
 }

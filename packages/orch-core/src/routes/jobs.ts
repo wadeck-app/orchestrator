@@ -339,22 +339,49 @@ export async function jobsRoutes(
     });
   });
 
+  /*
+   * Jobs are added one by one: a refused job does not stop the others (they stay imported). Each refusal is reported
+   * with its id and the daemon's own sentence (the validation message of the bad field), the body counts them, and the
+   * status is 422 when there is at least one, so a caller that only looks at the status cannot take a partial import
+   * for a complete one. A daemon that is down is the 503 of guard() for the whole request.
+   */
   fastify.post('/api/jobs/import', async (req, reply) => {
     return guard(reply, async () => {
       const body = req.body as { jobs?: unknown[] };
       if (!body?.jobs || !Array.isArray(body.jobs)) {
         return reply.code(400).send({ error: 'invalid-payload: expected { jobs: [] }' });
       }
-      const results: Array<{ id: string; status: string }> = [];
-      for (const job of body.jobs) {
+      const results: Array<{ id: string; status: 'imported' | 'error'; error?: string }> = [];
+      for (const [index, job] of body.jobs.entries()) {
+        const isObject = typeof job === 'object' && job !== null && !Array.isArray(job);
+        const rawId = isObject ? (job as { id?: unknown }).id : undefined;
+        // An entry without a usable id is named by its position, so the caller can find it in the file it sent.
+        const id = typeof rawId === 'string' && rawId !== '' ? rawId : `#${index + 1} (no id)`;
+        if (!isObject) {
+          const got = job === null ? 'null' : Array.isArray(job) ? 'array' : typeof job;
+          results.push({ id, status: 'error', error: `entry is not a job object (got ${got}); expected { "id": ..., "type": ..., "command": ... }` });
+          continue;
+        }
         try {
           await proxy.send('add-job', job);
-          results.push({ id: (job as { id?: string }).id ?? '?', status: 'imported' });
+          results.push({ id, status: 'imported' });
         } catch (e) {
-          results.push({ id: (job as { id?: string }).id ?? '?', status: 'error' });
+          if (e instanceof DaemonUnavailableError) {
+            throw e;
+          }
+          // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+          results.push({ id, status: 'error', error: e instanceof Error ? e.message : String(e) });
         }
       }
-      return reply.send({ imported: results.filter(r => r.status === 'imported').length, results });
+      const imported = results.filter(r => r.status === 'imported').length;
+      const failed = results.length - imported;
+      if (failed === 0) {
+        return reply.send({ imported, failed, results });
+      }
+      return reply.code(422).send({
+        error: `${failed} of ${results.length} jobs were refused (imported: ${imported}); see results[].error for the reason of each`,
+        imported, failed, results,
+      });
     });
   });
 

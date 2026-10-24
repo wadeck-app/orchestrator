@@ -3,6 +3,7 @@ import { isLongRunning } from '../long-running.js';
 import { createLogCorpus } from './log-corpus.js';
 import { AUTO_STRATEGIES, STRATEGIES } from './registry.js';
 import { PROGRESS_STRATEGY_IDS, resolveProgressSetting } from './setting.js';
+import type { JsonWriter } from './async-writer.js';
 import { openProgressFile, type ProgressFile } from './store.js';
 import type { ProgressContext, ProgressEstimate, ProgressStrategy } from './types.js';
 
@@ -89,6 +90,8 @@ export interface EstimateProgressInput {
   /** Restrict the answer to these jobs. */
   jobIds?: readonly string[];
   log?: (line: string) => void;
+  /** Test seam: where the learned data is saved (default: the daemon's non-blocking writer). */
+  writer?: JsonWriter;
   /** Test seam: the candidates for a job, or undefined for the built-in ones. */
   strategies?: (job: Job) => readonly ProgressStrategy[] | undefined;
 }
@@ -124,7 +127,7 @@ export function estimateProgress(input: EstimateProgressInput): Record<string, P
       continue;
     }
     const seam = input.strategies?.(job);
-    const file = openProgressFile({ configDir: input.configDir, jobId: job.id, job, log });
+    const file = openProgressFile({ configDir: input.configDir, jobId: job.id, job, log, ...(input.writer ? { writer: input.writer } : {}) });
     const ctx: ProgressContext = {
       job,
       configDir: input.configDir,

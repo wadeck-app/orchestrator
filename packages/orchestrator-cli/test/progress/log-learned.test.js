@@ -221,6 +221,7 @@ describe('log-learned: learned data', () => {
     assert.equal(estimate.detail.usableRuns, 5);
   });
 
+  // Two lines of the new format: one line alone is not judged (see log-learned-format.test.js).
   test('a changed log format: the old runs are ignored and the reason counts the runs still needed', () => {
     const newFormat = (durationSec, i) => [
       [Math.round(0.2 * durationSec), `phase=extract rows=${i}`],
@@ -229,7 +230,7 @@ describe('log-learned: learned data', () => {
     ];
     const newer = [0, 1].map(i => ({ agoMin: 60 * (i + 2), durationSec: 600, lines: newFormat(600, i) }));
     const older = pastRuns(5, 600).map((r, i) => ({ ...r, agoMin: 60 * (i + 4) }));
-    const { estimate } = run({ elapsedSec: 100, lines: newFormat(600, 9).slice(0, 1), runs: [...newer, ...older] });
+    const { estimate } = run({ elapsedSec: 100, lines: newFormat(600, 9).slice(0, 2), runs: [...newer, ...older] });
     assert.equal(estimate.progress, null);
     assert.match(estimate.reason, /log format changed, relearning \(needs 1 more run/);
   });

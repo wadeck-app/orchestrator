@@ -260,11 +260,14 @@ Progress (estimated progress and end of a running job; configure it per job with
                                the runs before each (no look-ahead), and prints per strategy the
                                mean error of the estimated end (seconds and % of the duration,
                                at 25/50/75% elapsed), how often it had an estimate, progress
-                               going backwards and end times jumping by more than 20%. Names
-                               the best strategy. Needs 3 successful runs; reads the files of
-                               the config dir, the daemon is not needed
-                               --strategy <id>  Only this strategy (default: declared,
-                                                log-learned, history and the job's own)
+                               going backwards and end times jumping by more than 20%, and its
+                               calibration (share of real end times inside the interval the
+                               estimate states: end +- (1 - confidence score) x duration).
+                               Names the best strategy. Needs 3 successful runs; reads the
+                               files of the config dir, the daemon is not needed
+                               --strategy <id>  Only this strategy (default: all of them; one
+                                                that needs options the job lacks is listed as
+                                                'not configured' with the command to set them)
                                --sample-every   Sample every N percent of a run, 1-50 (default 5)
 
 Environment variables:

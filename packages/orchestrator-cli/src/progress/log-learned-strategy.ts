@@ -1,7 +1,7 @@
 import { mask } from './log-corpus.js';
 import { clamp01, levelOfScore, noEstimate, brief } from './estimate-utils.js';
 import { formatDuration, median } from './history-strategy.js';
-import type { LogCorpus, LogLine, ProgressContext, ProgressEstimate, ProgressStrategy } from './types.js';
+import type { LearnContext, LogCorpus, LogLine, ProgressContext, ProgressEstimate, ProgressStrategy } from './types.js';
 
 /**
  * `log-learned`: the job's own log is the progress bar. Lines are reduced to a "shape" (numbers, hex ids and
@@ -26,7 +26,10 @@ export const MIN_LEARNED_DURATION_MS = 10_000;
 
 const SHAPE_MAX_CHARS = 120;
 const MAX_SHAPES_PER_RUN = 400;
-const HEAD_LINES = 20;
+/** The first distinct shapes of the open run's log that are compared with a past run to tell a log format change. */
+const FORMAT_SAMPLE_SHAPES = 20;
+/** Fewer distinct shapes than this in the open log say nothing yet: one varying line is not a format change. */
+const FORMAT_MIN_SHAPES = 2;
 const MAX_MILESTONES = 50;
 /** Milestones very near the start say nothing. */
 const MIN_MILESTONE_REL = 0.03;
@@ -35,13 +38,11 @@ const MAX_PACE_FACTOR = 10;
 const MIN_PACE_GAP_MS = 3000;
 const MIN_PACE_REL_GAP = 0.05;
 const PROGRESS_CAP = 0.99;
-/** Share of the current log's first shapes a past run's head must contain to count as the same log format. */
-const FORMAT_CONTAINMENT = 0.5;
+/** Share of the open log's first shapes that a past run must have in common to count as the same log format. */
+const FORMAT_MIN_OVERLAP = 0.2;
 
 export interface RunShapes {
   durationMs: number;
-  /** The masked first lines of the run's log, to tell a log format change. */
-  head: string[];
   /** shape -> fraction of the run (0..1) at which it first appeared. */
   shapes: Record<string, number>;
   /** The run had no log file: it counts for nothing. */
@@ -79,8 +80,7 @@ function validate(raw: unknown): { ok: true; value: Options } | { ok: false; err
 }
 
 /** The masked shapes of a log's lines, in order, and the time each shape first appeared. */
-function scan(lines: readonly LogLine[]): { head: string[]; first: Map<string, number> } {
-  const head: string[] = [];
+function scan(lines: readonly LogLine[]): { first: Map<string, number> } {
   const first = new Map<string, number>();
   for (const line of lines) {
     if (line.text === '' || line.text.startsWith('[job:')) {
@@ -90,14 +90,11 @@ function scan(lines: readonly LogLine[]): { head: string[]; first: Map<string, n
     if (!/[A-Za-z]/.test(shape)) {
       continue;
     }
-    if (head.length < HEAD_LINES) {
-      head.push(shape);
-    }
     if (!first.has(shape) && first.size < MAX_SHAPES_PER_RUN) {
       first.set(shape, line.ts.getTime());
     }
   }
-  return { head, first };
+  return { first };
 }
 
 type PastRun = ReturnType<LogCorpus['pastRuns']>[number];
@@ -121,18 +118,18 @@ export function learnInto(data: LearnedData, past: readonly PastRun[], budgetByt
     const startMs = Date.parse(key);
     const durationMs = Date.parse(run.entry.finishedAt!) - startMs;
     if (!run.reader.exists()) {
-      data.runs[key] = { durationMs, head: [], shapes: {}, missing: true };
+      data.runs[key] = { durationMs, shapes: {}, missing: true };
       changed = true;
       continue;
     }
     const got = run.reader.readFrom(0);
     spent += got.nextOffset;
-    const { head, first } = scan(got.lines);
+    const { first } = scan(got.lines);
     const shapes: Record<string, number> = {};
     for (const [shape, ts] of first) {
       shapes[shape] = durationMs > 0 ? Math.round(clamp01((ts - startMs) / durationMs) * 10_000) / 10_000 : 0;
     }
-    data.runs[key] = { durationMs, head, shapes };
+    data.runs[key] = { durationMs, shapes };
     changed = true;
   }
   // Only the newest runs are kept. Not "the runs in `past`": a replay asks for the runs older than one of them
@@ -189,13 +186,20 @@ export function mineMilestones(runs: readonly RunShapes[], minSupportPercent: nu
   return out.sort((a, b) => a.iqr - b.iqr).slice(0, MAX_MILESTONES).sort((a, b) => a.rel - b.rel);
 }
 
-/** Share of the current head's shapes that a past run's head also has. */
-function sameFormat(currentHead: readonly string[], pastHead: readonly string[]): boolean {
-  if (currentHead.length === 0) {
+/**
+ * Whether a past run has the log format of the open run. Counts the shapes they have in common, not the share of
+ * the open log that matches: a job whose early lines vary (names, ids the masking cannot equalise) still shares its
+ * stable lines with every run of the same format, while a log that really changed shares (almost) nothing. The open
+ * log is judged on its first distinct shapes only, and not at all before it has a couple (a single varying first
+ * line must not read as a format change).
+ */
+export function sameFormat(currentShapes: readonly string[], past: RunShapes): boolean {
+  const sample = currentShapes.slice(0, FORMAT_SAMPLE_SHAPES);
+  if (sample.length < FORMAT_MIN_SHAPES) {
     return true;
   }
-  const have = new Set(pastHead);
-  return currentHead.filter(s => have.has(s)).length / currentHead.length >= FORMAT_CONTAINMENT;
+  const common = sample.filter(shape => past.shapes[shape] !== undefined).length;
+  return common >= Math.max(1, Math.ceil(FORMAT_MIN_OVERLAP * sample.length));
 }
 
 export interface LogLearnedDeps {
@@ -209,6 +213,21 @@ export function createLogLearnedStrategy(deps: LogLearnedDeps = {}): ProgressStr
     id: 'log-learned',
     version: 1,
     validateOptions: validate,
+
+    learn(ctx: LearnContext): number {
+      const past = ctx.logs.pastRuns(LEARNED_WINDOW);
+      const stored = ctx.store.read() as LearnedData | undefined;
+      const data: LearnedData = stored && typeof stored.runs === 'object' && stored.runs !== null ? stored : { runs: {} };
+      const unknown = past.filter(p => data.runs[p.entry.startedAt] === undefined).length;
+      const learned = learnInto(data, past, budget);
+      if (learned.changed) {
+        ctx.store.write(data, {
+          logFingerprint: past[0] ? past[0].reader.fingerprint() : '',
+          learnedFromRuns: Object.keys(data.runs),
+        });
+      }
+      return unknown - learned.pending;
+    },
 
     estimate(ctx: ProgressContext): ProgressEstimate {
       const now = ctx.now();
@@ -246,7 +265,8 @@ export function createLogLearnedStrategy(deps: LogLearnedDeps = {}): ProgressStr
       const current = scan(ctx.logs.currentRun().readFrom(0).lines);
 
       const withLog = past.map(p => data.runs[p.entry.startedAt]).filter((r): r is RunShapes => r !== undefined && r.missing !== true);
-      const matching = withLog.filter(r => sameFormat(current.head, r.head));
+      const currentShapes = [...current.first.keys()];
+      const matching = withLog.filter(r => sameFormat(currentShapes, r));
       if (matching.length < LEARNED_MIN_RUNS) {
         if (withLog.length >= LEARNED_MIN_RUNS) {
           const need = LEARNED_MIN_RUNS - matching.length;

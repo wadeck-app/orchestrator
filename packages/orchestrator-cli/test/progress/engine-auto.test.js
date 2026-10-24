@@ -10,6 +10,7 @@ const path = require('node:path');
 const { estimateProgress } = require('../../src/progress/engine');
 const { AUTO_STRATEGIES, STRATEGIES } = require('../../src/progress/registry');
 const { progressFilePath } = require('../../src/progress/store');
+const { progressWriter } = require('../../src/progress/async-writer');
 const fx = require('./helpers/fixture-builder');
 
 after(fx.cleanupTemp);
@@ -58,9 +59,10 @@ describe('auto', () => {
 });
 
 describe('the choice kept for a run', () => {
-  test('is written to the progress file once and read back', () => {
+  test('is written to the progress file once and read back', async () => {
     const c = fx.buildCase(fx.tempDir(), { runs: THREE, current: { elapsedSec: 300 } });
     const first = estimate(c).e;
+    await progressWriter.whenIdle();
     const file = JSON.parse(fs.readFileSync(progressFilePath(c.configDir, 'j'), 'utf8'));
     assert.equal(file.chosen.strategyId, 'history');
     assert.equal(file.chosen.runStartedAt, c.currentStartedAt);
@@ -115,7 +117,7 @@ describe('explicit strategies through the engine', () => {
     assert.match(none.reason, /no log line matched/);
   });
 
-  test('log-declared learns from the past logs and keeps what it learned in the progress file', () => {
+  test('log-declared learns from the past logs and keeps what it learned in the progress file', async () => {
     const lines = [[20, 'Step A'], [50, 'Step B'], [80, 'Step C']];
     const jobExtra = { progress: { strategy: 'log-declared', options: { milestones: [{ pattern: 'Step A' }, { pattern: 'Step B' }, { pattern: 'Step C' }] } } };
     const c = fx.buildCase(fx.tempDir(), {
@@ -123,6 +125,7 @@ describe('explicit strategies through the engine', () => {
       runs: [1, 2, 3, 4].map(i => ({ agoMin: 60 * i, durationSec: 100, lines })),
     });
     const e = estimate(c).e;
+    await progressWriter.whenIdle();
     assert.equal(e.strategyId, 'log-declared');
     assert.equal(e.etaAt, new Date(Date.parse(c.currentStartedAt) + 100_000).toISOString());
     const file = JSON.parse(fs.readFileSync(progressFilePath(c.configDir, 'j'), 'utf8'));

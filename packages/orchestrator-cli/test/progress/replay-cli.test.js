@@ -47,7 +47,8 @@ describe('replayFixture (the helper shares the command code path)', () => {
   test('minutes-stable: default strategies are reported, history has runs replayed and a small error', () => {
     const report = replayFixture(path.join(FIXTURES, 'minutes-stable'));
     const ids = report.strategies.map(s => s.id);
-    assert.deepEqual(ids, ['declared', 'log-learned', 'history']);
+    // Every strategy is listed: the ones the job lacks options for (ratio, log-declared) as not configured.
+    assert.deepEqual(ids, ['declared', 'ratio', 'log-declared', 'log-learned', 'ensemble', 'history']);
     const history = report.strategies.find(s => s.id === 'history');
     assert.ok(report.runs >= 3, `runs ${report.runs}`);
     assert.ok(history.metrics.coverage > 0);

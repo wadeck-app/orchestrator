@@ -136,7 +136,7 @@ Per-job option, not a `config.yml` key. `orch add|edit <id> --description "<text
 
 - Plain text, line breaks allowed, stored trimmed; empty or whitespace-only means absent.
 - At most 2000 characters (counted on the trimmed text). Longer is refused with the limit and the actual length, never truncated. Over HTTP the refusal is a 400 `{ "error": "<sentence>" }`.
-- Visible in `orch show` and `orch list --json` (not in the one-line `orch list`), `GET /api/jobs`, and export/import. The dashboard shows its first line on the job card, the full text on the job page, and the jobs search matches it.
+- Visible in `orch show` and `orch list --json` (not in the one-line `orch list`), `GET /api/jobs`, and export/import (`POST /api/jobs/import` adds the jobs one by one: a refused job does not stop the others; the answer is `{ imported, failed, results }` with `results[].error` holding the daemon's sentence for each refused job, and the status is 422 when any was refused). The dashboard shows its first line on the job card, the full text on the job page, and the jobs search matches it.
 - The `job.edited` audit line lists `description` among the changed fields; the text is not logged.
 
 ## Limiting concurrent runs -- `maxConcurrency`
@@ -234,7 +234,7 @@ What each does:
 - `declared`: the job prints `##orch-progress <0..100>[ <message>]` (stdout or stderr) and/or writes the `file`. A value below the last one is ignored; `##orch-progress reset` starts a new phase. The end time is extrapolated from the rate of the last 8 reports, and confidence drops as the last report ages. Opt-in per job: nothing is read unless the job prints the convention or has the option.
 - `ratio`: reads the counter from the last 4000 lines of the last 256 KB of the log; a counter that goes down is a reset and starts a new phase (reported in the reason).
 - `log-declared`: interpolates between the milestones seen. A pattern that never matched in the past runs is a warning in the reason.
-- `log-learned`: masks digits, hex and paths of log lines, keeps the shapes found in at least `minSupportPercent` of the usable runs at a stable relative time (interquartile range of 0.15 of the run or less), and interpolates between the last seen milestone and the next, rescaled by the observed pace. Needs 3 usable runs. A changed log format drops the learned data (`log format changed, relearning (needs N more runs)`).
+- `log-learned`: masks digits, hex and paths of log lines, keeps the shapes found in at least `minSupportPercent` of the usable runs at a stable relative time (interquartile range of 0.15 of the run or less), and interpolates between the last seen milestone and the next, rescaled by the observed pace. Needs 3 usable runs. A past run has the log format of the open run when they share enough log-line shapes (at least 20% of the open log's first 20 distinct shapes, once it has 2): early lines that vary from run to run do not count as a format change, a log sharing almost nothing does. Only the matching runs are used; with fewer than 3 the reason is `log format changed, relearning (needs N more runs)`.
 - `ensemble`: replays `declared`, `log-learned` and `history` on the job's own past runs and uses the one with the lowest ETA error; the reason names the choice and each error. Needs 5 usable runs (3 to answer with `history`) and several polls to finish comparing.
 
 ```sh
@@ -251,12 +251,12 @@ Bounds (all strategies):
 | What | Limit |
 |------|-------|
 | Learning | the 20 newest usable runs; logs older than the 20-entry history are used too (their duration comes from the `[job:started]`/`[job:finished]` markers); history wins when both exist |
-| Log bytes | 5 MB read per past or current run log; `log-learned`/`ensemble` learn about 1 MB per estimate (more on the next polls), `log-declared` scans 4 MB |
+| Log bytes | 5 MB read per past or current run log; `log-learned`/`ensemble` learn about 1 MB per pass, at the end of a run and then per estimate (the rest on the next ones), `log-declared` scans 4 MB |
 | Regex (`ratio`, `log-declared`) | pattern at most 200 characters; no backreference, no nested quantifier such as `(a+)+`, no overlapping alternation under a quantifier, at most 4 unbounded quantifiers; refused when configured |
 | Regex at run time | a log line is cut to 2000 characters; a batch of lines has a 500 ms budget (V8 timeout); a pattern that exceeds it is skipped for the next 20 calls and the reason says so |
 | Timestamps | log lines carry whole seconds: a run under 10 s gets no `log-learned` estimate (reason says so) |
 
-Files: learned data is in `<configDir>/progress/<jobId>.json` (written atomically, rebuilt from logs and history if lost or corrupt, dropped when the strategy version, the job `command`/`cwd`/`progress` or the log format changes, deleted with the job). Learning happens when `get-progress` is asked for a running job, not when a run ends.
+Files: learned data is in `<configDir>/progress/<jobId>.json` (written atomically, rebuilt from logs and history if lost or corrupt, dropped when the strategy version, the job `command`/`cwd`/`progress` or the log format changes, deleted with the job). Learning (`log-learned`, `ensemble`) runs about 1 s after a successful run ends, off the daemon's request path, once per job however many runs end together; it is idempotent per run, bounded like the lazy path (20 newest usable runs, 1 MB of logs per pass), and a failure is one daemon-log line. A run that ended while the daemon was down is learned lazily by the next `get-progress` of a running job. Saves never block the daemon: the file is written asynchronously (tmp file, then rename; 3 attempts, 100 ms then 200 ms apart on a timer), a reader right after a save sees the new content, and a save that fails for good is logged and skipped (the data is rebuilt from logs and history).
 
 Run logs keep the `[YYYY-MM-DD HH:MM:SS]` prefix and the `[job:started]`/`[job:finished]` markers (written by the daemon's `RunLogger`, including for runs it adopted).
 
@@ -268,56 +268,21 @@ orch progress replay <jobId> [--strategy <id>] [--sample-every <percent>] [--jso
 
 ```
 Replay of minutes-stable: 10 usable run(s), a sample every 5% of each run (leave-one-out, no look-ahead)
-strategy     cover  MAE s  MAE %  @25%  @50%  @75%  non-monotonic  flips
-declared      0.0%      -      -     -     -     -              0      0
-log-learned  70.0%    2.1   0.3%  0.5%  0.4%  0.1%              0      0
-history      70.0%    4.4   0.7%  0.7%  0.7%  0.7%              0      0
+strategy               cover  MAE s  MAE %  @25%  @50%  @75%  calib  non-monotonic  flips
+declared                0.0%      -      -     -     -     -      -              0      0
+ratio         not configured      -      -     -     -     -      -              -      -
+log-declared  not configured      -      -     -     -     -      -              -      -
+log-learned            70.0%    2.1   0.3%  0.5%  0.4%  0.1%  46.6%              0      0
+ensemble               70.0%    2.2   0.4%  0.4%  0.4%  0.2%  84.2%              0      0
+history                70.0%    4.4   0.7%  0.7%  0.7%  0.7%  28.6%              0      0
 Best: log-learned (mean ETA error 0.3% of the run duration, 2.1 s, over 10 run(s))
 ```
 
-MAE = mean absolute error of the end time; flips = ETA jumps over 20% of the run between two samples. Fewer than 3 usable runs: no table, a verdict saying what to do.
+MAE = mean absolute error of the end time; flips = ETA jumps over 20% of the run between two samples; `calib` = calibration, below. All six strategies are listed: `ratio` and `log-declared` as `not configured` (with the `orch edit` command that configures them) until the job has their options, `ensemble` as `n/a` until the job has 5 usable runs. `--json` carries the same per strategy under `metrics` (`calibration`, `calibrated`) and, per sample, `intervalMs` and `inside`. Fewer than 3 usable runs: no table, a verdict saying what to do.
 
-| Layer | Entry point |
-|-------|-------------|
-| Daemon RPC | `get-daemon-info` (no payload) |
-| HTTP | `GET /api/daemon`, also published by the app-core module; `503 { error: "daemon-not-running" }` when the daemon is down |
-| UI | `DaemonStatus` card: footer of the jobs page, and in the app-core dashboard widget |
+**Calibration.** An estimate states an end time (`etaAt`) and a confidence score s; the interval it states is `etaAt` +- (1 - s) x the predicted duration (for `history`, s = 1 - MAD / median, so the interval is +- the MAD). `calib` is the share of samples whose real end falls inside it (boundary included): a strategy whose score means what it says sits near the coverage that interval implies, far below it means the score is overconfident. Samples with no `etaAt` (overdue) state no interval and are not counted; `-` means none did.
 
-Reply:
-
-| Field | Meaning |
-|-------|---------|
-| `version`, `pid`, `port` | The running build, process and RPC port |
-| `startedAt` (ISO), `uptimeSeconds` | When this daemon started and for how long |
-| `config` | `supervisedJobs`, `lateActionWindowMinutes`, `autoUpdate`, `appCore`, `catchUpInitialDelaySeconds`, `catchUpStaggerSeconds` as read at start |
-| `supervisor` | `requested` (`supervisedJobs`), `active` (the executable was found), `note` when requested but not active: the daemon-start warning, with the platform and the fix |
-| `runs` | `running` now, how many of them `supervised`, and `followedAgain` (runs this daemon found going and adopted since it started) |
-| `scheduler` | `armed` of `desired` timers, and `problems` `[{ jobId, problem }]`. Desired: enabled, not a spent `once`, not `startup`, not `manual`, not past its active period. Same data as `list-timers` |
-
-No job command, environment, `cwd` or secret is in the reply. `/api/health` takes its `uptime` (seconds) from `uptimeSeconds`; it is `null` when the daemon cannot answer `get-daemon-info`, and the rest of the health reply is unaffected.
-
-## Progress and ETA
-
-For a running job the dashboard and `orch status` show a progress percentage and an estimated end time. Advisory only: it never affects running, killing, retrying or alerting.
-
-**Limits of this release.** One strategy, `history`; no log-based, declared or ratio strategy. Built-in strategies only: no external code is loaded. The job form section and `JobConfigDisplay` row are not done yet. Plan: `.claude/plans/2026-10-18_job-progress-and-eta.md`.
-
-### Per-job setting -- `progress`
-
-| Value | Meaning |
-|-------|---------|
-| absent / `auto` | The first registered strategy that can answer; the reason lists the skipped ones |
-| `off` | No estimate; the reason says how to turn it on |
-| `<id>` or `{ "strategy": "<id>", "options": {...} }` | Only that strategy; it never falls back to another one |
-
-An unknown id or invalid options is refused by `orch add`/`orch edit` with the registered ids listed.
-
-```sh
-orch edit my-job --progress off
-orch edit my-job --progress history
-orch edit my-job --progress <id> --progress-options '{"key":"value"}'   # or @options.json
-orch edit my-job --unset progress                                       # back to auto
-```
+### Where it shows
 
 The audit trail names the field (`changes: ["progress"]`), not its options.
 
@@ -328,7 +293,8 @@ The audit trail names the field (`changes: ["progress"]`), not its options.
 | CLI | `orch status` prints `<job>: 42% ~14:32 (low confidence)`, the overdue sentence, or `no estimate - <reason>` |
 | UI | `JobProgress`, on the running banner of the job page and on the running job card |
 
-How `history` estimates:
+### How `history` estimates
+
 
 - Usual duration D: median of the last 10 usable runs. Usable: exit code 0, not skipped, not cancelled, not orphaned, no `endReason` (timeout, manual kill, resource limit), has `finishedAt`.
 - Fewer than 3 usable runs: no estimate, reason `needs 3 usable runs, has k`.
