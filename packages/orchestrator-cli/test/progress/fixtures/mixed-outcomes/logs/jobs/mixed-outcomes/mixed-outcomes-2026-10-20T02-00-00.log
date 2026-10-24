@@ -1,0 +1,4 @@
+[2026-10-20 02:00:00] [job:started] pid=1 triggeredBy=cron
+[2026-10-20 02:01:40] Reading input batch9
+[2026-10-20 02:04:10] Parsed 99 rows
+[2026-10-20 02:05:00] [job:finished] exitCode=1 duration=300s

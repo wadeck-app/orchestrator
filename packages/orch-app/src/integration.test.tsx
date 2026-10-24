@@ -86,7 +86,8 @@ const MOCK_JOB_DETAIL = {
 const MOCK_JOB_DETAIL_RUNNING = {
   job: MOCK_JOB,
   runHistory: [
-    { startedAt: new Date(Date.now() - 30000).toISOString(), exitCode: null, pid: 55555 },
+    // A fixed instant: the running view must not depend on the moment the suite is loaded.
+    { startedAt: '2026-09-02T09:59:30.000Z', exitCode: null, pid: 55555 },
   ],
 };
 

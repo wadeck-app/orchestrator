@@ -78,3 +78,35 @@ describe('JobConfigDisplay resource limits', () => {
     expect(screen.queryByText('Resource limits')).toBeNull();
   });
 });
+
+// The mode only: the options can be long patterns and say nothing a reader needs on the card.
+describe('JobConfigDisplay progress', () => {
+  it('shows nothing for auto, set or absent', () => {
+    const { rerender } = render(<JobConfigDisplay job={CRON_JOB} />);
+    expect(screen.queryByText('Progress')).toBeNull();
+    rerender(<JobConfigDisplay job={{ ...CRON_JOB, progress: 'auto' }} />);
+    expect(screen.queryByText('Progress')).toBeNull();
+  });
+
+  it('shows off', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, progress: 'off' }} />);
+    expect(screen.getByText('Progress')).toBeInTheDocument();
+    expect(screen.getByText('off')).toBeInTheDocument();
+  });
+
+  it('shows the id of an explicit strategy', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, progress: 'log-learned' }} />);
+    expect(screen.getByText('log-learned')).toBeInTheDocument();
+  });
+
+  it('shows the strategy and that it has options, without dumping them', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, progress: { strategy: 'ratio', options: { pattern: '(\d+)/(\d+)' } } }} />);
+    expect(screen.getByText('ratio (with options)')).toBeInTheDocument();
+    expect(screen.queryByText(/pattern/)).toBeNull();
+  });
+
+  it('shows a strategy object without options as the id alone', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, progress: { strategy: 'history' } }} />);
+    expect(screen.getByText('history')).toBeInTheDocument();
+  });
+});

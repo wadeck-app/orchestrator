@@ -149,7 +149,7 @@ describe('the set of clearable fields matches the optional fields of Job', () =>
 
     assert.deepEqual(Object.keys(UNSETTABLE_FIELDS).sort(), [
       'alertAfterFailures', 'cwd', 'delaySeconds', 'dependsOn', 'description', 'dryRunSupported', 'env', 'label',
-      'liveness', 'maxConcurrency', 'missedFiring', 'onExitCode', 'resourceLimits', 'retryDelays', 'retryOnExitCodes', 'secrets',
+      'liveness', 'maxConcurrency', 'missedFiring', 'onExitCode', 'progress', 'resourceLimits', 'retryDelays', 'retryOnExitCodes', 'secrets',
       'skipExitCodes', 'slaWindowMinutes', 'tags', 'timeoutSeconds', 'triggerMode',
     ]);
   });

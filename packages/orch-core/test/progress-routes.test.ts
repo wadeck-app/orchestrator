@@ -127,3 +127,95 @@ describe('progress in the jobs routes', () => {
     });
   });
 });
+
+describe('progress in the jobs routes: odd failures', () => {
+  let app: FastifyInstance;
+  let send: Send;
+  let calls: Array<[string, unknown]>;
+
+  beforeEach(async () => {
+    calls = [];
+    send = async (cmd, payload) => {
+      calls.push([cmd, payload]);
+      switch (cmd) {
+        case 'list-jobs': return [{ id: 'run', type: 'cron' }];
+        case 'list-state': return { run: [{ startedAt: '2026-10-20T13:50:00Z', exitCode: null }] };
+        case 'get-uptime': return {};
+        case 'get-job': return { id: 'run', type: 'cron' };
+        case 'get-progress': return { run: ESTIMATE };
+        default: throw new Error(`Unknown command: ${cmd}`);
+      }
+    };
+    app = fastify();
+    await app.register(jobsRoutes, { proxy: { send: (c: string, p?: unknown) => send(c, p) } as never, idleTimer: { reset: () => {} } });
+    await app.ready();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  const failWith = (thrown: unknown): void => {
+    const base = send;
+    send = async (cmd, payload) => {
+      if (cmd === 'get-progress') { throw thrown; }
+      return base(cmd, payload);
+    };
+  };
+
+  it('says why when get-progress throws something that is not an Error (a string)', async () => {
+    failWith('plain string failure');
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/run/progress' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().reason).toMatch(/^progress unavailable: plain string failure\. Check: orch logs/);
+  });
+
+  it('says why when get-progress throws undefined, in the job list too', async () => {
+    failWith(undefined);
+    const body = (await app.inject({ method: 'GET', url: '/api/jobs' })).json();
+    expect(body[0].progress.reason).toMatch(/^progress unavailable: undefined\. Check: orch logs/);
+    expect(body[0].progress).toMatchObject({ progress: null, confidence: 'none', strategyId: null });
+  });
+
+  it('the list shows null, not an error, when the daemon answers get-progress with null', async () => {
+    const base = send;
+    send = async (cmd, payload) => (cmd === 'get-progress' ? null : base(cmd, payload));
+    const res = await app.inject({ method: 'GET', url: '/api/jobs' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()[0].progress).toBeNull();
+  });
+
+  it('the detail shows null when the daemon answers get-progress with null', async () => {
+    const base = send;
+    send = async (cmd, payload) => (cmd === 'get-progress' ? null : base(cmd, payload));
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/run' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().progress).toBeNull();
+  });
+
+  it('the progress route answers null when the daemon answers null', async () => {
+    send = async () => null;
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/run/progress' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toBeNull();
+  });
+
+  it('a daemon refusal that is not "Job not found" is an estimate that says so, not a 400', async () => {
+    failWith(new Error('get-progress: jobIds must be an array of job ids, or omitted for every running job.'));
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/run/progress' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().reason).toMatch(/jobIds must be an array/);
+  });
+
+  it('asks the list for every running job (no payload) and the detail for its own', async () => {
+    await app.inject({ method: 'GET', url: '/api/jobs' });
+    await app.inject({ method: 'GET', url: '/api/jobs/run' });
+    expect(calls.filter(([c]) => c === 'get-progress')).toEqual([
+      ['get-progress', undefined],
+      ['get-progress', { jobIds: ['run'] }],
+    ]);
+  });
+
+  it('the detail route is 503 when the daemon goes down while asking for progress', async () => {
+    failWith(new DaemonUnavailableError());
+    expect((await app.inject({ method: 'GET', url: '/api/jobs/run' })).statusCode).toBe(503);
+  });
+});

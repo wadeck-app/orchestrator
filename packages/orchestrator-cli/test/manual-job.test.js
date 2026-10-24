@@ -357,3 +357,128 @@ describe('edit-job: a type change that drops fields says so', () => {
     assert.match(entry.data.note, /dropped .*schedule.*no longer apply/);
   });
 });
+
+describe('edit-job into a manual job, on the real scheduler', () => {
+  const { makeCommands } = require('../src/commands');
+
+  test('an armed cron job is disarmed: no timer, nothing fires when the old time passes, no timer problem', async () => {
+    const env = makeEnv();
+    env.registry.add({ id: 'c1', type: 'cron', schedule: '0 9 * * *', command: 'echo cron', enabled: true, triggerMode: 'fire-and-forget' });
+    const commands = makeCommands(env.registry, env.state, env.sched, env.dir);
+    await env.sched.start();
+    try {
+      assert.ok(env.sched.armedTimers >= 1, 'the cron job should be armed before the edit');
+
+      commands['edit-job']({ id: 'c1', updates: { type: 'manual' } });
+
+      assert.equal(env.sched.armedTimers, 0, 'the cron timer survived the type change');
+      await env.time.advanceAsync(3 * DAY, HOUR);
+      assert.equal(env.spawned.length, 0, 'the old schedule still fired');
+      const row = env.sched.inspectTimers().find((r) => r.jobId === 'c1');
+      assert.equal(row.type, 'manual');
+      assert.equal(row.armed, null);
+      assert.equal(row.problem, null, `reported as: ${row.problem}`);
+    } finally {
+      await env.sched.stop();
+    }
+  });
+
+  test('a switched-off manual job is still run by an explicit trigger (as every such job is), and still arms nothing', async () => {
+    const env = makeEnv();
+    env.registry.add(manualJob({ enabled: false }));
+    await env.sched.start();
+    try {
+      assert.equal(env.sched.armedTimers, 0);
+      const res = await env.sched.trigger('m1');
+      assert.equal(res.status, 'started');
+      assert.deepEqual(env.spawned, ['echo run']);
+    } finally {
+      await env.sched.stop();
+    }
+  });
+
+  test('dry-run of a manual job that declares support runs it with --dry-run; one that does not is refused in words', async () => {
+    const env = makeEnv();
+    env.registry.add(manualJob({ dryRunSupported: true }));
+    env.registry.add(manualJob({ id: 'm2' }));
+    await env.sched.start();
+    try {
+      await env.sched.dryRun('m1');
+      assert.deepEqual(env.spawned, ['echo run --dry-run']);
+      assert.deepEqual(await env.sched.dryRun('m2'), { error: 'Job "m2" does not declare dryRunSupported: true' });
+      assert.equal(env.spawned.length, 1);
+    } finally {
+      await env.sched.stop();
+    }
+  });
+
+  test('restart-job on a manual job that is not running just starts it; on a switched-off one it is refused with the fix', async () => {
+    const env = makeEnv();
+    env.registry.add(manualJob());
+    env.registry.add(manualJob({ id: 'm2', enabled: false }));
+    const commands = makeCommands(env.registry, env.state, env.sched, env.dir);
+    await env.sched.start();
+    try {
+      const reply = await commands['restart-job']({ id: 'm1' });
+      assert.equal(reply.wasRunning, false);
+      assert.equal(reply.started, true);
+      assert.equal(env.sched.armedTimers, 0, 'a restart must not arm a manual job');
+      await assert.rejects(() => commands['restart-job']({ id: 'm2' }), { message: 'Job "m2" is disabled, so it is not restarted. Enable it with `orch enable m2` first.' });
+    } finally {
+      await env.sched.stop();
+    }
+  });
+});
+
+describe('registry: manual job edge edits', () => {
+  test('a type change to manual that also sends a schedule is refused and changes nothing', () => {
+    const { registry } = makeEnv();
+    registry.add({ id: 'c1', type: 'cron', command: 'echo', schedule: '0 9 * * *' });
+    const before = JSON.stringify(registry.get('c1'));
+
+    assert.throws(
+      () => registry.edit('c1', { type: 'manual', schedule: '0 9 * * *' }),
+      { message: 'Manual jobs have no schedule: "schedule" is not accepted on a manual job. Remove it, or use a cron job (orch add cron) to run on a schedule.' },
+    );
+
+    assert.equal(JSON.stringify(registry.get('c1')), before);
+  });
+
+  test('manual to startup works and the job gets the startup behaviour (no delay needed)', () => {
+    const { registry } = makeEnv();
+    registry.add(manualJob());
+    assert.deepEqual(registry.edit('m1', { type: 'startup' }), []);
+    assert.equal(registry.get('m1').type, 'startup');
+  });
+
+  test('an empty schedule on a manual job is refused, null (nothing) is accepted', () => {
+    const { registry } = makeEnv();
+    registry.add(manualJob());
+    assert.throws(() => registry.edit('m1', { schedule: '' }), /Manual jobs have no schedule: "schedule"/);
+    registry.edit('m1', { schedule: null });
+    assert.equal(registry.get('m1').type, 'manual');
+  });
+});
+
+describe('summarizeTimers: a manual row among the others', () => {
+  const row = (jobId, over) => ({ jobId, type: 'cron', enabled: true, armed: 'cron', spent: false, windowState: 'active', problem: null, ...over });
+
+  test('desired and armed count only what should have a timer; a manual row changes neither', () => {
+    const rows = [
+      row('cron-ok', {}),
+      row('cron-off', { enabled: false, armed: null }),
+      row('once-spent', { type: 'once', armed: null, spent: true }),
+      row('startup', { type: 'startup', armed: null }),
+      row('cron-expired', { armed: null, windowState: 'expired', problem: 'its active period has ended -- enabled but nothing armed; re-enable it to resume' }),
+      row('manual', { type: 'manual', armed: null }),
+      row('manual-off', { type: 'manual', armed: null, enabled: false }),
+    ];
+    const withManual = summarizeTimers(rows);
+    const withoutManual = summarizeTimers(rows.filter((r) => r.type !== 'manual'));
+
+    assert.deepEqual(withManual, withoutManual);
+    assert.equal(withManual.desired, 1);
+    assert.equal(withManual.armed, 1);
+    assert.deepEqual(withManual.problems.map((p) => p.jobId), ['cron-expired']);
+  });
+});

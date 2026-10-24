@@ -1,0 +1,4 @@
+[2026-10-20 06:00:00] [job:started] pid=1 triggeredBy=cron
+[2026-10-20 06:00:20] Reading input batch9
+[2026-10-20 06:00:35] Error: input is missing
+[2026-10-20 06:00:40] [job:finished] exitCode=1 duration=40s

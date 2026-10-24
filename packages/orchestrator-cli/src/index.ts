@@ -251,14 +251,13 @@ async function main(): Promise<void> {
     // Before anything reads the state: runs left open by a previous daemon can never be closed by
     // an event, so they would count as active for good. One such entry from two weeks earlier was
     // enough to make every update defer.
-    const orphaned = state.closeOrphanedRuns(new Date(), (id, entry) => scheduler.isFollowing(id, entry.startedAt));
+    const orphaned = scheduler.closeInterruptedRuns(new Date());
     if (orphaned > 0) {
       daemonLog.write(`closed ${orphaned} run(s) left in flight by a previous daemon`);
       audit.log('runs.orphaned_closed', { count: orphaned });
     }
 
     audit.log('daemon.start', { pid: process.pid, version });
-    events.publish('daemon.started', { pid: process.pid, version });
     // Not awaited: declaring the events never delays the start (declareEvents does not reject; its outcome is a log line).
     void events.declareEvents(EVENT_SOURCE, EVENT_CATALOG);
 
@@ -378,6 +377,12 @@ async function main(): Promise<void> {
     flushBeforeStop(daemon, () => events.flush(), (line) => daemonLog.write(line));
 
     await scheduler.start();
+    // Only now: the daemon serves (createDaemon returned) and its scheduler has started. Published earlier, a daemon that
+    // then failed to start (a port file that cannot be written, an eviction that failed) had announced itself for nothing.
+    // A startup job's job.started can come before it.
+    events.publish('daemon.started', { pid: process.pid, version });
+    daemonLog.write('daemon ready (serving, scheduler started)');
+    console.log(`[orchestrator] daemon ready (pid ${process.pid})`);
 
     // Forward tray log entries to the daemon log so 'orch logs' shows tray actions
     trayManager.on('log', (msg: string) => daemonLog.write(msg));

@@ -1,0 +1,48 @@
+{
+  "job": {
+    "id": "hours-stable",
+    "type": "cron",
+    "command": "x",
+    "schedule": "0 * * * *",
+    "enabled": true,
+    "timeoutSeconds": 300
+  },
+  "history": [
+    {
+      "startedAt": "2026-10-20T03:20:00.000Z",
+      "finishedAt": "2026-10-20T06:20:00.000Z",
+      "exitCode": 0,
+      "pid": 1
+    },
+    {
+      "startedAt": "2026-10-19T20:40:00.000Z",
+      "finishedAt": "2026-10-19T23:41:40.000Z",
+      "exitCode": 0,
+      "pid": 1
+    },
+    {
+      "startedAt": "2026-10-19T14:00:00.000Z",
+      "finishedAt": "2026-10-19T16:58:20.000Z",
+      "exitCode": 0,
+      "pid": 1
+    },
+    {
+      "startedAt": "2026-10-19T07:20:00.000Z",
+      "finishedAt": "2026-10-19T10:20:50.000Z",
+      "exitCode": 0,
+      "pid": 1
+    },
+    {
+      "startedAt": "2026-10-19T00:40:00.000Z",
+      "finishedAt": "2026-10-19T03:39:10.000Z",
+      "exitCode": 0,
+      "pid": 1
+    },
+    {
+      "startedAt": "2026-10-18T18:00:00.000Z",
+      "finishedAt": "2026-10-18T21:00:00.000Z",
+      "exitCode": 0,
+      "pid": 1
+    }
+  ]
+}

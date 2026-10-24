@@ -83,6 +83,60 @@ describe('jobEnvironment', () => {
   });
 });
 
+describe('jobEnvironment: spellings and empty values', () => {
+  const spellings = (env, name) => Object.keys(env).filter((k) => k.toUpperCase() === name);
+
+  test('an inherited force_color / Clicolor_Force in odd case: on Windows they are the same variables (replaced / removed, never two spellings); elsewhere they are other variables and stay', () => {
+    const env = jobEnvironment({ force_color: '1', Clicolor_Force: '1', no_Color: 'x' }, undefined, true);
+
+    if (process.platform === 'win32') {
+      assert.deepEqual(spellings(env, 'FORCE_COLOR'), ['FORCE_COLOR']);
+      assert.equal(env.FORCE_COLOR, '0');
+      assert.deepEqual(spellings(env, 'CLICOLOR_FORCE'), []);
+      assert.deepEqual(spellings(env, 'NO_COLOR'), ['NO_COLOR']);
+      assert.equal(env.NO_COLOR, '1');
+    } else {
+      assert.equal(env.force_color, '1');
+      assert.equal(env.FORCE_COLOR, '0');
+      assert.equal(env.Clicolor_Force, '1');
+      assert.equal(env.no_Color, 'x');
+      assert.equal(env.NO_COLOR, '1');
+    }
+  });
+
+  test('a job env that spells FORCE_COLOR in lower case keeps it, and the daemon adds no second spelling on Windows', () => {
+    const env = jobEnvironment({ force_color: '2' }, { force_color: '2' }, true);
+
+    if (process.platform === 'win32') {
+      assert.deepEqual(spellings(env, 'FORCE_COLOR'), ['force_color']);
+    } else {
+      assert.equal(env.FORCE_COLOR, '0');
+    }
+    assert.equal(env.force_color, '2');
+  });
+
+  test('NO_COLOR defined as an empty string by the job stays empty (defined is defined)', () => {
+    const env = jobEnvironment({ NO_COLOR: '' }, { NO_COLOR: '' }, true);
+
+    assert.equal(env.NO_COLOR, '');
+    assert.equal(env.FORCE_COLOR, '0');
+  });
+
+  test('FORCE_COLOR=0 set by the job is kept as its own, and so is CLICOLOR_FORCE=0', () => {
+    const env = jobEnvironment({ FORCE_COLOR: '0', CLICOLOR_FORCE: '0' }, { FORCE_COLOR: '0', CLICOLOR_FORCE: '0' }, true);
+
+    assert.equal(env.FORCE_COLOR, '0');
+    assert.equal(env.CLICOLOR_FORCE, '0');
+    assert.equal(env.NO_COLOR, '1');
+  });
+
+  test('a secret that defines NO_COLOR beats the colour default', () => {
+    const env = jobEnvironment({ NO_COLOR: 'from-secret' }, undefined, true, { NO_COLOR: 'from-secret' });
+
+    assert.equal(env.NO_COLOR, 'from-secret');
+  });
+});
+
 /*
  * orch starts its own daemon with LAUNCHER_BUNDLE_OVERRIDE pointing at the daemon's bundle (cli.ts, startup.ts), and the
  * shared-cli updater adds UPDATER_PKG_NAME. A job inherited them, so a CLI run as a job (app-core-cli under the job

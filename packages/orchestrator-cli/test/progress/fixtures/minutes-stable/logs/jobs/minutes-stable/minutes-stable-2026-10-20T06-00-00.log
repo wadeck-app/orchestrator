@@ -1,0 +1,10 @@
+[2026-10-20 06:00:00] [job:started] pid=1 triggeredBy=cron
+[2026-10-20 06:01:01] Reading input batch1
+[2026-10-20 06:02:01] step 1/4
+[2026-10-20 06:03:32] Parsed 1013 rows
+[2026-10-20 06:04:32] step 2/4
+[2026-10-20 06:06:33] Computed 1013 aggregates in 21 ms
+[2026-10-20 06:07:04] step 3/4
+[2026-10-20 06:09:05] Wrote report 1
+[2026-10-20 06:09:35] step 4/4
+[2026-10-20 06:10:05] [job:finished] exitCode=0 duration=605s

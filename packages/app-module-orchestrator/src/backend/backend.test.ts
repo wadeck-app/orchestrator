@@ -22,20 +22,30 @@ interface Host {
   ctx: unknown;
   registered: string[];
   /** Intervals started through the context, and the handles it was asked to clear. */
-  timers: { started: number[]; cleared: unknown[] };
+  timers: { started: number[]; cleared: unknown[]; whenStarted: Promise<void>; whenCleared: Promise<void> };
 }
 
 function makeHost(): Host {
   const app = Fastify();
   const registered: string[] = [];
-  const timers = { started: [] as number[], cleared: [] as unknown[] };
+  // Promises, not polling: the test awaits the moment the route asks the context for a timer, and the moment it gives it back.
+  let markStarted: () => void = () => undefined;
+  let markCleared: () => void = () => undefined;
+  const timers = {
+    started: [] as number[],
+    cleared: [] as unknown[],
+    whenStarted: new Promise<void>((resolve) => { markStarted = resolve; }),
+    whenCleared: new Promise<void>((resolve) => { markCleared = resolve; }),
+  };
   const ctx = {
     setInterval(_fn: () => void, ms: number): unknown {
       timers.started.push(ms);
+      markStarted();
       return { timer: timers.started.length };
     },
     clearInterval(handle: unknown): void {
       timers.cleared.push(handle);
+      markCleared();
     },
     registerRoute(method: string, subPath: string, handler: ModuleRouteHandler): void {
       registered.push(`${method} ${subPath}`);
@@ -141,6 +151,30 @@ describe('serving the dashboard routes through the module', () => {
     await app.close();
   });
 
+  it('forwards the restart timeout option: the daemon answers once the old instance is gone, past the default 5 s', async () => {
+    const seen: unknown[] = [];
+    const { app } = await boot(async (command: string, _payload?: unknown, options?: unknown) => {
+      seen.push([command, options]);
+      return { id: 'j1', wasRunning: false, killed: 0, started: true, pid: 1 };
+    });
+
+    const res = await app.inject({ method: 'POST', url: '/api/jobs/j1/restart' });
+
+    expect(res.statusCode).toBe(200);
+    expect(seen).toContainEqual(['restart-job', { timeoutMs: 30_000 }]);
+    await app.close();
+  });
+
+  it('answers 404 with the daemon sentence to the telemetry of an unknown job', async () => {
+    const { app } = await boot(async () => { throw new Error('Job not found: "ghost". Run `orch list` to see the available job ids.'); });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/ghost/telemetry' });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('Job not found: "ghost". Run `orch list` to see the available job ids.');
+    await app.close();
+  });
+
   it('serves the telemetry of one run, the run passed through, from the daemon', async () => {
     const seen: unknown[] = [];
     const { app } = await boot(async (command, payload) => {
@@ -196,6 +230,38 @@ describe('serving the dashboard routes through the module', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(estimate);
     expect(seen).toContainEqual(['get-progress', { jobIds: ['j1'] }]);
+    await app.close();
+  });
+
+  // The module adds no mapping of its own for /progress: orch-core's route does, and these pin that it arrives intact.
+  it('answers 503 daemon-not-running for the progress of a job when the daemon is down', async () => {
+    const { app } = await boot(async () => { throw new DaemonUnavailableError(); });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/j1/progress' });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ error: 'daemon-not-running' });
+    await app.close();
+  });
+
+  it('answers 404 with the daemon sentence for the progress of an unknown job', async () => {
+    const { app } = await boot(async () => { throw new Error('Job not found: "ghost". Run `orch list` to see the available job ids.'); });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/ghost/progress' });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toMatch(/^Job not found: "ghost"/);
+    await app.close();
+  });
+
+  it('answers an estimate that says "progress unavailable" when the daemon cannot compute the progress', async () => {
+    const { app } = await boot(async () => { throw new Error('Unknown command: get-progress'); });
+
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/j1/progress' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ progress: null, etaAt: null, confidence: 'none' });
+    expect(res.json().reason).toMatch(/^progress unavailable: Unknown command: get-progress/);
     await app.close();
   });
 
@@ -264,17 +330,13 @@ describe('timers', () => {
     expect(new TextDecoder().decode(first.value)).toContain('first line');
     // The history is sent before the poll timer is armed (the server awaits the file read in between), so the
     // first chunk can reach the reader first: wait for the timer instead of assuming it exists.
-    for (let i = 0; i < 50 && host.timers.started.length === 0; i++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
+    await host.timers.whenStarted;
     expect(host.timers.started).toEqual([500]);
     expect(host.timers.cleared).toEqual([]);
 
     controller.abort();
     await reader.read().catch(() => undefined);
-    for (let i = 0; i < 50 && host.timers.cleared.length === 0; i++) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
+    await host.timers.whenCleared;
     // The handle the context gave out is the one handed back to it.
     expect(host.timers.cleared).toEqual([{ timer: 1 }]);
     // Fastify and the HTTP client may own timers of their own; the route files must not add one.

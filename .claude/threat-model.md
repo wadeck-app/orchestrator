@@ -22,6 +22,7 @@ Sourced from `.claude/specs/2026-08-31_orch-web-dashboard/threat-model.md` (v1.1
 | T-01 | Path traversal on log endpoint | `jobId` validated as `/^[a-z0-9-]+$/i`; path constructed as `path.join(configDir, 'logs', jobId + '.log')` with no other user-controlled segments | Mitigated |
 | T-02 | Any localhost process can call job write/trigger endpoints | Accepted risk (v1): single-user local machine; all local processes under the same OS session already have full access to registry files directly | Accepted |
 | T-03 | CSRF — malicious page sends cross-origin requests | Accepted risk (v1): same rationale as T-02; `@fastify/cors` added as best-effort only | Accepted |
+| T-04 | progress: no external code is loaded; log patterns are regexes run on the job's own log lines, bounded in length and time | Strategies are built in (patterns and JSON only), no plugin loading. Patterns: at most 200 characters, no backreference, nested quantifier or overlapping alternation under a quantifier (rejected when configured); a log line is cut to 2000 characters; each batch runs under a 500 ms V8 timeout and a pattern that times out is skipped for 20 calls. Option payloads are capped at 16 KB. `src/progress/safe-regex.ts` | Mitigated |
 
 ## STRIDE summary
 

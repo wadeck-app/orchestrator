@@ -128,3 +128,60 @@ describe('the help', () => {
     assert.match(out, /orch restart\s+Restart the daemon \(not a job: use restart-job <id>\)/);
   });
 });
+
+describe('orch restart-job edges', () => {
+  test('--json without an id prints the usage on stderr, nothing on stdout, sends nothing and exits 1', async () => {
+    const { calls, out, err, exitCode } = await run(['restart-job', '--json']);
+
+    assert.deepEqual(calls, []);
+    assert.equal(out, '');
+    assert.equal(err, 'Usage: orch restart-job <id> [--json]   (orch restart restarts the daemon, not a job)');
+    assert.equal(exitCode, 1);
+  });
+
+  test('an option in the place of the id is refused like a missing id', async () => {
+    const { calls, err, exitCode } = await run(['restart-job', '--force']);
+
+    assert.deepEqual(calls, []);
+    assert.match(err, /^Usage: orch restart-job <id>/);
+    assert.equal(exitCode, 1);
+  });
+
+  test('a reply without a reason still explains itself (an older daemon)', async () => {
+    const { err, exitCode } = await run(['restart-job', 'srv'], { id: 'srv', wasRunning: false, killed: 0, started: false, pid: null });
+
+    assert.equal(err, 'Job "srv" was not started: the daemon gave no reason');
+    assert.equal(exitCode, 1);
+  });
+
+  // The real entry point builds its own daemon client: its stand-in records the options each command is sent with.
+  test('main() lets restart-job take up to 30 s to answer (it waits for the old instance to end), other commands the default', async () => {
+    // The exports of the kit are getters: the module record is swapped instead, and put back.
+    require('@wadeck-app/singleton-daemon-kit');
+    const record = require.cache[require.resolve('@wadeck-app/singleton-daemon-kit')];
+    const originalExports = record.exports;
+    const originalArgv = process.argv;
+    const originalLog = console.log;
+    const sent = [];
+    record.exports = { ...originalExports, createDaemonClient: () => ({
+      send: async (command, payload, options) => { sent.push({ command, options }); return command === 'list-jobs' ? [] : { id: 'srv', wasRunning: false, killed: 0, started: true, pid: 5 }; },
+      version: async () => ({}),
+    }) };
+    console.log = () => {};
+    try {
+      const { main } = require('../src/cli');
+      process.argv = [process.argv[0], 'orch', 'restart-job', 'srv'];
+      await main();
+      process.argv = [process.argv[0], 'orch', 'list'];
+      await main();
+    } finally {
+      record.exports = originalExports;
+      process.argv = originalArgv;
+      console.log = originalLog;
+    }
+
+    assert.deepEqual(sent.map((s) => s.command), ['restart-job', 'list-jobs']);
+    assert.deepEqual(sent[0].options, { timeoutMs: 30_000 });
+    assert.equal(sent[1].options, undefined);
+  });
+});

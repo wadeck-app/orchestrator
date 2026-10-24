@@ -758,9 +758,18 @@ describe('GET /api/jobs/:jobId/telemetry', () => {
     expect(res.json().error).toBe('daemon-not-running');
   });
 
-  it('lets the daemon refusing the id surface as an error, not as an empty success', async () => {
-    send = async () => { throw new Error('Job not found: "ghost"'); };
+  // A missing job is not a server error: resource-history and restart answer 404 with the daemon's sentence under `error`,
+  // and this route used to be the odd one out (500, the sentence under `message`).
+  it('answers 404 with the daemon sentence for an unknown job, like resource-history and restart', async () => {
+    send = async () => { throw new Error('Job not found: "ghost". Run `orch list` to see the available job ids.'); };
     const res = await app.inject({ method: 'GET', url: '/api/jobs/ghost/telemetry' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('Job not found: "ghost". Run `orch list` to see the available job ids.');
+  });
+
+  it('lets any other daemon failure surface as an error, not as an empty success', async () => {
+    send = async () => { throw new Error('boom'); };
+    const res = await app.inject({ method: 'GET', url: '/api/jobs/job1/telemetry' });
     expect(res.statusCode).toBe(500);
   });
 

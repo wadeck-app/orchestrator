@@ -23,10 +23,9 @@ const NOW = Date.parse('2026-09-19T12:00:00.000Z');
 const HOUR = 3_600_000;
 
 beforeEach(() => {
-  // shouldAdvanceTime, or testing-library's waitFor never resolves: it polls on a timer, and a frozen
-  // clock means the poll never fires. The fixed system time is what these tests need; a frozen one is
-  // not.
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // Only Date is faked, and it is frozen: no clock that creeps forward with the real one. The timers stay real
+  // because testing-library's waitFor polls on them and would never resolve against faked ones.
+  vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
 });
 afterEach(() => {

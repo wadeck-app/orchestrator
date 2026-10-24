@@ -4,6 +4,7 @@ import { DESCRIPTION_MAX_LENGTH, getErrorMessage, type Job, type JobFormPayload,
 import { describeCron } from '../cron-describe.js';
 import { inputsFromLimits, limitsFromInputs, validateResourceLimitFields, type ResourceLimitErrors } from '../resource-limits.js';
 import { ResourceLimitsFields } from './ResourceLimitsFields.js';
+import { PROGRESS_MODES, progressModeOf } from '../progress-modes.js';
 import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, FieldTextarea, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
@@ -92,6 +93,7 @@ interface FormErrors {
   onceMoment?: string;
   activePeriod?: string;
   resourceLimits?: ResourceLimitErrors;
+  progressOptions?: string;
 }
 
 // registry.ts validateJob() enforces this. Checked here too, so the field that is wrong gets named
@@ -176,6 +178,40 @@ function parseCron(expr: string): string | null {
   return null;
 }
 
+/** The job's progress setting as the form edits it: a mode and the options as JSON text. */
+function progressFormState(setting: Job['progress']): { mode: string; options: string } {
+  if (setting === undefined || setting === null) {
+    return { mode: 'auto', options: '' };
+  }
+  if (typeof setting === 'string') {
+    return { mode: setting, options: '' };
+  }
+  return { mode: setting.strategy, options: setting.options === undefined ? '' : JSON.stringify(setting.options, null, 2) };
+}
+
+/** The options text as a value to send; an error says what to fix. Empty text is "no options". */
+function parseProgressOptions(mode: string, text: string): { ok: true; value: Record<string, unknown> | undefined } | { ok: false; error: string } {
+  const spec = progressModeOf(mode);
+  if (spec?.optionsExample === undefined) {
+    return { ok: true, value: undefined };
+  }
+  if (text.trim() === '') {
+    return spec.optionsRequired === true
+      ? { ok: false, error: `The ${mode} mode needs options, for example ${spec.optionsExample}` }
+      : { ok: true, value: undefined };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `The options are not valid JSON (${getErrorMessage(err)}). Example: ${spec.optionsExample}` };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: `The options must be a JSON object, for example ${spec.optionsExample}` };
+  }
+  return { ok: true, value: parsed as Record<string, unknown> };
+}
+
 /** The Cancel click, without the form submission a typeless button would also cause (see the Cancel button). */
 function cancelWithoutSubmitting(onCancel: () => void): () => void {
   return ((event?: { preventDefault?: () => void }) => {
@@ -231,6 +267,10 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
   // Collapsed unless the job already has limits: most jobs run on the defaults and the section is long.
   const [limitInputs, setLimitInputs] = useState(() => inputsFromLimits(initial?.resourceLimits));
   const [showLimits, setShowLimits] = useState(() => wasConfigured(initial?.resourceLimits));
+  const [progressMode, setProgressMode] = useState(() => progressFormState(initial?.progress).mode);
+  const [progressOptions, setProgressOptions] = useState(() => progressFormState(initial?.progress).options);
+  // Collapsed unless the job already has a setting other than the default.
+  const [showProgress, setShowProgress] = useState(() => progressFormState(initial?.progress).mode !== 'auto');
   const [showBuilder, setShowBuilder] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>();
@@ -313,6 +353,11 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     if (Object.keys(limitErrors).length > 0) {
       e.resourceLimits = limitErrors;
       setShowLimits(true);
+    }
+    const progressParsed = parseProgressOptions(progressMode, progressOptions);
+    if (!progressParsed.ok) {
+      e.progressOptions = progressParsed.error;
+      setShowProgress(true);
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -495,6 +540,15 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       }
       else {
         clearIfWasConfigured('resourceLimits', initial?.resourceLimits);
+      }
+
+      // Progress. 'auto' is the absence of the key, so going back to it is an unset, like any emptied field.
+      const progressParsed = parseProgressOptions(progressMode, progressOptions);
+      if (progressMode === 'auto') {
+        clearIfWasConfigured('progress', initial?.progress);
+      }
+      else if (progressParsed.ok) {
+        data.progress = progressParsed.value === undefined ? progressMode : { strategy: progressMode, options: progressParsed.value };
       }
 
       // Only when there is something to clear: an empty array would still reach the daemon and read
@@ -791,6 +845,38 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
       </div>
       {showLimits && (
         <ResourceLimitsFields inputs={limitInputs} onChange={setLimitInputs} errors={errors?.resourceLimits ?? {}} />
+      )}
+
+      <div>
+        {/* violations-suppress: react/no-raw-button text-link toggle - same pattern as the advanced options toggle */}
+        <button type="button" className="text-xs text-primary hover:underline" aria-expanded={showProgress} onClick={() => setShowProgress(v => !v)}>
+          {showProgress ? '(hide) Progress' : '(show) Progress'}
+        </button>
+      </div>
+      {showProgress && (
+        <div className="rounded border border-border p-3 space-y-3">
+          <FieldSelect
+            label="Progress mode"
+            value={progressMode}
+            onChange={setProgressMode}
+            options={PROGRESS_MODES.map(m => ({ value: m.id, label: m.label }))}
+          />
+          {progressModeOf(progressMode) && <p className="-mt-1 text-xs text-muted">{progressModeOf(progressMode)!.explanation}</p>}
+          {progressModeOf(progressMode)?.optionsExample !== undefined && (
+            <div>
+              {/* FieldTextarea has no placeholder and no error slot, so the example goes in its description
+                  (visible while typing, unlike a placeholder) and the refusal is announced below it. */}
+              <FieldTextarea
+                label={progressModeOf(progressMode)!.optionsRequired === true ? 'Progress options (JSON, required)' : 'Progress options (JSON, optional)'}
+                description={`Example: ${progressModeOf(progressMode)!.optionsExample}`}
+                value={progressOptions}
+                onChange={setProgressOptions}
+                rows={4}
+              />
+              {errors?.progressOptions && <p role="alert" className="mt-1 text-xs text-danger">{errors.progressOptions}</p>}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Directly above the button that failed, so the cause is where the eye already is.

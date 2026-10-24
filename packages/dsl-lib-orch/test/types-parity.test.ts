@@ -85,6 +85,30 @@ function fieldsOf(file: string, name: string): string[] {
   return fields;
 }
 
+/** The text of `export type <name> = ...;`, comments and whitespace removed. Throws when it is missing. */
+function typeAliasOf(file: string, name: string): string {
+  const text = fs.readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const m = new RegExp(`export type ${name}\\s*=([\\s\\S]*?);[ \\t]*(?:\\n|$)`).exec(text);
+  if (!m) {
+    throw new Error(`type ${name} not found in ${file}`);
+  }
+  return m[1].replace(/\s+/g, ' ').trim();
+}
+
+describe('JobProgressSetting: UI types.ts vs the daemon declaration', () => {
+  it('is declared identically on both sides', () => {
+    expect(typeAliasOf(UI_TYPES, 'JobProgressSetting')).toBe(typeAliasOf(CLI_TYPES, 'JobProgressSetting'));
+  });
+});
+
+describe('UnsettableJobField: the UI list covers the daemon UNSETTABLE_FIELDS keys that the UI can send', () => {
+  it('includes progress', () => {
+    expect(typeAliasOf(UI_TYPES, 'UnsettableJobField')).toContain("'progress'");
+  });
+});
+
 describe.each(Object.keys(CLI_DECL))('%s: UI types.ts vs the daemon declaration', (name) => {
   const ui = fieldsOf(UI_TYPES, name);
   const cli = fieldsOf(CLI_DECL[name].file, CLI_DECL[name].name);

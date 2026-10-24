@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getErrorMessage } from './fsUtil.js';
 import { stripAnsi } from './ansi.js';
+import { systemTime, type TimeService } from './time-service.js';
 
 /**
  * `orch job <jobId> logs [execId]`: an execution's log as plain text, a snapshot or followed.
@@ -60,7 +61,10 @@ export function parseJobLogsArgs(jobId: string, args: string[], json: boolean): 
       if (typeof v !== 'string') {
         return v;
       }
-      if (!/^\d+$/.test(v) || Number(v) < 1 || !Number.isSafeInteger(Number(v))) {
+      if (/^\d+$/.test(v) && !Number.isSafeInteger(Number(v))) {
+        return fail(`${a} is too large: "${v}" exceeds ${Number.MAX_SAFE_INTEGER}. Use a smaller number of last lines, or drop ${a} for the whole run.`);
+      }
+      if (!/^\d+$/.test(v) || Number(v) < 1) {
         return fail(`${a} must be a whole number of 1 or more (the number of last lines to show); got "${v}".`);
       }
       options.tail = Number(v);
@@ -120,6 +124,8 @@ export interface JobLogsDeps {
   pollMs?: number;
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
+  /** The clock of the follow loop (poll sleep and history check cadence); the real one by default. Tests drive a FakeTime. */
+  time?: TimeService;
 }
 
 interface RunFile {
@@ -291,9 +297,9 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
   const info = describeRun(target, history);
   const isLatest = target === files[0];
 
-  let content: string;
+  let raw: Buffer;
   try {
-    content = fs.readFileSync(target.file, 'utf8');
+    raw = fs.readFileSync(target.file);
   } catch (e) {
     err(`Cannot read ${target.file}: ${getErrorMessage(e)}. Check that the file exists and is readable.\n`);
     return 1;
@@ -301,12 +307,13 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
 
   const following = options.follow && info.status === 'running';
   // While following, an unterminated last line may still be growing: hold it for the next read.
-  let pending = '';
-  let body = content;
+  // Held as bytes: a multibyte character may be cut by a read as well, and decoding it half would corrupt it.
+  let pending: Buffer = Buffer.alloc(0);
+  let body = raw.toString('utf8');
   if (following) {
-    const cut = content.lastIndexOf('\n');
-    pending = content.slice(cut + 1);
-    body = content.slice(0, cut + 1);
+    const cut = raw.lastIndexOf(0x0a);
+    pending = raw.subarray(cut + 1);
+    body = raw.subarray(0, cut + 1).toString('utf8');
   }
   const all = splitLines(body);
   const shown = options.tail !== undefined && all.length > options.tail ? all.slice(all.length - options.tail) : all;
@@ -350,7 +357,8 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
   };
   scan(all);
 
-  let offset = Buffer.byteLength(content.slice(0, content.length - pending.length), 'utf8');
+  // Everything read so far, the held partial line included: it is already in `pending`, so it must not be read twice.
+  let offset = raw.length;
   const drain = (): void => {
     const size = fs.statSync(target.file).size;
     if (size <= offset) {
@@ -360,10 +368,10 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
     const fd = fs.openSync(target.file, 'r');
     try { fs.readSync(fd, buf, 0, buf.length, offset); } finally { fs.closeSync(fd); }
     offset = size;
-    const chunk = pending + buf.toString('utf8');
-    const cut = chunk.lastIndexOf('\n');
-    pending = chunk.slice(cut + 1);
-    const lines = splitLines(chunk.slice(0, cut + 1));
+    const chunk = Buffer.concat([pending, buf]);
+    const cut = chunk.lastIndexOf(0x0a);
+    pending = chunk.subarray(cut + 1);
+    const lines = splitLines(chunk.subarray(0, cut + 1).toString('utf8'));
     lines.forEach(emitLine);
     scan(lines);
   };
@@ -372,13 +380,14 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
   let wake: (() => void) | null = null;
   const onSigint = (): void => { interrupted = true; wake?.(); };
   process.on('SIGINT', onSigint);
+  const time = deps.time ?? systemTime;
   const sleep = (ms: number): Promise<void> => new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    wake = () => { clearTimeout(timer); resolve(); };
+    const timer = time.after(ms, resolve);
+    wake = () => { timer.cancel(); resolve(); };
   });
 
   const historyEveryMs = Math.max(pollMs * 8, pollMs);
-  let lastHistoryCheck = Date.now();
+  let lastHistoryCheck = time.now();
   try {
     while (ended === null && !interrupted) {
       await sleep(pollMs);
@@ -386,8 +395,8 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
         break;
       }
       drain();
-      if (ended === null && Date.now() - lastHistoryCheck >= historyEveryMs) {
-        lastHistoryCheck = Date.now();
+      if (ended === null && time.now() - lastHistoryCheck >= historyEveryMs) {
+        lastHistoryCheck = time.now();
         const entry = (await readHistory()).get(target.name);
         if (entry && (entry.finishedAt !== undefined || entry.exitCode !== null)) {
           drain();

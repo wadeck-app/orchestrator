@@ -18,6 +18,8 @@ packages/orchestrator-cli/server/public/
 packages/orchestrator-cli/app-module/
 .env.local
 *.log
+# The synthetic run logs of the progress tests are fixtures, not output.
+!packages/orchestrator-cli/test/progress/fixtures/**/*.log
 .idea/
 # Crash dump MSYS2 bash drops in the CWD. It was committed by accident in 4aa24ca and then
 # showed as modified after every shell crash, putting a diff nobody wrote into every commit.

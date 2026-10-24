@@ -4,8 +4,8 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { estimateProgress, selectAuto } = require('../src/progress/engine');
-const { T0, finished, open, usable, job } = require('./helpers/progress-fixtures');
+const { selectAuto } = require('../src/progress/engine');
+const { T0, finished, open, usable, job, estimate: estimateProgress } = require('./helpers/progress-fixtures');
 
 const now = () => new Date(T0);
 const stamp = new Date(T0).toISOString();

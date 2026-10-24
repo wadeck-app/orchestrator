@@ -51,6 +51,8 @@ export function makeCommands(
   daemonInfo?: DaemonInfoSource,
   // The daemon log. Absent in tests that do not look at it.
   log?: (line: string) => void,
+  // The clock get-progress reads. Tests inject a fixed one; the daemon keeps the real clock.
+  now: () => Date = () => new Date(),
 ): OrchestratorCommands {
   const secrets = new SecretsManager(configDir);
   // One line per path that could not be deleted: the reply tells the caller, the log tells whoever reads it later.
@@ -80,9 +82,9 @@ export function makeCommands(
       const added = registry.get((p as { id: string }).id)!;
       // After registry.add, which refuses a duplicate id: the files of a job that exists are not stale.
       const stale = dropStaleJobData(configDir, added.id, { running: () => scheduler.runningCount(added.id) > 0 });
-      const dropped = stale.cleaned.telemetry + stale.cleaned.resourceHistory;
+      const dropped = stale.cleaned.telemetry + stale.cleaned.resourceHistory + stale.cleaned.progress;
       if (dropped > 0) {
-        log?.(`added job "${added.id}": dropped ${dropped} telemetry / resource-history file(s) left behind under this id, so the new job starts without another job's history`);
+        log?.(`added job "${added.id}": dropped ${dropped} telemetry / resource-history / progress file(s) left behind under this id, so the new job starts without another job's history`);
       }
       reportLeftovers('added', added.id, stale);
       scheduler.scheduleJob(added);
@@ -202,7 +204,16 @@ export function makeCommands(
     // Awaited, not fired off: the reply's `killed` flag is what the CLI and the dashboard show,
     // so returning before the tree is down would report a kill that had not happened.
     'kill-job': async (p: unknown) => {
-      const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
+      const { id, ip, userAgent } = (p ?? {}) as { id?: unknown; ip?: string; userAgent?: string };
+      // Refused before anything is recorded or published: a request without a job id used to reach the audit trail and the
+      // queue as a kill request for "undefined" (job.kill_requested requires a jobId). Only the shape is checked, not
+      // JOB_ID_RE: a job registered under an older, looser id rule must stay stoppable.
+      if (typeof id !== 'string' || id === '') {
+        throw new Error(
+          `kill-job needs a job id (got ${JSON.stringify(id)}). `
+          + 'Run `orch list` to see the available job ids.',
+        );
+      }
       const job = registry.get(id);
       audit?.log('job.killed_manual', { jobId: id, label: job?.label, ip, userAgent });
       // A request, not an end: the stopped run ends with the scheduler's job.killed_manual (terminal), which must stay the only one.
@@ -326,9 +337,10 @@ export function makeCommands(
         }
       }
       return estimateProgress({
+        configDir,
         jobs: registry.list(),
         history: state.getAll(),
-        now: () => new Date(),
+        now,
         ...(jobIds ? { jobIds: jobIds as string[] } : {}),
         log: (line) => { try { process.stderr.write(`${line}\n`); } catch { /* EPIPE */ } },
       });

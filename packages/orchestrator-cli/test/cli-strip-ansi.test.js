@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { runCli } = require('../src/cli');
+const { followClock } = require('./helpers/follow-clock');
 
 const JOB = 'dev-server';
 const ESC = '\u001b';
@@ -33,20 +34,29 @@ function writeRun(startedAt, lines) {
 }
 
 /** Runs the CLI with process.stdout.write and console.* captured; `jobLogs` hooks carry the logs sub-command's own output. */
-async function run(argv, { history = [], afterStart } = {}) {
+async function run(argv, { history = [], afterStart, time } = {}) {
   const out = [];
+  // Output is awaited as an event: a test waits for the text it expects, never for a duration.
+  const waiters = [];
+  const push = (text) => {
+    out.push(text);
+    for (const w of [...waiters]) {
+      if (out.join('').includes(w.needle)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(); }
+    }
+  };
+  const waitFor = (needle) => (out.join('').includes(needle) ? Promise.resolve() : new Promise((resolve) => { waiters.push({ needle, resolve }); }));
   const err = [];
   const origExit = process.exit;
   const origLog = console.log;
   const origCErr = console.error;
   const origWrite = process.stdout.write.bind(process.stdout);
   let exitCode = 0;
-  console.log = (m) => { out.push(`${m}\n`); };
+  console.log = (m) => { push(`${m}\n`); };
   console.error = (m) => { err.push(`${m}\n`); };
   // The test runner reports through this same stream, in Buffers; the CLI writes strings. Only strings are captured.
   process.stdout.write = (chunk, ...rest) => {
     if (typeof chunk === 'string') {
-      out.push(chunk);
+      push(chunk);
       return true;
     }
     return origWrite(chunk, ...rest);
@@ -65,10 +75,10 @@ async function run(argv, { history = [], afterStart } = {}) {
       },
       startDaemon: () => {},
       configDir: dir,
-      jobLogs: { pollMs: 10, stdout: (t) => { out.push(t); }, stderr: (t) => { err.push(t); } },
+      jobLogs: { pollMs: 10, stdout: (t) => { push(t); }, stderr: (t) => { err.push(t); }, ...(time === undefined ? {} : { time }) },
     });
-    afterStart?.();
-    await running;
+    const driver = afterStart?.({ waitFor });
+    await Promise.all([running, driver]);
   } catch (e) {
     if (e.message !== 'exit') {
       throw e;
@@ -109,9 +119,11 @@ describe('orch job <jobId> logs', () => {
 
   test('-f strips the lines that were there and the lines that arrive', async () => {
     const f = writeRun(A, [stamped(COLOURED)]);
-    setTimeout(() => fs.appendFileSync(f, `${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`), 60);
-    setTimeout(() => fs.appendFileSync(f, `${stamped('[job:finished] exitCode=0 duration=1s')}\n`), 120);
-    const { out } = await run(['job', JOB, 'logs', '-f'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }] });
+    const clock = followClock();
+    const p = run(['job', JOB, 'logs', '-f'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }], time: clock.time });
+    await clock.tick(10, p, () => fs.appendFileSync(f, `${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`));
+    await clock.tick(10, p, () => fs.appendFileSync(f, `${stamped('[job:finished] exitCode=0 duration=1s')}\n`));
+    const { out } = await p;
     assert.equal(out.includes(ESC), false, JSON.stringify(out));
     assert.ok(out.includes(`${stamped(PLAIN)}\n`));
     assert.ok(out.includes(`${stamped('new line')}\n`));
@@ -119,9 +131,11 @@ describe('orch job <jobId> logs', () => {
 
   test('-f --raw keeps the sequences that arrive', async () => {
     const f = writeRun(A, [stamped('start')]);
-    setTimeout(() => fs.appendFileSync(f, `${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`), 60);
-    setTimeout(() => fs.appendFileSync(f, `${stamped('[job:finished] exitCode=0 duration=1s')}\n`), 120);
-    const { out } = await run(['job', JOB, 'logs', '-f', '--raw'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }] });
+    const clock = followClock();
+    const p = run(['job', JOB, 'logs', '-f', '--raw'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }], time: clock.time });
+    await clock.tick(10, p, () => fs.appendFileSync(f, `${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`));
+    await clock.tick(10, p, () => fs.appendFileSync(f, `${stamped('[job:finished] exitCode=0 duration=1s')}\n`));
+    const { out } = await p;
     assert.ok(out.includes(`${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`), JSON.stringify(out));
   });
 
@@ -158,9 +172,12 @@ describe('orch logs --job', () => {
     fs.writeFileSync(f, `${stamped('first')}\n`);
     const follow = async (extra) => {
       const { out } = await run(['logs', '--job', JOB, '--follow', ...extra], {
-        afterStart: () => {
-          setTimeout(() => fs.appendFileSync(f, `${stamped(COLOURED)}\n`), 150);
-          setTimeout(() => process.emit('SIGINT'), 700);
+        // The text it waits for is the signal: the first line is out (the follow is running), the appended one is out too.
+        afterStart: async ({ waitFor }) => {
+          await waitFor('first');
+          fs.appendFileSync(f, `${stamped(COLOURED)}\n`);
+          await waitFor(extra.includes('--raw') ? 'title' : PLAIN);
+          process.emit('SIGINT');
         },
       });
       return out;

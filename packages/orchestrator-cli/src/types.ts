@@ -146,7 +146,15 @@ export interface Job {
   spent?: boolean;
   /** When the firing that spent the job happened. Set once, with `spent`, and never moved after. */
   spentAt?: string;
+  /**
+   * How the progress and estimated end of a running job are computed. Absent means 'auto'.
+   * Validated by progressSettingError (progress/setting.ts), which lists the registered strategies.
+   */
+  progress?: JobProgressSetting;
 }
+
+/** A string: 'auto' picks a strategy per run, 'off' disables the estimate, a strategy id forces it (no fallback). Or the object form with options. */
+export type JobProgressSetting = string | { strategy: string; options?: unknown };
 
 /**
  * Fields that can hold nothing, and what "nothing" is stored as for each.
@@ -189,7 +197,9 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
   dryRunSupported:    'delete',
   description:        'delete',
   resourceLimits:     'delete',
-  label:              (job) => job.id,
+  // Absent is 'auto', so clearing it is the way back to the default.
+  progress:           'delete',
+  label:             (job) => job.id,
   triggerMode:        () => 'fire-and-forget',
 };
 
@@ -426,5 +436,5 @@ export interface CliDeps {
   startDaemon: () => void;
   configDir: string;
   /** `orch job <jobId> logs` seams: how often -f reads the followed file (ms, default 250) and where its output goes. Tests set them. */
-  jobLogs?: { pollMs?: number; stdout?: (text: string) => void; stderr?: (text: string) => void };
+  jobLogs?: { pollMs?: number; stdout?: (text: string) => void; stderr?: (text: string) => void; time?: import('./time-service.js').TimeService };
 }

@@ -243,3 +243,113 @@ describe('restart-job on a job whose triggerMode is "wait"', () => {
     assert.equal(reply.started, true);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Edges, on the events harness: fake children and a fake clock (no real wait)
+const { makeHarness, FakeChild, cronJob, settle, assertNoProblems } = require('./helpers/event-harness');
+const { commandsOf } = require('./helpers/event-scenarios');
+
+describe('restart-job: edges', () => {
+  require('node:test').afterEach(assertNoProblems);
+
+  test('two overlapping restarts of the same job never leave two running copies', async () => {
+    const h = makeHarness([cronJob()], { exits: [undefined], scheduler: { restartGraceMs: 2000 } });
+    await h.sched.trigger('job');
+
+    await Promise.all([h.sched.restartJob('job'), h.sched.restartJob('job')]);
+    await settle();
+
+    const alive = h.children.filter((c) => !c.exited);
+    assert.ok(alive.length <= 1, `${alive.length} copies are running after two overlapping restarts`);
+    assert.equal(h.sched.runningCount('job'), alive.length, 'the scheduler\'s count agrees with the processes');
+  });
+
+  test('a start that fails (the spawn throws) is started:false with the error, not a success with a null pid', async () => {
+    let spawns = 0;
+    const h = makeHarness([cronJob()], {
+      scheduler: {
+        restartGraceMs: 2000,
+        spawn: () => {
+          spawns++;
+          if (spawns > 1) { throw new Error('spawn ENOENT: node'); }
+          return new FakeChild(undefined);
+        },
+      },
+    });
+    await h.sched.trigger('job');
+
+    const reply = await h.sched.restartJob('job');
+
+    assert.equal(reply.wasRunning, true);
+    assert.equal(reply.killed, 1);
+    assert.equal(reply.started, false, 'the new run did not start, the reply must not claim it did');
+    assert.equal(reply.pid, null);
+    assert.match(reply.reason, /spawn ENOENT: node/);
+    assert.match(reply.reason, /orch trigger job/);
+  });
+
+  test('the grace period in the message is not rounded down to "0s" for a sub-second value', async () => {
+    const h = makeHarness([cronJob()], { exits: [undefined], scheduler: { restartGraceMs: 150 } });
+    await h.sched.trigger('job');
+    // A child that ignores the kill: it never closes.
+    h.children[0].kill = function kill() { this.killed = true; return true; };
+
+    const pending = h.sched.restartJob('job');
+    await settle();
+    await h.time.advanceAsync(150, 50);
+    const reply = await pending;
+
+    assert.equal(reply.started, false);
+    assert.doesNotMatch(reply.reason, /\b0s\b/);
+    assert.match(reply.reason, /still running 150 ms after it was told to stop/);
+    assert.equal(h.children.length, 1, 'no second copy');
+  });
+
+  test('the default grace period is said in seconds', async () => {
+    const h = makeHarness([cronJob()], { exits: [undefined] });
+    await h.sched.trigger('job');
+    h.children[0].kill = function kill() { this.killed = true; return true; };
+
+    const pending = h.sched.restartJob('job');
+    await settle();
+    await h.time.advanceAsync(15_000, 1000);
+    const reply = await pending;
+
+    assert.match(reply.reason, /still running 15s after it was told to stop/);
+  });
+
+  test('the asker (ip, user agent) reaches the new run\'s trigger source', async () => {
+    const h = makeHarness([cronJob()], { exits: [undefined], scheduler: { restartGraceMs: 2000 } });
+    await h.sched.trigger('job');
+
+    await commandsOf(h)['restart-job']({ id: 'job', ip: '10.0.0.7', userAgent: 'orch-cli/1' });
+    await settle();
+
+    const newest = [...h.state.getAll().job].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).at(-1);
+    assert.deepEqual(newest.triggeredBy, { kind: 'manual', ip: '10.0.0.7', userAgent: 'orch-cli/1' });
+  });
+
+  test('a spent one-shot job is refused with the command that runs it again', async () => {
+    const h = makeHarness([cronJob()], {});
+    h.registry.add({ id: 'done', type: 'once', delayMs: 3600000, command: 'node -v', enabled: true, triggerMode: 'fire-and-forget' });
+    h.registry.markSpent('done');
+
+    await assert.rejects(
+      () => commandsOf(h)['restart-job']({ id: 'done' }),
+      { message: 'Job "done" is a one-shot job that already ran, so there is nothing to restart. Run it again with `orch trigger done`.' },
+    );
+    assert.equal(h.children.length, 0);
+  });
+
+  for (const [what, payload] of [['a number', { id: 42 }], ['null', { id: null }], ['no id', {}], ['no payload', undefined]]) {
+    test(`an id that is ${what} is refused with the rule and the way to list the ids`, async () => {
+      const h = makeHarness([cronJob()], {});
+      const got = payload === undefined ? 'undefined' : JSON.stringify(payload.id);
+      await assert.rejects(
+        () => commandsOf(h)['restart-job'](payload),
+        { message: `restart-job needs a job id made of letters, digits and "-" (got ${got}). Run \`orch list\` to see the available job ids.` },
+      );
+      assert.equal(h.children.length, 0);
+    });
+  }
+});

@@ -419,8 +419,18 @@ export async function jobsRoutes(
     }
     return guard(reply, async () => {
       const { jobId } = req.params as { jobId: string };
-      const telemetry = await proxy.send('get-run-telemetry', run === undefined ? { jobId } : { jobId, run });
-      return reply.send(telemetry);
+      try {
+        const telemetry = await proxy.send('get-run-telemetry', run === undefined ? { jobId } : { jobId, run });
+        return reply.send(telemetry);
+      } catch (err) {
+        // A missing job is the caller's mistake, not a server error: same answer as resource-history.
+        // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor; orch-core has no getErrorMessage and the daemon's sentence is the whole point
+        const message = err instanceof Error ? err.message : String(err);
+        if (!(err instanceof DaemonUnavailableError) && message.startsWith('Job not found')) {
+          return reply.code(404).send({ error: message });
+        }
+        throw err;
+      }
     });
   });
 

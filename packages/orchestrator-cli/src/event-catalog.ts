@@ -196,7 +196,7 @@ export const EVENT_CATALOG: EventDeclaration[] = [
   },
   {
     name: 'daemon.started',
-    description: 'The orchestrator daemon finished starting (also after `orch restart` and after an update). Fires once per daemon process. About the daemon, not a job: no correlation key. Does NOT fire when only the CLI runs.',
+    description: 'The orchestrator daemon is serving and its scheduler has started (also after `orch restart` and after an update). Fires once per daemon process, never from one that failed to start; the job.started of a startup job can come before it. About the daemon, not a job: no correlation key. Does NOT fire when only the CLI runs.',
     schema: payload({ pid: int, version: str }, ['pid', 'version']),
     example: { pid: 34888, version: '2026.10.24-100-abcdef01' },
   },

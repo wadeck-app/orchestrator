@@ -181,3 +181,94 @@ describe('the daemon returns it with the job', () => {
     assert.equal(commands['get-job']({ id: 'j1' }).description, 'hello');
   });
 });
+
+describe('edge values', () => {
+  test('null is accepted as "no description": it is not stored', () => {
+    const { registry, file } = makeEnv(cronJob({ description: null }));
+    assert.ok(!('description' in registry.get('j1')), 'null kept in memory');
+    assert.ok(!('description' in JSON.parse(fs.readFileSync(file, 'utf8')).jobs[0]), 'null kept on disk');
+  });
+
+  test('edit with null clears an existing description', () => {
+    const { registry } = makeEnv(cronJob({ description: 'old' }));
+    registry.edit('j1', { description: null });
+    assert.ok(!('description' in registry.get('j1')));
+  });
+
+  for (const [what, value, typeName] of [['an object', { text: 'x' }, 'object'], ['an array', ['x'], 'object'], ['a boolean', true, 'boolean'], ['a number', 42, 'number']]) {
+    test(`${what} is refused with the full message`, () => {
+      assert.throws(
+        () => validateJob(cronJob({ description: value })),
+        { message: `Job description must be text (got: ${typeName})` },
+      );
+    });
+  }
+
+  // The limit counts UTF-16 code units (String.length), not what a person sees as characters: an emoji is two.
+  test('the 2000 limit counts UTF-16 code units: 1000 emoji fit, 1001 are refused with a length of 2002', () => {
+    const emoji = '\u{1F600}';
+    const { registry } = makeEnv(cronJob({ description: emoji.repeat(1000) }));
+    assert.equal(registry.get('j1').description.length, 2000);
+    assert.throws(
+      () => validateJob(cronJob({ description: emoji.repeat(1001) })),
+      { message: 'Job description must be 2000 characters or fewer (got: 2002). Shorten it by 2 characters.' },
+    );
+  });
+});
+
+describe('orch edit and the description, through the CLI', () => {
+  const { runCli } = require('../src/cli');
+
+  async function cli(argv, { tty = false, send = async () => ({}) } = {}) {
+    const out = [];
+    const err = [];
+    let exitCode = 0;
+    const origExit = process.exit;
+    const origLog = console.log;
+    const origError = console.error;
+    const origTty = process.stdout.isTTY;
+    process.exit = (code) => { exitCode = code ?? 0; throw Object.assign(new Error('exit'), { exitCode }); };
+    console.log = (...a) => { out.push(a.join(' ')); };
+    console.error = (m) => { err.push(String(m)); };
+    Object.defineProperty(process.stdout, 'isTTY', { value: tty, configurable: true });
+    try {
+      await runCli(argv, { send, startDaemon: async () => {}, configDir: '/tmp/orch-test' });
+    } catch (e) {
+      if (e.message !== 'exit') {
+        throw e;
+      }
+    } finally {
+      process.exit = origExit;
+      console.log = origLog;
+      console.error = origError;
+      Object.defineProperty(process.stdout, 'isTTY', { value: origTty, configurable: true });
+    }
+    return { out: out.join('\n'), err: err.join('\n'), exitCode };
+  }
+
+  test('--description together with --unset description is refused, naming both flags, and sends nothing', async () => {
+    const calls = [];
+    const { err, exitCode } = await cli(['edit', 'j1', '--description', 'new', '--unset', 'description'], { send: async (c) => { calls.push(c); return {}; } });
+
+    assert.deepEqual(calls, []);
+    assert.equal(exitCode, 4);
+    assert.equal(err, '\nError: Cannot set and unset "description" in the same command -- drop one of --description and --unset description.\n');
+  });
+
+  const MULTI = { id: 'j1', type: 'cron', schedule: '0 9 * * *', command: 'node -v', enabled: true, description: 'Line one.\nLine two.' };
+
+  test('orch show carries the whole multi-line description: the JSON it prints gives the text back exactly', async () => {
+    for (const tty of [true, false]) {
+      const { out } = await cli(['show', 'j1'], { tty, send: async () => MULTI });
+      assert.equal(JSON.parse(out).description, 'Line one.\nLine two.', `tty=${tty}`);
+    }
+  });
+
+  test('orch list on a terminal never prints the description, with or without --verbose', async () => {
+    for (const argv of [['list'], ['list', '--verbose']]) {
+      const { out } = await cli(argv, { tty: true, send: async (c) => (c === 'list-jobs' ? [MULTI] : {}) });
+      assert.match(out, /j1/);
+      assert.doesNotMatch(out, /Line one|Line two/, argv.join(' '));
+    }
+  });
+});

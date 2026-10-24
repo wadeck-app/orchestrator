@@ -3,7 +3,8 @@ import os   from 'node:os';
 import path from 'node:path';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
 import type { ProgressEstimate } from './progress/types.js';
-import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits } from './types.js';
+import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobProgressSetting } from './types.js';
+import { PROGRESS_MODES, PROGRESS_STRATEGY_IDS, progressSettingError } from './progress/setting.js';
 import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
@@ -11,6 +12,7 @@ import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
 import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
 import { parseJobLogsArgs, runJobLogs } from './job-logs.js';
+import { PROGRESS_REPLAY_USAGE, parseReplayArgs, runProgressReplay } from './progress/replay-report.js';
 import { HELP_TEXT, JOB_HELP, JOB_LOGS_HELP } from './help-text.js';
 import { stripAnsi } from './ansi.js';
 
@@ -176,10 +178,10 @@ export const JOB_FIELD_FLAGS: FieldFlag[] = [
 ];
 
 /** Flags accepted alongside the field flags, so the unknown-flag check does not reject them. */
-export const EXTRA_ADD_FLAGS  = ['--once', '--disabled', '--delay', '--json',
+export const EXTRA_ADD_FLAGS  = ['--once', '--disabled', '--delay', '--json', '--progress', '--progress-options',
                           '--liveness-strategy', '--liveness-port-file', '--liveness-command',
                           '--active-from', '--active-until', '--active-for'];
-export const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json',
+export const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json', '--progress', '--progress-options',
                           '--liveness-strategy', '--liveness-port-file', '--liveness-command',
                           '--active-from', '--active-until', '--active-for'];
 
@@ -336,6 +338,57 @@ function checkResourceLimits(limits: ResourceLimits): void {
   const key = /resourceLimits\.(\w+)/.exec(problem)?.[1];
   const flagName = key === undefined ? undefined : resourceFlagOf(key);
   throw new Error(flagName === undefined ? problem : `${problem} (flag: ${flagName})`);
+}
+
+/**
+ * `--progress <mode>` and `--progress-options <json|@file>` into the job's `progress` setting; undefined when
+ * neither is given. Validated here with the daemon's own rule, so a typo costs no round-trip and the error
+ * lists the registered strategies. The setting is replaced as a whole: options without a mode are refused,
+ * because there is no old mode to attach them to that the user could see.
+ */
+function progressFlags(argv: string[]): JobProgressSetting | undefined {
+  const mode = flag(argv, '--progress');
+  const optionsRaw = flag(argv, '--progress-options');
+  if (mode === undefined && has(argv, '--progress')) {
+    throw new Error(`--progress needs a value, but was followed by nothing. Accepted: ${PROGRESS_MODES.join(', ')}, ${PROGRESS_STRATEGY_IDS.join(', ')}.`);
+  }
+  if (optionsRaw === undefined && has(argv, '--progress-options')) {
+    throw new Error('--progress-options needs a value (a JSON object, or @path/to/file.json), but was followed by nothing.');
+  }
+  if (mode === undefined) {
+    if (optionsRaw !== undefined) {
+      throw new Error('--progress-options needs --progress <strategy>: the options belong to a strategy, and the setting is replaced as a whole.\n\n'
+        + 'Example: orch edit my-job --progress ratio --progress-options \'{"pattern":"(\\\\d+)/(\\\\d+)"}\'');
+    }
+    return undefined;
+  }
+  let setting: JobProgressSetting = mode;
+  if (optionsRaw !== undefined) {
+    let text = optionsRaw;
+    if (optionsRaw.startsWith('@')) {
+      const file = optionsRaw.slice(1);
+      try {
+        text = fs.readFileSync(file, 'utf8');
+      } catch (e) {
+        throw new Error(`--progress-options: cannot read "${file}": ${getErrorMessage(e)}`);
+      }
+      if (text.trim() === '') {
+        throw new Error(`--progress-options: "${file}" is empty; expected a JSON object.`);
+      }
+    }
+    let options: unknown;
+    try {
+      options = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`--progress-options is not valid JSON (${getErrorMessage(e)}). Pass a JSON object, or @file.json (@ followed by a path) to read it from a file.`);
+    }
+    setting = { strategy: mode, options };
+  }
+  const problem = progressSettingError(setting);
+  if (problem !== null) {
+    throw new Error(`${problem} (flag: --progress${optionsRaw !== undefined ? ' / --progress-options' : ''})`);
+  }
+  return setting;
 }
 
 /**
@@ -986,6 +1039,14 @@ Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4
       if (liveness) {
         body['liveness'] = liveness;
       }
+      try {
+        const progress = progressFlags(addRest);
+        if (progress !== undefined) {
+          body['progress'] = progress;
+        }
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
 
       if (type === 'cron') {
         const schedule = flag(addRest, '--schedule');
@@ -1103,6 +1164,14 @@ Examples:
       // --liveness-strategy it wrote a junk key and changed no liveness check at all.
       try {
         Object.assign(updates, collectFieldFlags(editRest));
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
+      try {
+        const progress = progressFlags(editRest);
+        if (progress !== undefined) {
+          updates['progress'] = progress;
+        }
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
       }
@@ -1574,16 +1643,38 @@ Use --wait to block until the command finishes.`);
       const followFlags = ['--follow', '-f'];
       const jobFlag = flag(rest, '--job');
       const tailFlag = flag(rest, '--tail');
-      const sinceFlag = flag(rest, '--since');
       const jsonFlag = has(rest, '--json');
+      const logsUsage = (problem: string): never => {
+        console.error(`${problem}\nUsage: orch logs [--follow] [--job <id>] [--tail <N>] [--json] [--raw]`);
+        process.exit(4);
+      };
+      // Nothing here reads a time range: ignoring --since silently would show everything while the user thinks it is filtered.
+      if (has(rest, '--since')) {
+        logsUsage('--since is not supported by orch logs (it shows today\'s log). Limit the output with --tail <N>, or read one run with: orch job <jobId> logs [execId]');
+      }
       warnUnknownArgs(
         rest,
-        [...followFlags, '--job', '--tail', '--since', '--json', '--raw'],
+        [...followFlags, '--job', '--tail', '--json', '--raw'],
         'orch logs',
-        new Set(['--job', '--tail', '--since']),
+        new Set(['--job', '--tail']),
       );
+      // A value that is itself a flag means the real value is missing.
+      const missingValue = (v: string | undefined): boolean => v === undefined || v.startsWith('--');
+      if (has(rest, '--job') && missingValue(jobFlag)) {
+        logsUsage('--job needs a job id. See the ids with: orch list');
+      }
+      // The id becomes a folder name under logs/jobs: same rule as registry.add and the logs route (no path in an id).
+      if (jobFlag !== undefined && !/^[a-z0-9-]+$/i.test(jobFlag)) {
+        logsUsage(`Invalid job id "${jobFlag}": an id has only letters, digits and "-". See the ids with: orch list`);
+      }
+      if (has(rest, '--tail') && missingValue(tailFlag)) {
+        logsUsage('--tail needs a value: the number of last lines to show.');
+      }
+      if (tailFlag !== undefined && !/^\d+$/.test(tailFlag)) {
+        logsUsage(`--tail must be a whole number of 0 or more (the number of last lines to show); got "${tailFlag}".`);
+      }
       const follow = has(rest, '--follow') || has(rest, '-f');
-      const tailLines = tailFlag ? parseInt(tailFlag, 10) : undefined;
+      const tailLines = tailFlag !== undefined ? parseInt(tailFlag, 10) : undefined;
       const json = jsonFlag || !process.stdout.isTTY;
 
       const fsLogs  = require('node:fs') as typeof import('node:fs');
@@ -1614,7 +1705,8 @@ Use --wait to block until the command finishes.`);
         const lines = raw ? rawLines : rawLines.map(stripAnsi);
         if (json) {
           for (const line of lines) {
-            const match = line.match(/\[([\d-: ]+)\] (.*)/);
+            // Anchored: a bracket in the middle of a message is not a stamp.
+            const match = line.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] (.*)$/);
             if (match) {
               console.log(JSON.stringify({ timestamp: match[1], message: match[2] }));
             } else {
@@ -1636,6 +1728,12 @@ Use --wait to block until the command finishes.`);
         }
         return lines;
       };
+
+      // fs.watch throws ENOENT on a folder that does not exist: say why there is nothing to follow instead.
+      if (jobFlag && follow && !fsLogs.existsSync(jobLogDir!)) {
+        console.error(`Cannot follow job "${jobFlag}": it has no log folder (${jobLogDir}), so it has never run or the id is wrong. See the ids with: orch list`);
+        process.exit(1);
+      }
 
       let offset = 0;
       let watchedFile: string | undefined;
@@ -1697,15 +1795,43 @@ Use --wait to block until the command finishes.`);
           });
           process.on('SIGINT', () => { dirWatcher.close(); resolve(); });
         } else {
-          fsLogs.watchFile(watchedFile!, { interval: 250 }, () => {
+          // Polled, not fs.watchFile: its baseline stat is taken after the call returns, so a line written between
+          // the snapshot and that stat was never reported.
+          const poll = setInterval(() => {
             if (!fsLogs.existsSync(watchedFile!)) {
               return;
             }
             tailFile(watchedFile!);
-          });
-          process.on('SIGINT', () => { fsLogs.unwatchFile(watchedFile!); resolve(); });
+          }, 250);
+          process.on('SIGINT', () => { clearInterval(poll); resolve(); });
         }
       });
+      return;
+    }
+
+    // `orch progress replay <jobId>`: how well each progress strategy would have estimated the job's past runs.
+    // Reads registry.json, state.json and the run logs of the config dir; no daemon needed.
+    case 'progress': {
+      const [sub, ...subRest] = rest;
+      const usage = (problem: string): never => {
+        console.error(`${problem}\n${PROGRESS_REPLAY_USAGE}`);
+        process.exit(4);
+      };
+      if (sub === undefined) {
+        usage('Missing sub-command. Available: replay.');
+      }
+      if (sub !== 'replay') {
+        usage(`Unknown sub-command "${sub}" for orch progress. Available: replay.`);
+      }
+      const parsed = parseReplayArgs(subRest, forceJson);
+      if (!parsed.ok) {
+        console.error(parsed.error);
+        process.exit(4);
+      }
+      const code = runProgressReplay(parsed.args, configDir, (t) => console.log(t), (t) => console.error(t));
+      if (code !== 0) {
+        process.exit(code);
+      }
       return;
     }
 

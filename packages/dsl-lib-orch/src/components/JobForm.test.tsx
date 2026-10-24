@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { JobForm } from './JobForm.js';
@@ -910,6 +910,67 @@ describe('JobForm resource limits', () => {
   });
 });
 
+describe('JobForm resource limits: feedback and the create form', () => {
+  const openLimits = (): void => {
+    fireEvent.click(screen.getByRole('button', { name: /Resource limits/ }));
+  };
+
+  it('flags only the invalid field, and drops the alert once the value is fixed and saved', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm(EXISTING_CRON, onSubmit);
+    openLimits();
+
+    fill(/^Hard factor/, '1');
+    saveButton().click();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.parentElement).toContainElement(screen.getByLabelText(/^Hard factor/));
+    expect(screen.getByLabelText(/^Hard factor/)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/^Soft factor/)).toHaveAttribute('aria-invalid', 'false');
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fill(/^Hard factor/, '4');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(submitted(onSubmit).resourceLimits).toEqual({ hardFactor: 4 });
+  });
+
+  it('creates a job with limits: the id, the command and the limits are all sent', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderNewForm(onSubmit);
+
+    fill(/^Id/, 'limited');
+    fill(/^Label/, 'Limited');
+    fill(/^Command/, 'node -v');
+    fill(/^Schedule/, '0 9 * * *');
+    openLimits();
+    fireEvent.change(screen.getByLabelText(/^Enforcement/), { target: { value: 'warn' } });
+    fill(/^Max RAM/, '256');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(submitted(onSubmit)).toMatchObject({ id: 'limited', command: 'node -v', resourceLimits: { enforce: 'warn', maxRamMb: 256 } });
+    // a new job has nothing to clear
+    expect(submitted(onSubmit)).not.toHaveProperty('unset');
+  });
+
+  it('creates a job without limits when the section is never opened', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderNewForm(onSubmit);
+
+    fill(/^Id/, 'plain');
+    fill(/^Label/, 'Plain');
+    fill(/^Command/, 'node -v');
+    fill(/^Schedule/, '0 9 * * *');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(submitted(onSubmit)).not.toHaveProperty('resourceLimits');
+  });
+});
+
 // Cancel must only cancel. dsl-ui's ButtonCancel renders a button without a type, which inside a form is a submit
 // button: clicking Cancel on the edit page submitted the form (the job was saved with the edits) and then called
 // onCancel. Reported by the user as: cancelling an edit still saved it.
@@ -925,13 +986,18 @@ describe('JobForm Cancel', () => {
   it('does not save the edits of a job, and cancels once', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onCancel = vi.fn();
-    renderWith({ id: 'j1', type: 'cron', command: 'node -v', label: 'Original', schedule: '0 9 * * *', enabled: true, triggerMode: 'fire-and-forget' }, onSubmit, onCancel);
+    const { container } = renderWith({ id: 'j1', type: 'cron', command: 'node -v', label: 'Original', schedule: '0 9 * * *', enabled: true, triggerMode: 'fire-and-forget' }, onSubmit, onCancel);
+    // The browser dispatches the submit event synchronously on click, so counting it proves the form was not submitted
+    // without waiting for anything.
+    const submitted = vi.fn();
+    container.querySelector('form')!.addEventListener('submit', submitted);
     fireEvent.change(screen.getByRole('textbox', { name: /^Label/ }), { target: { value: 'Edited, then cancelled' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    // A submit is asynchronous: give it the time it would need before saying nothing happened.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Let every pending promise settle (a validation, then onSubmit) before saying nothing happened.
+    await act(async () => {});
 
+    expect(submitted).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -939,16 +1005,32 @@ describe('JobForm Cancel', () => {
   it('does not create a job when the new-job form is cancelled', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onCancel = vi.fn();
-    renderWith(undefined, onSubmit, onCancel);
+    const { container } = renderWith(undefined, onSubmit, onCancel);
+    const submitted = vi.fn();
+    container.querySelector('form')!.addEventListener('submit', submitted);
     fireEvent.change(screen.getByRole('textbox', { name: /^Id/ }), { target: { value: 'half-typed' } });
     fireEvent.change(screen.getByRole('textbox', { name: /^Label/ }), { target: { value: 'Half typed' } });
     fireEvent.change(screen.getByRole('textbox', { name: /^Command/ }), { target: { value: 'node -v' } });
     fireEvent.change(screen.getByRole('textbox', { name: /^Schedule/ }), { target: { value: '0 9 * * *' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await act(async () => {});
 
+    expect(submitted).not.toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // Control: the listener above does see a real submit, so "not called" is not a silent pass.
+  it('the submit listener does see the Save button submitting', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { container } = renderWith({ id: 'j1', type: 'cron', command: 'node -v', label: 'Original', schedule: '0 9 * * *', enabled: true, triggerMode: 'fire-and-forget' }, onSubmit, vi.fn());
+    const submitted = vi.fn();
+    container.querySelector('form')!.addEventListener('submit', submitted);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await act(async () => {});
+
+    expect(submitted).toHaveBeenCalledTimes(1);
   });
 });

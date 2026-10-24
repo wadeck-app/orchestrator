@@ -9,6 +9,8 @@ import { ensureTmpDir } from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
 import { jobEnvironment } from './job-env.js';
 import { stripAnsi } from './ansi.js';
+import { OutputLines } from './output-lines.js';
+import { systemTime, type TimeService, type Timer } from './time-service.js';
 
 export interface ExecRun {
   runId: string;
@@ -38,9 +40,15 @@ export class ExecManager {
   private readonly _events: EventPublisher;
   /** `jobsNoColor` in config.yml: an exec starts with NO_COLOR=1 and FORCE_COLOR=0 like a job (see job-env.ts). */
   private readonly _noColor: boolean;
-  constructor(configDir: string, events?: EventPublisher, options: { jobsNoColor?: boolean } = {}) {
+  /** The clock and the timeout timer. Defaults to the real ones; a test drives its own (see time-service.ts). */
+  private readonly _time: TimeService;
+  /** How a command is started; a test replaces it with a scripted child. */
+  private readonly _spawn: typeof nodeSpawn;
+  constructor(configDir: string, events?: EventPublisher, options: { jobsNoColor?: boolean; time?: TimeService; spawn?: typeof nodeSpawn } = {}) {
+    this._spawn = options.spawn ?? nodeSpawn;
     this._configDir = configDir;
     this._noColor = options.jobsNoColor ?? true;
+    this._time = options.time ?? systemTime;
     this._events = events ?? new EventPublisher('orchestrator', undefined, { cwd: configDir });
   }
 
@@ -58,7 +66,7 @@ export class ExecManager {
    * the whole behavioural difference.
    */
   private _prune(): void {
-    const now = Date.now();
+    const now = this._time.now();
     for (const [id, run] of this._runs) {
       if (run.finishedAt && now - new Date(run.finishedAt).getTime() > run.ttlMs) {
         this._runs.delete(id);
@@ -68,13 +76,13 @@ export class ExecManager {
   }
 
   fireExec(command: string, opts: ExecOptions = {}): { runId: string; pid: number | null; status: 'running' } {
-    const runId = `exec-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const runId = `exec-${this._time.now()}-${randomUUID().slice(0, 8)}`;
     const run: ExecRun = {
       runId,
       command,
       label: opts.label,
       cwd: opts.cwd,
-      startedAt: new Date().toISOString(),
+      startedAt: new Date(this._time.now()).toISOString(),
       status: 'running',
       exitCode: null,
       pid: null,
@@ -91,7 +99,7 @@ export class ExecManager {
     const [bin, ...args] = parts;
     const spawnEnv = jobEnvironment({ ...process.env, ...opts.env }, opts.env, this._noColor);
 
-    const child = nodeSpawn(bin!, args, {
+    const child = this._spawn(bin!, args, {
       cwd: opts.cwd ?? tmpDir,
       windowsHide: true,
       shell: true,
@@ -108,48 +116,53 @@ export class ExecManager {
 
     // A program that ignores the environment and prints escape sequences anyway: they stay out of the run's lines
     // (what the dashboard and `orch exec` show) and out of the log file.
-    child.stdout?.on('data', (d: Buffer) => {
-      for (const line of stripAnsi(d.toString()).split('\n').filter(l => l.trimEnd())) {
+    // One per stream: a chunk can end inside an escape sequence or a multibyte character (see output-lines.ts).
+    const stdoutLines = new OutputLines();
+    const stderrLines = new OutputLines();
+    const takeStdout = (raw: string[]): void => {
+      for (const line of raw.map(stripAnsi).filter(l => l.trimEnd())) {
         const trimmed = line.trimEnd();
         run.logs.push(trimmed);
         if (run.logs.length > 1000) { run.logs.shift(); }
         logger.write(trimmed);
       }
-    });
-    child.stderr?.on('data', (d: Buffer) => {
-      for (const line of stripAnsi(d.toString()).split('\n').filter(l => l.trimEnd())) {
+    };
+    const takeStderr = (raw: string[]): void => {
+      for (const line of raw.map(stripAnsi).filter(l => l.trimEnd())) {
         const entry = `[stderr] ${line.trimEnd()}`;
         run.logs.push(entry);
         if (run.logs.length > 1000) { run.logs.shift(); }
         logger.write(entry);
       }
-    });
+    };
+    child.stdout?.on('data', (d: Buffer) => { takeStdout(stdoutLines.push(d)); });
+    child.stderr?.on('data', (d: Buffer) => { takeStderr(stderrLines.push(d)); });
 
     const timeoutMs = (opts.timeout ?? 300) * 1000;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    let timeoutHandle: Timer | null = null;
     if (timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
+      timeoutHandle = this._time.after(timeoutMs, () => {
         if (run.status === 'running') {
           run.logs.push(`[warn] Exec ${runId} timed out after ${opts.timeout ?? 300}s - killing`);
           run.status = 'killed';
           void this._terminate(runId);
         }
-      }, timeoutMs);
+      });
     }
 
     child.on('close', (code) => {
-      if (timeoutHandle !== null) {
-        clearTimeout(timeoutHandle);
-      }
+      takeStdout(stdoutLines.flush());
+      takeStderr(stderrLines.flush());
+      timeoutHandle?.cancel();
       const exitCode = code ?? 1;
       run.exitCode = exitCode;
-      run.finishedAt = new Date().toISOString();
+      run.finishedAt = new Date(this._time.now()).toISOString();
       run.status = run.status === 'killed' ? 'killed' : exitCode === 0 ? 'done' : 'failed';
       logger.close();
       this._pids.delete(runId);
       this._events.publish(exitCode === 0 ? 'exec.completed' : 'exec.failed', {
         runId, command, label: opts.label, exitCode,
-        durationMs: Date.now() - new Date(run.startedAt).getTime(),
+        durationMs: this._time.now() - new Date(run.startedAt).getTime(),
       });
     });
 

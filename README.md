@@ -25,6 +25,7 @@ orch server start                               # open web dashboard
 - **Jobs:** `orch list` / `show <id>` / `add cron|startup|manual <id>` / `remove` / `enable` / `disable` / `edit` / `trigger`
 - **Dashboard:** `orch server start|stop|status`
 - **Job:** `orch job <jobId> logs [execId] [-f] [-n N] [--list] [--raw]` (an execution's log: `latest` by default, `previous`, `N`, or an exec id from `--list`); `orch job --help` lists the sub-commands
+- **Progress:** jobs take `--progress <auto|off|history|log-learned|log-declared|declared|ratio|ensemble>` (+ `--progress-options`); `orch progress replay <jobId>` scores the strategies on a job's past runs
 - **Logs:** `orch logs [--follow]` (daemon log)
 
 Full command reference: see `orch --help`.

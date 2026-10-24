@@ -206,6 +206,138 @@ describe('readRunTelemetry', () => {
   });
 });
 
+describe('readRunTelemetry: files that hold nothing usable', () => {
+  const NOTHING_READABLE = 'The telemetry file of job "j" holds no readable run.';
+
+  test('an empty file is "not available" with a reason, not an empty success', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', []);
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.available, false);
+    assert.equal(result.run, null);
+    assert.deepEqual(result.samples, []);
+    assert.equal(result.reason, NOTHING_READABLE);
+  });
+
+  test('a file of only garbage lines says nothing in it is readable', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', [], { raw: 'not json at all\n{"a":1}\n[1,2]\n\u0000\u0000\n' });
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.available, false);
+    assert.equal(result.reason, NOTHING_READABLE);
+  });
+
+  test('lines that name a run but cannot be parsed do not make the run available', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', [], { raw: `{"t":"x","kind":"sample","run":"${RUN_A}","cpu\n` });
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.available, false);
+    assert.equal(result.reason, NOTHING_READABLE);
+  });
+
+  test('a folder where the telemetry file should be is "no telemetry" (only a file counts), not a crash', async () => {
+    const dir = tmpDir();
+    fs.mkdirSync(telemetryPath(dir, 'j'), { recursive: true });
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.available, false);
+    assert.match(result.reason, /^No telemetry has been recorded for job "j" yet/);
+  });
+
+  // Windows answers ENOENT (not ENOTDIR) for a path below a plain file, so there is no stat error to provoke there.
+  test('a path that cannot be read for a reason other than "missing" is an error that names the file and what to check', { skip: process.platform === 'win32' ? 'stat answers ENOENT below a plain file on Windows' : false }, async () => {
+    const dir = tmpDir();
+    // The telemetry folder is a plain file: stat on a path below it is ENOTDIR, not ENOENT.
+    fs.writeFileSync(path.join(dir, 'telemetry'), 'in the way');
+
+    await assert.rejects(
+      () => readRunTelemetry(dir, 'j'),
+      (err) => err.message.startsWith('telemetry: cannot read ') && err.message.endsWith('Check that the file is readable by the user running the daemon.'),
+    );
+  });
+});
+
+describe('readRunTelemetry: which run is the newest, and what is a point', () => {
+  test('a line of an older run that arrives after a newer run began does not displace the newer one', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', [start(RUN_A), start(RUN_B), sample(RUN_B, 2, 50, 500), sample(RUN_A, 4, 10, 100)]);
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.run, RUN_B);
+    assert.deepEqual(result.samples.map(s => s.cpuPct), [50]);
+    assert.equal(result.rawSamples, 1);
+  });
+
+  test('the newest run is found when the older file holds a newer one than the live file starts with', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', [start(RUN_B), sample(RUN_B, 2, 50, 500)], { older: true });
+    write(dir, 'j', [start(RUN_A), sample(RUN_A, 2, 10, 100)]);
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.run, RUN_B, 'the newest run wins whatever the file order');
+  });
+
+  test('600 samples are all kept raw; 601 are bucketed into at most 600 points and the raw count says 601', async () => {
+    const dir = tmpDir();
+    const lines = (n) => [start(RUN_A), ...Array.from({ length: n }, (_, i) => sample(RUN_A, (i + 1) * 2, i, i))];
+    write(dir, 'exact', lines(600));
+    write(dir, 'over', lines(601));
+
+    const exact = await readRunTelemetry(dir, 'exact');
+    const over = await readRunTelemetry(dir, 'over');
+
+    assert.equal(exact.samples.length, 600);
+    assert.equal(exact.bucketSeconds, null);
+    assert.equal(exact.rawSamples, 600);
+    assert.ok(over.samples.length <= 600, `${over.samples.length} points`);
+    assert.notEqual(over.bucketSeconds, null);
+    assert.equal(over.rawSamples, 601);
+    assert.equal(Math.max(...over.samples.map(s => s.cpuPct)), 600, 'the last sample is not lost to a bucket past the end');
+  });
+
+  test('a sample with an unreadable time is dropped, a sample with no number reads as 0', async () => {
+    const dir = tmpDir();
+    write(dir, 'j', [
+      start(RUN_A),
+      { ...sample(RUN_A, 2, 5, 50), t: 'not a date' },
+      { ...sample(RUN_A, 4, null, null) },
+      { ...sample(RUN_A, 6, '7', undefined) },
+      sample(RUN_A, 8, 9, 90),
+    ]);
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.rawSamples, 3, 'the sample with the bad time is not a point');
+    assert.deepEqual(result.samples.map(s => [s.cpuPct, s.ramMb]), [[0, 0], [0, 0], [9, 90]]);
+  });
+
+  test('a "run" key written inside the text of another field does not move the line to that run', async () => {
+    const dir = tmpDir();
+    const decoy = '2026-10-18T23:00:00.000Z';
+    // The reason is written before the run field and carries what looks like one.
+    write(dir, 'j', [
+      start(RUN_A),
+      sample(RUN_A, 2, 5, 50),
+      { t: at(RUN_A, 4), kind: 'end', reason: `said "run":"${decoy}" in passing`, run: RUN_A, exitCode: 0, durationMs: 4000 },
+    ]);
+
+    const result = await readRunTelemetry(dir, 'j');
+
+    assert.equal(result.run, RUN_A);
+    assert.equal(result.available, true);
+    assert.equal(result.end.reason, `said "run":"${decoy}" in passing`);
+  });
+});
+
 describe('the get-run-telemetry command', () => {
   function env() {
     const dir = tmpDir();

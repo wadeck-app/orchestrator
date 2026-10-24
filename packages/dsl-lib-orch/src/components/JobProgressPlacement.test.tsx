@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { JobCard } from './JobCard.js';
 import { RunningBannerDetail } from './RunningBannerDetail.js';
 import { RunningAlertDetail } from './RunningAlertDetail.js';
@@ -12,8 +12,19 @@ const JOB: Job = { id: 'j1', type: 'cron', label: 'Job A', command: 'node a.js',
 const RUNNING: RuntimeEntry[] = [{ startedAt: '2026-09-02T10:00:00Z', exitCode: null, pid: 77 }];
 const DONE: RuntimeEntry[] = [{ startedAt: '2026-09-02T10:00:00Z', finishedAt: '2026-09-02T10:05:00Z', exitCode: 0, pid: 77 }];
 
+// The component re-reads the clock: it is frozen at the daemon's "now" so the percentage is exactly the estimate's.
+const NOW = Date.parse('2026-09-02T10:30:00.000Z');
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function estimate(): ProgressEstimate {
-  const now = Date.now();
+  const now = NOW;
   return {
     strategyId: 'history', progress: 0.42, etaAt: new Date(now + 6 * 60_000).toISOString(), confidence: 'high', confidenceScore: 0.9,
     reason: 'auto: history', serverNow: new Date(now).toISOString(),
@@ -68,8 +79,8 @@ describe.each([
     const { container } = show(RUNNING, estimate());
     const el = container.querySelector('[data-progress-state="estimate"]');
     expect(el).not.toBeNull();
-    expect(el!.textContent).toMatch(/4\d%|42%/);
-    expect(el!.textContent).toMatch(/ends ~\d\d:\d\d/);
+    expect(el!.textContent).toContain('42%');
+    expect(el!.textContent).toMatch(/ends ~\d\d:\d\d \(in 6 min\)/);
   });
 
   it('shows the reason when there is no estimate', () => {

@@ -26,7 +26,7 @@ function parseArgs(argv) {
     } else if (arg === '--older-than-minutes') {
       const value = argv[i + 1];
       if (value === undefined || !/^\d+$/.test(value)) {
-        throw new Error(`--older-than-minutes needs a whole number of minutes (0 or more), got ${value === undefined ? 'nothing' : JSON.stringify(value)}.`);
+        throw new Error(`--older-than-minutes needs a whole number of minutes (0 or more), got ${value === undefined ? 'nothing' : JSON.stringify(value)}.\nUsage: node scripts/clean-test-temp.cjs [--older-than-minutes N] [--dry-run]`);
       }
       out.minutes = Number(value);
       i++;

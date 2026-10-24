@@ -56,6 +56,8 @@ function populate(dir, id) {
   put(dir, `telemetry/${id}.1.ndjson`);
   put(dir, `resource-history/${id}.ndjson`);
   put(dir, `resource-history/${id}.ndjson.tmp`);
+  put(dir, `progress/${id}.json`);
+  put(dir, `progress/${id}.json.tmp`);
   put(dir, `logs/jobs/${id}/${id}-2026-01-01T00-00-00.log`, 'a log');
   putRun(dir, id, '2026-01-01T00-00-00.000Z', { state: 'exited', done: true });
   putRun(dir, id, '2026-01-02T00-00-00.000Z', { state: 'exited', done: false });
@@ -78,8 +80,30 @@ describe('removeJobData', () => {
     assert.equal(exists(dir, 'tmp/job-a'), false);
     assert.equal(exists(dir, 'logs/jobs/job-a/job-a-2026-01-01T00-00-00.log'), true, 'logs are kept');
     assert.equal(exists(dir, 'telemetry/job-b.ndjson'), true, 'another job is untouched');
-    assert.deepEqual(result.cleaned, { telemetry: 2, resourceHistory: 2, runs: 2 });
+    assert.deepEqual(result.cleaned, { telemetry: 2, resourceHistory: 2, progress: 2, runs: 2 });
     assert.deepEqual(result.leftovers, []);
+  });
+
+  test('the learned progress data of the job goes with it, another job keeps its own', () => {
+    const dir = makeDir();
+    populate(dir, 'job-a');
+    put(dir, 'progress/job-b.json');
+
+    removeJobData(dir, 'job-a');
+
+    assert.equal(exists(dir, 'progress/job-a.json'), false);
+    assert.equal(exists(dir, 'progress/job-a.json.tmp'), false);
+    assert.equal(exists(dir, 'progress/job-b.json'), true);
+  });
+
+  test('a running job keeps its progress data and the leftover names it', () => {
+    const dir = makeDir();
+    put(dir, 'progress/job-a.json');
+
+    const result = removeJobData(dir, 'job-a', { running: true });
+
+    assert.equal(exists(dir, 'progress/job-a.json'), true);
+    assert.ok(result.leftovers.some(l => /progress/.test(l.reason) && /still running/.test(l.reason)), JSON.stringify(result.leftovers));
   });
 
   test('a tmp cwd that holds files is kept', () => {
@@ -173,7 +197,7 @@ describe('removeJobData', () => {
         assert.equal(exists(root, 'outside/keep.txt'), true);
         assert.equal(exists(dir, 'telemetry/x.ndjson'), true);
         assert.equal(exists(dir, 'runs/x/r/done'), true);
-        assert.deepEqual(result.cleaned, { telemetry: 0, resourceHistory: 0, runs: 0 });
+        assert.deepEqual(result.cleaned, { telemetry: 0, resourceHistory: 0, progress: 0, runs: 0 });
         assert.equal(result.leftovers.length, 1);
         assert.match(result.leftovers[0].reason, /not a valid job id/);
         assert.equal(dropped.leftovers.length, 1);
@@ -193,7 +217,7 @@ describe('dropStaleJobData', () => {
     assert.equal(exists(dir, 'resource-history/job-a.ndjson'), false);
     assert.equal(exists(dir, 'logs/jobs/job-a/job-a-2026-01-01T00-00-00.log'), true);
     assert.equal(exists(dir, 'runs/job-a/2026-01-02T00-00-00.000Z/status.json'), true);
-    assert.deepEqual(result.cleaned, { telemetry: 2, resourceHistory: 2, runs: 0 });
+    assert.deepEqual(result.cleaned, { telemetry: 2, resourceHistory: 2, progress: 2, runs: 0 });
   });
 });
 
@@ -224,7 +248,7 @@ describe('remove-job and add-job through the commands', () => {
     const reply = commands['remove-job']({ id: 'job-a' });
 
     const deleted = entries.find(e => e.event === 'job.deleted');
-    assert.deepEqual(deleted.payload.cleaned, { telemetry: 2, resourceHistory: 2, runs: 2 });
+    assert.deepEqual(deleted.payload.cleaned, { telemetry: 2, resourceHistory: 2, progress: 2, runs: 2 });
     assert.equal(deleted.payload.type, 'manual');
     assert.equal(reply === undefined || reply.leftovers === undefined, true);
     assert.equal(exists(dir, 'telemetry/job-a.ndjson'), false);

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createQueuePublisher } from '@wadeck-app/queue-sdk';
 import type { EventDeclaration, QueuePublisher, RegisterResult } from '@wadeck-app/queue-sdk';
 import { getErrorMessage } from './fsUtil.js';
+import { systemTime, type TimeService } from './time-service.js';
 
 interface LogSink { write(line: string): void }
 
@@ -12,7 +13,15 @@ export interface EventPublisherOptions {
   jobCwd?: (jobId: string) => string | null | undefined;
   /** Upper bound of `flush()`, in ms. Default 8000. */
   flushBoundMs?: number;
+  /** How many events may wait for their turn (default 1000). When full the OLDEST waiting one is dropped, and the drops are logged once when the burst ends. */
+  maxPending?: number;
+  /** The clock of the flush bound. Defaults to the real one; a test drives its own (time-service.ts). */
+  time?: TimeService;
+  /** Builds the SDK publisher. Defaults to createQueuePublisher; a test injects one that hangs. */
+  createPublisher?: typeof createQueuePublisher;
 }
+
+interface Waiting { event: string; payload: Record<string, unknown>; cwd: string; queue: QueuePublisher }
 
 /**
  * Pushes orchestrator events to the queue daemon through `@wadeck-app/queue-sdk`, which owns the transport: finding the
@@ -25,6 +34,14 @@ export class EventPublisher {
   private readonly _cwd: string | undefined;
   private readonly _jobCwd: ((jobId: string) => string | null | undefined) | undefined;
   private _queue: QueuePublisher | null = null;
+  // The events waiting for their turn (not the one in flight), oldest first, capped at _maxPending.
+  private readonly _backlog: Waiting[] = [];
+  private _sending = false;
+  private _dropped = 0;
+  private _idleWaiters: Array<() => void> = [];
+  private readonly _maxPending: number;
+  private readonly _time: TimeService;
+  private readonly _createPublisher: typeof createQueuePublisher;
   private _failing = false;
   // A declaration the queue did not take for a reason that may pass: retried once, after the first accepted publish.
   private _pendingDeclaration: { source: string; events: EventDeclaration[] } | null = null;
@@ -34,23 +51,68 @@ export class EventPublisher {
     this._cwd = options.cwd;
     this._jobCwd = options.jobCwd;
     this._flushBoundMs = options.flushBoundMs ?? 8000;
+    this._maxPending = options.maxPending ?? 1000;
+    this._time = options.time ?? systemTime;
+    this._createPublisher = options.createPublisher ?? createQueuePublisher;
   }
 
+  /**
+   * Hands the event to the queue without waiting and without ever throwing.
+   *
+   * The pushes go out ONE AT A TIME, in the order of the calls: sent in parallel, a later push overtook an earlier one
+   * (a job.skipped reached the queue before the job.started of the same job), and the queue stores the events in the
+   * order they arrive, so an agent waiting for a run could see its end before its start. The cwd and the SDK publisher
+   * are resolved here, at the call, not when the push gets its turn: a job removed meanwhile keeps the cwd it had.
+   */
   publish(event: string, payload: Record<string, unknown>): void {
+    let queue: QueuePublisher;
+    let cwd: string;
     try {
-      const cwd = this._resolveCwd(payload);
-      this._publisher().publishAndWait(event, payload, { cwd }).then(
-        (result) => {
+      cwd = this._resolveCwd(payload);
+      queue = this._publisher();
+    } catch (err) {
+      this._failed(`Failed to publish "${event}" to the queue: ${getErrorMessage(err)}`);
+      return;
+    }
+    // Bounded: a queue that stops answering must not make the daemon's memory grow with every event.
+    if (this._backlog.length >= this._maxPending) {
+      this._backlog.shift();
+      this._dropped++;
+    }
+    this._backlog.push({ event, payload, cwd, queue });
+    void this._pump();
+  }
+
+  private async _pump(): Promise<void> {
+    if (this._sending) {
+      return;
+    }
+    this._sending = true;
+    try {
+      for (let item = this._backlog.shift(); item !== undefined; item = this._backlog.shift()) {
+        try {
+          const result = await item.queue.publishAndWait(item.event, item.payload, { cwd: item.cwd });
           if (result.status === 'queued' || result.status === 'dispatched') {
-            this._recovered(event);
+            this._recovered(item.event);
             this._retryDeclaration();
           }
           // 'dropped' and 'unknown' already went through onError, which logged them.
-        },
-        (err: unknown) => this._failed(`Failed to publish "${event}" to the queue: ${getErrorMessage(err)}`),
-      );
-    } catch (err) {
-      this._failed(`Failed to publish "${event}" to the queue: ${getErrorMessage(err)}`);
+        } catch (err) {
+          this._failed(`Failed to publish "${item.event}" to the queue: ${getErrorMessage(err)}`);
+        }
+      }
+    } finally {
+      this._sending = false;
+      if (this._dropped > 0) {
+        this._logger?.write(
+          `[event-publisher] ${this._dropped} event(s) were dropped, oldest first: more than ${this._maxPending} were waiting for the queue to answer. `
+          + 'Check that the queue daemon is running and answering (queue status).',
+        );
+        this._dropped = 0;
+      }
+      const waiters = this._idleWaiters;
+      this._idleWaiters = [];
+      for (const wake of waiters) { wake(); }
     }
   }
 
@@ -113,21 +175,26 @@ export class EventPublisher {
    * outer bound (`flushBoundMs`) so a hanging queue can never hold the daemon back.
    */
   async flush(): Promise<void> {
-    if (this._queue === null) {
+    const queue = this._queue;
+    if (queue === null) {
       return;
     }
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, this._flushBoundMs); });
+    let timer: { cancel(): void } | undefined;
+    const timeout = new Promise<void>((resolve) => { timer = this._time.after(this._flushBoundMs, resolve); });
+    // The pushes still waiting for their turn are not the SDK's yet: they are awaited first.
+    const idle = new Promise<void>((resolve) => {
+      if (!this._sending && this._backlog.length === 0) { resolve(); } else { this._idleWaiters.push(resolve); }
+    });
     try {
-      await Promise.race([this._queue.flush(), timeout]);
+      await Promise.race([idle.then(() => queue.flush()), timeout]);
     } finally {
-      clearTimeout(timer);
+      timer?.cancel();
     }
   }
 
   // Built at the first event, not at construction: the SDK reads QUEUE_CONFIG_DIR and PATH then.
   private _publisher(): QueuePublisher {
-    this._queue ??= createQueuePublisher({
+    this._queue ??= this._createPublisher({
       cwd: this._cwd,
       // The log below is the one place a failure is reported. QUEUE_SDK_OFF=1 in the daemon's environment (development
       // without a queue, or the test preload) switches the SDK off: it announces that once, through onWarning.

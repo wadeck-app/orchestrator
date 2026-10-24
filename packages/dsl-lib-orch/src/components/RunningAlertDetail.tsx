@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Clock } from 'lucide-react';
-import { isJobRunning, liveOrLatestRun, type Job, type ProgressEstimate, type RuntimeEntry } from '../types.js';
+import { getErrorMessage, isJobRunning, liveOrLatestRun, type Job, type ProgressEstimate, type RuntimeEntry } from '../types.js';
 import { JobProgress } from './JobProgress.js';
 import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
@@ -111,6 +111,9 @@ export function RunningAlertDetail({ job, jobId, runHistory, progress, onAfterTr
         return;
       }
       setJustKilled(true);
+    } catch (err) {
+      // A network failure is a refused kill too: say so instead of leaving an unhandled rejection and a silent button.
+      setError(getErrorMessage(err));
     } finally { setKilling(false); }
   };
 

@@ -7,6 +7,7 @@ import { JOB_TYPES, MANUAL_REFUSED_FIELDS, MANUAL_DROPPED_ON_CONVERSION, TRIGGER
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 import { activeWindowError } from './active-window.js';
 import { resourceLimitsError } from './resource-limits.js';
+import { progressSettingError } from './progress/setting.js';
 
 /*
  * The shape a cron expression must have: five space-separated fields.
@@ -76,6 +77,13 @@ export function validateJob(job: Partial<Job>): void {
     const problem = resourceLimitsError(job.resourceLimits);
     if (problem !== null) {
       throw new Error(problem);
+    }
+  }
+
+  if (job.progress !== undefined && job.progress !== null) {
+    const problem = progressSettingError(job.progress);
+    if (problem !== null) {
+      throw new Error(`${problem}. To go back to the default: orch edit ${job.id} --unset progress`);
     }
   }
 

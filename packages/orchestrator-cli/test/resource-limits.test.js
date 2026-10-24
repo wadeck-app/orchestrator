@@ -134,6 +134,87 @@ describe('resolveResourceLimits', () => {
   test('enforce is carried', () => {
     assert.equal(resolveResourceLimits({ enforce: 'off' }, base, 2000).enforce, 'off');
   });
+
+  test('custom factors: soft = softFactor x baseline, hard = hardFactor x baseline', () => {
+    const r = resolveResourceLimits({ softFactor: 2, hardFactor: 5 }, base, 2000);
+    assert.deepEqual(r.soft, { cpuPct: 20, ramMb: 200 });
+    assert.deepEqual(r.hard, { cpuPct: 50, ramMb: 500 });
+  });
+
+  test('a ceiling never alters the soft budget, which stays a factor of the baseline', () => {
+    const r = resolveResourceLimits({ maxCpuPct: 90, maxRamMb: 1000, softFactor: 2 }, base, 2000);
+    assert.deepEqual(r.soft, { cpuPct: 20, ramMb: 200 });
+    assert.deepEqual(r.hard, { cpuPct: 90, ramMb: 1000 });
+  });
+
+  test('sustainSeconds becomes samples for the interval: 7 s at 2000 ms is 4 (rounded up), at 1000 ms 7, at 500 ms 14', () => {
+    assert.equal(resolveResourceLimits({ sustainSeconds: 7 }, null, 2000).sustainSamples, 4);
+    assert.equal(resolveResourceLimits({ sustainSeconds: 7 }, null, 1000).sustainSamples, 7);
+    assert.equal(resolveResourceLimits({ sustainSeconds: 7 }, null, 500).sustainSamples, 14);
+  });
+});
+
+describe('validation: the exact message for each refusal', () => {
+  const FIELD_RANGE = {
+    enforce: 'must be one of kill, warn, off',
+    hardFactor: 'must be a number greater than 1 and at most 100, a multiple of the baseline',
+    softFactor: 'must be a number greater than 1 and below hardFactor, a multiple of the baseline',
+    sustain: 'must be a whole number of seconds from 2 to 3600',
+    cpu: 'must be a number greater than 0, a CPU percentage',
+    ram: 'must be a number greater than 0, in megabytes',
+  };
+  const cases = [
+    ['enforce null', { enforce: null }, `Job resourceLimits.enforce ${FIELD_RANGE.enforce} (got: null).`],
+    ['enforce 42', { enforce: 42 }, `Job resourceLimits.enforce ${FIELD_RANGE.enforce} (got: 42).`],
+    ['softFactor text', { softFactor: 'x' }, `Job resourceLimits.softFactor ${FIELD_RANGE.softFactor} (got: "x").`],
+    ['softFactor NaN', { softFactor: NaN }, `Job resourceLimits.softFactor ${FIELD_RANGE.softFactor} (got: NaN).`],
+    ['sustainSeconds NaN', { sustainSeconds: NaN }, `Job resourceLimits.sustainSeconds ${FIELD_RANGE.sustain} (got: NaN).`],
+    ['sustainSeconds as text', { sustainSeconds: '30' }, `Job resourceLimits.sustainSeconds ${FIELD_RANGE.sustain} (got: "30").`],
+    ['maxCpuPct Infinity', { maxCpuPct: Infinity }, `Job resourceLimits.maxCpuPct ${FIELD_RANGE.cpu} (got: Infinity).`],
+    ['maxCpuPct NaN', { maxCpuPct: NaN }, `Job resourceLimits.maxCpuPct ${FIELD_RANGE.cpu} (got: NaN).`],
+    ['maxRamMb Infinity', { maxRamMb: Infinity }, `Job resourceLimits.maxRamMb ${FIELD_RANGE.ram} (got: Infinity).`],
+    ['maxRamMb NaN', { maxRamMb: NaN }, `Job resourceLimits.maxRamMb ${FIELD_RANGE.ram} (got: NaN).`],
+    ['hardFactor just above the maximum', { hardFactor: 100.01 }, `Job resourceLimits.hardFactor ${FIELD_RANGE.hardFactor} (got: 100.01).`],
+    ['hardFactor negative', { hardFactor: -2 }, `Job resourceLimits.hardFactor ${FIELD_RANGE.hardFactor} (got: -2).`],
+  ];
+  for (const [name, value, message] of cases) {
+    test(name, () => {
+      assert.equal(resourceLimitsError(value), message);
+      assert.throws(() => validateJob(cronJob({ resourceLimits: value })), (err) => err.message.includes(message));
+    });
+  }
+
+  test('null: says what it must be and how to remove it', () => {
+    assert.equal(
+      resourceLimitsError(null),
+      'Job resourceLimits must be an object such as { "enforce": "warn", "hardFactor": 4 } (got: null). '
+      + 'To remove it, clear it: orch edit <id> --unset resourceLimits',
+    );
+  });
+
+  test('softFactor at the default hard budget: the message marks hardFactor as a default', () => {
+    assert.equal(
+      resourceLimitsError({ softFactor: 3 }),
+      'Job resourceLimits.softFactor is inconsistent: softFactor must be below hardFactor, but softFactor is 3 and hardFactor (default 3) is 3. '
+      + 'Set both so that softFactor < hardFactor.',
+    );
+  });
+
+  test('hardFactor at the default soft budget: the message marks softFactor as a default and blames hardFactor', () => {
+    assert.equal(
+      resourceLimitsError({ hardFactor: 1.5 }),
+      'Job resourceLimits.hardFactor is inconsistent: softFactor must be below hardFactor, but softFactor (default 1.5) is 1.5 and hardFactor is 1.5. '
+      + 'Set both so that softFactor < hardFactor.',
+    );
+  });
+
+  test('both explicit: neither is marked as a default', () => {
+    assert.equal(
+      resourceLimitsError({ softFactor: 4, hardFactor: 2 }),
+      'Job resourceLimits.softFactor is inconsistent: softFactor must be below hardFactor, but softFactor is 4 and hardFactor is 2. '
+      + 'Set both so that softFactor < hardFactor.',
+    );
+  });
 });
 
 describe('stored, edited, unset', () => {

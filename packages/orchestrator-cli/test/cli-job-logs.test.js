@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { runCli } = require('../src/cli');
+const { followClock } = require('./helpers/follow-clock');
 
 const JOB = 'nightly-backup';
 
@@ -40,7 +41,7 @@ function entry(startedAt, exitCode, extra = {}) {
   return { startedAt, finishedAt, exitCode, pid: 1, triggeredBy: { kind: 'cron' }, ...extra };
 }
 
-async function run(argv, { history = [], job = { id: JOB }, historyFn } = {}) {
+async function run(argv, { history = [], job = { id: JOB }, historyFn, time, listState } = {}) {
   const out = [];
   const err = [];
   const origExit = process.exit;
@@ -60,13 +61,16 @@ async function run(argv, { history = [], job = { id: JOB }, historyFn } = {}) {
           return job;
         }
         if (command === 'list-state') {
+          if (listState) {
+            return listState();
+          }
           return { [JOB]: historyFn ? historyFn() : history };
         }
         throw new Error(`unexpected command ${command}`);
       },
       startDaemon: () => {},
       configDir: dir,
-      jobLogs: { pollMs: 10, stdout: (t) => { out.push(t); }, stderr: (t) => { err.push(t); } },
+      jobLogs: { pollMs: 10, time, stdout: (t) => { out.push(t); }, stderr: (t) => { err.push(t); } },
     });
   } catch (e) {
     if (e.message !== 'exit') {
@@ -331,12 +335,13 @@ describe('orch job <jobId> logs: --follow', () => {
     const f = writeRun(C, stamped(['started', 'working']));
     const base = [entry(C, null)];
 
-    setTimeout(() => fs.appendFileSync(f, '[2026-10-22 03:00:10] more output\n'), 60);
+    const clock = followClock();
+    const p = run(['job', JOB, 'logs', '--follow'], { history: base, time: clock.time });
+    await clock.tick(10, p, () => fs.appendFileSync(f, '[2026-10-22 03:00:10] more output\n'));
     // A line written in two pieces must not be printed half.
-    setTimeout(() => fs.appendFileSync(f, '[2026-10-22 03:00:11] [job:fini'), 120);
-    setTimeout(() => fs.appendFileSync(f, 'shed] exitCode=3 duration=11s\n'), 180);
-
-    const { out, err, exitCode } = await run(['job', JOB, 'logs', '--follow'], { history: base });
+    await clock.tick(10, p, () => fs.appendFileSync(f, '[2026-10-22 03:00:11] [job:fini'));
+    await clock.tick(10, p, () => fs.appendFileSync(f, 'shed] exitCode=3 duration=11s\n'));
+    const { out, err, exitCode } = await p;
 
     assert.equal(out, [
       ...stamped(['started', 'working']),
@@ -351,11 +356,16 @@ describe('orch job <jobId> logs: --follow', () => {
   test('a run that ends without a marker is closed from the history', async () => {
     writeRun(C, stamped(['started']));
     let finished = false;
-    setTimeout(() => { finished = true; }, 60);
 
-    const { out, exitCode } = await run(['job', JOB, 'logs', '-f'], {
+    const clock = followClock();
+    const p = run(['job', JOB, 'logs', '-f'], {
       historyFn: () => [finished ? entry(C, 137) : entry(C, null)],
+      time: clock.time,
     });
+    // The history is only consulted every 8 polls (80ms here): the run ends in it with no marker in the file.
+    await clock.tick(10, p, () => { finished = true; });
+    await clock.tick(80, p);
+    const { out, exitCode } = await p;
 
     assert.match(out, /\[orch\] run ended with exit code 137\n$/);
     assert.equal(exitCode, 0);
@@ -363,9 +373,10 @@ describe('orch job <jobId> logs: --follow', () => {
 
   test('-f with -n prints only the tail first', async () => {
     const f = writeRun(C, stamped(['one', 'two', 'three']));
-    setTimeout(() => fs.appendFileSync(f, '[2026-10-22 03:00:09] [job:finished] exitCode=0 duration=1s\n'), 50);
-
-    const { out, err } = await run(['job', JOB, 'logs', '-f', '-n', '1'], { history: [entry(C, null)] });
+    const clock = followClock();
+    const p = run(['job', JOB, 'logs', '-f', '-n', '1'], { history: [entry(C, null)], time: clock.time });
+    await clock.tick(10, p, () => fs.appendFileSync(f, '[2026-10-22 03:00:09] [job:finished] exitCode=0 duration=1s\n'));
+    const { out, err } = await p;
 
     assert.equal(out, [
       '[2026-10-20 03:00:02] three',
@@ -377,9 +388,10 @@ describe('orch job <jobId> logs: --follow', () => {
 
   test('--json streams one {t,text} object per line and a run-ended event', async () => {
     const f = writeRun(C, ['[2026-10-22 03:00:00] started']);
-    setTimeout(() => fs.appendFileSync(f, '[2026-10-22 03:00:09] [job:finished] exitCode=0 duration=1s\n'), 50);
-
-    const { out } = await run(['job', JOB, 'logs', '-f', '--json'], { history: [entry(C, null)] });
+    const clock = followClock();
+    const p = run(['job', JOB, 'logs', '-f', '--json'], { history: [entry(C, null)], time: clock.time });
+    await clock.tick(10, p, () => fs.appendFileSync(f, '[2026-10-22 03:00:09] [job:finished] exitCode=0 duration=1s\n'));
+    const { out } = await p;
     const objs = out.trimEnd().split('\n').map(l => JSON.parse(l));
 
     assert.deepEqual(objs, [

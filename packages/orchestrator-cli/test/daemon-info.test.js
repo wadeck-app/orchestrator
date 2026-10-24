@@ -147,6 +147,64 @@ describe('get-daemon-info', () => {
     }
   });
 
+  test('uptimeSeconds is 0, never negative, when the start time is in the future (a clock that moved back)', () => {
+    const future = new Date(Date.now() + 3_600_000);
+    const { commands } = makeEnv({ info: { startedAt: future } });
+
+    const reply = commands['get-daemon-info']();
+
+    assert.equal(reply.uptimeSeconds, 0);
+    assert.equal(reply.startedAt, future.toISOString(), 'the start time itself is reported as it is');
+  });
+
+  test('a key added to the source config does not leak into config: only the documented ones travel', () => {
+    const { commands } = makeEnv({ info: { config: { ...CONFIG, apiToken: 'TOKEN-IN-CONFIG-9931', somethingNew: 7 } } });
+
+    const reply = commands['get-daemon-info']();
+
+    assert.deepEqual(reply.config, CONFIG);
+    assert.ok(!JSON.stringify(reply).includes('TOKEN-IN-CONFIG-9931'));
+  });
+
+  test('the port is asked at request time, not once at wiring: a daemon that moved reports where it is now', () => {
+    let port = 47900;
+    let asked = 0;
+    const { commands } = makeEnv({ info: { port: () => { asked++; return port; } } });
+    assert.equal(asked, 0, 'port() was evaluated while the commands were being built');
+
+    assert.equal(commands['get-daemon-info']().port, 47900);
+    port = 47911;
+    assert.equal(commands['get-daemon-info']().port, 47911);
+    assert.equal(asked, 2);
+  });
+
+  test('on the real scheduler: runs and scheduler come from it, and a manual job is not a timer that should exist', async () => {
+    const { Scheduler } = require('../src/scheduler');
+    const { FakeTime } = require('../src/time-service');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-info-real-'));
+    tmpDirs.push(dir);
+    const registry = new Registry(path.join(dir, 'registry.json'));
+    const state = new State(path.join(dir, 'state.json'));
+    registry.add({ id: 'cron1', type: 'cron', schedule: '0 9 * * *', command: 'echo c', enabled: true, triggerMode: 'fire-and-forget' });
+    registry.add({ id: 'man1', type: 'manual', command: 'echo m', enabled: true, triggerMode: 'fire-and-forget' });
+    registry.add({ id: 'man2', type: 'manual', command: 'echo m', enabled: false, triggerMode: 'fire-and-forget' });
+    const sched = new Scheduler(registry, state, {
+      configDir: dir, time: new FakeTime(), liveness: async () => false, sampleUsage: async () => null, eventPublisher: { publish: () => {} },
+    });
+    const commands = makeCommands(registry, state, sched, dir, undefined, undefined, undefined, undefined, {
+      version: '9.9.9', port: () => 47900, startedAt: new Date(), config: CONFIG, supervisor: { requested: false, active: false },
+    });
+    await sched.start();
+    try {
+      const reply = commands['get-daemon-info']();
+
+      assert.deepEqual(reply.scheduler, { armed: 1, desired: 1, problems: [] });
+      assert.deepEqual(reply.runs, { running: 0, supervised: 0, followedAgain: 0 });
+    } finally {
+      await sched.stop();
+    }
+  });
+
   test('fails loudly when the daemon was built without the source of this information', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-info-'));
     tmpDirs.push(dir);

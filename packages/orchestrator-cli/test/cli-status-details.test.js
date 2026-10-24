@@ -157,6 +157,40 @@ describe('orch status: the daemon details', () => {
     assert.match(parsed.infoError, /boom/);
   });
 
+  const NO_SECTIONS = 'the answer has no supervisor, runs or scheduler section';
+
+  for (const [what, answer] of [['an empty object', {}], ['null', null], ['an answer missing only the scheduler', { ...INFO, scheduler: undefined }], ['text', 'ok']]) {
+    test(`${what} as the details is reported as unreadable, in words, not as an empty success`, async () => {
+      const { send } = up(() => answer);
+
+      const human = await run(['status'], send, { tty: true });
+      const json = await run(['status', '--json'], send);
+
+      assert.match(human.out, /pid=4242\s+port=47900\s+uptime=12s/, 'the first line is still printed');
+      assert.doesNotMatch(human.out, /timers\s*:/);
+      assert.ok(human.err.includes(`could not read the daemon details (${NO_SECTIONS})`), human.err);
+      assert.equal(JSON.parse(json.out).infoError, NO_SECTIONS);
+      assert.equal(JSON.parse(json.out).info, undefined);
+    });
+  }
+
+  test('a single timer problem is counted as 1 and listed', async () => {
+    const { send } = up({ ...INFO, scheduler: { armed: 4, desired: 5, problems: [{ jobId: 'nightly', problem: 'enabled cron job with no timer armed' }] } });
+
+    const { out } = await run(['status'], send, { tty: true });
+
+    assert.ok(out.split('\n').includes('1 timer problem(s), see: orch timers'), out);
+    assert.ok(out.split('\n').includes('  nightly: enabled cron job with no timer armed'), out);
+  });
+
+  test('no timer problem line when there is none', async () => {
+    const { send } = up(INFO);
+
+    const { out } = await run(['status'], send, { tty: true });
+
+    assert.doesNotMatch(out, /timer problem/);
+  });
+
   test('asks for the details without starting the daemon', async () => {
     const { send, calls } = up(INFO);
 

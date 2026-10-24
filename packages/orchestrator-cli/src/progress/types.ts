@@ -1,32 +1,58 @@
 import type { Job, RuntimeEntry } from '../types.js';
 
 /*
- * The progress plugin contract (plan: .claude/plans/2026-10-18_job-progress-and-eta.md, section 4).
+ * The strategy interface (plan: .claude/plans/2026-10-18_job-progress-and-eta.md, section 4).
  *
- * Only the built-in `history` strategy exists. LogCorpus, LogReader and StrategyStore are part of the contract
- * so a later strategy has somewhere to read from; nothing implements them yet (see NO_LOGS / NO_STORE in
- * engine.ts, which fail loudly when used).
+ * Strategies are built in and declarative: this is an internal interface, NOT a plugin API. No external code is
+ * loaded; a user configures a strategy with patterns and JSON only (see the threat model entry "progress").
+ * Log access is in log-corpus.ts, the learned-data store in store.ts.
  */
 
+export interface LogLine {
+  /** From the "[YYYY-MM-DD HH:MM:SS]" prefix (UTC); a line without one keeps the previous line's. */
+  ts: Date;
+  /** At most 2000 characters. */
+  text: string;
+}
+
 export interface LogReader {
-  readFrom(offset: number): { lines: Array<{ ts: Date; text: string }>; nextOffset: number };
-  /** Hash of the first N masked lines, for format-change detection. */
+  exists(): boolean;
+  /** Bytes in the file (0 when missing); lets a caller budget its reads. Optional: replay wrappers omit it. */
+  size?(): number;
+  /** Complete lines from a byte offset, at most the reader's byte cap per call. `truncated`: more is left. */
+  readFrom(offset: number): { lines: LogLine[]; nextOffset: number; truncated: boolean };
+  /** The last complete lines within the last `maxBytes` bytes. */
+  tail(maxBytes: number): LogLine[];
+  /** Hash of the first masked lines, for format-change detection; '' for an empty log. */
   fingerprint(): string;
 }
 
 export interface LogCorpus {
   currentRun(): LogReader;
+  /** Usable runs (see isUsableRun), newest first, at most `limit`: history entries plus runs only a log remembers. */
   pastRuns(limit: number): Array<{ entry: RuntimeEntry; reader: LogReader }>;
 }
 
-/** Learned data for one job and one strategy. */
+export interface StoreMeta {
+  logFingerprint?: string;
+  learnedFromRuns?: string[];
+}
+
+/**
+ * Learned data for one job and one strategy, in <configDir>/progress/<jobId>.json. It is derived and
+ * rebuildable: a read never throws, and returns undefined when there is nothing valid (no data, other strategy
+ * version, the job's command changed, the file was unreadable); the drop is logged.
+ */
 export interface StrategyStore {
   read(): unknown;
-  write(data: unknown): void;
+  write(data: unknown, meta?: StoreMeta): void;
+  meta(): StoreMeta | undefined;
+  invalidate(reason: string): void;
 }
 
 export interface ProgressContext {
   job: Job;
+  configDir: string;
   /** The open run being estimated. */
   run: { startedAt: string; pid: number | null };
   /** All runs of the job, open ones included, in no guaranteed order; at most 20 (state.ts MAX_HISTORY). */

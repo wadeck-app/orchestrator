@@ -206,9 +206,120 @@ No job command, environment, `cwd` or secret is in the reply. `/api/health` take
 
 ## Progress and ETA
 
-For a running job the dashboard and `orch status` show a progress percentage and an estimated end time. Advisory only: it never affects running, killing, retrying or alerting. No config key: every job is `auto`.
+For a running job the dashboard and `orch status` show a progress percentage and an estimated end time. Advisory only: it never affects running, killing, retrying or alerting.
 
-**Limits of this release.** One strategy, `history`. There is no `progress` job setting (no CLI flag, no form section), no log-based, declared or ratio strategy, and no external plugins. Plan: `.claude/plans/2026-10-18_job-progress-and-eta.md`.
+Strategies are built in and declarative (patterns and JSON only). No external code is loaded and `config.yml` has no plugin setting. Plan: `.claude/plans/2026-10-18_job-progress-and-eta.md`.
+
+### Per-job setting -- `progress`
+
+| Value | Meaning |
+|-------|---------|
+| absent / `auto` | `declared` (once the log shows `##orch-progress`), then `ensemble`, then `history`; the first that answers wins and the reason lists the skipped ones. The choice is kept for the run, except that `declared` takes over once its lines appear |
+| `off` | No estimate; the reason says how to turn it on |
+| `<id>` or `{ "strategy": "<id>", "options": {...} }` | Only that strategy; it never falls back to another one |
+
+`ratio` and `log-declared` need a pattern you write, so `auto` never picks them: set them explicitly.
+
+| Id | Options | Example |
+|----|---------|---------|
+| `history` | none | |
+| `declared` | optional `file`: JSON file `{"progress": 0-100, "message"?}`, absolute or relative to the job's `cwd`, at most 64 KB, rewritten by each run | `{"file": "progress.json"}` |
+| `ratio` | `pattern` (required, 1 or 2 capture groups: `(\d+)/(\d+)` = done/total, `(\d+)%` = percent), `window` (2-50, default 8: counter values the rate is computed over) | `{"pattern": "(\\d+)/(\\d+)", "window": 8}` |
+| `log-declared` | `milestones` (1-30): each `{pattern, at?, weight?}`, in log order; `at` = expected fraction (0-1, increasing) or `weight` = relative step size, on all or none; with neither, positions are learned from past runs | `{"milestones": [{"pattern": "Step 1", "at": 0.3}, {"pattern": "Done", "at": 1}]}` |
+| `log-learned` | optional `minSupportPercent` (10-100, default 60): share of usable runs a log line must appear in to count as a milestone | `{"minSupportPercent": 60}` |
+| `ensemble` | none | |
+
+What each does:
+
+- `declared`: the job prints `##orch-progress <0..100>[ <message>]` (stdout or stderr) and/or writes the `file`. A value below the last one is ignored; `##orch-progress reset` starts a new phase. The end time is extrapolated from the rate of the last 8 reports, and confidence drops as the last report ages. Opt-in per job: nothing is read unless the job prints the convention or has the option.
+- `ratio`: reads the counter from the last 4000 lines of the last 256 KB of the log; a counter that goes down is a reset and starts a new phase (reported in the reason).
+- `log-declared`: interpolates between the milestones seen. A pattern that never matched in the past runs is a warning in the reason.
+- `log-learned`: masks digits, hex and paths of log lines, keeps the shapes found in at least `minSupportPercent` of the usable runs at a stable relative time (interquartile range of 0.15 of the run or less), and interpolates between the last seen milestone and the next, rescaled by the observed pace. Needs 3 usable runs. A changed log format drops the learned data (`log format changed, relearning (needs N more runs)`).
+- `ensemble`: replays `declared`, `log-learned` and `history` on the job's own past runs and uses the one with the lowest ETA error; the reason names the choice and each error. Needs 5 usable runs (3 to answer with `history`) and several polls to finish comparing.
+
+```sh
+orch add cron my-job --schedule "0 9 * * *" --command "node script.js" --progress ratio --progress-options '{"pattern":"(\\d+)/(\\d+)"}'
+orch edit my-job --progress off
+orch edit my-job --progress log-declared --progress-options @milestones.json
+orch edit my-job --unset progress                                       # back to auto
+```
+
+`--progress` takes `auto`, `off` or a registered id; `--progress-options` takes JSON or `@file` and needs `--progress`. An unknown id or invalid options is refused by `orch add`/`orch edit` with the registered ids or the problem listed. The audit trail names the field (`changes: ["progress"]`), not its options.
+
+Bounds (all strategies):
+
+| What | Limit |
+|------|-------|
+| Learning | the 20 newest usable runs; logs older than the 20-entry history are used too (their duration comes from the `[job:started]`/`[job:finished]` markers); history wins when both exist |
+| Log bytes | 5 MB read per past or current run log; `log-learned`/`ensemble` learn about 1 MB per estimate (more on the next polls), `log-declared` scans 4 MB |
+| Regex (`ratio`, `log-declared`) | pattern at most 200 characters; no backreference, no nested quantifier such as `(a+)+`, no overlapping alternation under a quantifier, at most 4 unbounded quantifiers; refused when configured |
+| Regex at run time | a log line is cut to 2000 characters; a batch of lines has a 500 ms budget (V8 timeout); a pattern that exceeds it is skipped for the next 20 calls and the reason says so |
+| Timestamps | log lines carry whole seconds: a run under 10 s gets no `log-learned` estimate (reason says so) |
+
+Files: learned data is in `<configDir>/progress/<jobId>.json` (written atomically, rebuilt from logs and history if lost or corrupt, dropped when the strategy version, the job `command`/`cwd`/`progress` or the log format changes, deleted with the job). Learning happens when `get-progress` is asked for a running job, not when a run ends.
+
+Run logs keep the `[YYYY-MM-DD HH:MM:SS]` prefix and the `[job:started]`/`[job:finished]` markers (written by the daemon's `RunLogger`, including for runs it adopted).
+
+Check which strategy fits a job, offline, over its retained runs (leave-one-out, no look-ahead; reads `registry.json`, `state.json` and the logs, writes nothing):
+
+```sh
+orch progress replay <jobId> [--strategy <id>] [--sample-every <percent>] [--json]
+```
+
+```
+Replay of minutes-stable: 10 usable run(s), a sample every 5% of each run (leave-one-out, no look-ahead)
+strategy     cover  MAE s  MAE %  @25%  @50%  @75%  non-monotonic  flips
+declared      0.0%      -      -     -     -     -              0      0
+log-learned  70.0%    2.1   0.3%  0.5%  0.4%  0.1%              0      0
+history      70.0%    4.4   0.7%  0.7%  0.7%  0.7%              0      0
+Best: log-learned (mean ETA error 0.3% of the run duration, 2.1 s, over 10 run(s))
+```
+
+MAE = mean absolute error of the end time; flips = ETA jumps over 20% of the run between two samples. Fewer than 3 usable runs: no table, a verdict saying what to do.
+
+| Layer | Entry point |
+|-------|-------------|
+| Daemon RPC | `get-daemon-info` (no payload) |
+| HTTP | `GET /api/daemon`, also published by the app-core module; `503 { error: "daemon-not-running" }` when the daemon is down |
+| UI | `DaemonStatus` card: footer of the jobs page, and in the app-core dashboard widget |
+
+Reply:
+
+| Field | Meaning |
+|-------|---------|
+| `version`, `pid`, `port` | The running build, process and RPC port |
+| `startedAt` (ISO), `uptimeSeconds` | When this daemon started and for how long |
+| `config` | `supervisedJobs`, `lateActionWindowMinutes`, `autoUpdate`, `appCore`, `catchUpInitialDelaySeconds`, `catchUpStaggerSeconds` as read at start |
+| `supervisor` | `requested` (`supervisedJobs`), `active` (the executable was found), `note` when requested but not active: the daemon-start warning, with the platform and the fix |
+| `runs` | `running` now, how many of them `supervised`, and `followedAgain` (runs this daemon found going and adopted since it started) |
+| `scheduler` | `armed` of `desired` timers, and `problems` `[{ jobId, problem }]`. Desired: enabled, not a spent `once`, not `startup`, not `manual`, not past its active period. Same data as `list-timers` |
+
+No job command, environment, `cwd` or secret is in the reply. `/api/health` takes its `uptime` (seconds) from `uptimeSeconds`; it is `null` when the daemon cannot answer `get-daemon-info`, and the rest of the health reply is unaffected.
+
+## Progress and ETA
+
+For a running job the dashboard and `orch status` show a progress percentage and an estimated end time. Advisory only: it never affects running, killing, retrying or alerting.
+
+**Limits of this release.** One strategy, `history`; no log-based, declared or ratio strategy. Built-in strategies only: no external code is loaded. The job form section and `JobConfigDisplay` row are not done yet. Plan: `.claude/plans/2026-10-18_job-progress-and-eta.md`.
+
+### Per-job setting -- `progress`
+
+| Value | Meaning |
+|-------|---------|
+| absent / `auto` | The first registered strategy that can answer; the reason lists the skipped ones |
+| `off` | No estimate; the reason says how to turn it on |
+| `<id>` or `{ "strategy": "<id>", "options": {...} }` | Only that strategy; it never falls back to another one |
+
+An unknown id or invalid options is refused by `orch add`/`orch edit` with the registered ids listed.
+
+```sh
+orch edit my-job --progress off
+orch edit my-job --progress history
+orch edit my-job --progress <id> --progress-options '{"key":"value"}'   # or @options.json
+orch edit my-job --unset progress                                       # back to auto
+```
+
+The audit trail names the field (`changes: ["progress"]`), not its options.
 
 | Layer | Entry point |
 |-------|-------------|
@@ -354,6 +465,8 @@ Answer: `{ runs: [...newest first], total, retention: 500 }`. `total` is the num
 The daemon pushes events to the `queue` daemon (`POST /push`), so `queue wait <event>` and subscribers in `subscribers.yml` can react. `queue wait` takes an exact event name (`queue wait job.completed --when "payload.jobId=<id>"`; several `--when` must all hold); patterns (`job.*`, `**`) exist only in `subscribers.yml`.
 
 The catalog `packages/orchestrator-cli/src/event-catalog.ts` is the source: for each event, when it fires, its payload schema, an example, its correlation key and whether it ends a run. The daemon declares it to the queue at every start (source `orchestrator`), so read it with `queue events list` and `queue events show <name>`. A test keeps the code, the catalog and this table in step.
+
+The events reach the queue one at a time, in the order they were published: a run's `job.started` is stored before its end event. Tests under `test/events-*.test.js` drive every event through the real scheduler, commands and `orch exec` and check the payloads against the catalog schemas, that each run ends with exactly one terminal event, and what a queue daemon receives.
 
 | Group | Events |
 |---|---|

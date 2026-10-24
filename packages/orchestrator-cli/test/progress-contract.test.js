@@ -37,7 +37,7 @@ for (const strategy of STRATEGIES) {
           } else {
             assert.ok(e.progress >= 0 && e.progress <= 1, `progress ${e.progress}`);
             assert.ok(e.etaAt === null || Date.parse(e.etaAt) >= T0, 'etaAt is not in the past');
-            assert.ok(e.etaAt !== null || e.detail?.overdue === true, 'no etaAt means overdue');
+            assert.ok(e.etaAt !== null || e.detail?.overdue === true || e.detail?.etaUnknown === true, 'no etaAt means overdue or etaUnknown');
           }
           assert.ok(e.confidenceScore >= 0 && e.confidenceScore <= 1);
           assert.ok(['high', 'medium', 'low', 'none'].includes(e.confidence));

@@ -87,7 +87,12 @@ export interface Job {
   spent?: boolean;
   /** When the firing that spent the job happened, ISO. Set with `spent` and never moved after. */
   spentAt?: string;
+  /** How the progress and estimated end of a running job are computed. Absent means 'auto'. */
+  progress?: JobProgressSetting;
 }
+
+/** A string: 'auto' picks a strategy per run, 'off' disables the estimate, a strategy id forces it (no fallback). Or the object form with options. */
+export type JobProgressSetting = string | { strategy: string; options?: unknown };
 
 /**
  * The fields `PUT /api/jobs/:id` accepts in its `unset` array. Mirrors UNSETTABLE_FIELDS in
@@ -99,7 +104,7 @@ export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
   | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
-  | 'label' | 'triggerMode' | 'maxConcurrency' | 'description' | 'resourceLimits'
+  | 'label' | 'triggerMode' | 'maxConcurrency' | 'description' | 'resourceLimits' | 'progress'
   // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it
   // active now. Both are ordinary edits, so both must be clearable rather than only replaceable.
   | 'activeFrom' | 'activeUntil';

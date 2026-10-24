@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ToastProvider } from '@wadeck-app/dsl-ui';
 import { MutationFeedback } from './MutationFeedback.js';
@@ -110,7 +110,8 @@ describe('MutationFeedback success path', () => {
 
     mount({});
 
-    await new Promise(r => setTimeout(r, 50));
+    // Effects and their state updates have run once act() settles: nothing is left to wait for.
+    await act(async () => {});
     expect(screen.queryByRole('status')).toBeNull();
     expect(sessionStorage.getItem(FLASH_KEY)).toBeNull();
   });
@@ -120,7 +121,8 @@ describe('MutationFeedback success path', () => {
 
     mount({});
 
-    await new Promise(r => setTimeout(r, 50));
+    // Effects and their state updates have run once act() settles: nothing is left to wait for.
+    await act(async () => {});
     expect(screen.queryByRole('status')).toBeNull();
   });
 });

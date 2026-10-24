@@ -108,7 +108,12 @@ export class State {
    * exitCode stays null so the run reads as interrupted rather than as a clean exit or a failure,
    * and `orphaned` records why finishedAt appeared without anyone observing the process end.
    */
-  closeOrphanedRuns(now: Date = new Date(), keep: (id: string, entry: RuntimeEntry) => boolean = () => false): number {
+  closeOrphanedRuns(
+    now: Date = new Date(),
+    keep: (id: string, entry: RuntimeEntry) => boolean = () => false,
+    // Told about each run closed, with its closed entry: a run nobody saw end still has to be announced (see Scheduler.closeInterruptedRuns).
+    onClosed: (id: string, entry: RuntimeEntry) => void = () => {},
+  ): number {
     this._ensure();
     let closed = 0;
     for (const [id, entries] of Object.entries(this._cache!)) {
@@ -118,7 +123,9 @@ export class State {
           return e;
         }
         closed++;
-        return { ...e, finishedAt: now.toISOString(), orphaned: true };
+        const closedEntry = { ...e, finishedAt: now.toISOString(), orphaned: true };
+        onClosed(id, closedEntry);
+        return closedEntry;
       });
       if (closed > 0) {
         this._cache![id] = next;

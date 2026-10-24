@@ -128,11 +128,10 @@ describe('runs left open by a dead daemon are closed at startup', () => {
     // Asserted on the source: the call sits inside createDaemon's setup, which a unit test cannot
     // drive without starting a real daemon and its tray.
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
-    // With arguments since runs that a supervisor still follows must be left open (see scheduler.isFollowing).
-    assert.match(src, /state\.closeOrphanedRuns\(/,
+    // Through the scheduler, which leaves the runs it follows again open and announces each run it closes
+    // (both asserted by behaviour in events-closers.test.js).
+    assert.match(src, /scheduler\.closeInterruptedRuns\(/,
       'nothing closes orphaned runs at startup; they will block updates again');
-    assert.match(src, /closeOrphanedRuns\([^;]*isFollowing/,
-      'the sweep must leave the runs the daemon follows again open, or it ends them in the history while they still run');
   });
 });
 

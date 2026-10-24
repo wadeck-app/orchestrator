@@ -5,6 +5,8 @@
  * columns or a flag the parser accepts but the help forgets is caught by test/help-text.test.js.
  */
 
+import { PROGRESS_STRATEGY_IDS } from './progress/registry.js';
+
 export const HELP_TEXT = `
 orch -- cross-platform job orchestrator
 
@@ -89,7 +91,7 @@ Job mutation:
                                Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
                                maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
                                skipExitCodes, liveness, label, triggerMode, description,
-                               resourceLimits (resourceLimits.<key> clears one key)
+                               progress, resourceLimits (resourceLimits.<key> clears one key)
                                Example: orch edit my-job --unset cwd
   orch remove <id>             Remove a job and the data derived from its runs (telemetry, resource
                                history, finished run folders). Its logs stay until age pruning.
@@ -131,6 +133,14 @@ a flag that is not listed here is refused, not ignored):
     --alert-after-failures <n>   Alert after n consecutive failures (default: 3)
     --sla-window <minutes>       Alert if no success within the window
     --dry-run-supported          Command accepts --dry-run (clear it with --unset)
+    --progress <mode>            How the progress and estimated end of a running job are computed:
+                                 auto (default: the first strategy that can answer) | off | an id.
+                                 Registered ids:
+                                   ${PROGRESS_STRATEGY_IDS.join(', ')}
+                                 A named id never falls back to another strategy.
+                                 Back to auto: orch edit <id> --unset progress
+    --progress-options <json>    Options of the named strategy: a JSON object, or @file.json to read
+                                 it from a file. Replaces the whole setting; needs --progress
   Timeouts
     --timeout <seconds>          Kill the run after this long (default: 300; 0 = no timeout,
                                  for a process that must stay up, e.g. a dev server)
@@ -242,6 +252,20 @@ Exit codes: 0=ok  1=error  2=daemon-not-running  3=not-found  4=validation-error
 Other commands:
   setup-task                Install a daily Windows Scheduled Task (twice daily)
   remove-task               Remove the scheduled task
+
+Progress (estimated progress and end of a running job; configure it per job with --progress):
+  orch progress replay <jobId> [--strategy <id>] [--sample-every <percent>] [--json]
+                               How well each strategy would have estimated the job's past
+                               runs: replays the retained successful runs one by one, using only
+                               the runs before each (no look-ahead), and prints per strategy the
+                               mean error of the estimated end (seconds and % of the duration,
+                               at 25/50/75% elapsed), how often it had an estimate, progress
+                               going backwards and end times jumping by more than 20%. Names
+                               the best strategy. Needs 3 successful runs; reads the files of
+                               the config dir, the daemon is not needed
+                               --strategy <id>  Only this strategy (default: declared,
+                                                log-learned, history and the job's own)
+                               --sample-every   Sample every N percent of a run, 1-50 (default 5)
 
 Environment variables:
   ORCH_CONFIG_DIR         Config directory (default: ~/.config/orchestrator)

@@ -8,6 +8,7 @@ import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
 import { jobEnvironment } from './job-env.js';
 import { stripAnsi }      from './ansi.js';
+import { OutputLines }     from './output-lines.js';
 import { ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
 import { EventPublisher } from './event-publisher.js';
@@ -19,7 +20,7 @@ import pidusage from 'pidusage';
 // a wrapper (cmd.exe / sh) that stays idle: sampling it alone reports ~0% CPU and only
 // the wrapper's own few MB of RAM. The real work happens in its descendants.
 import pidtree from 'pidtree';
-import { PEAK_MEASURE_VERSION, type Job, type RestartResult, type TriggerResult, type TriggerSource } from './types.js';
+import { PEAK_MEASURE_VERSION, type Job, type RestartResult, type RuntimeEntry, type TriggerResult, type TriggerSource } from './types.js';
 import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
@@ -119,6 +120,8 @@ interface FinishOptions {
   actionsSkippedNote?: string;
   /** Which groups of effects are already done; marked as they complete. Absent for a run seen live. */
   ledger?: EffectLedger;
+  /** The caller already wrote the history entry (a run closed as interrupted keeps its own reading): only the rest is done. */
+  recorded?: boolean;
 }
 
 const LIVE_FINISH: FinishOptions = { late: false, actionsAllowed: true };
@@ -487,6 +490,10 @@ export class Scheduler extends EventEmitter {
    * slot is released in the first `close` listener, before job-finished and the dependents it fires.
    */
   private readonly _running        = new Map<string, number>();
+  /** Callers waiting for a job to have no live instance (see _waitUntilNoneRunning), woken by the close of the last one. */
+  private readonly _idleWaiters    = new Map<string, Set<() => void>>();
+  /** The restart of a job that is under way: the next restart of the same job waits for it (see restartJob). */
+  private readonly _restartTurns   = new Map<string, Promise<void>>();
   /** The log of the newest live run per job: where a refused firing is written, so the reader sees it. */
   private readonly _liveLogger     = new Map<string, RunLogger>();
 
@@ -634,7 +641,10 @@ export class Scheduler extends EventEmitter {
         }
         if (!alive) {
           const finishedAt = this._now().toISOString();
-          this._state.record(job.id, { ...entry, exitCode: 1, finishedAt });
+          const closed = { ...entry, exitCode: 1, finishedAt };
+          this._state.record(job.id, closed);
+          // Closed with nobody to say so: announced like every other end of a run.
+          this._announceInterrupted(job.id, closed);
         }
       }
     }
@@ -940,6 +950,13 @@ export class Scheduler extends EventEmitter {
     wait = false,
     options: { force?: boolean; detach?: boolean } = {},
   ): Promise<TriggerResult> {
+    return (await this._triggerDetailed(id, source, wait, options)).result;
+  }
+
+  /** trigger(), plus the reason the run could not be started when it could not (the public answer has no field for it). */
+  private async _triggerDetailed(
+    id: string, source: TriggerSource, wait: boolean, options: { force?: boolean; detach?: boolean },
+  ): Promise<{ result: TriggerResult; startError?: string }> {
     const job = this._registry.get(id);
     if (!job) {
       throw new Error(`Job not found: "${id}"`);
@@ -956,7 +973,7 @@ export class Scheduler extends EventEmitter {
       const full = this._atLimit(job);
       if (full) {
         this._refuseForConcurrency(job, full);
-        return { status: 'already-running', ...full };
+        return { result: { status: 'already-running', ...full } };
       }
     }
 
@@ -993,7 +1010,10 @@ export class Scheduler extends EventEmitter {
     const outcome = 'exitCode' in result
       ? { status: 'finished' as const, exitCode: result.exitCode }
       : { status: 'started' as const, pid: result.pid };
-    return { ...outcome, ...(consumed ? { consumed: true } : {}) };
+    return {
+      result: { ...outcome, ...(consumed ? { consumed: true } : {}) },
+      ...('startError' in result && result.startError !== undefined ? { startError: result.startError } : {}),
+    };
   }
 
   /**
@@ -1049,6 +1069,10 @@ export class Scheduler extends EventEmitter {
    */
   private _recordResourceHistory(ctx: RunContext, outcome: RunOutcome, reason: RunHistoryReason): void {
     const { job, startedAt, jobLogger, usage } = ctx;
+    // A run that never had a process (it could not be started) used no resources: no record of zeros.
+    if (ctx.pid === null && usage === undefined && outcome.durationMs === 0) {
+      return;
+    }
     const round1 = (n: number): number => Math.round(n * 10) / 10;
     const samples = usage?.samples ?? 0;
     try {
@@ -1150,13 +1174,68 @@ export class Scheduler extends EventEmitter {
     // Every open entry, not the newest: a newer run that already ended must not hide an older one.
     const open = this._state.getOpenRuns(id);
     if (open.length > 0) {
-      const finishedAt = this._now().toISOString();
       for (const entry of open) {
-        this._state.record(id, { ...entry, exitCode: 1, finishedAt, cancelledByUser: true });
+        // The same path as a run learned late: recorded (cancelled, no exit code, so it does not feed the failure
+        // streak) and announced with job.killed_manual, once. The process is not this daemon's to stop.
+        const finishedAt = this._now().toISOString();
+        this._finishRun(this._contextOfOpenRun(id, entry), {
+          exitCode: null, finishedAt, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(entry.startedAt)),
+          cancelledByUser: true, timedOut: false, killedByResourceLimit: false,
+          peakCpuPct: entry.peakCpuPct ?? 0, peakRamMb: entry.peakRamMb ?? 0,
+        }, { late: true, actionsAllowed: false });
       }
       return { killed: true, count: open.length };
     }
     return { killed: false, count: 0 };
+  }
+
+  /** What _finishRun needs about a run that is open in the history and has no process this daemon watches. */
+  private _contextOfOpenRun(id: string, entry: RuntimeEntry): RunContext {
+    const job: Job = this._registry.get(id)
+      ?? { id, type: 'cron', label: id, command: '', enabled: false, triggerMode: 'fire-and-forget' };
+    const previous = this._state.getRunBefore(id, entry.startedAt);
+    return {
+      job,
+      trigger: entry.triggeredBy ?? { kind: 'manual' },
+      startedAt: entry.startedAt,
+      pid: entry.pid ?? null,
+      // Appends to the log the run already has.
+      jobLogger: new RunLogger(path.join(this._configDir, 'logs', 'jobs', id), id, entry.startedAt),
+      telemetry: null,
+      previousRunFailed: previous !== null && isFailure(previous),
+    };
+  }
+
+  /**
+   * Announces a run that was closed in the history because nothing is left of it (the daemon that started it is gone, or
+   * its process is): job.failed, flagged late, through the same path as a run learned late after a restart. The history
+   * entry is the caller's (it keeps its own reading); nothing acts on it (no retry, no dependents) since nobody saw it end.
+   */
+  private _announceInterrupted(id: string, entry: RuntimeEntry): void {
+    const ctx = this._contextOfOpenRun(id, entry);
+    const finishedAt = entry.finishedAt ?? this._now().toISOString();
+    ctx.jobLogger.write('[recovery] this run was left open by a daemon that is gone, so it is closed as interrupted (its outcome is unknown)');
+    this._finishRun(ctx, {
+      exitCode: 1, finishedAt, durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(entry.startedAt)),
+      cancelledByUser: false, timedOut: false, killedByResourceLimit: false,
+      peakCpuPct: entry.peakCpuPct ?? 0, peakRamMb: entry.peakRamMb ?? 0,
+    }, {
+      late: true, actionsAllowed: false, recorded: true,
+      actionsSkippedNote: '[recovery] retry/dependents skipped: nobody saw this run end',
+    });
+    this.emit('job-interrupted', { id, job: ctx.job });
+  }
+
+  /**
+   * At daemon start, closes the runs a previous daemon left open (see State.closeOrphanedRuns) and announces each, so
+   * whoever waits for the end of a run is not left waiting for ever. Returns how many were closed.
+   */
+  closeInterruptedRuns(now: Date): number {
+    return this._state.closeOrphanedRuns(
+      now,
+      (id, entry) => this.isFollowing(id, entry.startedAt),
+      (id, entry) => this._announceInterrupted(id, entry),
+    );
   }
 
   /**
@@ -1172,6 +1251,20 @@ export class Scheduler extends EventEmitter {
    * Never throws for a refusal: the instances were ended, and the answer has to say so. `id` is for the caller to add.
    */
   async restartJob(id: string, source: TriggerSource = { kind: 'manual' }): Promise<Omit<RestartResult, 'id'>> {
+    // One restart of a job at a time: two overlapping ones both saw the old instance go, then each started a
+    // copy, leaving two running. The second now waits for the first and ends the copy it started.
+    const turn = (this._restartTurns.get(id) ?? Promise.resolve()).then(() => this._restartNow(id, source));
+    const settled = turn.then(() => undefined, () => undefined);
+    this._restartTurns.set(id, settled);
+    void settled.then(() => {
+      if (this._restartTurns.get(id) === settled) {
+        this._restartTurns.delete(id);
+      }
+    });
+    return turn;
+  }
+
+  private async _restartNow(id: string, source: TriggerSource): Promise<Omit<RestartResult, 'id'>> {
     const job = this._registry.get(id);
     if (!job) {
       throw new Error(`Job not found: "${id}"`);
@@ -1183,7 +1276,8 @@ export class Scheduler extends EventEmitter {
     const gone = await this._waitUntilNoneRunning(id, this._restartGraceMs);
     if (!gone) {
       return refused(
-        `the ended instance of "${id}" is still running ${Math.round(this._restartGraceMs / 1000)}s after it was told to stop, so no second copy was started. `
+        // Below one second a rounded figure would read "0s": the milliseconds are said as they are.
+        `the ended instance of "${id}" is still running ${this._restartGraceMs < 1000 ? `${this._restartGraceMs} ms` : `${Math.round(this._restartGraceMs / 1000)}s`} after it was told to stop, so no second copy was started. `
         + `Check what is holding it, then run: orch kill ${id} and orch trigger ${id}.`,
       );
     }
@@ -1201,7 +1295,10 @@ export class Scheduler extends EventEmitter {
         'liveness',
       );
     }
-    const result = await this.trigger(id, source, false, { detach: true });
+    const { result, startError } = await this._triggerDetailed(id, source, false, { detach: true });
+    if (startError !== undefined) {
+      return refused(`"${id}" could not be started: ${startError}. Fix the cause (see \`orch logs\`), then run: orch trigger ${id}.`);
+    }
     if (result.status === 'already-running') {
       return refused(
         `"${id}" is at its limit (${result.running} of ${result.maxConcurrency} running), so it was not started. `
@@ -1212,16 +1309,29 @@ export class Scheduler extends EventEmitter {
     return { wasRunning, killed, started: true, pid: result.status === 'started' ? result.pid : null };
   }
 
-  /** Resolves true once no instance of the job is registered as running, false after `ms`. Real timers: it waits on real processes. */
-  private async _waitUntilNoneRunning(id: string, ms: number): Promise<boolean> {
-    const deadline = Date.now() + ms;
-    while ((this._running.get(id) ?? 0) > 0) {
-      if (Date.now() >= deadline) {
-        return false;
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  /**
+   * Resolves true once no instance of the job is registered as running, false after `ms` (on the scheduler's clock).
+   * Woken by the close of the last instance, not by polling: a poll would be a real wait a test cannot drive.
+   */
+  private _waitUntilNoneRunning(id: string, ms: number): Promise<boolean> {
+    if ((this._running.get(id) ?? 0) === 0) {
+      return Promise.resolve(true);
     }
-    return true;
+    return new Promise<boolean>((resolve) => {
+      const waiters = this._idleWaiters.get(id) ?? new Set<() => void>();
+      this._idleWaiters.set(id, waiters);
+      const onIdle = (): void => finish(true);
+      const timer = this._time.after(ms, () => finish(false));
+      const finish = (idle: boolean): void => {
+        timer.cancel();
+        waiters.delete(onIdle);
+        if (waiters.size === 0 && this._idleWaiters.get(id) === waiters) {
+          this._idleWaiters.delete(id);
+        }
+        resolve(idle);
+      };
+      waiters.add(onIdle);
+    });
   }
 
   skipNextFiring(id: string): void {
@@ -1543,6 +1653,14 @@ export class Scheduler extends EventEmitter {
       const jobLogger = new RunLogger(path.dirname(spec.logPath), spec.context.jobId, spec.context.startedAt);
       jobLogger.write(`[recovery] ${note}`);
       jobLogger.close();
+      // Closed and announced now, not left for the sweep at daemon start: a run found lost while the daemon is already
+      // up (an owner that went away) would otherwise stay open for ever, and nobody would hear it ended.
+      const open = this._state.getRun(spec.context.jobId, spec.context.startedAt);
+      if (open !== null && open.finishedAt == null) {
+        const closed = { ...open, finishedAt: this._now().toISOString(), orphaned: true };
+        this._state.record(spec.context.jobId, closed);
+        this._announceInterrupted(spec.context.jobId, closed);
+      }
       return;
     }
     this._adopt(runDir, spec, status);
@@ -1773,16 +1891,22 @@ export class Scheduler extends EventEmitter {
    */
   private _recordStartFailure(
     job: Job, trigger: TriggerSource, startedAt: string, err: unknown, waitForExit: boolean,
-  ): { pid: number | null } | { exitCode: number | null } {
+  ): { pid: number | null; startError?: string } | { exitCode: number | null } {
     const reason = getErrorMessage(err);
-    const finishedAt = this._now().toISOString();
     const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, startedAt);
     jobLogger.write(`[error] could not start the job: ${reason}`);
-    jobLogger.write('[job:finished] exitCode=1 duration=0s');
-    jobLogger.close();
-    this._state.record(job.id, { startedAt, finishedAt, exitCode: 1, pid: null, triggeredBy: trigger });
-    this._eventPublisher.publish('job.failed', { jobId: job.id, label: job.label, exitCode: 1, durationMs: 0 });
-    return waitForExit || job.triggerMode === 'wait' ? { exitCode: 1 } : { pid: null };
+    // A failed run like any other (exit code 1): the history entry, the log marker, job.failed, the consecutive-failure
+    // alert, the retry policy and the signal the tray and the audit listen to all come from _finishRun. Read before the
+    // entry exists, as in _fire.
+    const previousEntry = this._state.get(job.id);
+    this._finishRun(
+      { job, trigger, startedAt, pid: null, jobLogger, telemetry: null, previousRunFailed: previousEntry !== null && isFailure(previousEntry) },
+      {
+        exitCode: 1, finishedAt: this._now().toISOString(), durationMs: 0, cancelledByUser: false, timedOut: false,
+        killedByResourceLimit: false, peakCpuPct: 0, peakRamMb: 0,
+      },
+    );
+    return waitForExit || job.triggerMode === 'wait' ? { exitCode: 1 } : { pid: null, startError: reason };
   }
 
   /**
@@ -1813,7 +1937,7 @@ export class Scheduler extends EventEmitter {
       : undefined;
     const finishedReason = reason === undefined ? '' : ` reason=${reason}`;
 
-    if (!done('state')) {
+    if (!done('state') && finish.recorded !== true) {
       this._state.record(job.id, {
         startedAt, finishedAt, exitCode, pid, triggeredBy: trigger,
         peakCpuPct: peakCpuPct > 0 ? peakCpuPct : undefined,
@@ -1972,6 +2096,10 @@ export class Scheduler extends EventEmitter {
         this._running.set(job.id, left);
       } else {
         this._running.delete(job.id);
+        // Whoever waits for the job to be gone (restartJob) is released by this very close.
+        for (const wake of [...(this._idleWaiters.get(job.id) ?? [])]) {
+          wake();
+        }
       }
       if (this._liveLogger.get(job.id) === jobLogger) {
         this._liveLogger.delete(job.id);
@@ -1981,7 +2109,7 @@ export class Scheduler extends EventEmitter {
     return siblings;
   }
 
-  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
+  private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null; startError?: string } | { exitCode: number | null }> {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
     // Both paths (a direct spawn and the supervisor, whose environment the job inherits) start from this one value.
@@ -2254,14 +2382,17 @@ export class Scheduler extends EventEmitter {
     const echo = (stream: NodeJS.WriteStream, d: Buffer): void => {
       try { stream.write(d.includes(0x1b) ? stripAnsi(d.toString()) : d); } catch { /* EPIPE: launcher pipe closed */ }
     };
+    // One per stream: a chunk can end inside an escape sequence or a multibyte character (see output-lines.ts).
+    const stdoutLines = new OutputLines();
+    const stderrLines = new OutputLines();
     child.stdout?.on('data', (d: Buffer) => {
-      for (const line of d.toString().split('\n')) {
+      for (const line of stdoutLines.push(d)) {
         jobLogger.writeOutput(line);
       }
       echo(process.stdout, d);
     });
     child.stderr?.on('data', (d: Buffer) => {
-      for (const line of d.toString().split('\n')) {
+      for (const line of stderrLines.push(d)) {
         jobLogger.writeOutput(line, '[stderr] ');
       }
       echo(process.stderr, d);
@@ -2292,6 +2423,9 @@ export class Scheduler extends EventEmitter {
 
     const done = new Promise<{ exitCode: number | null }>((resolve) => {
       child.on('close', (code) => {
+        // What the streams still hold (an escape sequence that never ended) goes in before the run's closing markers.
+        for (const line of stdoutLines.flush()) { jobLogger.writeOutput(line); }
+        for (const line of stderrLines.flush()) { jobLogger.writeOutput(line, '[stderr] '); }
         jobFinished = true;
         // Only this instance: deleting the job's whole entry made the others unreachable to kill.
         siblings.delete(child);

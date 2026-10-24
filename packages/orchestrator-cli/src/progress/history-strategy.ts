@@ -22,7 +22,8 @@ export function isUsableRun(e: RuntimeEntry): boolean {
   return e.exitCode === 0 && !e.skipped && !e.cancelledByUser && !e.orphaned && e.endReason === undefined && !!e.finishedAt;
 }
 
-function median(sorted: number[]): number {
+/** Median of an ascending list. */
+export function median(sorted: number[]): number {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
@@ -38,6 +39,16 @@ export function formatDuration(ms: number): string {
     return `${totalMin} min`;
   }
   return `${Math.floor(totalMin / 60)} h ${String(totalMin % 60).padStart(2, '0')} min`;
+}
+
+/** Durations (ms) of the newest HISTORY_WINDOW usable runs, newest first. */
+export function usableDurations(history: readonly RuntimeEntry[]): number[] {
+  return history
+    .filter(isUsableRun)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .slice(0, HISTORY_WINDOW)
+    .map(e => Date.parse(e.finishedAt!) - Date.parse(e.startedAt))
+    .filter(d => Number.isFinite(d) && d >= 0);
 }
 
 function levelOf(score: number, runs: number): ProgressConfidence {
@@ -72,12 +83,7 @@ export const historyStrategy: ProgressStrategy = {
       return none(ctx, `no open run to estimate (job ${ctx.job.id} is not running)`);
     }
 
-    const durations = ctx.history
-      .filter(isUsableRun)
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-      .slice(0, HISTORY_WINDOW)
-      .map(e => Date.parse(e.finishedAt!) - Date.parse(e.startedAt))
-      .filter(d => Number.isFinite(d) && d >= 0);
+    const durations = usableDurations(ctx.history);
 
     if (durations.length < HISTORY_MIN_RUNS) {
       const missing = HISTORY_MIN_RUNS - durations.length;

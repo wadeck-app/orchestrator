@@ -122,3 +122,92 @@ describe('orch timers', () => {
     assert.match(out, /armed as configured/);
   });
 });
+
+// The CLI's own output for manual rows, and the refusals of the daemon's real command map reached through it.
+async function runWith(argv, send, { tty }) {
+  const out = [];
+  const err = [];
+  let exitCode = 0;
+  const origExit = process.exit;
+  const origLog = console.log;
+  const origError = console.error;
+  const origTty = process.stdout.isTTY;
+  const origExitCode = process.exitCode;
+  process.exit = (code) => { exitCode = code ?? 0; throw Object.assign(new Error('exit'), { exitCode }); };
+  console.log = (...a) => { out.push(a.join(' ')); };
+  console.error = (m) => { err.push(String(m)); };
+  Object.defineProperty(process.stdout, 'isTTY', { value: tty, configurable: true });
+  let thrown;
+  try {
+    await runCli(argv, { send, startDaemon: async () => {}, configDir: '/tmp/orch-test' });
+  } catch (e) {
+    if (e.message !== 'exit') {
+      thrown = e;
+    }
+  } finally {
+    process.exit = origExit;
+    console.log = origLog;
+    console.error = origError;
+    Object.defineProperty(process.stdout, 'isTTY', { value: origTty, configurable: true });
+    process.exitCode = origExitCode;
+  }
+  return { out: out.join('\n'), err: err.join('\n'), exitCode, thrown };
+}
+
+const timerRow = (over) => ({
+  jobId: 'deploy', type: 'manual', enabled: true, armed: null, dueAt: null, windowEndsAt: null,
+  nextFiring: null, windowState: null, spent: false, problem: null, ...over,
+});
+
+describe('orch timers with a manual row, piped and as JSON', () => {
+  for (const [what, argv, tty] of [['piped', ['timers'], false], ['--json on a terminal', ['timers', '--json'], true], ['--json piped', ['timers', '--json'], false]]) {
+    test(`${what}: the bare rows on stdout, no warning on stderr, exit 0`, async () => {
+      const rows = [timerRow({}), timerRow({ jobId: 'old', enabled: false })];
+      const { out, err, exitCode } = await runWith(argv, async () => rows, { tty });
+
+      assert.deepEqual(JSON.parse(out), rows);
+      assert.equal(err, '');
+      assert.equal(exitCode, 0);
+    });
+  }
+
+  test('a switched-off manual row on a terminal reads like an enabled one and is not counted as a failure', async () => {
+    const { out, err } = await runWith(['timers'], async () => [timerRow({ enabled: false })], { tty: true });
+
+    assert.match(out, /^✓ deploy\s+manual\s+manual\s+trigger only/m);
+    assert.match(out, /All 1 job\(s\) armed as configured\./);
+    assert.equal(err, '');
+  });
+});
+
+describe('orch edit on a manual job, against the daemon\'s real command map', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { makeCommands } = require('../src/commands');
+  const { Registry } = require('../src/registry');
+  const { State } = require('../src/state');
+
+  function realDaemon() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-cli-manual-'));
+    const registry = new Registry(path.join(dir, 'registry.json'));
+    registry.add({ id: 'deploy', type: 'manual', command: 'echo run', enabled: true, triggerMode: 'fire-and-forget' });
+    const scheduler = { killJob: async () => ({ killed: false }), skipNextFiring: () => {}, scheduleJob: () => {}, unscheduleJob: () => {} };
+    const commands = makeCommands(registry, new State(path.join(dir, 'state.json')), scheduler, dir);
+    return { registry, send: async (command, payload) => commands[command](payload) };
+  }
+
+  for (const [option, args, field] of [['--schedule', ['--schedule', '0 9 * * *'], 'schedule'], ['--delay', ['--delay', '30'], 'delaySeconds']]) {
+    test(`${option} is refused naming the field and the way out, and the job is unchanged`, async () => {
+      const { registry, send } = realDaemon();
+      const before = JSON.stringify(registry.get('deploy'));
+
+      const { thrown, out } = await runWith(['edit', 'deploy', ...args], send, { tty: false });
+
+      assert.ok(thrown, 'the edit was accepted');
+      assert.equal(thrown.message, `Manual jobs have no schedule: "${field}" is not accepted on a manual job. Remove it, or use a cron job (orch add cron) to run on a schedule.`);
+      assert.equal(out, '');
+      assert.equal(JSON.stringify(registry.get('deploy')), before);
+    });
+  }
+});

@@ -1,27 +1,12 @@
 import type { Job, RuntimeEntry } from '../types.js';
 import { isLongRunning } from '../long-running.js';
-import { historyStrategy } from './history-strategy.js';
-import type { LogCorpus, ProgressContext, ProgressEstimate, ProgressStrategy, StrategyStore } from './types.js';
+import { createLogCorpus } from './log-corpus.js';
+import { AUTO_STRATEGIES, STRATEGIES } from './registry.js';
+import { PROGRESS_STRATEGY_IDS, resolveProgressSetting } from './setting.js';
+import { openProgressFile, type ProgressFile } from './store.js';
+import type { ProgressContext, ProgressEstimate, ProgressStrategy } from './types.js';
 
-/**
- * The built-in strategies. Today only `history`; adding one means adding it here AND to the `auto` order in
- * `candidatesFor`. There is no external plugin loading and no per-job `progress` setting yet: every job is `auto`.
- */
-export const STRATEGIES: readonly ProgressStrategy[] = [historyStrategy];
-
-const NOT_AVAILABLE = (what: string): Error => new Error(
-  `${what} is not available: only the history strategy exists in this release and it reads run history only`);
-
-/** Log access is part of the contract but nothing provides it yet; a strategy that asks gets an error, not an empty answer. */
-export const NO_LOGS: LogCorpus = {
-  currentRun() { throw NOT_AVAILABLE('log access'); },
-  pastRuns() { throw NOT_AVAILABLE('log access'); },
-};
-
-export const NO_STORE: StrategyStore = {
-  read() { throw NOT_AVAILABLE('the learned-data store'); },
-  write() { throw NOT_AVAILABLE('the learned-data store'); },
-};
+export { STRATEGIES };
 
 function noEstimate(strategyId: string | null, reason: string, now: Date): ProgressEstimate {
   return { strategyId, progress: null, etaAt: null, confidence: 'none', confidenceScore: 0, reason, serverNow: now.toISOString() };
@@ -67,13 +52,26 @@ export function selectAuto(
   candidates: readonly ProgressStrategy[],
   ctx: ProgressContext,
   log: (line: string) => void = () => {},
+  file?: ProgressFile,
 ): ProgressEstimate {
   const skipped: string[] = [];
+  const before = file?.chosen(ctx.run.startedAt);
   for (const strategy of candidates) {
-    const estimate = runStrategy(strategy, ctx, log);
+    const estimate = runStrategy(strategy, file ? { ...ctx, store: file.storeFor(strategy) } : ctx, log);
     if (estimate.confidence !== 'none') {
+      const id = estimate.strategyId ?? strategy.id;
       const skips = skipped.length > 0 ? `; skipped ${skipped.join(', ')}` : '';
-      return { ...estimate, reason: `auto: ${estimate.strategyId ?? strategy.id} (${estimate.reason})${skips}` };
+      // The choice is recorded for the run, so a later look can tell a stable pick from a flip.
+      file?.setChosen(ctx.run.startedAt, id, ctx.now());
+      const chosenAt = file?.chosen(ctx.run.startedAt)?.chosenAt ?? ctx.now().toISOString();
+      const flip = before !== undefined && before.strategyId !== id
+        ? `; this run was estimated by ${before.strategyId} earlier`
+        : '';
+      return {
+        ...estimate,
+        reason: `auto: ${id} (${estimate.reason})${skips}${flip}`,
+        detail: { ...estimate.detail, chosenAt, ...(flip ? { previouslyChosen: before!.strategyId } : {}) },
+      };
     }
     skipped.push(`${strategy.id}: ${estimate.reason}`);
   }
@@ -82,6 +80,8 @@ export function selectAuto(
 }
 
 export interface EstimateProgressInput {
+  /** The daemon's config dir: logs are read from <configDir>/logs, learned data is kept in <configDir>/progress. */
+  configDir: string;
   jobs: readonly Job[];
   /** Run history per job id, as State.getAll() returns it. */
   history: Readonly<Record<string, readonly RuntimeEntry[]>>;
@@ -98,6 +98,9 @@ export interface EstimateProgressInput {
  * answer. A job with several open runs gets one estimate, from the oldest.
  */
 export function estimateProgress(input: EstimateProgressInput): Record<string, ProgressEstimate> {
+  if (typeof input.configDir !== 'string' || input.configDir === '') {
+    throw new Error('estimateProgress needs configDir: the log files and the learned data live under it');
+  }
   const log = input.log ?? (() => {});
   const wanted = input.jobIds ? new Set(input.jobIds) : null;
   const result: Record<string, ProgressEstimate> = {};
@@ -111,20 +114,59 @@ export function estimateProgress(input: EstimateProgressInput): Record<string, P
     if (!oldestOpen) {
       continue;
     }
+    const setting = resolveProgressSetting(job.progress);
+    if (setting.kind === 'off') {
+      result[job.id] = noEstimate(null, `progress is off for this job (orch edit ${job.id} --progress auto to enable)`, input.now());
+      continue;
+    }
     if (isLongRunning(job)) {
       result[job.id] = noEstimate(null, 'no completion expected (no timeout)', input.now());
       continue;
     }
+    const seam = input.strategies?.(job);
+    const file = openProgressFile({ configDir: input.configDir, jobId: job.id, job, log });
     const ctx: ProgressContext = {
       job,
+      configDir: input.configDir,
       run: { startedAt: oldestOpen.startedAt, pid: oldestOpen.pid },
       history: runs,
-      logs: NO_LOGS,
+      logs: createLogCorpus({ configDir: input.configDir, jobId: job.id, history: runs, currentStartedAt: oldestOpen.startedAt }),
       now: input.now,
       options: undefined,
-      store: NO_STORE,
+      // Replaced by the strategy's own store when it runs (selectAuto, runExplicit).
+      store: file.storeFor({ id: 'unassigned', version: 0 }),
     };
-    result[job.id] = selectAuto(input.strategies?.(job) ?? STRATEGIES, ctx, log);
+    if (setting.kind === 'auto') {
+      result[job.id] = selectAuto(seam ?? AUTO_STRATEGIES, ctx, log, file);
+      continue;
+    }
+    result[job.id] = runExplicit(setting.id, setting.options, seam ?? STRATEGIES, ctx, log, file);
   }
   return result;
+}
+
+/**
+ * An explicit strategy: only that one is asked, and its answer is the answer, a "no estimate" included.
+ * The setting was validated when stored, but a registry written by another version can name a strategy this
+ * daemon lacks, or options it no longer accepts: that is a reason with the fix, not a crash.
+ */
+function runExplicit(
+  id: string,
+  rawOptions: unknown,
+  candidates: readonly ProgressStrategy[],
+  ctx: ProgressContext,
+  log: (line: string) => void,
+  file: ProgressFile,
+): ProgressEstimate {
+  const fix = `fix: orch edit ${ctx.job.id} --progress auto`;
+  const strategy = candidates.find(s => s.id === id);
+  if (!strategy) {
+    const known = [...new Set([...PROGRESS_STRATEGY_IDS, ...candidates.map(s => s.id)])].join(', ');
+    return noEstimate(null, `progress strategy "${id}" is set for this job but not registered in this daemon (registered: ${known}); ${fix}`, ctx.now());
+  }
+  const checked = strategy.validateOptions(rawOptions);
+  if (!checked.ok) {
+    return noEstimate(id, `the stored options of progress strategy "${id}" are invalid: ${checked.error}; ${fix}`, ctx.now());
+  }
+  return runStrategy(strategy, { ...ctx, options: checked.value, store: file.storeFor(strategy) }, log);
 }

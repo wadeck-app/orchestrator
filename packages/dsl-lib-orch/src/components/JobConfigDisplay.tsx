@@ -3,6 +3,17 @@ import type { Job } from '../types.js';
 import { isLongRunning } from '../long-running.js';
 import { describeResourceLimits, hasCustomLimits } from '../resource-limits.js';
 
+/** Mode of the progress setting for display, or null for auto. Options are not shown, only that there are some. */
+function progressSummary(setting: Job['progress']): string | null {
+  if (setting === undefined || setting === 'auto') {
+    return null;
+  }
+  if (typeof setting === 'string') {
+    return setting;
+  }
+  return setting.options === undefined ? setting.strategy : `${setting.strategy} (with options)`;
+}
+
 export interface JobConfigDisplayProps { job: Job; }
 
 // @formatter:off
@@ -38,6 +49,7 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
           </ul>
         </div>
       )}
+      {progressSummary(job.progress) !== null && <div><span className={LABEL_CLS}>Progress</span><p className="mt-1 text-sm text-content">{progressSummary(job.progress)}</p></div>}
       {job.maxConcurrency !== undefined && <div><span className={LABEL_CLS}>Max concurrent runs</span><p className="mt-1 text-sm text-content">{job.maxConcurrency}</p></div>}
     </div>
   );

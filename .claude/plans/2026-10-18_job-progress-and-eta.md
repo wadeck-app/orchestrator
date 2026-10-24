@@ -1,10 +1,12 @@
 # Plan: job progress and estimated end time
 
-Status: phase 1 (history only) implemented, rest draft. Spec-first (guiding-principles.md): the remaining open questions in section 9 must be answered before the phases that need them.
+Status: DONE except the dropped items. All questions answered (section 9). Implemented: the `progress` job key (validation, CLI flags, audit, form section, `JobConfigDisplay`), the strategies `history`, `declared`, `ratio`, `log-declared`, `log-learned`, `ensemble`, the learned-data store, `get-progress`, `orch progress replay`, the contract and edge-matrix tests. User docs: `docs/daemon-config.md`, "Progress and ETA".
 
-Implemented (history only): `get-progress` RPC, `history` strategy with `auto` as its single candidate, `progress` on `GET /api/jobs`, `GET /api/jobs/:id` and `GET /api/jobs/:id/progress`, `JobProgress` UI, `orch status` line; see `docs/daemon-config.md`. NOT in this slice: the `progress` job key, its CLI flag and form section, `JobConfigDisplay` row, the replay harness, learned-data store, log-based strategies, external plugins (phases 2-4).
+DROPPED (decided, not deferred): the `resource` strategy (telemetry retention would have to change; q5), external plugins and everything about loading them (`progress.plugins` in `config.yml`, the section 4 "Registration" rule, phase 4 plugin kit; q6). The plugin types stay as the internal interface only.
 
-## Decisions (proposed)
+NOT verified: a live daemon, and a real supervised run folder (no such folder exists in the repo or the fixtures; see q1).
+
+## Decisions
 
 - The engine is a pure function of files on disk: run history + per-run log files + job config. It holds no pipe and no in-memory run state, so it survives a daemon restart and the planned per-job supervisor.
 - It lives in `packages/orchestrator-cli` (new `src/progress/`), exposed by one new RPC `get-progress`; the controllers (orch-server, the app-core module) only proxy it through `orch-core` (P-6: no source import between the daemon and them).
@@ -60,10 +62,10 @@ Common definitions. "Usable run" = in history or log dir, `exitCode === 0`, not 
 | `log-declared` (S3) | User milestones | job config: ordered list of `{pattern, at?, weight?}` (regex), current log | like S2 but milestones come from config; `at` = expected fraction, else derived from `weight` (cumulative) or from history timing of the first match; interpolation between matches | works from run 1 if every milestone has `at` or `weight`; otherwise needs history for timing | a pattern that never matched in usable runs is reported as a config warning | same rescaling as S2 | high when `at` is given and observed run times agree | regex per new log line; patterns validated at config time |
 | `declared` | Job-emitted progress | log lines `##orch-progress <0..100>[ <message>]` or a JSON file `<cwd>/.orch-progress.json` (path in config) | progress = last value; ETA = extrapolate from the last N reports (rate) or `history` D when rate is unstable | works from run 1 | ignores non-monotonic drops below the last value unless the job resets explicitly; a run that exits non-zero keeps its last value in the record | exact, the job knows | high while reports are recent; drops with report staleness | tail read; file stat |
 | `ratio` | Counter extraction | regex with 1-2 groups on the log (`(\d+)/(\d+)`, `(\d+)%`) | progress = a/b or p/100; ETA = rate extrapolation over a sliding window | works from run 1 | reset detection (counter goes down) starts a new phase and is reported | exact when the total is printed | window rate variance | tail read + regex |
-| `resource` | Resource signature | telemetry samples of usable runs (cpu/ram) | aligns the current sample series against past usable series (dynamic time warping on normalized time) to get a phase estimate | `null` + reason | telemetry keeps only 2 files (about 2 runs) so it needs a retention change first; excluded in v1 | weak | low by default | CPU heavy, rejected for v1 |
+| `resource` | DROPPED (q5) | | | | | | | |
 | `ensemble` | Composite | the other strategies' outputs + their replayed accuracy | picks the strategy with the lowest mean absolute ETA error on this job's replayed history, or blends by inverse-error weights; always returns the chosen strategy ids in `reason` | falls back by documented priority order | inherits | inherits | derived from replay error, not from the members' self-report | replay at learn time, cached |
 
-`resource` is listed for completeness; proposed out of v1 (telemetry retention is the blocker, section 9).
+`resource` is DROPPED (q5). As built: `auto` tries `declared`, `ensemble`, `history` only; `ratio` and `log-declared` are explicit-only (they need a user pattern); `log-learned` is reached through `ensemble` or explicitly. `declared` is a candidate once the log shows `##orch-progress` (a run first estimated by another strategy upgrades to it, and the reason says so). `ensemble` replays `declared`, `log-learned` and `history` leave-one-out on the 8 newest usable runs and needs 5 usable runs.
 
 ## 4. Plugin contract
 
@@ -107,17 +109,17 @@ export interface ProgressStrategy {
 Rules:
 - `estimate` is pure over its inputs and `store`; no timers, no process state.
 - A plugin that throws, times out (budget 200 ms) or returns out-of-range values yields `{progress: null, confidence: 'none', reason: "plugin <id> failed: <message>; fix or set progress: history"}`. It is logged to the daemon log; it never aborts `get-progress` for other jobs.
-- Registration: built-ins in `src/progress/registry.ts`; external plugins are listed in `config.yml` (`progress.plugins: [<npm package or absolute path>]`), loaded at daemon start; a plugin that fails to load is an error line at startup and in `orch status`, not skipped silently. Plugin security: plugins run in the daemon with its privileges, so loading is opt-in per path (T-model entry to add in `.claude/threat-model.md`).
+- Registration: built-ins only, in `src/progress/registry.ts` (`STRATEGIES`, `AUTO_STRATEGIES`, `PROGRESS_STRATEGY_IDS`). DROPPED: external plugins listed in `config.yml` (q6); threat-model entry T-04 records that no external code is loaded.
 - Job config key `progress` (added to `Job`, validated in `registry.ts:validateJob`, added to `UNSETTABLE_FIELDS` as `'delete'`, so absent = `auto`):
   - `"auto"` (default), `"off"`, `"<strategyId>"`, or `{ strategy: "<id>", options: {...} }`.
   - Unknown id: rejected at `orch add/edit` with the list of registered ids.
   - CLI: `orch add ... --progress log-declared --progress-options file.json` (exact flags: open question).
 - `auto` algorithm (deterministic, documented):
-  1. Candidates in priority order: `declared`, `ratio` (only if the job opted in with options), `log-declared` (only if configured), `ensemble`/`log-learned`, `history`.
+  1. Candidates in priority order, as built: `declared`, `ensemble`, `history`. `ratio` and `log-declared` are explicit-only.
   2. A candidate is eligible when its `estimate` returns `confidence !== 'none'`.
   3. Choose the first eligible; the result is `reason: "auto: <id> (<why>); skipped <id2>: <reason2>, <id3>: <reason3>"`.
   4. If none is eligible: `progress: null`, `confidence: 'none'`, reason lists every skip reason and the next action ("run the job 2 more times", "add --progress ...").
-  5. The chosen strategy is sticky within a run (no flipping mid-run); it is re-chosen at the next run start. Stickiness is recorded in the estimate's `detail.chosenAt`.
+  5. The chosen strategy is sticky within a run (no flipping mid-run), except the upgrade to `declared`; it is re-chosen at the next run start. The choice is recorded in the learned-data store, keyed by the run's `startedAt`, and in the estimate's `detail`.
 - An explicit `progress: <id>` never falls back: if that strategy has no estimate, the user sees its reason, not another strategy's number.
 
 ## 5. Data model additions
@@ -137,7 +139,7 @@ Invalidation rules (each logs a line `[progress] job <id>: dropped learned <stra
 - `command`, `cwd` or `progress` options changed (edit event) -> drop.
 - Job removed -> delete the file with the job (hook next to the existing `state.clear`, `state.ts:337-343`); orphan files are cleaned at daemon start.
 - File unreadable/corrupt -> rebuild from logs and history, with a startup warning; never block `get-progress`.
-- Learning is idempotent per `startedAt`, so it can run both on `job-finished` (`scheduler.ts:1423` emits it) and lazily at estimate time, which covers a daemon that was down when the run ended and the supervisor case where nobody saw the exit.
+- Learning is idempotent per `startedAt`. As built it runs only lazily at estimate time (a bounded slice per `get-progress` call); there is no learn-on-finish hook. It still covers a daemon that was down when the run ended and the supervisor case where nobody saw the exit.
 
 Run-to-log matching: a run's log is `<jobId>-<startedAt.replace(/:/g,'-').slice(0,19)>.log` (`logger.ts:22`). Two runs starting within the same second collide on the name (existing behaviour; unknown how the supervisor names files).
 
@@ -169,7 +171,7 @@ Rules: tests first, committed failing; test the installed `orch` for the end-to-
 - Unit: each strategy against synthetic histories and fixture log files in `packages/orchestrator-cli/test/progress/fixtures/<case>/` (history.json + `logs/*.log` in the real `[ts] text` format from `logger.ts:35-37`).
 - Edge matrix per strategy: 0 runs, 1, 2, exactly `minRuns`; all runs identical; one huge outlier; failed/killed/orphaned/skipped runs mixed in; log format change mid-history; empty log; clock skew (log ts earlier than `startedAt`); two runs same second; legacy daily log file present.
 - Contract tests (run against every registered plugin, built-in or external): never throws, `progress` in [0,1] or null, `reason` non-empty when `progress` is null, `etaAt >= now` or flagged overdue, deterministic for the same input, completes under the 200 ms budget with 20 logs of 5 MB.
-- Replay harness (`orch progress replay <jobId> [--strategy id]`, also a test helper): for each usable past run, truncates the log at sampled elapsed times (every 5% of duration), asks the strategy for an estimate using only the runs older than that run (leave-one-out, no look-ahead), and records absolute error of `etaAt` versus real `finishedAt`.
+- Replay harness (as built: `orch progress replay <jobId> [--strategy id] [--sample-every pct] [--json]`, daemon-free, reads `registry.json`, `state.json` and the logs; library API `replayJob` in `src/progress/replay.ts`; test helper `test/progress/helpers/replay-fixture.js`; MAE ceilings in `test/progress/fixtures/mae-ceilings.json`): for each usable past run, truncates the log at sampled elapsed times (every 5% of duration), asks the strategy for an estimate using only the runs older than that run (leave-one-out, no look-ahead), and records absolute error of `etaAt` versus real `finishedAt`.
   - Metrics: MAE of ETA (seconds and as % of duration), MAE at 25/50/75% elapsed, calibration (share of real end times inside the stated confidence interval), monotonicity violations of `progress`, "ETA flips" (changes > 20% between consecutive samples).
   - Gate thresholds are proposed in phases below, set after the first real data (open question).
 - Corpus: anonymized real logs from this machine's jobs are copied into `test/progress/fixtures` only with the user's approval (logs may contain secrets; open question).
@@ -190,19 +192,20 @@ Rules: tests first, committed failing; test the installed `orch` for the end-to-
 
 ## 9. Risks and open questions (not decided here)
 
-Questions for the user:
-1. Supervisor contract: file names, whether `[job:started]`/`[job:finished]` and the `[YYYY-MM-DD HH:MM:SS]` prefix remain, who writes the finish time. Phase 0 depends on it.
-2. ANSWERED: in the daemon (`orchestrator-cli/src/progress/`), exposed by RPC `get-progress`; the controllers only proxy it through `orch-core`.
-3. Is a job allowed to write `##orch-progress` lines / a progress file (a job-side convention that mildly conflicts with "orch takes the program at its word", P-8, though it only reads what the job volunteers)?
-4. Learning depth: history is 20 runs (`state.ts:5`) but logs can reach 100 files; may the engine learn from log files older than history (needs duration from the log's markers)?
-5. Telemetry retention (2 files, `job-telemetry.ts:10`) blocks `resource`; is a retention increase acceptable, or is `resource` dropped?
-6. Plugins: allowed to execute arbitrary code in the daemon (opt-in via `config.yml`), or must they be declarative (patterns/JSON only) for v1?
-7. ANSWERED: low-confidence estimates are shown (lighter style, "low confidence" in the text); `confidence` is `low` under 5 usable runs or a score under 0.5.
-8. Can real job logs be copied into the test corpus (secrets risk), or must fixtures be synthetic only?
-9. Which jobs matter first (names), so the replay corpus covers real shapes: short (< 10 s, 1 s log resolution is too coarse), long, input-dependent?
-10. CLI flag naming for `progress` options, and whether `orch edit --unset progress` is the only way back to `auto`.
+Answers (decided by the user):
+1. Supervisor contract: satisfied by decision. Run logs keep the `[YYYY-MM-DD HH:MM:SS]` prefix (`RunLogger.write`, `logger.ts`) and the `[job:started]`/`[job:finished]` markers (`scheduler.ts`, written by the daemon, also for runs it adopted, with the late end time as the line's timestamp). Verified in code only: UNVERIFIED against a real supervised run folder (none in the repo or the fixtures).
+2. The engine lives in the daemon (`orchestrator-cli/src/progress/`), exposed by RPC `get-progress`; controllers only proxy it through `orch-core`.
+3. Job-side progress reporting is allowed and opt-in per job (`##orch-progress` lines or a `file` option).
+4. Learning from run logs older than the 20-entry history is allowed, bounded to the 20 newest usable runs and a byte cap per file.
+5. `resource` is dropped.
+6. No external code plugins: strategies are built in and declarative (patterns/JSON). Plugin types stay internal.
+7. Low-confidence estimates are shown, with a `~`; `confidence` is `low` under 5 usable runs or a score under 0.5.
+8. Test fixtures are synthetic only (generated by `test/progress/helpers/make-fixtures.js`; no real log is copied).
+9. Shape tests cover short (< 10 s), minutes, hours and input-dependent durations (`test/progress/fixtures/`, `edge-matrix.test.js`).
+10. CLI: `--progress <auto|off|history|log-learned|log-declared|declared|ratio|ensemble>` and `--progress-options <json-or-@file>` on add/edit; `orch edit <id> --unset progress` returns to `auto`.
 
 Risks:
+- Remaining after delivery: learning is lazy only (a job nobody polls learns nothing until polled); `ensemble` needs about 5 usable runs and several polls before it commits; the log-format fingerprint (first 20 masked lines) can flag a format change on a job whose early lines vary; the regex budget is wall time (V8 timeout, 500 ms per batch), so a heavily loaded machine could trip it; `atomicWriteJson` can busy-wait up to 300 ms inside `get-progress` when a write keeps failing; two runs started in the same second share one log file; `/api/jobs/import` reports only `status: 'error'` per job, so a bad `progress` on import has no reason; `log-learned` shows ETA flips on the input-dependent fixture; nothing was checked on a live daemon or a real supervised run folder.
 - Log timestamps have 1 s resolution (`logger.ts:36`): jobs shorter than about 10 s get no useful interpolation; S2/S3 should declare a minimum duration and say so in `reason`.
 - Stdout buffering by the job (block-buffered when piped) delays log lines and makes milestones late; undetectable from outside, only mitigated by confidence from replay.
 - Jobs with unbounded duration (`timeoutSeconds: 0`, `types.ts:52-55`) have no meaningful ETA; `reason` must say "no completion expected".
@@ -210,4 +213,4 @@ Risks:
 - Sticky `auto` choice and learned data can drift silently; the replay report and the `reason` string are the controls.
 - Learning cost on large logs (up to 100 files): bounded by a byte cap per file and by learning only the 20 newest usable runs; confirm with measurements in phase 2.
 - Two copies of the types in `dsl-lib-orch` and orchestrator-cli can diverge (they already differ, see the Facts table); mitigated by the contract test in section 6.
-- Two definitions of "usual duration" exist, kept apart on purpose: the anomaly check (`state.ts` `getRollingAvgDurationMs`) averages the last 10 finished runs with an exit code, failures included, and needs 3; the `history` strategy takes the median of the last 10 usable runs (exit code 0 only). Sharing one function would change what the anomaly check alerts on, so it was left alone. Decide separately if they should converge.
+- Two definitions of "usual duration" exist, kept apart on purpose: the anomaly check (`state.ts` `getRollingAvgDurationMs`) averages the last 10 finished runs with an exit code, failures included, and needs 3; the `history` strategy takes the median of the last 10 usable runs (exit code 0 only). Sharing one function would change what the anomaly check alerts on, so the two are NOT shared (decided at delivery; revisit separately).

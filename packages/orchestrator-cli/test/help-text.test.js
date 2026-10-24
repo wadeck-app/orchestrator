@@ -44,7 +44,7 @@ describe('help text', () => {
     const where = {
       'Identity and description': ['--command', '--label', '--description', '--cwd', '--tags', '--secrets', '--env', '--disabled', '--once'],
       Schedule: ['--schedule', '--delay', '--missed-firing', '--active-for', '--active-from', '--active-until', '--liveness-strategy', '--liveness-port-file', '--liveness-command'],
-      Execution: ['--trigger-mode', '--max-concurrency', '--depends-on', '--alert-after-failures', '--sla-window', '--dry-run-supported'],
+      Execution: ['--trigger-mode', '--max-concurrency', '--depends-on', '--alert-after-failures', '--sla-window', '--dry-run-supported', '--progress', '--progress-options'],
       Timeouts: ['--timeout'],
       'Retry and skip': ['--retry-on-exit-codes', '--retry-delays', '--skip-exit-codes', '--on-exit-code'],
       'Resource limits': ['--resource-enforce', '--hard-factor', '--soft-factor', '--sustain', '--max-cpu', '--max-ram'],

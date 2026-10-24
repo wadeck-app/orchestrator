@@ -1,0 +1,22 @@
+{
+  "_README": "Accuracy regression guard of test/progress/replay-cli.test.js. maePct = mean absolute ETA error as a share of the run duration, minCoverage = share of samples that carried an estimate. Measured on the synthetic fixtures with the replay at 5% steps: minutes-stable log-learned 0.35% / history 0.73%; short-under-10s history 5.0%; input-dependent log-learned 3.1% / history 54.4% (the case history cannot handle); hours-stable 0.04% / 0.69%; mixed-outcomes 0.16% / 0.83%. Ceilings are about 1.5-3x the measured value, coverage floors 90% of it. A strategy change that moves a number past its ceiling must say why when the ceiling is raised.",
+  "minutes-stable": {
+    "log-learned": { "maePct": 0.015, "minCoverage": 0.63 },
+    "history": { "maePct": 0.02, "minCoverage": 0.63 }
+  },
+  "short-under-10s": {
+    "history": { "maePct": 0.08, "minCoverage": 0.56 }
+  },
+  "input-dependent": {
+    "log-learned": { "maePct": 0.06, "minCoverage": 0.67 },
+    "history": { "maePct": 0.65, "minCoverage": 0.67 }
+  },
+  "hours-stable": {
+    "log-learned": { "maePct": 0.01, "minCoverage": 0.45 },
+    "history": { "maePct": 0.02, "minCoverage": 0.45 }
+  },
+  "mixed-outcomes": {
+    "log-learned": { "maePct": 0.01, "minCoverage": 0.22 },
+    "history": { "maePct": 0.02, "minCoverage": 0.22 }
+  }
+}
