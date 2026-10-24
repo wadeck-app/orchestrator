@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Square } from 'lucide-react';
-import { isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isJobRunning, liveOrLatestRun, type Job, type ProgressEstimate, type RuntimeEntry } from '../types.js';
+import { JobProgress } from './JobProgress.js';
 import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
@@ -23,6 +24,8 @@ export interface RunningInlineDetailProps {
   job: Job;
   jobId: string;
   runHistory?: RuntimeEntry[];
+  /** The `progress` of the job source: shown while the job runs, nothing otherwise. */
+  progress?: ProgressEstimate | null;
   /**
    * Fired once a Run now this component ran itself has settled, started or refused. The component
    * posts the trigger itself because a page-owned brain cannot see a refusal (a 200 body, not a
@@ -42,7 +45,7 @@ export interface RunningInlineDetailProps {
  * @registryCategory composite
  * @registryTags job detail running inline design-c
  */
-export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
+export function RunningInlineDetail({ job, jobId, runHistory, progress, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningInlineDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -132,6 +135,7 @@ export function RunningInlineDetail({ job, jobId, runHistory, onAfterTrigger, on
               Running &middot; {formatElapsed(currentRun.startedAt, Date.now())}
               {currentRun.pid != null && <span className="opacity-70">&middot; {currentRun.pid}</span>}
             </span>
+            {progress != null && <JobProgress progress={progress} />}
             <RestartButton job={job} jobId={jobId} running={isRunning} onRestart={onRestart} />
             {/* violations-suppress: react/no-raw-button pill-style kill button -- Button component cannot render this shape */}
             <button onClick={() => { void handleKill(); }} disabled={killing} className={KILL_BTN_CLS}>

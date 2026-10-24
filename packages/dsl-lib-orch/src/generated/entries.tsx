@@ -1869,6 +1869,7 @@ export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['jobId']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['runHistory']
+		const progress = resolveExpressionValue(node['progress'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['progress']
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onDryRun']
@@ -1876,7 +1877,7 @@ export const RunningAlertDetailEntry: ComponentRegistryEntry = {
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../components/RunningAlertDetail.js').RunningAlertDetailProps['onKill']
-		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningAlertDetail job={job} jobId={jobId} runHistory={runHistory} progress={progress} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 
@@ -1906,6 +1907,7 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 		const job = resolveExpressionValue(node['job'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['job']
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['jobId']
 		const runHistory = resolveExpressionValue(node['runHistory'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['runHistory']
+		const progress = resolveExpressionValue(node['progress'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['progress']
 		const onAfterTrigger = resolveExpressionValue(node['onAfterTrigger'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onAfterTrigger']
 		const onDelete = resolveExpressionValue(node['onDelete'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onDelete']
 		const onDryRun = resolveExpressionValue(node['onDryRun'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onDryRun']
@@ -1913,7 +1915,7 @@ export const RunningInlineDetailEntry: ComponentRegistryEntry = {
 		const onViewLogs = resolveExpressionValue(node['onViewLogs'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onViewLogs']
 		const onEdit = resolveExpressionValue(node['onEdit'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onEdit']
 		const onKill = resolveExpressionValue(node['onKill'], ctx) as import('../components/RunningInlineDetail.js').RunningInlineDetailProps['onKill']
-		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
+		return <RunningInlineDetail job={job} jobId={jobId} runHistory={runHistory} progress={progress} onAfterTrigger={onAfterTrigger} onDelete={onDelete} onDryRun={onDryRun} onRestart={onRestart} onViewLogs={onViewLogs} onEdit={onEdit} onKill={onKill} />
 	},
 }
 

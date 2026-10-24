@@ -501,3 +501,10 @@ describe('a Cancel navigation can fill its own address', () => {
     expect(checked.length, 'no cancel brain with a placeholder was found: the check looks at nothing').toBeGreaterThan(0);
   });
 });
+
+describe('progress of the running job on every job page variant', () => {
+  it.each(['job-detail.yaml', 'job-detail-a.yaml', 'job-detail-b.yaml', 'job-detail-c.yaml'])('%s passes the polled progress to its running view', file => {
+    const text = fs.readFileSync(path.join(PAGES_DIR, file), 'utf8');
+    expect(text).toMatch(/progress:\s*\$sources\.jobData\.progress/);
+  });
+});

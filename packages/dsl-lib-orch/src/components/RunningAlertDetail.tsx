@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Clock } from 'lucide-react';
-import { isJobRunning, liveOrLatestRun, type Job, type RuntimeEntry } from '../types.js';
+import { isJobRunning, liveOrLatestRun, type Job, type ProgressEstimate, type RuntimeEntry } from '../types.js';
+import { JobProgress } from './JobProgress.js';
 import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import { TriggerButton } from './TriggerButton.js';
 import { DryRunButton } from './DryRunButton.js';
@@ -28,6 +29,8 @@ export interface RunningAlertDetailProps {
   job: Job;
   jobId: string;
   runHistory?: RuntimeEntry[];
+  /** The `progress` of the job source: shown while the job runs, nothing otherwise. */
+  progress?: ProgressEstimate | null;
   /**
    * Fired once a Run now this component ran itself has settled, started or refused. The component
    * posts the trigger itself because a page-owned brain cannot see a refusal (a 200 body, not a
@@ -47,7 +50,7 @@ export interface RunningAlertDetailProps {
  * @registryCategory composite
  * @registryTags job detail running alert design-b
  */
-export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningAlertDetailProps): React.ReactElement | null {
+export function RunningAlertDetail({ job, jobId, runHistory, progress, onAfterTrigger, onKill, onDelete, onDryRun, onRestart, onViewLogs, onEdit }: RunningAlertDetailProps): React.ReactElement | null {
   const [, setTick] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [killing, setKilling] = useState(false);
@@ -147,6 +150,11 @@ export function RunningAlertDetail({ job, jobId, runHistory, onAfterTrigger, onK
                 <span>&middot; started {fmtTime(currentRun.startedAt)}</span>
                 {currentRun.pid != null && <span>&middot; PID {currentRun.pid}</span>}
               </div>
+              {progress != null && (
+                <div className="mt-1.5">
+                  <JobProgress progress={progress} />
+                </div>
+              )}
             </div>
             <RestartButton job={job} jobId={jobId} running={isRunning} onRestart={onRestart} />
             <ButtonAction label="Kill" variant="danger" onClick={handleKill} disabled={killing} loading={killing} />
