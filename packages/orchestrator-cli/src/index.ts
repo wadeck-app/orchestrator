@@ -313,7 +313,7 @@ async function main(): Promise<void> {
         startedAt: new Date(Date.now() - process.uptime() * 1000),
         config:    daemonCfg,
         supervisor: supervisorSetup.status,
-      }),
+      }, (line) => daemonLog.write(line)),
       // Expose port + uptime in GET /version response for `orch status`
       versionExtra: (): Record<string, unknown> => ({
         port:   activePort,

@@ -91,7 +91,9 @@ Job mutation:
                                skipExitCodes, liveness, label, triggerMode, description,
                                resourceLimits (resourceLimits.<key> clears one key)
                                Example: orch edit my-job --unset cwd
-  orch remove <id>             Remove a job
+  orch remove <id>             Remove a job and the data derived from its runs (telemetry, resource
+                               history, finished run folders). Its logs stay until age pruning.
+                               Files a running instance still writes are reported, not deleted.
   orch enable <id>             Enable a job
   orch disable <id>            Disable a job
 

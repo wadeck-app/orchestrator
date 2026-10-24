@@ -33,7 +33,7 @@ function makeEnv() {
   const state = new State(path.join(dir, 'state.json'));
   const calls = [];
   const scheduler = {
-    killJob: async () => ({ killed: false }),
+    killJob: async () => ({ killed: false }), runningCount: () => 0,
     skipNextFiring: () => {},
     scheduleJob: (job) => calls.push({ fn: 'scheduleJob', id: job.id, type: job.type, enabled: job.enabled }),
     unscheduleJob: (id) => calls.push({ fn: 'unscheduleJob', id }),
@@ -142,7 +142,7 @@ describe('the audit records the job type', () => {
     const registry = new Registry(path.join(dir, 'registry.json'));
     const state = new State(path.join(dir, 'state.json'));
     const scheduler = {
-      killJob: async () => ({ killed: false }), skipNextFiring: () => {},
+      killJob: async () => ({ killed: false }), runningCount: () => 0, skipNextFiring: () => {},
       scheduleJob: () => {}, unscheduleJob: () => {},
     };
     const audit = { log: (event, payload) => entries.push({ event, payload }) };

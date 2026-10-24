@@ -36,7 +36,7 @@ async function makeTestDaemon(dir, { withScheduler = false } = {}) {
     : {
       trigger: async (id) => { throw new Error(`Job not found: "${id}"`); },
       start: async () => {}, stop: async () => {},
-      scheduleJob: () => {}, unscheduleJob: () => {},
+      scheduleJob: () => {}, unscheduleJob: () => {}, runningCount: () => 0,
     };
   registry.load();
 

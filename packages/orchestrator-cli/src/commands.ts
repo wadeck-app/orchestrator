@@ -19,6 +19,7 @@ import { summarizeTimers } from './scheduler.js';
 import type { DaemonConfig } from './daemonConfig.js';
 import type { SupervisorState } from './supervised-run.js';
 import { estimateProgress } from './progress/engine.js';
+import { removeJobData, dropStaleJobData, type JobDataCleanup } from './job-data-cleanup.js';
 
 // Same rule as registry.add and the logs route's path-traversal guard (P-7); do not relax it here.
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
@@ -48,8 +49,16 @@ export function makeCommands(
   events?: EventPublisher,
   execManager?: ExecManager,
   daemonInfo?: DaemonInfoSource,
+  // The daemon log. Absent in tests that do not look at it.
+  log?: (line: string) => void,
 ): OrchestratorCommands {
   const secrets = new SecretsManager(configDir);
+  // One line per path that could not be deleted: the reply tells the caller, the log tells whoever reads it later.
+  const reportLeftovers = (what: string, id: string, cleanup: JobDataCleanup): void => {
+    for (const left of cleanup.leftovers) {
+      log?.(`${what} job "${id}": not deleted${left.path ? ` ${left.path}` : ''}: ${left.reason}`);
+    }
+  };
   return {
     'list-jobs':   () => registry.list(),
 
@@ -69,6 +78,13 @@ export function makeCommands(
     'add-job':     (p) => {
       registry.add(p as Partial<Job>);
       const added = registry.get((p as { id: string }).id)!;
+      // After registry.add, which refuses a duplicate id: the files of a job that exists are not stale.
+      const stale = dropStaleJobData(configDir, added.id, { running: () => scheduler.runningCount(added.id) > 0 });
+      const dropped = stale.cleaned.telemetry + stale.cleaned.resourceHistory;
+      if (dropped > 0) {
+        log?.(`added job "${added.id}": dropped ${dropped} telemetry / resource-history file(s) left behind under this id, so the new job starts without another job's history`);
+      }
+      reportLeftovers('added', added.id, stale);
       scheduler.scheduleJob(added);
       audit?.log('job.added', { jobId: added.id, label: added.label, type: added.type });
       return added;
@@ -81,7 +97,16 @@ export function makeCommands(
       // Before the registry write would be wrong too: an unscheduled-then-failed-removal leaves a
       // job that exists and never fires.
       scheduler.unscheduleJob(id);
-      audit?.log('job.deleted', { jobId: id, label: job?.label, type: job?.type });
+      // A running instance is not stopped by a removal: what it is still writing stays (see removeJobData).
+      const running = scheduler.runningCount(id) > 0;
+      const cleanup = removeJobData(configDir, id, { running });
+      if (!running) {
+        state.clear(id);
+      }
+      reportLeftovers('removed', id, cleanup);
+      audit?.log('job.deleted', { jobId: id, label: job?.label, type: job?.type, cleaned: cleanup.cleaned });
+      // Only said when something is left, so a caller that ignores the reply loses nothing.
+      return cleanup.leftovers.length > 0 ? { leftovers: cleanup.leftovers } : undefined;
     },
 
     'enable-job':  (p) => {

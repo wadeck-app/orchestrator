@@ -86,6 +86,24 @@ so its run history and audit entries still have a definition to point at.
 Pruning applies whichever bound is reached first, on daemon start and after each firing. `orch list`
 hides spent jobs (use `--past`); the dashboard has a "Past once" filter chip.
 
+## What removing a job deletes
+
+`orch remove <id>` (also `DELETE /api/jobs/:id`) deletes the data derived from the job's runs, so a job later added under the same id starts clean.
+
+| Deleted | Kept |
+|---|---|
+| `telemetry/<id>.ndjson` and `.1.ndjson` | `logs/jobs/<id>/` (pruned by age, 120 days) |
+| `resource-history/<id>.ndjson` | |
+| `runs/<id>/` folders of finished runs | `runs/<id>/` folders whose supervisor is still `running` |
+| the job's `state.json` history | `tmp/<id>/` when it holds files (the job's own output) |
+| `tmp/<id>/` when empty | |
+
+- A job with a run in progress keeps its telemetry, resource history and history: the run is still writing them. They are listed as `leftovers`.
+- A file that cannot be deleted (locked on Windows) never fails the removal. The daemon log has one line per path and the reply carries `leftovers: [{path, reason}]` (CLI: printed on stderr; REST: `200` instead of `204`). Delete those by hand.
+- Adding a job whose telemetry or resource history already exists (older version, crash) drops them first and logs one line.
+- The audit line `job.deleted` carries `cleaned: {telemetry, resourceHistory, runs}` (counts).
+- Purge logs by hand: delete `<configDir>/logs/jobs/<id>/` while no run of the job is going.
+
 ## Manual jobs
 
 `orch add manual <id> --command "..."` creates a job the scheduler never fires: nothing is armed at

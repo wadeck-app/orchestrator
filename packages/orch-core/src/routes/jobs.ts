@@ -198,7 +198,12 @@ export async function jobsRoutes(
   fastify.delete('/api/jobs/:id', async (req, reply) => {
     return guard(reply, async () => {
       const { id } = req.params as { id: string };
-      await proxy.send('remove-job', { id });
+      const result = await proxy.send('remove-job', { id });
+      // Data of the job the daemon could not delete (a locked file): the job is gone, so not an error, but not silent either.
+      const leftovers = (result as { leftovers?: unknown } | null | undefined)?.leftovers;
+      if (Array.isArray(leftovers) && leftovers.length > 0) {
+        return reply.code(200).send({ leftovers });
+      }
       return reply.code(204).send();
     });
   });

@@ -368,7 +368,8 @@ export type OrchestratorCommands = {
   'list-jobs':   (payload?: unknown) => Job[];
   'get-job':     (payload?: unknown) => Job | null;
   'add-job':     (payload?: unknown) => Job;
-  'remove-job':  (payload?: unknown) => void;
+  /** Replies with `leftovers` (path + reason) only when some derived data of the job could not be deleted. */
+  'remove-job':  (payload?: unknown) => { leftovers: Array<{ path: string; reason: string }> } | void;
   'enable-job':  (payload?: unknown) => void;
   'disable-job': (payload?: unknown) => void;
   'edit-job':    (payload?: unknown) => Job;

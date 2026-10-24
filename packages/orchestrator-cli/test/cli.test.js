@@ -174,6 +174,18 @@ describe('orch remove', () => {
     assert.equal(calls[0].command, 'remove-job');
     assert.equal(calls[0].payload.id, 'my-job');
   });
+
+  test('prints what the daemon could not delete, with the reason', async () => {
+    const errs = [];
+    const origErr = console.error;
+    console.error = (m) => { errs.push(String(m)); };
+    try {
+      await run(['remove', 'my-job'], { sendResult: { leftovers: [{ path: 'C:/cfg/telemetry/my-job.ndjson', reason: 'EBUSY: locked' }] } });
+    } finally {
+      console.error = origErr;
+    }
+    assert.match(errs.join('\n'), /telemetry[\\/]my-job\.ndjson: EBUSY: locked/);
+  });
 });
 
 describe('orch enable / disable', () => {

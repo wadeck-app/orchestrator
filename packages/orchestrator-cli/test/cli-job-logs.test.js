@@ -54,6 +54,9 @@ async function run(argv, { history = [], job = { id: JOB }, historyFn } = {}) {
     await runCli(argv, {
       send: async (command) => {
         if (command === 'get-job') {
+          if (job instanceof Error) {
+            throw job;
+          }
           return job;
         }
         if (command === 'list-state') {
@@ -438,5 +441,33 @@ describe('orch job: help', () => {
       assert.match(out, /^ {2}1 {3}Unknown job/m);
       assert.match(out, /^ {2}4 {3}Usage error/m);
     }
+  });
+});
+
+describe('orch job logs: the sub-command in the job id position', () => {
+  const HINT = /Did you mean: orch job <jobId> logs \.\.\.\? The job id comes first\./;
+
+  for (const argv of [['job', 'logs'], ['job', 'logs', '-f'], ['job', 'logs', 'nightly-backup']]) {
+    test(`orch ${argv.join(' ')} hints at the order and exits 4`, async () => {
+      const { err, exitCode } = await run(argv, { job: null });
+
+      assert.match(err, HINT);
+      assert.doesNotMatch(err, /Missing sub-command/);
+      assert.equal(exitCode, 4);
+    });
+  }
+
+  test('a daemon that answers "not found" with an error gives the same hint', async () => {
+    const { err, exitCode } = await run(['job', 'logs', '-f'], { job: new Error('Job not found: "logs"') });
+
+    assert.match(err, HINT);
+    assert.equal(exitCode, 4);
+  });
+
+  test('a job really called "logs" keeps working: its id comes first', async () => {
+    const { err } = await run(['job', 'logs'], { job: { id: 'logs' } });
+
+    assert.match(err, /Missing sub-command for job "logs"/);
+    assert.doesNotMatch(err, /Did you mean/);
   });
 });

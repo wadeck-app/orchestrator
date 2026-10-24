@@ -1070,8 +1070,13 @@ Examples:
 
     case 'remove': {
       const [id] = rest;
-      await send('remove-job', { id });
+      const reply = await send('remove-job', { id }) as { leftovers?: Array<{ path: string; reason: string }> } | undefined;
       console.log(`Job "${id}" removed.`);
+      // The job is gone; some of its derived data could not be deleted (a locked file), so say which and why.
+      if (reply?.leftovers && reply.leftovers.length > 0) {
+        const lines = reply.leftovers.map((l) => `  ${l.path || '(job id)'}: ${l.reason}`);
+        console.error(`Not deleted (the daemon log has the same lines):\n${lines.join('\n')}\nDelete them by hand once the process holding them has ended.`);
+      }
       break;
     }
 
@@ -1713,12 +1718,30 @@ Use --wait to block until the command finishes.`);
     // `orch job <jobId> <sub-command>`: the sub-commands of one job. Only `logs` exists.
     case 'job': {
       const [jobId, sub, ...subRest] = rest;
+      const JOB_SUBCOMMANDS = ['logs'];
+      // Not found is either a null answer or an error saying so; any other failure (daemon down) is not hidden.
+      const jobExists = async (id: string): Promise<boolean> => {
+        try {
+          return (await send('get-job', { id })) != null;
+        } catch (e) {
+          if (/not found/i.test(getErrorMessage(e))) {
+            return false;
+          }
+          throw e;
+        }
+      };
       const usage = (problem: string): never => {
         console.error(`${problem}\n\n${JOB_HELP}`);
         process.exit(4);
       };
       if (jobId === undefined || jobId.startsWith('-')) {
         usage('Missing job id. See the ids with: orch list');
+      }
+      // `orch job logs -f`: the sub-command typed where the job id goes. Only said when no job has that id,
+      // so a job really called "logs" keeps working.
+      if (JOB_SUBCOMMANDS.includes(jobId!) && !(await jobExists(jobId!))) {
+        console.error(`No job has the id "${jobId}". Did you mean: orch job <jobId> ${jobId} ...? The job id comes first.\n\n${JOB_HELP}`);
+        process.exit(4);
       }
       if (sub === undefined) {
         usage(`Missing sub-command for job "${jobId}".`);

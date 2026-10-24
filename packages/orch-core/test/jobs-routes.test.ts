@@ -333,6 +333,17 @@ describe('Jobs API Routes', () => {
       expect(res.statusCode).toBe(204);
       expect(res.body).toBe('');
     });
+
+    // A removal that left files behind is still a removal, but the caller must be able to see what stayed.
+    it('answers 200 with the leftovers when the daemon could not delete some of the job data', async () => {
+      const leftovers = [{ path: 'C:/cfg/telemetry/job1.ndjson', reason: 'EBUSY: resource busy or locked' }];
+      mockProxy.send = async () => ({ leftovers });
+
+      const res = await app.inject({ method: 'DELETE', url: '/api/jobs/job1' });
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({ leftovers });
+    });
   });
 
   describe('POST /api/jobs/:id/trigger', () => {
