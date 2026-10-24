@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -49,6 +50,7 @@ const CLI_DECL: Record<string, { file: string; name: string }> = {
 /** Top-level field names of `export interface <name>`, comments stripped. Throws when the interface is missing. */
 function fieldsOf(file: string, name: string): string[] {
   const text = fs.readFileSync(file, 'utf8')
+    .replace(/\r\n/g, '\n')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
   const start = text.search(new RegExp(`export interface ${name}(?![A-Za-z0-9_])`));
@@ -87,7 +89,9 @@ function fieldsOf(file: string, name: string): string[] {
 
 /** The text of `export type <name> = ...;`, comments and whitespace removed. Throws when it is missing. */
 function typeAliasOf(file: string, name: string): string {
+  // A checkout with CRLF line endings (the CI's Windows runner) must read like one with LF.
   const text = fs.readFileSync(file, 'utf8')
+    .replace(/\r\n/g, '\n')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
   const m = new RegExp(`export type ${name}\\s*=([\\s\\S]*?);[ \\t]*(?:\\n|$)`).exec(text);
@@ -129,5 +133,24 @@ describe.each(Object.keys(CLI_DECL))('%s: UI types.ts vs the daemon declaration'
       ...Object.keys(UI_ONLY[name]).filter((f) => cli.includes(f) || !ui.includes(f)),
     ];
     expect(stale).toEqual([]);
+  });
+});
+
+// The CI's Windows runner checks files out with CRLF line endings: the alias reader looked for ';' followed by '\n' and
+// found neither type ('type JobProgressSetting not found'), while the same test passed on a machine with LF files.
+describe('typeAliasOf on a file with CRLF line endings', () => {
+  it('reads a multi-line alias exactly as it reads the LF one', () => {
+    const lf = "export type Mode =\n  | 'a'\n  | 'b';\nexport type Other = 'x';\n";
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-parity-crlf-'));
+    try {
+      const lfFile = path.join(dir, 'lf.ts');
+      const crlfFile = path.join(dir, 'crlf.ts');
+      fs.writeFileSync(lfFile, lf);
+      fs.writeFileSync(crlfFile, lf.replace(/\n/g, '\r\n'));
+      expect(typeAliasOf(crlfFile, 'Mode')).toBe(typeAliasOf(lfFile, 'Mode'));
+      expect(typeAliasOf(crlfFile, 'Mode')).toBe("| 'a' | 'b'");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

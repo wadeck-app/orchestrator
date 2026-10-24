@@ -62,7 +62,10 @@ export function openProgressFile(input: OpenProgressFileInput): ProgressFile {
     try {
       raw = fs.readFileSync(file, 'utf8');
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      // ENOTDIR: a file stands where the progress folder should be (Linux and macOS say that, Windows says ENOENT).
+      // Nothing was learned there yet; the failed save that follows is the only thing worth a log line.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') {
         return fresh();
       }
       input.log(`${prefix} learned data file unreadable (${getErrorMessage(err)}); it is rebuilt from the logs and the run history`);

@@ -121,3 +121,26 @@ describe('the strategy chosen by auto for a run', () => {
     assert.equal(fs.statSync(progressFilePath(dir, 'j')).mtimeMs, before);
   });
 });
+
+// A path that goes THROUGH a file (a file where the progress folder should be) reads as ENOTDIR on Linux and macOS and
+// as ENOENT on Windows. Both mean "nothing was learned here yet": only the failed save is worth a log line, not an
+// "unreadable" one on top of it (the CI saw 2 lines instead of 1 on ubuntu and macOS).
+describe('learned data store: reading through a path that is blocked by a file', () => {
+  test('ENOTDIR reads as no data, with no log line of its own', () => {
+    const dir = fx.tempDir();
+    const lines = [];
+    const real = fs.readFileSync;
+    fs.readFileSync = (target, ...rest) => {
+      if (String(target).endsWith('j.json')) {
+        throw Object.assign(new Error(`ENOTDIR: not a directory, open '${target}'`), { code: 'ENOTDIR' });
+      }
+      return real(target, ...rest);
+    };
+    try {
+      assert.equal(open(dir, JOB, lines).storeFor(S1).read(), undefined);
+    } finally {
+      fs.readFileSync = real;
+    }
+    assert.deepEqual(lines, []);
+  });
+});
