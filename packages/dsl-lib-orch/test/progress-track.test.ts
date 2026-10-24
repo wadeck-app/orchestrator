@@ -115,6 +115,10 @@ describe('JobProgress track colour', () => {
     expect(read(path.join(pkg, 'src/components/JobProgress.tsx'))).toContain('bg-progress-track');
   });
 
+  it('the uptime bar of the job card, which sits on the card surface checked below, takes the same track', () => {
+    expect(read(path.join(pkg, 'src/components/JobCard.tsx'))).toContain('PROGRESS_TRACK_CLS');
+  });
+
   for (const target of TARGETS) {
     describe(target.name, () => {
       it('maps progress-track onto the custom property in the tailwind config', () => {

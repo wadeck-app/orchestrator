@@ -272,12 +272,37 @@ describe('formatting', () => {
     expect(formatRemaining(60 * 60_000 + 1)).toBe('in 1 h 01 min');
   });
 
-  it('adds the date when the end is after midnight', () => {
+  it('says tomorrow when the end is after midnight', () => {
     // local-time constructors: the result does not depend on the machine's time zone
     const now = new Date(2026, 9, 20, 23, 50).getTime();
-    expect(formatEndTime(new Date(2026, 9, 21, 0, 10).toISOString(), now)).toBe('10-21 00:10');
+    expect(formatEndTime(new Date(2026, 9, 21, 0, 10).toISOString(), now)).toBe('tomorrow 00:10');
     expect(formatEndTime(new Date(2026, 9, 20, 23, 59).toISOString(), now)).toBe('23:59');
-    expect(formatEndTime(new Date(2027, 0, 1, 0, 5).toISOString(), new Date(2026, 11, 31, 23, 50).getTime())).toBe('01-01 00:05');
+    expect(formatEndTime(new Date(2027, 0, 1, 0, 5).toISOString(), new Date(2026, 11, 31, 23, 50).getTime())).toBe('tomorrow 00:05');
+  });
+
+  it('names the weekday up to six days ahead and gives the date beyond', () => {
+    // 2026-10-20 is a Tuesday
+    const now = new Date(2026, 9, 20, 9, 0).getTime();
+    expect(formatEndTime(new Date(2026, 9, 22, 3, 10).toISOString(), now)).toBe('Thu 03:10');
+    expect(formatEndTime(new Date(2026, 9, 26, 18, 5).toISOString(), now)).toBe('Mon 18:05');
+    expect(formatEndTime(new Date(2026, 9, 27, 18, 5).toISOString(), now)).toBe('10-27 18:05');
+    expect(formatEndTime(new Date(2026, 10, 10, 8, 17).toISOString(), now)).toBe('11-10 08:17');
+  });
+
+  it('keeps the date for an end that is before today', () => {
+    const now = new Date(2026, 9, 20, 9, 0).getTime();
+    expect(formatEndTime(new Date(2026, 9, 18, 8, 0).toISOString(), now)).toBe('10-18 08:00');
+  });
+
+  it('rounds long remaining times to whole hours, then to days', () => {
+    expect(formatRemaining(5 * 3600_000 + 59 * 60_000)).toBe('in 5 h 59 min');
+    expect(formatRemaining(6 * 3600_000)).toBe('in 6 h');
+    expect(formatRemaining(6 * 3600_000 + 1)).toBe('in 7 h');
+    expect(formatRemaining(13 * 3600_000 + 20 * 60_000)).toBe('in 14 h');
+    expect(formatRemaining(23 * 3600_000 + 59 * 60_000)).toBe('in 1 d');
+    expect(formatRemaining(24 * 3600_000)).toBe('in 1 d');
+    expect(formatRemaining(26 * 3600_000)).toBe('in 1 d 2 h');
+    expect(formatRemaining(400 * 3600_000)).toBe('in 16 d 16 h');
   });
 
   it('formats the remaining time', () => {
@@ -291,6 +316,26 @@ describe('formatting', () => {
   it('formats the end time as local HH:MM, with the date when it is not today', () => {
     const now = Date.parse('2026-10-20T14:00:00.000Z');
     expect(formatEndTime(ETA, now)).toBe(hhmm(ETA));
-    expect(formatEndTime('2026-10-22T14:06:00.000Z', now)).toMatch(/^\d\d-\d\d \d\d:\d\d$/);
+    expect(formatEndTime('2026-10-22T14:06:00.000Z', now)).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d\d:\d\d$/);
+  });
+});
+
+// On a job card the row is one truncated line: a visible cut-off 'low co' is noise, while the faded bar, the '~' and the
+// tooltip already say it. The full text stays in the title.
+describe('JobProgress on a card (fill)', () => {
+  it('does not put the low-confidence suffix in the visible text, and keeps it in the title', () => {
+    const { container } = render(<JobProgress progress={estimate({ confidence: 'low' })} nowMs={SERVER_NOW} fill />);
+
+    const root = container.querySelector('[data-progress-state="estimate"]')!;
+    const detail = container.querySelector('[data-progress-detail]')!;
+    expect(detail.textContent).not.toContain('low confidence');
+    expect(detail.getAttribute('title')).toContain('low confidence');
+    expect(root.getAttribute('data-confidence')).toBe('low');
+    expect(root.getAttribute('class')).toContain('opacity-');
+  });
+
+  it('keeps the suffix in the visible text outside a card', () => {
+    const { container } = render(<JobProgress progress={estimate({ confidence: 'low' })} nowMs={SERVER_NOW} />);
+    expect(container.querySelector('[data-progress-detail]')!.textContent).toContain('low confidence');
   });
 });

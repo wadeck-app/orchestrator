@@ -1754,7 +1754,8 @@ export const JobProgressEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const progress = resolveExpressionValue(node['progress'], ctx) as import('../components/JobProgress.js').JobProgressProps['progress']
 		const nowMs = resolveExpressionValue(node['nowMs'], ctx) as import('../components/JobProgress.js').JobProgressProps['nowMs']
-		return <JobProgress progress={progress} nowMs={nowMs} />
+		const fill = resolveExpressionValue(node['fill'], ctx) as import('../components/JobProgress.js').JobProgressProps['fill']
+		return <JobProgress progress={progress} nowMs={nowMs} fill={fill} />
 	},
 }
 

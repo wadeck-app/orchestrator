@@ -7,7 +7,7 @@ import { descriptionFirstLine } from '../job-description.js';
 import { describeAgo } from '../relative-time.js';
 import { describeResourceLimits, hasCustomLimits, limitsBadgeLabel } from '../resource-limits.js';
 import { END_REASON_PILL, JobStatusPill } from './JobStatusPill.js';
-import { JobProgress } from './JobProgress.js';
+import { JobProgress, PROGRESS_TRACK_CLS } from './JobProgress.js';
 import { LateMarker } from './LateMarker.js';
 import { NextFireCountdown } from './NextFireCountdown.js';
 import { TriggerButton } from './TriggerButton.js';
@@ -265,6 +265,13 @@ export function JobCard({ job, runHistory, uptimePercent, progress, consecutiveF
         {jobListBadge(job, runHistory, now)}
         <NextFireCountdown job={job} nowMs={now} />
       </div>
+      {/* A running job's progress has a row of its own, the full card width: next to the uptime bar its text wrapped into
+          three lines. Nothing is rendered for an idle job, so its card keeps its height. */}
+      {progress != null && isJobRunning(runHistory) && (
+        <div data-job-progress-row className="mb-2 min-w-0">
+          <JobProgress progress={progress} fill />
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-3">
         <p className="text-xs text-muted">
           {latestRun(runHistory)
@@ -347,6 +354,8 @@ export function JobCard({ job, runHistory, uptimePercent, progress, consecutiveF
               valueLabel keeps the decimal that the rounded percentage was hiding. */}
           {uptimePercent !== null && uptimePercent !== undefined && (
             <Tooltip content="Share of recent runs that succeeded">
+              {/* The track would be nearly invisible on the card's light surface: same token as the progress bar. */}
+              <span className={`inline-flex ${PROGRESS_TRACK_CLS}`}>
               <Progress
                 value={uptimePercent}
                 variant={uptimeVariant(uptimePercent)}
@@ -355,9 +364,9 @@ export function JobCard({ job, runHistory, uptimePercent, progress, consecutiveF
                 layout="inline"
                 size="sm"
               />
+              </span>
             </Tooltip>
           )}
-          {progress != null && isJobRunning(runHistory) && <JobProgress progress={progress} />}
           {/* From 2, not from alertAfterFailures: at 1 the status pill already says Failed, at 2 it has become
               a pattern. alertAfterFailures stays what it was, the point where the daemon alerts. */}
           {consecutiveFailures !== undefined && consecutiveFailures >= 2 && (
