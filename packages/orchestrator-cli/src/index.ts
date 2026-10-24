@@ -17,6 +17,7 @@ import { resolveSupervisor } from './supervised-run.js';
 import { TrayManager } from './tray-manager.js';
 import { EventPublisher } from './event-publisher.js';
 import { flushBeforeStop } from './flush-before-stop.js';
+import { EVENT_CATALOG, EVENT_SOURCE } from './event-catalog.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
@@ -258,6 +259,8 @@ async function main(): Promise<void> {
 
     audit.log('daemon.start', { pid: process.pid, version });
     events.publish('daemon.started', { pid: process.pid, version });
+    // Not awaited: declaring the events never delays the start (declareEvents does not reject; its outcome is a log line).
+    void events.declareEvents(EVENT_SOURCE, EVENT_CATALOG);
 
     let dashboardManager: DashboardManager | null = null;
     try {

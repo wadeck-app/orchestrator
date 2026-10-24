@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createQueuePublisher } from '@wadeck-app/queue-sdk';
-import type { QueuePublisher } from '@wadeck-app/queue-sdk';
+import type { EventDeclaration, QueuePublisher, RegisterResult } from '@wadeck-app/queue-sdk';
 import { getErrorMessage } from './fsUtil.js';
 
 interface LogSink { write(line: string): void }
@@ -26,6 +26,8 @@ export class EventPublisher {
   private readonly _jobCwd: ((jobId: string) => string | null | undefined) | undefined;
   private _queue: QueuePublisher | null = null;
   private _failing = false;
+  // A declaration the queue did not take for a reason that may pass: retried once, after the first accepted publish.
+  private _pendingDeclaration: { source: string; events: EventDeclaration[] } | null = null;
   private readonly _flushBoundMs: number;
 
   constructor(private readonly _projectName = 'orchestrator', private readonly _logger?: LogSink, options: EventPublisherOptions = {}) {
@@ -41,6 +43,7 @@ export class EventPublisher {
         (result) => {
           if (result.status === 'queued' || result.status === 'dispatched') {
             this._recovered(event);
+            this._retryDeclaration();
           }
           // 'dropped' and 'unknown' already went through onError, which logged them.
         },
@@ -49,6 +52,60 @@ export class EventPublisher {
     } catch (err) {
       this._failed(`Failed to publish "${event}" to the queue: ${getErrorMessage(err)}`);
     }
+  }
+
+  /**
+   * Tells the queue which events this program pushes (`queue events list|show`), replacing what `source` declared before.
+   * Never rejects. Every outcome is one line in the daemon log; with the SDK switched off (QUEUE_SDK_OFF=1) nothing is
+   * logged as an error. A declaration that did not reach the daemon is retried once, at the first accepted publish.
+   */
+  declareEvents(source: string, events: EventDeclaration[]): Promise<RegisterResult['status']> {
+    return this._declare(source, events, true);
+  }
+
+  private async _declare(source: string, events: EventDeclaration[], mayRetry: boolean): Promise<RegisterResult['status']> {
+    let result: RegisterResult;
+    try {
+      result = await this._publisher().registerEvents(source, events);
+    } catch (err) {
+      this._logger?.write(`[event-publisher] Could not declare the events of "${source}" to the queue: ${getErrorMessage(err)}`);
+      return 'dropped';
+    }
+    const log = (text: string): void => this._logger?.write(`[event-publisher] ${text}`);
+    switch (result.status) {
+      case 'registered':
+        log(`Declared ${result.count ?? events.length} event(s) of "${source}" to the queue (see \`queue events list\`).`);
+        break;
+      case 'rejected': {
+        const problems = (result.problems ?? []).map((p) => `${p.path}: ${p.message}`).join('; ') || (result.reason ?? 'no detail');
+        log(`The queue rejected the event declaration of "${source}" and stored nothing: ${problems}. Fix src/event-catalog.ts.`);
+        break;
+      }
+      case 'unsupported':
+        log(`Events of "${source}" are not declared: the queue daemon is older than protocol 1.1.0: run queue cli update (pushes keep working).`);
+        break;
+      default: {
+        // Switched off on purpose (QUEUE_SDK_OFF): the SDK already announced it once, there is nothing to report or retry.
+        if (result.status === 'dropped' && /switched off/i.test(result.reason ?? '')) {
+          return result.status;
+        }
+        log(`The event declaration of "${source}" did not reach the queue (${result.status}): ${result.reason ?? 'no reason given'}`
+          + (mayRetry ? ' It is tried once more at the first event that gets through.' : ''));
+        if (mayRetry) {
+          this._pendingDeclaration = { source, events };
+        }
+      }
+    }
+    return result.status;
+  }
+
+  private _retryDeclaration(): void {
+    const pending = this._pendingDeclaration;
+    if (pending === null) {
+      return;
+    }
+    this._pendingDeclaration = null;
+    void this._declare(pending.source, pending.events, false);
   }
 
   /**
@@ -76,7 +133,8 @@ export class EventPublisher {
       // without a queue, or the test preload) switches the SDK off: it announces that once, through onWarning.
       silent: true,
       onWarning: (warning) => this._logger?.write(`[event-publisher] ${warning}`),
-      onError: (failure) => this._failed(`Failed to publish "${failure.event}" to the queue (${failure.kind}, ${failure.outcome}): ${failure.message}`),
+      // A failed declaration is reported by declareEvents, from its result: not a second time here.
+      onError: (failure) => failure.operation === 'register-events' ? undefined : this._failed(`Failed to publish "${failure.event}" to the queue (${failure.kind}, ${failure.outcome}): ${failure.message}`),
     });
     return this._queue;
   }

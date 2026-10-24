@@ -353,22 +353,18 @@ Answer: `{ runs: [...newest first], total, retention: 500 }`. `total` is the num
 
 The daemon pushes events to the `queue` daemon (`POST /push`), so `queue wait <event>` and subscribers in `subscribers.yml` can react. `queue wait` takes an exact event name (`queue wait job.completed --when "payload.jobId=<id>"`; several `--when` must all hold); patterns (`job.*`, `**`) exist only in `subscribers.yml`.
 
-| Event | When | Payload |
-|---|---|---|
-| `job.started` | run spawned | `jobId, label, pid, trigger` |
-| `job.completed` / `job.failed` | run ended, exit 0 / not 0 | `jobId, label, exitCode, durationMs` |
-| `job.skipped` | not run (`skipExitCodes`, concurrency) | `jobId, label, exitCode, durationMs, reason` |
-| `job.recovered` | exit 0 after a failed run | `jobId, label` |
-| `job.timed_out`, `job.killed_manual` | timeout / `orch kill` | `jobId, label, timeoutSeconds` / `durationMs` |
-| `job.anomaly` | duration over 3x the average | `jobId, label, durationMs, avgMs, multiplier` |
-| `job.resource_soft_limit`, `job.resource_hard_limit` | resource limits | `jobId, label, cpuPct, ramMb, softThreshold` / `hardThreshold, consecutiveSamples, enforced` |
-| `job.triggered_manual`, `job.restarted` | `orch trigger`, `orch restart-job` | `jobId, label, ip, userAgent` (+ `wasRunning, killed, started`) |
-| `job.window_expired` | `activeUntil` passed | `jobId, label, activeUntil` |
-| `alert.consecutive_failures`, `alert.retry_exhausted`, `alert.sla_breach` | alerts | `jobId, label` + `consecutiveFailures, threshold` / `exitCode, attempts` / `scheduledAt, windowMinutes` |
-| `exec.started`, `exec.completed`, `exec.failed` | `orch exec` runs | `runId, command, label` + `pid` / `exitCode, durationMs` |
-| `daemon.started`, `daemon.restarted` | daemon start / `orch restart` | `pid` (+ `version` on start) |
+The catalog `packages/orchestrator-cli/src/event-catalog.ts` is the source: for each event, when it fires, its payload schema, an example, its correlation key and whether it ends a run. The daemon declares it to the queue at every start (source `orchestrator`), so read it with `queue events list` and `queue events show <name>`. A test keeps the code, the catalog and this table in step.
 
-A run the daemon learns about late carries `late: true` and the real `finishedAt`.
+| Group | Events |
+|---|---|
+| Run of a job | `job.started`, `job.completed`, `job.failed`, `job.skipped`, `job.killed_manual`, `job.timed_out`, `job.recovered`, `job.anomaly` |
+| Requests | `job.triggered_manual`, `job.kill_requested`, `job.restarted` |
+| Job state | `job.window_expired`, `job.resource_soft_limit`, `job.resource_hard_limit` |
+| Alerts | `alert.consecutive_failures`, `alert.retry_exhausted`, `alert.sla_breach` |
+| `orch exec` | `exec.started`, `exec.completed`, `exec.failed` |
+| Daemon | `daemon.started`, `daemon.restarted` |
+
+A run ends with exactly one of `job.completed`, `job.failed`, `job.skipped`, `job.killed_manual` (the terminal events): `job.timed_out` and a hard resource kill are followed by `job.failed`, `orch kill` produces `job.killed_manual` instead of `job.failed`. `job.kill_requested` is the request, `job.killed_manual` the end of a run. A run the daemon learns about late carries `late: true` and the real `finishedAt`.
 
 Transport is `@wadeck-app/queue-sdk` (finding the daemon, token, `queue start` when it stopped itself, retries, protocol checks); see its `docs/reference.md` and `docs/troubleshooting.md` in the queue repo. Orchestrator decides:
 

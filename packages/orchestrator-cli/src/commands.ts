@@ -205,7 +205,8 @@ export function makeCommands(
       const { id, ip, userAgent } = p as { id: string; ip?: string; userAgent?: string };
       const job = registry.get(id);
       audit?.log('job.killed_manual', { jobId: id, label: job?.label, ip, userAgent });
-      events?.publish('job.killed_manual', { jobId: id, label: job?.label ?? id, ip: ip ?? null, userAgent: userAgent ?? null });
+      // A request, not an end: the stopped run ends with the scheduler's job.killed_manual (terminal), which must stay the only one.
+      events?.publish('job.kill_requested', { jobId: id, label: job?.label ?? id, ip: ip ?? null, userAgent: userAgent ?? null });
       return scheduler.killJob(id);
     },
 
