@@ -101,7 +101,9 @@ export function JobProgress({ progress, nowMs }: JobProgressProps): React.ReactE
       <span
         data-progress-state={state}
         data-confidence={progress.confidence}
-        className={`inline-flex items-center gap-2 ${low ? 'opacity-60' : ''}`}
+        // dsl-ui's Progress paints its track bg-muted-bg, which is invisible on light surfaces and has no prop to change.
+        // Radix gives the track role=progressbar; this selector outranks the single bg-muted-bg class.
+        className={`inline-flex items-center gap-2 [&_[role=progressbar]]:bg-progress-track ${low ? 'opacity-60' : ''}`}
       >
         <Progress value={pct} layout="inline" size="sm" showValue valueLabel={`${pct}%`} />
         <span className="text-xs text-muted">

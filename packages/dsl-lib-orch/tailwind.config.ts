@@ -50,6 +50,8 @@ export default {
         'tag-startup-bg':  'var(--color-tag-startup-bg)',
         'tag-once':        'var(--color-tag-once)',
         'tag-once-bg':     'var(--color-tag-once-bg)',
+        // The unfilled part of a job's progress bar: dsl-ui's own track colour vanishes on every light surface it sits on.
+        'progress-track':  'var(--color-progress-track)',
       },
     },
   },
