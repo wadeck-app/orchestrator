@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -135,4 +136,98 @@ describe('tag pill colours', () => {
       });
     });
   });
+});
+
+/*
+ * The job TYPE pill (cron / startup / once / manual) is not a user tag: its classes come from JobCard's
+ * TYPE_COLORS. In the dark theme the `once` pill was #1f2937 on a #1e293b card (invisible) and `manual`
+ * (dsl-ui's muted tokens) had 4.0:1 text. Each type must have readable text (4.5:1) and a pill that stands
+ * out from every surface it is drawn on (1.3:1), in both themes.
+ */
+describe('job type pill colours', () => {
+  const MIN_TEXT = 4.5;
+  const MIN_PILL = 1.3;
+  const TYPES = ['cron', 'startup', 'once', 'manual'] as const;
+  const palette = createRequire(import.meta.url)('tailwindcss/colors') as Record<string, Record<string, string>>;
+
+  const typeColors = ((): Record<string, string> => {
+    const m = /export const TYPE_COLORS[^=]*=\s*\{([^}]*)\}/.exec(jobCardSource);
+    if (m === null) {
+      throw new Error('JobCard.tsx no longer exports "TYPE_COLORS = {...}": update the type pill test to where the classes live now.');
+    }
+    return Object.fromEntries([...m[1]!.matchAll(/(\w+):\s*'([^']+)'/g)].map(x => [x[1]!, x[2]!]));
+  })();
+
+  const constString = (file: string, name: string): string => {
+    const m = new RegExp(`const ${name}\\s*=\\s*'([^']*)'`).exec(read(path.join(pkg, 'src/components', file)));
+    if (m === null) {
+      throw new Error(`${file} no longer declares "const ${name} = '...'": update the type pill test.`);
+    }
+    return m[1]!;
+  };
+  const paletteBg = (classes: string, dark: boolean): string => {
+    const m = (dark ? /(?:^|\s)dark:bg-(\w+)-(\d+)(?=\s|$)/ : /(?:^|\s)bg-(\w+)-(\d+)(?=\s|$)/).exec(classes);
+    const hex = m === null ? undefined : palette[m[1]!]?.[m[2]!];
+    if (hex === undefined) {
+      throw new Error(`No ${dark ? 'dark:' : ''}bg-<colour>-<shade> in "${classes}": update the type pill test.`);
+    }
+    return hex;
+  };
+
+  /** dsl-ui's theme.css, which neither stylesheet of ours owns. */
+  const dslTheme = (dark: boolean): Map<string, string> => scope(
+    read(path.resolve(pkg, '../../node_modules/@wadeck-app/dsl-ui/src/theme.css')),
+    dark ? ".dark,\n[data-theme='dark']" : ":root,\n.light,\n[data-theme='light']",
+  );
+
+  /** Every surface a type pill is drawn on: job card, table rows and job page (bg), running banner, alert card. */
+  const surfaces = (dark: boolean): Array<{ place: string; bg: string }> => {
+    const dsl = dslTheme(dark);
+    return [
+      { place: 'job card', bg: dsl.get('--color-surface')! },
+      { place: 'page background', bg: dsl.get('--color-bg')! },
+      { place: 'running banner', bg: paletteBg(constString('RunningBannerDetail.tsx', 'BANNER_CLS'), dark) },
+      { place: 'amber alert card', bg: paletteBg(constString('RunningAlertDetail.tsx', 'ALERT_CARD_CLS'), dark) },
+    ];
+  };
+
+  it('TYPE_COLORS has the four job types', () => {
+    expect(Object.keys(typeColors).sort()).toEqual([...TYPES].sort());
+  });
+
+  for (const target of TARGETS) {
+    describe(`${target.name} type pills`, () => {
+      const colors = tailwindColors(target.tailwind);
+      const css = read(target.css);
+      for (const theme of ['light', 'dark'] as const) {
+        const dark = theme === 'dark';
+        const own = scope(css, dark ? target.dark : ':root');
+        // A colour name is one of ours (tag-*) or one of dsl-ui's generic tokens (muted, muted-bg...).
+        const resolve = (name: string): string => {
+          const token = colors.get(name) ?? `--color-${name}`;
+          const value = own.get(token) ?? dslTheme(dark).get(token);
+          if (value === undefined) {
+            throw new Error(`${token} (class colour "${name}") is defined neither in ${target.css} nor in dsl-ui's theme.css, ${theme} scope.`);
+          }
+          return value;
+        };
+        for (const type of TYPES) {
+          const classes = typeColors[type] ?? '';
+          const bgName = /(?:^|\s)bg-(\S+)/.exec(classes)?.[1] ?? '';
+          const textName = /(?:^|\s)text-(\S+)/.exec(classes)?.[1] ?? '';
+          it(`${type}: text has a contrast of at least ${MIN_TEXT} on its pill in the ${theme} theme`, () => {
+            expect(bgName, `no bg-* class in TYPE_COLORS.${type}`).not.toBe('');
+            expect(textName, `no text-* class in TYPE_COLORS.${type}`).not.toBe('');
+            expect(contrast(resolve(textName), resolve(bgName))).toBeGreaterThanOrEqual(MIN_TEXT);
+          });
+          for (const { place, bg } of surfaces(dark)) {
+            it(`${type}: the pill stands out by at least ${MIN_PILL} from the ${place} in the ${theme} theme`, () => {
+              const pill = resolve(bgName);
+              expect(contrast(pill, bg), `${pill} on ${bg}`).toBeGreaterThanOrEqual(MIN_PILL);
+            });
+          }
+        }
+      }
+    });
+  }
 });

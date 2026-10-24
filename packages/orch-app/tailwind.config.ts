@@ -50,6 +50,8 @@ export default {
         'tag-startup-bg':  'var(--color-tag-startup-bg)',
         'tag-once':        'var(--color-tag-once)',
         'tag-once-bg':     'var(--color-tag-once-bg)',
+        'tag-manual':      'var(--color-tag-manual)',
+        'tag-manual-bg':   'var(--color-tag-manual-bg)',
         // The unfilled part of a job's progress bar: dsl-ui's own track colour vanishes on every light surface it sits on.
         'progress-track':  'var(--color-progress-track)',
       },
@@ -65,6 +67,7 @@ export default {
     'bg-tag-cron-bg', 'text-tag-cron',
     'bg-tag-startup-bg', 'text-tag-startup',
     'bg-tag-once-bg', 'text-tag-once',
+    'bg-tag-manual-bg', 'text-tag-manual',
     // LogViewer terminal palette
     'bg-gray-800', 'text-gray-400', 'text-yellow-400',
     'bg-gray-900', 'text-green-400', 'text-gray-500',
