@@ -33,15 +33,16 @@ describe('MutationFeedback failure path', () => {
     mount({ pending: false, error: 'Daemon RPC error 500: nope' });
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
     });
+    // An error toast is role=alert in dsl-ui 2026.10.24-247 (a success toast is role=status).
     // The cause, not "something went wrong": the reader must not have to open the console.
-    expect(screen.getByRole('status').textContent).toContain('nope');
+    expect(screen.getByRole('alert').textContent).toContain('nope');
   });
 
   it('does not announce the same failure twice on a re-render', async () => {
     const { rerender } = mount({ pending: false, error: 'boom' });
-    await waitFor(() => expect(screen.getAllByRole('status')).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(1));
 
     rerender(
       <ToastProvider>
@@ -49,7 +50,7 @@ describe('MutationFeedback failure path', () => {
       </ToastProvider>,
     );
 
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 
   // No navigation happens on failure, so nothing should be queued for a page that never loads.
@@ -61,7 +62,7 @@ describe('MutationFeedback failure path', () => {
       </ToastProvider>,
     );
 
-    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(sessionStorage.getItem(FLASH_KEY)).toBeNull();
   });
 });

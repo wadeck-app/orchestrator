@@ -18,17 +18,21 @@ export interface DslRouteEntry {
 	source: string;
 	navLabel?: string;
 	navOrder?: number;
+	/** False when the page is hidden from nav ($navVisible: false or $navLabel: false); the route still exists. */
+	navVisible: boolean;
+	/** Other $nav<Name> keys as { name: value }; the consumer owns their meaning (e.g. badge). */
+	navExtra?: Record<string, unknown>;
 }
 
 export const dslRoutes: readonly DslRouteEntry[] = [
-	{ route: '/audit', yamlText: auditYaml, source: 'audit.yaml' },
-	{ route: '/jobs/:id/design-a', yamlText: jobDetailAYaml, source: 'job-detail-a.yaml' },
-	{ route: '/jobs/:id/design-b', yamlText: jobDetailBYaml, source: 'job-detail-b.yaml' },
-	{ route: '/jobs/:id/design-c', yamlText: jobDetailCYaml, source: 'job-detail-c.yaml' },
-	{ route: '/jobs/:id', yamlText: jobDetailYaml, source: 'job-detail.yaml' },
-	{ route: '/jobs/:id/edit', yamlText: jobFormEditYaml, source: 'job-form-edit.yaml' },
-	{ route: '/jobs/new', yamlText: jobFormNewYaml, source: 'job-form-new.yaml' },
-	{ route: '/', yamlText: jobListYaml, source: 'job-list.yaml' },
-	{ route: '/jobs/:id/logs', yamlText: jobLogsYaml, source: 'job-logs.yaml' },
-	{ route: '/schedule', yamlText: scheduleYaml, source: 'schedule.yaml' },
+	{ route: '/audit', yamlText: auditYaml, source: 'audit.yaml', navVisible: true },
+	{ route: '/jobs/:id/design-a', yamlText: jobDetailAYaml, source: 'job-detail-a.yaml', navVisible: true },
+	{ route: '/jobs/:id/design-b', yamlText: jobDetailBYaml, source: 'job-detail-b.yaml', navVisible: true },
+	{ route: '/jobs/:id/design-c', yamlText: jobDetailCYaml, source: 'job-detail-c.yaml', navVisible: true },
+	{ route: '/jobs/:id', yamlText: jobDetailYaml, source: 'job-detail.yaml', navVisible: true },
+	{ route: '/jobs/:id/edit', yamlText: jobFormEditYaml, source: 'job-form-edit.yaml', navVisible: true },
+	{ route: '/jobs/new', yamlText: jobFormNewYaml, source: 'job-form-new.yaml', navVisible: true },
+	{ route: '/', yamlText: jobListYaml, source: 'job-list.yaml', navVisible: true },
+	{ route: '/jobs/:id/logs', yamlText: jobLogsYaml, source: 'job-logs.yaml', navVisible: true },
+	{ route: '/schedule', yamlText: scheduleYaml, source: 'schedule.yaml', navVisible: true },
 ];
