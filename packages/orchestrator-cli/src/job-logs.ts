@@ -4,7 +4,7 @@ import { getErrorMessage } from './fsUtil.js';
 import { stripAnsi } from './ansi.js';
 
 /**
- * `orch job-logs <id>`: a job's run log as plain text, a snapshot or followed.
+ * `orch job <jobId> logs [execId]`: an execution's log as plain text, a snapshot or followed.
  *
  * Reads the per-run files RunLogger writes (logs/jobs/<id>/<id>-<YYYY-MM-DDTHH-MM-SS>.log), the same files
  * `orch logs --job` and the dashboard read; the run metadata (exit code, running or not, trigger) comes from the
@@ -13,14 +13,15 @@ import { stripAnsi } from './ansi.js';
  * Returns the process exit code instead of exiting, so the caller decides how to leave.
  */
 
-export const JOB_LOGS_USAGE = 'Usage: orch job-logs <id> [-f|--follow] [-n|--tail <N>] [--run <which>] [--list-runs] [--json] [--raw]';
+export const JOB_LOGS_USAGE = 'Usage: orch job <jobId> logs [execId] [-f|--follow] [-n|--tail <N>] [--list] [--json] [--raw]';
 
 export interface JobLogsOptions {
   jobId: string;
   follow: boolean;
   tail: number | undefined;
-  run: string;
-  listRuns: boolean;
+  /** `latest`, `previous`, a number from 1 or an exec id: validated by parseJobLogsArgs. */
+  execId: string;
+  list: boolean;
   json: boolean;
   /** Keep the escape sequences of the file (colour, cursor codes); stripped from what is printed by default. */
   raw: boolean;
@@ -28,12 +29,12 @@ export interface JobLogsOptions {
 
 export type ParsedJobLogsArgs = { ok: true; options: JobLogsOptions } | { ok: false; error: string };
 
-const RUN_WORDS = 'latest, previous, a number from 1 (1 = latest, 2 = the run before), or a start time as printed by --list-runs';
+const EXEC_ID_WORDS = 'latest, previous, a number from 1 (1 = latest, 2 = the one before), or an exec id as printed by --list (e.g. 2026-10-24T08-35-01)';
 
-/** Parses the arguments after `job-logs`. Every refusal says what is accepted. */
-export function parseJobLogsArgs(args: string[], json: boolean): ParsedJobLogsArgs {
-  const options: JobLogsOptions = { jobId: '', follow: false, tail: undefined, run: 'latest', listRuns: false, json, raw: false };
-  let runGiven = false;
+/** Parses the arguments after `orch job <jobId> logs`. Every refusal says what is accepted. */
+export function parseJobLogsArgs(jobId: string, args: string[], json: boolean): ParsedJobLogsArgs {
+  const options: JobLogsOptions = { jobId, follow: false, tail: undefined, execId: 'latest', list: false, json, raw: false };
+  let execGiven = false;
   const fail = (error: string): ParsedJobLogsArgs => ({ ok: false, error: `${error}\n${JOB_LOGS_USAGE}` });
   const valueOf = (i: number, name: string): string | ParsedJobLogsArgs => {
     const v = args[i + 1];
@@ -48,8 +49,8 @@ export function parseJobLogsArgs(args: string[], json: boolean): ParsedJobLogsAr
     const a = args[i]!;
     if (a === '-f' || a === '--follow') {
       options.follow = true;
-    } else if (a === '--list-runs') {
-      options.listRuns = true;
+    } else if (a === '--list') {
+      options.list = true;
     } else if (a === '--json') {
       options.json = true;
     } else if (a === '--raw') {
@@ -64,42 +65,32 @@ export function parseJobLogsArgs(args: string[], json: boolean): ParsedJobLogsAr
       }
       options.tail = Number(v);
       i++;
-    } else if (a === '--run') {
-      const v = valueOf(i, a);
-      if (typeof v !== 'string') {
-        return v;
-      }
-      if (parseRunSelector(v) === null) {
-        return fail(`--run must be one of: ${RUN_WORDS}; got "${v}".`);
-      }
-      options.run = v;
-      runGiven = true;
-      i++;
     } else if (a.startsWith('-')) {
-      return fail(`Unknown flag "${a}". Accepted: -f/--follow, -n/--tail <N>, --run <which>, --list-runs, --json, --raw.`);
-    } else if (options.jobId === '') {
-      options.jobId = a;
+      return fail(`Unknown flag "${a}". Accepted: -f/--follow, -n/--tail <N>, --list, --json, --raw.`);
+    } else if (!execGiven) {
+      if (parseExecSelector(a) === null) {
+        return fail(`execId must be one of: ${EXEC_ID_WORDS}; got "${a}".`);
+      }
+      options.execId = a;
+      execGiven = true;
     } else {
-      return fail(`Unexpected argument "${a}": only one job id is accepted (already got "${options.jobId}").`);
+      return fail(`Unexpected argument "${a}": only one execId is accepted (already got "${options.execId}").`);
     }
   }
 
-  if (options.jobId === '') {
-    return fail('Missing job id. See the ids with: orch list');
-  }
-  if (options.listRuns) {
-    const clash = options.follow ? '-f/--follow' : options.tail !== undefined ? '-n/--tail' : runGiven ? '--run' : null;
+  if (options.list) {
+    const clash = options.follow ? '-f/--follow' : options.tail !== undefined ? '-n/--tail' : execGiven ? `the execId "${options.execId}"` : null;
     if (clash !== null) {
-      return fail(`--list-runs lists the runs; it cannot be combined with ${clash}. Run them separately.`);
+      return fail(`--list lists the executions; it cannot be combined with ${clash}. Run them separately.`);
     }
   }
   return { ok: true, options };
 }
 
-type RunSelector = { kind: 'index'; n: number } | { kind: 'time'; name: string };
+type ExecSelector = { kind: 'index'; n: number } | { kind: 'stamp'; name: string };
 
-/** `latest`, `previous`, a number from 1, or a start time in any of the spellings the listing and the file names use. */
-function parseRunSelector(raw: string): RunSelector | null {
+/** `latest`, `previous`, a number from 1, or an exec id: the run stamp as in the file name, or `YYYY-MM-DD HH:MM:SS`. */
+function parseExecSelector(raw: string): ExecSelector | null {
   const v = raw.trim();
   if (v === 'latest') {
     return { kind: 'index', n: 1 };
@@ -112,7 +103,7 @@ function parseRunSelector(raw: string): RunSelector | null {
     return n >= 1 && Number.isSafeInteger(n) ? { kind: 'index', n } : null;
   }
   const m = v.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2})[:-](\d{2})[:-](\d{2})(?:\.\d+)?Z?$/);
-  return m ? { kind: 'time', name: `${m[1]}T${m[2]}-${m[3]}-${m[4]}` } : null;
+  return m ? { kind: 'stamp', name: `${m[1]}T${m[2]}-${m[3]}-${m[4]}` } : null;
 }
 
 export interface RuntimeRecord {
@@ -218,7 +209,8 @@ function formatDuration(ms: number | null): string {
 }
 
 function statusCell(r: RunInfo): string {
-  return r.status === 'running' ? 'running' : r.status === 'unknown' ? 'unknown' : String(r.exitCode);
+  // A run the daemon recorded as ended without learning its exit code (killed with the daemon) has none to show.
+  return r.status === 'running' ? 'running' : r.status === 'unknown' || r.exitCode === null ? 'unknown' : String(r.exitCode);
 }
 
 interface LogLine { t: string | null; text: string }
@@ -265,11 +257,11 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
   };
   const history = await readHistory();
 
-  if (options.listRuns) {
+  if (options.list) {
     const runs = files.map(f => describeRun(f, history));
     if (options.json) {
-      out(JSON.stringify(runs.map((r, i) => ({
-        run: i + 1,
+      out(JSON.stringify(runs.map((r) => ({
+        execId: r.name,
         startedAt: displayStart(r.name),
         status: r.status,
         exitCode: r.exitCode,
@@ -278,22 +270,22 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
       }))) + '\n');
       return 0;
     }
-    const rows = runs.map((r, i) => [displayStart(r.name), statusCell(r), formatDuration(r.durationMs), r.trigger ?? '-', `--run ${i + 1}`]);
-    const header = ['START (UTC)', 'EXIT', 'DURATION', 'TRIGGER', 'READ WITH'];
+    const rows = runs.map((r) => [r.name, displayStart(r.name), statusCell(r), formatDuration(r.durationMs), r.trigger ?? '-']);
+    const header = ['EXEC ID', 'START (UTC)', 'EXIT', 'DURATION', 'TRIGGER'];
     const widths = header.map((h, c) => Math.max(h.length, ...rows.map(r => r[c]!.length)));
     const fmt = (cells: string[]): string => cells.map((c, i) => c.padEnd(widths[i]!)).join('  ').trimEnd();
     out(`${[fmt(header), ...rows.map(fmt)].join('\n')}\n`);
     return 0;
   }
 
-  // The selector was validated by parseJobLogsArgs.
-  const selector = parseRunSelector(options.run)!;
+  // The execId was validated by parseJobLogsArgs.
+  const selector = parseExecSelector(options.execId)!;
   const target = selector.kind === 'index' ? files[selector.n - 1] : files.find(f => f.name === selector.name);
   if (!target) {
     const have = selector.kind === 'index'
-      ? `the job has ${files.length} retained run${files.length === 1 ? '' : 's'}`
-      : `no run started at ${displayStart(selector.name)}`;
-    err(`No such run for "${jobId}": --run ${options.run} (${have}). See the runs with: orch job-logs ${jobId} --list-runs\n`);
+      ? ` (the job has ${files.length} retained execution${files.length === 1 ? '' : 's'})`
+      : '';
+    err(`No execution "${options.execId}" for job "${jobId}"${have}. See the executions with: orch job ${jobId} logs --list\n`);
     return 1;
   }
   const info = describeRun(target, history);
@@ -340,7 +332,7 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
     if (options.follow) {
       err(isLatest
         ? 'the job is not running; showing the last run\n'
-        : `run ${displayStart(target.name)} has ended; showing it (not following)\n`);
+        : `execution ${target.name} has ended; showing it (not following)\n`);
     }
     return 0;
   }
@@ -406,7 +398,7 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
       }
     }
   } catch (e) {
-    err(`Lost track of the run while following (${getErrorMessage(e)}). The run may still be going: read it again with: orch job-logs ${jobId} -f\n`);
+    err(`Lost track of the run while following (${getErrorMessage(e)}). The run may still be going: read it again with: orch job ${jobId} logs -f\n`);
     return 1;
   } finally {
     process.removeListener('SIGINT', onSigint);

@@ -424,6 +424,6 @@ export interface CliDeps {
   send: (command: string, payload?: unknown, options?: SendOptions) => Promise<unknown>;
   startDaemon: () => void;
   configDir: string;
-  /** `orch job-logs` seams: how often -f reads the followed file (ms, default 250) and where its output goes. Tests set them. */
+  /** `orch job <jobId> logs` seams: how often -f reads the followed file (ms, default 250) and where its output goes. Tests set them. */
   jobLogs?: { pollMs?: number; stdout?: (text: string) => void; stderr?: (text: string) => void };
 }

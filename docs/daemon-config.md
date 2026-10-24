@@ -37,7 +37,7 @@ The job's own `env` (and its secrets) win, per variable: a job that sets `FORCE_
 Some programs print escape sequences whatever the environment says, so they are stripped as well (colour, cursor and erase codes, OSC strings; `\r` progress redraws are kept):
 
 - Job output lines are written to the run log file without them, for direct and supervised jobs alike. The daemon's own lines are untouched.
-- `orch job-logs` and `orch logs` (snapshot, `-f`, `--json`) strip what they print. `--raw` prints the file byte for byte, which also shows sequences in logs written before this.
+- `orch job <jobId> logs` and `orch logs` (snapshot, `-f`, `--json`) strip what they print. `--raw` prints the file byte for byte, which also shows sequences in logs written before this.
 - The dashboard log pane strips at display. `orch exec` output is stripped too.
 
 Read at daemon start, like every key: `orch restart` after changing it.

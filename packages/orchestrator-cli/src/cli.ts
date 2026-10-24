@@ -11,6 +11,7 @@ import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
 import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
 import { parseJobLogsArgs, runJobLogs } from './job-logs.js';
+import { HELP_TEXT, JOB_HELP, JOB_LOGS_HELP } from './help-text.js';
 import { stripAnsi } from './ansi.js';
 
 /** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
@@ -138,14 +139,14 @@ function has(argv: string[], name: string): boolean {
  * The composite flags stay out: `--liveness-*` build one nested object, and `--active-*` cross-check
  * each other. `--delay` too, since it means delaySeconds on a startup job and delayMs on a once job.
  */
-interface FieldFlag {
+export interface FieldFlag {
   flag:  string;
   field: string;
   /** 'resource' flags build the nested resourceLimits object, see resourceLimitFlags. */
   kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence' | 'resource';
 }
 
-const JOB_FIELD_FLAGS: FieldFlag[] = [
+export const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--command',              field: 'command',            kind: 'string'      },
   { flag: '--label',                field: 'label',              kind: 'string'      },
   { flag: '--description',          field: 'description',        kind: 'string'      },
@@ -175,10 +176,10 @@ const JOB_FIELD_FLAGS: FieldFlag[] = [
 ];
 
 /** Flags accepted alongside the field flags, so the unknown-flag check does not reject them. */
-const EXTRA_ADD_FLAGS  = ['--once', '--disabled', '--delay', '--json',
+export const EXTRA_ADD_FLAGS  = ['--once', '--disabled', '--delay', '--json',
                           '--liveness-strategy', '--liveness-port-file', '--liveness-command',
                           '--active-from', '--active-until', '--active-for'];
-const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json',
+export const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json',
                           '--liveness-strategy', '--liveness-port-file', '--liveness-command',
                           '--active-from', '--active-until', '--active-for'];
 
@@ -499,216 +500,6 @@ function output(data: unknown, forceJson: boolean): void {
   }
 }
 
-const HELP_TEXT = `
-orch -- cross-platform job orchestrator
-
-Concepts:
-  job           A scheduled or startup task with an id, command, and schedule
-  cron          Runs on a cron schedule (5-field: min hour day month weekday)
-  startup       Runs once when the daemon starts, with optional delay
-  once          Runs once after a delay, then is marked as fired (hidden from orch list, see --past)
-  manual        Never scheduled: runs only when triggered (orch trigger <id>, the dashboard, the API)
-  liveness      Optional check: if target is already alive, skip firing the job
-
-Usage: orch <command> [options]
-
-Daemon lifecycle:
-  orch start                   Start the daemon; tails logs in interactive TTY (Ctrl+C stops tail, daemon keeps running)
-                               --no-follow  Return as soon as the daemon is up, without tailing
-                               --follow,-f  Tail even when stdout is piped
-  orch stop [--kill-jobs]      Stop the daemon. Jobs run under their own supervisor keep running and are
-                               followed again at the next start; the jobs named in the answer do.
-                               --kill-jobs  End every running job first
-  orch restart                 Restart the daemon (not a job: use restart-job <id>)
-  orch status [--json]         Show daemon pid, port, uptime. Never starts the daemon: when it is not
-                               running, says so and exits 1 (JSON: {"running":false})
-                               plus the progress and end time of each running job ("42% ~14:32")
-                               JSON fields: pid, port, uptime (seconds), info, progress
-  orch install                 Register orchestrator in OS startup
-  orch uninstall               Remove from OS startup
-
-Job inspection:
-  orch list [--verbose] [--past] [--json]
-                               List all jobs; --verbose adds last run + exit code.
-                               Past "once" jobs (already fired) are hidden unless
-                               --past is given; see onceRetentionDays in config.yml
-  orch show <id> [--json]      Show full job detail
-                               JSON fields: id, type, label, command, schedule,
-                               description (when set), delaySeconds, cwd, enabled,
-                               triggerMode, missedFiring, liveness, tags, timeoutSeconds,
-                               resourceLimits (when set)
-                               (orch list stays one line per job and does not show it;
-                               orch list --json carries it)
-  orch --pid                   Show daemon pid/port (no daemon required)
-
-Job mutation:
-  orch add cron <id> --schedule <expr> --command <cmd> [--cwd <p>] [--label <t>]
-                               [--trigger-mode fire-and-forget|wait]   (default: fire-and-forget)
-                               [--missed-firing catch-up|skip]         (default: skip)
-                               [--liveness-strategy none|portFile|pidFile|command] (default: none)
-                               [--liveness-port-file <p>] [--liveness-command <c>]
-                               [--disabled]
-                               [--active-for <3w|21d|48h>]   Run only for this long, then disable
-                               [--active-from <date>]        Start firing at this date (may be future)
-                               [--active-until <date>]       Stop firing at this date, then disable
-
-  Accepted by both add and edit, from the same table, so nothing is settable by one only:
-  --command <cmd>              What to run
-  --label <text>               Display name (defaults to the id)
-  --description <text>         What the job is for: plain text, line breaks allowed, up to 2000
-                               characters (longer is refused, not cut). Documentation only, shown by
-                               the dashboard and by orch show. Clear it with --unset description
-  --cwd <path>                 Working directory
-  --schedule <expr>            Cron expression (cron jobs)
-  --trigger-mode <mode>        fire-and-forget | wait
-  --missed-firing <mode>       catch-up | skip
-  --timeout <seconds>          Kill the run after this long (default: 300; 0 = no timeout,
-                               for a process that must stay up, e.g. a dev server)
-  --max-concurrency <n>        Refuse to start a run while n are already running (default: no limit;
-                               1 = never two at once). A refused run is a skip, not a failure
-  --tags <a,b>                 Comma-separated tags
-  --depends-on <job-id>        Fire this job after <job-id> succeeds
-  --alert-after-failures <n>   Alert after n consecutive failures (default: 3)
-  --sla-window <minutes>       Alert if no success within the window
-  --secrets <A,B>              Secret names to inject as env vars
-  --env KEY=VALUE              Repeatable. Split on the first '=' only
-  --on-exit-code CODE=MESSAGE  Repeatable. Systray message for an exit code
-  --dry-run-supported          Command accepts --dry-run (clear it with --unset)
-  --retry-on-exit-codes, --retry-delays, --skip-exit-codes   See the sections below
-
-  Resource monitor, per job (stored as resourceLimits, shown by orch show). The monitor compares a run
-  with the mean of the job's last 10 successful peaks (the baseline, needs 3 runs); a run that stays over
-  the hard budget for --sustain seconds is acted on. Each edit changes only the keys you give:
-  --resource-enforce <mode>    kill | warn | off (default: kill). warn: log the breach and publish
-                               job.resource_hard_limit with enforced=false, kill nothing. off: no threshold checked
-  --hard-factor <x>            Hard budget = x times the baseline (default: 3; greater than 1, at most 100)
-  --soft-factor <x>            Warning budget = x times the baseline (default: 1.5; greater than 1, below --hard-factor)
-  --sustain <seconds>          How long the hard budget must stay exceeded (default: 30; whole number 2-3600)
-  --max-cpu <pct>              Absolute CPU ceiling, replaces the hard CPU budget; needs no baseline
-  --max-ram <mb>               Absolute RAM ceiling, replaces the hard RAM budget; needs no baseline
-  Clear them with: orch edit <id> --unset resourceLimits   (or --unset resourceLimits.<key>, e.g. resourceLimits.maxRamMb)
-
-  An unrecognised flag is refused, not ignored: --timeout used to be silently dropped.
-  orch add startup <id> --command <cmd> [--delay <seconds>] [--cwd <p>] [--label <t>]
-  orch add --once <id> --delay <duration> --command <cmd> [--cwd <p>] [--label <t>]
-  orch add manual <id> --command <cmd> [--cwd <p>] [--label <t>]
-                               Takes the shared options below, but no --schedule, --delay,
-                               --missed-firing or --active-*: a manual job has no schedule
-                               Fire once after <duration> (e.g. 30s, 2m, 1h, 1d), then self-delete
-  orch remove <id>             Remove a job
-  orch enable <id>             Enable a job
-  orch disable <id>            Disable a job
-  orch edit <id> [--schedule <expr>] [--delay <s>] [--command <c>] [--label <t>] ...
-                               Patches the job: a flag you omit leaves that field as it was
-                               [--unset <field>[,<field>...]]  Clear an option instead of changing it
-                               Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
-                               maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
-                               skipExitCodes, liveness, label, triggerMode, description, resourceLimits
-                               (resourceLimits.<key> clears one key)
-                               Example: orch edit my-job --unset cwd
-
-Schedule format (cron jobs): standard 5-field cron -- min hour day month weekday
-  Examples: "*/5 * * * *"   every 5 minutes
-            "0 9 * * 1-5"   9 AM on weekdays
-            "30 8 * * *"    8:30 AM daily
-
-Liveness strategies (skip firing if target is already alive):
-  none       Always fire -- no liveness check (default)
-  portFile   Read <portFile>, check if its PID is alive -> skip if alive
-  pidFile    Find PID file by job id -> skip if PID is alive
-  command    Run <command> -> skip if it exits 0
-
-Manual execution:
-  orch trigger <id> [--wait] [--force] [--json]
-                               Fire a job immediately. A job at its --max-concurrency is not
-                               started (reported, exit 0); --force starts another instance anyway
-  orch kill <id>               Stop a job that is currently running
-  orch terminate <id>          Alias for kill, for shells that block the word
-  orch restart-job <id> [--json]
-                               End every running instance of the job, wait until it is gone, then start
-                               it again; a job that was not running is simply started. Meant for a
-                               long-running job (--timeout 0, a process that must stay up) but accepts
-                               any job. Exit 1, with the reason and the fix, when nothing was started
-                               (liveness check still says alive, at --max-concurrency, the old instance
-                               would not end). Not "orch restart", which restarts the daemon
-  orch exec "<cmd>" [--wait]   Run a one-shot command via the daemon (for agent delegation)
-
-Dashboard:
-  orch server start            Start the web dashboard server (opens browser)
-  orch server stop             Stop the web dashboard server
-  orch server status           Show dashboard server status and URL
-
-Systray automation:
-  orch tray list               List all triggerable tray actions
-  orch tray <action>           Trigger a tray action (same as clicking it)
-
-Retry on failure:
-  --retry-on-exit-codes <codes>  Comma-separated exit codes that trigger retry, e.g. 3
-  --retry-delays <seconds>       Comma-separated delays in seconds, e.g. 300,600,1800,5400
-  Hooks: configure onJobRetry / onJobExhausted in ~/.config/orchestrator/hooks.json
-
-Exit codes that are not failures:
-  --skip-exit-codes <codes>      Comma-separated exit codes meaning "nothing was done", e.g. 2
-                                 The run is recorded as skipped: no failure, no retry, no alert,
-                                 no systray badge, and it neither helps nor hurts the uptime figure
-                                 Per job on purpose -- what a code means belongs to the program
-                                 being run. The @wadeck-app scrapers use 2 for "another instance is
-                                 already running"; another binary may use 2 for a real fault
-                                 Example: orch edit wa-scrape --skip-exit-codes 2
-
-  A skip also happens without any exit code when the job has a liveness check and the target is
-  already alive -- see --liveness-strategy above.
-
-Logs:
-  orch job-logs <id> [-f] [-n <N>] [--run <which>] [--list-runs] [--json] [--raw]
-                               A job's run log as plain text; the newest run by default. Colour and cursor
-                               escape sequences are stripped from what is printed (jobs are started with
-                               NO_COLOR=1 and FORCE_COLOR=0, see jobsNoColor in docs/daemon-config.md, and the
-                               run log is written without them; this covers older logs and programs that
-                               ignore the environment)
-                               -f, --follow     Keep streaming the running job until it ends or Ctrl+C; the
-                                                end prints the exit code. A job that is not running: shows its
-                                                last run, says so on stderr, exits 0
-                               -n, --tail <N>   Only the last N lines (default: all); the cut is said on stderr
-                               --run <which>    latest (default) | previous | 1, 2, 3... (1 = latest, 2 = the
-                                                run before) | a start time as printed by --list-runs
-                               --list-runs      The retained runs, newest first: start (UTC), exit code or
-                                                running, duration, trigger, and the --run to read each
-                               --raw            Print the lines byte for byte, escape sequences included
-                               --json           Lines as {t,text} (one array; -f: one object per line); with
-                               --list-runs an array of runs
-                               Exit: 1 job unknown / no log yet / no such run, 4 bad flag or value
-                               Example: orch job-logs nightly-backup
-                               Example: orch job-logs nightly-backup -f
-
-  orch logs [--follow] [--job <id>] [--tail <N>] [--json] [--raw]
-                               Read today's orchestrator or job log file (for a job, prefer: orch job-logs <id> [-f])
-                               --follow     Tail log in real-time (Ctrl+C to stop)
-                               --job <id>   Show logs for specific job (default: daemon logs)
-                               --tail <N>   Show last N lines (default: all)
-                               --json       Output as JSON (timestamp + message per line)
-                               --raw        Keep escape sequences (colour, cursor codes); stripped by default
-
-Global flags:
-  --json                       Force JSON output
-  --version                    Print version and exit
-  --pid                        Print daemon pid/port and exit
-  --help                       Show this help
-
-Internal (used by auto-updater, not for general use):
-  orch cli self-check          Validate bundle integrity; exit 0=ok, 1=fail
-
-Exit codes: 0=ok  1=error  2=daemon-not-running  3=not-found  4=validation-error
-
-Other commands:
-  setup-task                Install a daily Windows Scheduled Task (twice daily)
-  remove-task               Remove the scheduled task
-
-Environment variables:
-  ORCH_CONFIG_DIR         Config directory (default: ~/.config/orchestrator)
-  ORCH_UPDATE_INTERVAL    Background update interval (default: 4h)
-`.trim();
-
 const CLI_GROUP_HELP = `
 orch cli -- internal management commands
 
@@ -745,6 +536,12 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
   if (has(argv, '--version')) {
     console.log(version);
+    return;
+  }
+
+  // `orch job --help`, `orch job <jobId> logs -h`: the help of that command, not the whole reference.
+  if (argv[0] === 'job' && (has(argv, '--help') || has(argv, '-h'))) {
+    console.log(argv.includes('logs') && argv.indexOf('logs') >= 2 ? JOB_LOGS_HELP : JOB_HELP);
     return;
   }
 
@@ -1907,8 +1704,29 @@ Use --wait to block until the command finishes.`);
       return;
     }
 
+    // The old name of `orch job <jobId> logs`, kept one release so the rename is explained instead of "Unknown command".
     case 'job-logs': {
-      const parsed = parseJobLogsArgs(rest, forceJson);
+      console.error('orch job-logs was renamed: use orch job <jobId> logs [execId] [-f]');
+      process.exit(4);
+    }
+
+    // `orch job <jobId> <sub-command>`: the sub-commands of one job. Only `logs` exists.
+    case 'job': {
+      const [jobId, sub, ...subRest] = rest;
+      const usage = (problem: string): never => {
+        console.error(`${problem}\n\n${JOB_HELP}`);
+        process.exit(4);
+      };
+      if (jobId === undefined || jobId.startsWith('-')) {
+        usage('Missing job id. See the ids with: orch list');
+      }
+      if (sub === undefined) {
+        usage(`Missing sub-command for job "${jobId}".`);
+      }
+      if (sub !== 'logs') {
+        usage(`Unknown sub-command "${sub}" for job "${jobId}". Available: logs.`);
+      }
+      const parsed = parseJobLogsArgs(jobId!, subRest, forceJson);
       if (!parsed.ok) {
         console.error(parsed.error);
         process.exit(4);

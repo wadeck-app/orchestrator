@@ -2,7 +2,7 @@
 
 // The CLI views of a job's output strip escape sequences by default (a program that ignores NO_COLOR, or a log
 // written before the daemon stripped them), and keep them with --raw:
-//   orch job-logs <id> [-f] [--json]     orch logs --job <id> [-f] [--json]     orch logs [-f]
+//   orch job <jobId> logs [-f] [--json]     orch logs --job <id> [-f] [--json]     orch logs [-f]
 const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -32,7 +32,7 @@ function writeRun(startedAt, lines) {
   return f;
 }
 
-/** Runs the CLI with process.stdout.write and console.* captured; `jobLogs` hooks carry job-logs' own output. */
+/** Runs the CLI with process.stdout.write and console.* captured; `jobLogs` hooks carry the logs sub-command's own output. */
 async function run(argv, { history = [], afterStart } = {}) {
   const out = [];
   const err = [];
@@ -86,24 +86,24 @@ const A = '2026-10-20T03:00:00.000Z';
 const stamped = (text) => `[2026-10-20 03:00:00] ${text}`;
 const finished = { startedAt: A, finishedAt: '2026-10-20T03:00:12.000Z', exitCode: 0, pid: 1, triggeredBy: { kind: 'cron' } };
 
-describe('orch job-logs', () => {
+describe('orch job <jobId> logs', () => {
   test('strips escape sequences from the lines it prints, by default', async () => {
     writeRun(A, [stamped(COLOURED), stamped(`${ESC}[31m[stderr] boom${ESC}[0m`)]);
-    const { out } = await run(['job-logs', JOB], { history: [finished] });
+    const { out } = await run(['job', JOB, 'logs'], { history: [finished] });
     assert.equal(out, `${stamped(PLAIN)}\n${stamped('[stderr] boom')}\n`);
   });
 
   test('--raw prints them as they are in the file', async () => {
     writeRun(A, [stamped(COLOURED)]);
-    const { out } = await run(['job-logs', JOB, '--raw'], { history: [finished] });
+    const { out } = await run(['job', JOB, 'logs', '--raw'], { history: [finished] });
     assert.equal(out, `${stamped(COLOURED)}\n`);
   });
 
   test('--json strips too, and --json --raw keeps them', async () => {
     writeRun(A, [stamped(COLOURED)]);
-    const stripped = await run(['job-logs', JOB, '--json'], { history: [finished] });
+    const stripped = await run(['job', JOB, 'logs', '--json'], { history: [finished] });
     assert.deepEqual(JSON.parse(stripped.out), [{ t: '2026-10-20 03:00:00', text: PLAIN }]);
-    const raw = await run(['job-logs', JOB, '--json', '--raw'], { history: [finished] });
+    const raw = await run(['job', JOB, 'logs', '--json', '--raw'], { history: [finished] });
     assert.deepEqual(JSON.parse(raw.out), [{ t: '2026-10-20 03:00:00', text: COLOURED }]);
   });
 
@@ -111,7 +111,7 @@ describe('orch job-logs', () => {
     const f = writeRun(A, [stamped(COLOURED)]);
     setTimeout(() => fs.appendFileSync(f, `${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`), 60);
     setTimeout(() => fs.appendFileSync(f, `${stamped('[job:finished] exitCode=0 duration=1s')}\n`), 120);
-    const { out } = await run(['job-logs', JOB, '-f'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }] });
+    const { out } = await run(['job', JOB, 'logs', '-f'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }] });
     assert.equal(out.includes(ESC), false, JSON.stringify(out));
     assert.ok(out.includes(`${stamped(PLAIN)}\n`));
     assert.ok(out.includes(`${stamped('new line')}\n`));
@@ -121,13 +121,13 @@ describe('orch job-logs', () => {
     const f = writeRun(A, [stamped('start')]);
     setTimeout(() => fs.appendFileSync(f, `${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`), 60);
     setTimeout(() => fs.appendFileSync(f, `${stamped('[job:finished] exitCode=0 duration=1s')}\n`), 120);
-    const { out } = await run(['job-logs', JOB, '-f', '--raw'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }] });
+    const { out } = await run(['job', JOB, 'logs', '-f', '--raw'], { history: [{ ...finished, finishedAt: undefined, exitCode: null }] });
     assert.ok(out.includes(`${stamped(`${ESC}[32mnew line${ESC}[0m`)}\n`), JSON.stringify(out));
   });
 
-  test('--raw with --list-runs is accepted and changes nothing', async () => {
+  test('--raw with --list is accepted and changes nothing', async () => {
     writeRun(A, [stamped('x')]);
-    const { exitCode } = await run(['job-logs', JOB, '--list-runs', '--raw'], { history: [finished] });
+    const { exitCode } = await run(['job', JOB, 'logs', '--list', '--raw'], { history: [finished] });
     assert.equal(exitCode, 0);
   });
 });
@@ -188,7 +188,7 @@ describe('orch logs (the daemon log)', () => {
 });
 
 describe('orch --help', () => {
-  test('documents --raw for job-logs and logs', async () => {
+  test('documents --raw for orch job <jobId> logs and orch logs', async () => {
     const { out } = await run(['--help']);
     const raw = out.split('\n').filter((l) => l.includes('--raw'));
     assert.ok(raw.length >= 2, `--raw must be explained for both commands:\n${raw.join('\n')}`);

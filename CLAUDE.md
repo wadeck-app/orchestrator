@@ -11,7 +11,7 @@ orch trigger <id>            # fire now
 orch kill <id>               # stop a running job (alias: orch terminate)
 orch restart-job <id>        # end a job's running instances, then start it again (orch restart = the daemon)
 orch server start            # web dashboard
-orch job-logs <id> [-f]      # a job's newest run log as plain text (-f follows; --list-runs, --run, -n; --raw keeps escape sequences)
+orch job <jobId> logs [execId] [-f]  # one execution's log, plain text (default latest; --list, -n, --raw; orch job --help)
 orch logs [--follow]         # daemon log
 orch cli update              # update orch itself -- never `npm install -g` by hand
 ```
