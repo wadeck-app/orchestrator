@@ -14,13 +14,20 @@
      hover has to be a step down from that rather than from the solid token. */
   --color-primary-hover:  #2563eb;
   --color-on-primary:     #ffffff;
-  /* Tag palette - deterministic color by hash */
-  --color-tag-1: #6366f1;
-  --color-tag-2: #0ea5e9;
-  --color-tag-3: #10b981;
-  --color-tag-4: #f59e0b;
-  --color-tag-5: #ec4899;
-  --color-tag-6: #8b5cf6;
+  /* Tag palette - deterministic colour by hash. -N is the text, -N-bg the pill behind it: they must
+     stay two tokens (a single one made the text exactly its own background), 4.5:1 or better. */
+  --color-tag-1: #3730a3;
+  --color-tag-2: #075985;
+  --color-tag-3: #065f46;
+  --color-tag-4: #92400e;
+  --color-tag-5: #9d174d;
+  --color-tag-6: #5b21b6;
+  --color-tag-1-bg: #e0e7ff;
+  --color-tag-2-bg: #e0f2fe;
+  --color-tag-3-bg: #d1fae5;
+  --color-tag-4-bg: #fef3c7;
+  --color-tag-5-bg: #fce7f3;
+  --color-tag-6-bg: #ede9fe;
   /* Job type badge tokens */
   --color-tag-cron:        #6d28d9;
   --color-tag-cron-bg:     #ede9fe;
@@ -34,13 +41,19 @@
   /* Lighter than the base in dark mode, where a darker hover reads as disabled. */
   --color-primary-hover:  #93c5fd;
   --color-on-primary:     #0f172a;
-  /* Tag palette - slightly lighter in dark mode */
-  --color-tag-1: #818cf8;
-  --color-tag-2: #38bdf8;
-  --color-tag-3: #34d399;
-  --color-tag-4: #fbbf24;
-  --color-tag-5: #f472b6;
-  --color-tag-6: #a78bfa;
+  /* Tag palette, dark: same pairing, deep tint behind a light text. */
+  --color-tag-1: #a5b4fc;
+  --color-tag-2: #7dd3fc;
+  --color-tag-3: #6ee7b7;
+  --color-tag-4: #fcd34d;
+  --color-tag-5: #f9a8d4;
+  --color-tag-6: #c4b5fd;
+  --color-tag-1-bg: #1e1b4b;
+  --color-tag-2-bg: #0c2d3f;
+  --color-tag-3-bg: #052e24;
+  --color-tag-4-bg: #3b2a05;
+  --color-tag-5-bg: #3f1230;
+  --color-tag-6-bg: #2d1f5e;
   /* Job type badge tokens - muted for dark mode */
   --color-tag-cron:        #a78bfa;
   --color-tag-cron-bg:     #2d1f5e;

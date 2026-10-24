@@ -38,6 +38,12 @@ export default {
         'tag-4': 'var(--color-tag-4)',
         'tag-5': 'var(--color-tag-5)',
         'tag-6': 'var(--color-tag-6)',
+        'tag-1-bg': 'var(--color-tag-1-bg)',
+        'tag-2-bg': 'var(--color-tag-2-bg)',
+        'tag-3-bg': 'var(--color-tag-3-bg)',
+        'tag-4-bg': 'var(--color-tag-4-bg)',
+        'tag-5-bg': 'var(--color-tag-5-bg)',
+        'tag-6-bg': 'var(--color-tag-6-bg)',
         'tag-cron':        'var(--color-tag-cron)',
         'tag-cron-bg':     'var(--color-tag-cron-bg)',
         'tag-startup':     'var(--color-tag-startup)',
@@ -63,7 +69,7 @@ export default {
     // EnableToggle peer-checked colors
     'bg-gray-300', 'peer-checked:bg-blue-600', 'after:bg-white',
     // Tag palette (dynamically chosen by hash)
-    'bg-tag-1','bg-tag-2','bg-tag-3','bg-tag-4','bg-tag-5','bg-tag-6',
+    'bg-tag-1-bg','bg-tag-2-bg','bg-tag-3-bg','bg-tag-4-bg','bg-tag-5-bg','bg-tag-6-bg',
     'text-tag-1','text-tag-2','text-tag-3','text-tag-4','text-tag-5','text-tag-6',
   ],
   plugins: [],

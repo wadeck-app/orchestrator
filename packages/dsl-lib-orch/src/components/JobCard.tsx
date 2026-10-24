@@ -46,7 +46,7 @@ export const TYPE_COLORS: Record<Job['type'], string> = {
 };
 
 // Tag color palette (6 semantic tokens added to tailwind.config + index.css)
-const TAG_BG  = ['bg-tag-1','bg-tag-2','bg-tag-3','bg-tag-4','bg-tag-5','bg-tag-6'] as const;
+const TAG_BG  = ['bg-tag-1-bg','bg-tag-2-bg','bg-tag-3-bg','bg-tag-4-bg','bg-tag-5-bg','bg-tag-6-bg'] as const;
 const TAG_TEXT = ['text-tag-1','text-tag-2','text-tag-3','text-tag-4','text-tag-5','text-tag-6'] as const;
 // @formatter:on
 
