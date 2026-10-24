@@ -268,7 +268,8 @@ type runLog struct {
 }
 
 func (l *runLog) write(prefix string, line string) {
-	text := strings.TrimRight(line, " \t\r\n")
+	// Escape sequences are stripped before the trim, so a line that was only an erase code is dropped like a blank one.
+	text := strings.TrimRight(stripAnsi(line), " \t\r\n")
 	if text == "" {
 		return
 	}

@@ -187,3 +187,29 @@ describe('lateActionWindowMinutes', () => {
     assert.match(warnings[0], /lateActionWindowMinutes/);
   });
 });
+
+describe('jobsNoColor', () => {
+  test('is on by default, with no config file and with a file that does not mention it', () => {
+    assert.equal(withConfig(null).config.jobsNoColor, true);
+    assert.equal(withConfig('autoUpdate: true\n').config.jobsNoColor, true);
+  });
+
+  test('false is read, and says nothing', () => {
+    const { config, warnings } = withConfig('jobsNoColor: false\n');
+    assert.equal(config.jobsNoColor, false);
+    assert.deepEqual(warnings, []);
+  });
+
+  test('it does not move another boolean key', () => {
+    const { config } = withConfig('jobsNoColor: false\n');
+    assert.equal(config.autoUpdate, true);
+    assert.equal(config.supervisedJobs, true);
+  });
+
+  test('an invalid value is reported with the accepted values, and the default (true) applies', () => {
+    const { config, warnings } = withConfig('jobsNoColor: off\n');
+    assert.equal(config.jobsNoColor, true);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /line 1: jobsNoColor must be true or false, found "off" -- using true/);
+  });
+});

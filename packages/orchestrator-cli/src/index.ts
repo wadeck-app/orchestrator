@@ -15,7 +15,7 @@ import { wireAuditEvents } from './audit-wiring.js';
 import { pruneStaleStagedBinaries, supervisorToRun } from './platform-binary.js';
 import { resolveSupervisor } from './supervised-run.js';
 import { TrayManager } from './tray-manager.js';
-import { EventPublisher, testEventsOff } from './event-publisher.js';
+import { EventPublisher } from './event-publisher.js';
 import { flushBeforeStop } from './flush-before-stop.js';
 import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
@@ -204,7 +204,6 @@ async function main(): Promise<void> {
     const events      = new EventPublisher('orchestrator', daemonLog, {
       cwd: CONFIG_DIR,
       jobCwd: (id) => registry.get(id)?.cwd,
-      off: testEventsOff(),
     });
     const hookDispatcher = new HookDispatcher(loadOrchestratorHooks(CONFIG_DIR));
     const supervisorSetup = resolveSupervisor({
@@ -221,6 +220,7 @@ async function main(): Promise<void> {
       hookDispatcher,
       lateActionWindowMs: daemonCfg.lateActionWindowMinutes * 60_000,
       supervisor: supervisorSetup.launcher,
+      jobsNoColor: daemonCfg.jobsNoColor,
     });
 
     // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
       daemonLog.write(`dev instance: tray tinted ${trayColor}, version shown as ${displayVersion}`);
     }
     const trayManager = new TrayManager(CONFIG_DIR, scheduler, state, registry, displayVersion, trayColor, dashboardManager);
-    const execManager = new ExecManager(CONFIG_DIR, events);
+    const execManager = new ExecManager(CONFIG_DIR, events, { jobsNoColor: daemonCfg.jobsNoColor });
 
     // Audit job events
     wireAuditEvents(scheduler, audit);

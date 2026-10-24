@@ -1797,7 +1797,8 @@ export const LogViewerEntry: ComponentRegistryEntry = {
 		const jobId = resolveExpressionValue(node['jobId'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['jobId']
 		const apiBase = resolveExpressionValue(node['apiBase'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['apiBase']
 		const fill = resolveExpressionValue(node['fill'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['fill']
-		return <LogViewer jobId={jobId} apiBase={apiBase} fill={fill} />
+		const progress = resolveExpressionValue(node['progress'], ctx) as import('../../../dsl-lib-orch/src/components/LogViewer.js').LogViewerProps['progress']
+		return <LogViewer jobId={jobId} apiBase={apiBase} fill={fill} progress={progress} />
 	},
 }
 

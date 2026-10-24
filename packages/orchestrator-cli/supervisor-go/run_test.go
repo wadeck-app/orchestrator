@@ -327,3 +327,63 @@ func TestRecordsTheKillReasonEvenWhenTheJobDiedBeforeTheNextLook(t *testing.T) {
 		t.Fatalf("a kill requested while the job was ending must still be recorded, got %+v", st)
 	}
 }
+
+// A job that prints colour regardless of the environment must not put it in the run log: the file is read by
+// editors, grep, the dashboard and agents. The daemon strips the same way for a job it spawns itself
+// (RunLogger.writeOutput), so the file reads the same whichever path ran the job.
+func TestStripsEscapeSequencesFromTheJobsOutputButNotItsCarriageReturns(t *testing.T) {
+	dir := t.TempDir()
+	source := `const E = String.fromCharCode(27), B = String.fromCharCode(7), ST = E + String.fromCharCode(92);
+console.log(E + '[31mred' + E + '[0m ' + E + ']0;title' + B + E + ']8;;http://x.test' + ST + 'link' + E + ']8;;' + ST + ' ' + E + '[2K' + E + '[1Gdone');
+console.log(E + '[2K');
+console.error(E + '[33mwarn' + E + '[39m on stderr');
+process.stdout.write('10%\r20%\r100%\n');`
+	runDir, done := startRun(t, Spec{Command: jsCommand(t, dir, source)})
+	finish(t, done)
+
+	log, _ := os.ReadFile(filepath.Join(runDir, "run.log"))
+	if strings.Contains(string(log), "\x1b") {
+		t.Fatalf("an ESC reached the run log: %q", log)
+	}
+	stamp := regexp.MustCompile(`(?m)^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] `)
+	var texts []string
+	for _, line := range strings.Split(strings.TrimRight(string(log), "\n"), "\n") {
+		texts = append(texts, stamp.ReplaceAllString(line, ""))
+	}
+	sort.Strings(texts)
+	want := []string{"10%\r20%\r100%", "[stderr] warn on stderr", "red link done"}
+	sort.Strings(want)
+	if strings.Join(texts, "|") != strings.Join(want, "|") {
+		t.Fatalf("want %q (a line that is only an erase code writes nothing), got %q", want, texts)
+	}
+}
+
+func TestStripAnsiTable(t *testing.T) {
+	esc, bel, st := "\x1b", "\x07", "\x1b\\"
+	// The same table as orchestrator-cli/test/ansi-cases.js.
+	cases := []struct{ what, in, want string }{
+		{"plain", "hello world", "hello world"},
+		{"SGR", esc + "[31mred" + esc + "[0m", "red"},
+		{"256 and truecolour", esc + "[38;5;208ma" + esc + "[38;2;1;2;3mb" + esc + "[0m", "ab"},
+		{"SGR with no parameter", esc + "[mx", "x"},
+		{"private mode", esc + "[?25lx" + esc + "[?25h", "x"},
+		{"erase", esc + "[2K" + esc + "[1Gdone", "done"},
+		{"cursor up and clear", esc + "[1A" + esc + "[2Jx", "x"},
+		{"OSC with BEL", esc + "]0;my title" + bel + "text", "text"},
+		{"OSC hyperlink with ST", esc + "]8;;http://x.test" + st + "link" + esc + "]8;;" + st, "link"},
+		{"OSC cut at the end", "before" + esc + "]0;title never ended", "before"},
+		{"DCS with ST", esc + "Pq#0;2;0;0;0" + st + "after", "after"},
+		{"lone ESC sequences", esc + "cA" + esc + "7B" + esc + "8C", "ABC"},
+		{"charset", esc + "(Bx", "x"},
+		{"lone ESC at the end", "a" + esc, "a"},
+		{"carriage returns stay", "10%\r20%\r100%", "10%\r20%\r100%"},
+		{"carriage return with erase", "\r" + esc + "[2Kdone", "\rdone"},
+		{"brackets without ESC", "array[0] and [31m", "array[0] and [31m"},
+		{"non-ASCII", esc + "[32mété ✓" + esc + "[0m", "été ✓"},
+	}
+	for _, c := range cases {
+		if got := stripAnsi(c.in); got != c.want {
+			t.Errorf("%s: want %q, got %q", c.what, c.want, got)
+		}
+	}
+}

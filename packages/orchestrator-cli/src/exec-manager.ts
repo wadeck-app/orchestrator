@@ -4,9 +4,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DailyLogger } from './logger.js';
-import { EventPublisher, testEventsOff } from './event-publisher.js';
+import { EventPublisher } from './event-publisher.js';
 import { ensureTmpDir } from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
+import { jobEnvironment } from './job-env.js';
+import { stripAnsi } from './ansi.js';
 
 export interface ExecRun {
   runId: string;
@@ -34,9 +36,12 @@ export class ExecManager {
   private readonly _pids = new Map<string, import('node:child_process').ChildProcess>();
   private readonly _configDir: string;
   private readonly _events: EventPublisher;
-  constructor(configDir: string, events?: EventPublisher) {
+  /** `jobsNoColor` in config.yml: an exec starts with NO_COLOR=1 and FORCE_COLOR=0 like a job (see job-env.ts). */
+  private readonly _noColor: boolean;
+  constructor(configDir: string, events?: EventPublisher, options: { jobsNoColor?: boolean } = {}) {
     this._configDir = configDir;
-    this._events = events ?? new EventPublisher('orchestrator', undefined, { cwd: configDir, off: testEventsOff() });
+    this._noColor = options.jobsNoColor ?? true;
+    this._events = events ?? new EventPublisher('orchestrator', undefined, { cwd: configDir });
   }
 
   /**
@@ -84,7 +89,9 @@ export class ExecManager {
     const tmpDir = ensureTmpDir(this._configDir, runId);
     const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [command];
     const [bin, ...args] = parts;
-    const spawnEnv = opts.env ? { ...process.env, ...opts.env } : undefined;
+    const spawnEnv = (opts.env || this._noColor)
+      ? jobEnvironment({ ...process.env, ...opts.env }, opts.env, this._noColor)
+      : undefined;
 
     const child = nodeSpawn(bin!, args, {
       cwd: opts.cwd ?? tmpDir,
@@ -101,8 +108,10 @@ export class ExecManager {
       runId,
     );
 
+    // A program that ignores the environment and prints escape sequences anyway: they stay out of the run's lines
+    // (what the dashboard and `orch exec` show) and out of the log file.
     child.stdout?.on('data', (d: Buffer) => {
-      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
+      for (const line of stripAnsi(d.toString()).split('\n').filter(l => l.trimEnd())) {
         const trimmed = line.trimEnd();
         run.logs.push(trimmed);
         if (run.logs.length > 1000) { run.logs.shift(); }
@@ -110,7 +119,7 @@ export class ExecManager {
       }
     });
     child.stderr?.on('data', (d: Buffer) => {
-      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
+      for (const line of stripAnsi(d.toString()).split('\n').filter(l => l.trimEnd())) {
         const entry = `[stderr] ${line.trimEnd()}`;
         run.logs.push(entry);
         if (run.logs.length > 1000) { run.logs.shift(); }

@@ -11,6 +11,7 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 | `autoUpdate` | bool | `true` | Enable automatic background updates |
 | `appCore` | bool | `true` | Register the dashboard as a module with app-core at every daemon start. See "app-core module" below |
 | `supervisedJobs` | bool | `true` | Run each job under its own small supervisor process, so jobs survive a daemon restart or update and are followed again afterwards. `orch stop` then leaves them running and names them; `orch stop --kill-jobs` ends them first. The daemon does not echo a job's output on its own stdout (it is in the run log). `false` runs jobs as children of the daemon again: they stop with it. Where no supervisor executable ships (Linux) the daemon logs a warning at every start and runs jobs unsupervised; `false` silences it. Design and live results: `.claude/plans/2026-10-18_update-with-jobs-running.md` |
+| `jobsNoColor` | bool | `true` | Start every job and `orch exec` with `NO_COLOR=1` and `FORCE_COLOR=0`, and strip escape sequences from job output. `false` hands jobs the daemon's environment as it is. See "Colour" below |
 | `lateActionWindowMinutes` | int | `30` | A run that ended while the daemon was down is always recorded and announced (`late: true`); it only retries and fires its dependents if it ended at most this many minutes before the daemon came back. `0` never does |
 | `catchUpInitialDelaySeconds` | int | `300` | Seconds to wait after daemon start before firing the first catch-up job |
 | `catchUpStaggerSeconds` | int | `300` | Seconds between consecutive catch-up jobs on startup |
@@ -20,6 +21,26 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 | `auditMaxFiles` | int | `5` | Rotated audit files kept, newest first |
 
 Integers must be whole and non-negative. `0` is valid and means "keep none", except `auditMaxBytes` where it means "never rotate".
+
+## Colour
+
+With `jobsNoColor: true` (default) a job, supervised or not, and an `orch exec` start with:
+
+| Variable | Value | Why |
+|----------|-------|-----|
+| `NO_COLOR` | `1` | The convention most tools honour |
+| `FORCE_COLOR` | `0` | chalk, supports-color and node read it before `NO_COLOR`, so an inherited `FORCE_COLOR=1` would win |
+| `CLICOLOR_FORCE` | removed | An inherited `1` forces colour in tools that use it |
+
+The job's own `env` (and its secrets) win, per variable: a job that sets `FORCE_COLOR=1` keeps it and still gets `NO_COLOR=1`. `TERM` and `COLORTERM` are left alone: a piped stdout is never a terminal, and changing `TERM` would also change cursor and progress behaviour.
+
+Some programs print escape sequences whatever the environment says, so they are stripped as well (colour, cursor and erase codes, OSC strings; `\r` progress redraws are kept):
+
+- Job output lines are written to the run log file without them, for direct and supervised jobs alike. The daemon's own lines are untouched.
+- `orch job-logs` and `orch logs` (snapshot, `-f`, `--json`) strip what they print. `--raw` prints the file byte for byte, which also shows sequences in logs written before this.
+- The dashboard log pane strips at display. `orch exec` output is stripped too.
+
+Read at daemon start, like every key: `orch restart` after changing it.
 
 ## Audit trail
 

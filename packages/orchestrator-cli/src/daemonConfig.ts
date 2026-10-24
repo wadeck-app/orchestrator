@@ -14,6 +14,11 @@ export interface DaemonConfig {
    */
   supervisedJobs?: boolean;
   /**
+   * Start every job with NO_COLOR=1 and FORCE_COLOR=0 (a variable the job's own env defines is left as it is), so a dev
+   * server does not fill its log with colour codes (default: true; false hands jobs the daemon's environment as it is).
+   */
+  jobsNoColor?: boolean;
+  /**
    * A run that ended while the daemon was down is always recorded and announced; it only retries and fires its
    * dependents if it ended at most this many minutes before the daemon came back (default: 30). 0 never does.
    */
@@ -36,6 +41,7 @@ const DEFAULTS: Required<DaemonConfig> = {
   autoUpdate:                  true,
   appCore:                     true,
   supervisedJobs:              true,
+  jobsNoColor:                 true,
   lateActionWindowMinutes:     30,
   catchUpInitialDelaySeconds:  300,
   catchUpStaggerSeconds:       300,
@@ -47,7 +53,7 @@ const DEFAULTS: Required<DaemonConfig> = {
   auditMaxFiles:               AUDIT_DEFAULTS.maxFiles,
 };
 
-type BooleanKey = 'autoUpdate' | 'appCore' | 'supervisedJobs';
+type BooleanKey = 'autoUpdate' | 'appCore' | 'supervisedJobs' | 'jobsNoColor';
 
 /**
  * What each key accepts. A table rather than a chain of ifs, so the parser can also tell a typo from
@@ -58,6 +64,7 @@ const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeIn
   autoUpdate:                 'boolean',
   appCore:                    'boolean',
   supervisedJobs:             'boolean',
+  jobsNoColor:                'boolean',
   lateActionWindowMinutes:    'nonNegativeInt',
   catchUpInitialDelaySeconds: 'nonNegativeInt',
   catchUpStaggerSeconds:      'nonNegativeInt',

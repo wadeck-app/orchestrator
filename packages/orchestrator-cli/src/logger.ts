@@ -3,6 +3,7 @@
 import fs   from 'node:fs';
 import path from 'node:path';
 import { getErrorMessage } from './fsUtil.js';
+import { stripAnsi } from './ansi.js';
 
 const MAX_KEEP_DAYS = 30;
 const HARD_CAP_DAYS = 120;
@@ -56,6 +57,19 @@ export class RunLogger {
           try { process.stderr.write(`[RunLogger] Write failed: ${err}\n`); } catch { /* EPIPE */ }
         }
       }
+    }
+  }
+
+  /**
+   * A line the JOB printed (stdout, or stderr with its prefix), as opposed to the daemon's own markers: escape
+   * sequences are stripped (colour has no value in a file read by editors, grep, the dashboard and agents), and a
+   * line that is empty once stripped and trimmed writes nothing. The supervisor does the same for a supervised
+   * job (supervisor-go/run.go), so the file reads the same whichever path ran the job.
+   */
+  writeOutput(line: string, prefix = ''): void {
+    const text = stripAnsi(line).trimEnd();
+    if (text) {
+      this.write(`${prefix}${text}`);
     }
   }
 

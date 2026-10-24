@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getErrorMessage } from './fsUtil.js';
+import { stripAnsi } from './ansi.js';
 
 /**
  * `orch job-logs <id>`: a job's run log as plain text, a snapshot or followed.
@@ -12,7 +13,7 @@ import { getErrorMessage } from './fsUtil.js';
  * Returns the process exit code instead of exiting, so the caller decides how to leave.
  */
 
-export const JOB_LOGS_USAGE = 'Usage: orch job-logs <id> [-f|--follow] [-n|--tail <N>] [--run <which>] [--list-runs] [--json]';
+export const JOB_LOGS_USAGE = 'Usage: orch job-logs <id> [-f|--follow] [-n|--tail <N>] [--run <which>] [--list-runs] [--json] [--raw]';
 
 export interface JobLogsOptions {
   jobId: string;
@@ -21,6 +22,8 @@ export interface JobLogsOptions {
   run: string;
   listRuns: boolean;
   json: boolean;
+  /** Keep the escape sequences of the file (colour, cursor codes); stripped from what is printed by default. */
+  raw: boolean;
 }
 
 export type ParsedJobLogsArgs = { ok: true; options: JobLogsOptions } | { ok: false; error: string };
@@ -29,7 +32,7 @@ const RUN_WORDS = 'latest, previous, a number from 1 (1 = latest, 2 = the run be
 
 /** Parses the arguments after `job-logs`. Every refusal says what is accepted. */
 export function parseJobLogsArgs(args: string[], json: boolean): ParsedJobLogsArgs {
-  const options: JobLogsOptions = { jobId: '', follow: false, tail: undefined, run: 'latest', listRuns: false, json };
+  const options: JobLogsOptions = { jobId: '', follow: false, tail: undefined, run: 'latest', listRuns: false, json, raw: false };
   let runGiven = false;
   const fail = (error: string): ParsedJobLogsArgs => ({ ok: false, error: `${error}\n${JOB_LOGS_USAGE}` });
   const valueOf = (i: number, name: string): string | ParsedJobLogsArgs => {
@@ -49,6 +52,8 @@ export function parseJobLogsArgs(args: string[], json: boolean): ParsedJobLogsAr
       options.listRuns = true;
     } else if (a === '--json') {
       options.json = true;
+    } else if (a === '--raw') {
+      options.raw = true;
     } else if (a === '-n' || a === '--tail') {
       const v = valueOf(i, a);
       if (typeof v !== 'string') {
@@ -71,7 +76,7 @@ export function parseJobLogsArgs(args: string[], json: boolean): ParsedJobLogsAr
       runGiven = true;
       i++;
     } else if (a.startsWith('-')) {
-      return fail(`Unknown flag "${a}". Accepted: -f/--follow, -n/--tail <N>, --run <which>, --list-runs, --json.`);
+      return fail(`Unknown flag "${a}". Accepted: -f/--follow, -n/--tail <N>, --run <which>, --list-runs, --json, --raw.`);
     } else if (options.jobId === '') {
       options.jobId = a;
     } else {
@@ -318,13 +323,17 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
     err(`[orch] ${cutCount} earlier line${cutCount === 1 ? '' : 's'} not shown (-n ${options.tail}). Drop -n for the whole run.\n`);
   }
 
+  // Every printed line goes through here: the run log is written without escape sequences, but an older one, or a
+  // program that ignores NO_COLOR, may still hold some. --raw prints the file byte for byte.
+  const shownLine = (line: string): string => (options.raw ? line : stripAnsi(line));
   const emitLine = (line: string): void => {
-    out(options.json ? `${JSON.stringify(toLogLine(line))}\n` : `${line}\n`);
+    const text = shownLine(line);
+    out(options.json ? `${JSON.stringify(toLogLine(text))}\n` : `${text}\n`);
   };
 
   if (!following) {
     if (options.json && !options.follow) {
-      out(`${JSON.stringify(shown.map(toLogLine))}\n`);
+      out(`${JSON.stringify(shown.map((l) => toLogLine(shownLine(l))))}\n`);
     } else {
       shown.forEach(emitLine);
     }

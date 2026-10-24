@@ -10,6 +10,9 @@ import { useWidePane, widthClass } from './log-pane-width.js';
 import { useConfirm } from '../use-confirm.js';
 import { getApiBase } from '../runtime-config.js';
 import { readErrorSentence } from '../trigger-job.js';
+// The pane paints with its own palette: a colour sequence a job wrote (older run files still hold some) would show
+// up as "[90m[2m(client)[22m[39m" around the text.
+import { stripEscapeSequences } from '../strip-ansi.js';
 
 // violations-suppress-start: tailwind/no-raw-color-class,tailwind/no-inline-classname,react/no-raw-button terminal/console pane must stay dark regardless of app theme; semantic surface tokens would invert on light mode; Button component doesn't support icon+label in compact terminal header style
 // @formatter:off
@@ -66,16 +69,6 @@ const LOG_BODY_CLS       = 'flex-1 overflow-auto bg-bg text-green-400 font-mono 
 
 // Matches file:/// URLs, http(s) URLs, and Windows absolute paths with known extensions.
 const URL_RE = /(file:\/\/\/[^\s\r\n]+|https?:\/\/[^\s\r\n]+|[A-Za-z]:[\\\/][^\s\r\n]+\.(?:html?|json|csv|txt|log))/gi;
-
-/*
- * Colour and cursor sequences (ESC [ ... final byte) a job wrote into its log. The pane paints with its own palette, so
- * they showed up as "[90m[2m(client)[22m[39m" around the text. The log file keeps them: this only cleans what is shown.
- */
-const ESCAPE_SEQUENCE_RE = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
-
-function stripEscapeSequences(line: string): string {
-  return line.replace(ESCAPE_SEQUENCE_RE, '');
-}
 
 function toFileUrl(raw: string): string {
   if (raw.startsWith('file:///') || raw.startsWith('http')) {

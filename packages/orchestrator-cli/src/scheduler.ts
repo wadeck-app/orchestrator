@@ -6,9 +6,11 @@ import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
+import { jobEnvironment } from './job-env.js';
+import { stripAnsi }      from './ansi.js';
 import { ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
-import { EventPublisher, testEventsOff } from './event-publisher.js';
+import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
 // pidusage: cross-platform CPU/RAM sampling by PID (types in pidusage.d.ts)
@@ -186,6 +188,8 @@ interface SchedulerOptions {
    * Lowered in tests, which would otherwise wait the 2 seconds that is the smallest sustainSeconds.
    */
   sustainSamples?:        number;
+  /** `jobsNoColor` in config.yml (default true): jobs start with NO_COLOR=1 and FORCE_COLOR=0, see job-env.ts. */
+  jobsNoColor?:           boolean;
   /**
    * The passage of time. Defaults to the real clock.
    *
@@ -476,6 +480,7 @@ export class Scheduler extends EventEmitter {
   private readonly _processName:     (pid: number) => Promise<string | undefined>;
   private readonly _sampleIntervalMs: number;
   private readonly _sustainSamples: number | undefined;
+  private readonly _jobsNoColor: boolean;
   private readonly _retryCounters  = new Map<string, number>();
   /**
    * Live processes per job, for maxConcurrency and runningCount(). A counter of its own so that the
@@ -510,7 +515,6 @@ export class Scheduler extends EventEmitter {
     this._eventPublisher    = options.eventPublisher ?? new EventPublisher('orchestrator', undefined, {
       cwd: this._configDir,
       jobCwd: (id) => this._registry.get(id)?.cwd,
-      off: testEventsOff(),
     });
     this._secrets   = new SecretsManager(this._configDir);
     this._catchUpInitialDelayMs = options.catchUpInitialDelayMs ?? 300_000;
@@ -525,6 +529,7 @@ export class Scheduler extends EventEmitter {
     this._processName           = options.processName           ?? lookupProcessName;
     this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
     this._sustainSamples        = options.sustainSamples;
+    this._jobsNoColor           = options.jobsNoColor           ?? true;
     // Said out loud rather than swallowed: a deadline callback that throws is a job that will not run,
     // and the queue keeps going so one broken job cannot stop the others. Silence here would make the
     // difference invisible.
@@ -1979,8 +1984,10 @@ export class Scheduler extends EventEmitter {
   private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null } | { exitCode: number | null }> {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
-    const jobEnv = (job.env || job.secrets?.length)
-      ? { ...process.env, ...job.env, ...secretEnv }
+    // Both paths (a direct spawn and the supervisor, whose environment the job inherits) start from this one value.
+    // Undefined only when nothing changes the daemon's own environment, as before.
+    const jobEnv = (job.env || job.secrets?.length || this._jobsNoColor)
+      ? jobEnvironment({ ...process.env, ...job.env, ...secretEnv }, job.env, this._jobsNoColor, secretEnv)
       : undefined;
     // Awaited only when it IS a promise: an `await` on a plain child would move everything below to a later
     // tick, and a child that closes right after being spawned (every test double, and a command that fails
@@ -2244,17 +2251,22 @@ export class Scheduler extends EventEmitter {
       // two samples of a pid to derive a CPU percentage, so this first one also primes it.
       sample();
     }
+    // The job's lines go through writeOutput, which strips escape sequences; the echo to the daemon's own stdout
+    // (its log) is stripped too, for a chunk that has any.
+    const echo = (stream: NodeJS.WriteStream, d: Buffer): void => {
+      try { stream.write(d.includes(0x1b) ? stripAnsi(d.toString()) : d); } catch { /* EPIPE: launcher pipe closed */ }
+    };
     child.stdout?.on('data', (d: Buffer) => {
-      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
-        jobLogger.write(line.trimEnd());
+      for (const line of d.toString().split('\n')) {
+        jobLogger.writeOutput(line);
       }
-      try { process.stdout.write(d); } catch { /* EPIPE: launcher pipe closed */ }
+      echo(process.stdout, d);
     });
     child.stderr?.on('data', (d: Buffer) => {
-      for (const line of d.toString().split('\n').filter(l => l.trimEnd())) {
-        jobLogger.write(`[stderr] ${line.trimEnd()}`);
+      for (const line of d.toString().split('\n')) {
+        jobLogger.writeOutput(line, '[stderr] ');
       }
-      try { process.stderr.write(d); } catch { /* EPIPE: launcher pipe closed */ }
+      echo(process.stderr, d);
     });
 
     // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s; 0 = no timeout).

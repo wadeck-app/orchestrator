@@ -22,6 +22,9 @@ const { State } = require('../src/state');
 
 const CWD = path.resolve(os.tmpdir(), 'orch-default-cwd');
 const TOKEN = 'fake-token-0000000000000000000000';
+// The test preload switches the SDK off for the whole suite (QUEUE_SDK_OFF=1); the tests of this file are the ones that
+// deliver, to a fake queue, so they turn it back on for themselves.
+process.env.QUEUE_SDK_OFF = '0';
 const originalPath = process.env.PATH;
 const dirs = [];
 const servers = [];
@@ -166,14 +169,21 @@ describe('EventPublisher on the queue SDK', () => {
     assert.ok(Date.now() - t0 < 100);
   });
 
-  test('off: nothing is sent and nothing is logged', async () => {
+  test('QUEUE_SDK_OFF=1: nothing is sent, and the daemon log says once that the publisher is off', async () => {
     const fake = await fakeQueue();
-    const { publisher, lines } = makePublisher(fake.dir, { off: true });
-    publisher.publish('job.started', { jobId: 'a' });
-    await publisher.flush();
-    await new Promise((r) => setTimeout(r, 200));
-    assert.equal(fake.received.length, 0);
-    assert.deepEqual(lines, []);
+    process.env.QUEUE_SDK_OFF = '1';
+    try {
+      const { publisher, lines } = makePublisher(fake.dir);
+      publisher.publish('job.started', { jobId: 'a' });
+      publisher.publish('job.completed', { jobId: 'a' });
+      await publisher.flush();
+      await new Promise((r) => setTimeout(r, 200));
+      assert.equal(fake.received.length, 0);
+      assert.equal(lines.length, 1, `expected one warning, got: ${JSON.stringify(lines)}`);
+      assert.match(lines[0], /\[event-publisher\].*off/i);
+    } finally {
+      process.env.QUEUE_SDK_OFF = '0';
+    }
   });
 
   test('flush waits for the pushes in flight, bounded when the queue hangs', async () => {

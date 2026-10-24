@@ -9,17 +9,32 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// One temp root for the whole run. Tests make their folders with mkdtemp(os.tmpdir()) and most never remove them: the
+// suite used to leave about 47 000 orch-* folders in the OS temp dir. TEMP/TMP/TMPDIR now point at a root that this
+// preload makes once (the process that starts the run) and removes when that process exits, so whatever a test forgot
+// goes with it. Every process of the run inherits the variables and shares the root (ORCH_TEST_TMP_ROOT marks it);
+// only the process that made it removes it. A job a test left running can still hold a file there: the next
+// `npm test` sweeps what is left (scripts/clean-test-temp.cjs).
+const ownsRoot = !process.env.ORCH_TEST_TMP_ROOT;
+if (ownsRoot) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-test-root-'));
+  process.env.ORCH_TEST_TMP_ROOT = root;
+  process.env.TEMP = root;
+  process.env.TMP = root;
+  process.env.TMPDIR = root;
+  process.on('exit', () => {
+    try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* held by a left-over process: the next run sweeps it */ }
+  });
+}
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-test-config-'));
-process.on('exit', () => {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* a process of a test may still hold a file */ }
-});
 
 // The event publisher (@wadeck-app/queue-sdk) would push to the queue daemon found in QUEUE_CONFIG_DIR (default: the
 // user's real ~/.config/queue) and run the real `queue start` when it is stopped. Every publisher built by the daemon
-// code (index.ts, Scheduler and ExecManager defaults) is switched off through this variable, which only this preload
-// sets; production never does. The tests of delivery build an EventPublisher themselves with `off: false`.
-if (!process.env.ORCH_TEST_EVENTS_OFF) {
-  process.env.ORCH_TEST_EVENTS_OFF = '1';
+// code (index.ts, Scheduler and ExecManager defaults) is switched off through the SDK's own variable, QUEUE_SDK_OFF=1, which
+// is for development runs and tests only (the SDK announces it once when it is set). The delivery tests set it to 0 themselves.
+if (!process.env.QUEUE_SDK_OFF) {
+  process.env.QUEUE_SDK_OFF = '1';
 }
 
 if (!process.env.QUEUE_CONFIG_DIR) {

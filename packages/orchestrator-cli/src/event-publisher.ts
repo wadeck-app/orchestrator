@@ -10,18 +10,8 @@ export interface EventPublisherOptions {
   cwd?: string;
   /** The cwd of a job, by id. An event whose payload has a `jobId` with an absolute cwd is sent with it, so that project's subscribers match. */
   jobCwd?: (jobId: string) => string | null | undefined;
-  /** Nothing is sent, started or reported (the SDK's `off`). For tests; see {@link testEventsOff}. */
-  off?: boolean;
   /** Upper bound of `flush()`, in ms. Default 8000. */
   flushBoundMs?: number;
-}
-
-/**
- * True only when the test preload set ORCH_TEST_EVENTS_OFF=1. Read once by whoever builds a publisher (index.ts, the
- * Scheduler and ExecManager defaults); production never sets it, and nothing else reads it.
- */
-export function testEventsOff(): boolean {
-  return process.env['ORCH_TEST_EVENTS_OFF'] === '1';
 }
 
 /**
@@ -36,13 +26,11 @@ export class EventPublisher {
   private readonly _jobCwd: ((jobId: string) => string | null | undefined) | undefined;
   private _queue: QueuePublisher | null = null;
   private _failing = false;
-  private readonly _off: boolean;
   private readonly _flushBoundMs: number;
 
   constructor(private readonly _projectName = 'orchestrator', private readonly _logger?: LogSink, options: EventPublisherOptions = {}) {
     this._cwd = options.cwd;
     this._jobCwd = options.jobCwd;
-    this._off = options.off ?? false;
     this._flushBoundMs = options.flushBoundMs ?? 8000;
   }
 
@@ -84,9 +72,10 @@ export class EventPublisher {
   private _publisher(): QueuePublisher {
     this._queue ??= createQueuePublisher({
       cwd: this._cwd,
-      off: this._off,
-      // The log below is the one place a failure is reported.
+      // The log below is the one place a failure is reported. QUEUE_SDK_OFF=1 in the daemon's environment (development
+      // without a queue, or the test preload) switches the SDK off: it announces that once, through onWarning.
       silent: true,
+      onWarning: (warning) => this._logger?.write(`[event-publisher] ${warning}`),
       onError: (failure) => this._failed(`Failed to publish "${failure.event}" to the queue (${failure.kind}, ${failure.outcome}): ${failure.message}`),
     });
     return this._queue;

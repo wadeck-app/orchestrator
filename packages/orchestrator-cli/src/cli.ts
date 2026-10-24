@@ -11,6 +11,7 @@ import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
 import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
 import { parseJobLogsArgs, runJobLogs } from './job-logs.js';
+import { stripAnsi } from './ansi.js';
 
 /** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
 const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -659,8 +660,12 @@ Exit codes that are not failures:
   already alive -- see --liveness-strategy above.
 
 Logs:
-  orch job-logs <id> [-f] [-n <N>] [--run <which>] [--list-runs] [--json]
-                               A job's run log as plain text, exactly as written; the newest run by default
+  orch job-logs <id> [-f] [-n <N>] [--run <which>] [--list-runs] [--json] [--raw]
+                               A job's run log as plain text; the newest run by default. Colour and cursor
+                               escape sequences are stripped from what is printed (jobs are started with
+                               NO_COLOR=1 and FORCE_COLOR=0, see jobsNoColor in docs/daemon-config.md, and the
+                               run log is written without them; this covers older logs and programs that
+                               ignore the environment)
                                -f, --follow     Keep streaming the running job until it ends or Ctrl+C; the
                                                 end prints the exit code. A job that is not running: shows its
                                                 last run, says so on stderr, exits 0
@@ -669,18 +674,20 @@ Logs:
                                                 run before) | a start time as printed by --list-runs
                                --list-runs      The retained runs, newest first: start (UTC), exit code or
                                                 running, duration, trigger, and the --run to read each
+                               --raw            Print the lines byte for byte, escape sequences included
                                --json           Lines as {t,text} (one array; -f: one object per line); with
                                --list-runs an array of runs
                                Exit: 1 job unknown / no log yet / no such run, 4 bad flag or value
                                Example: orch job-logs nightly-backup
                                Example: orch job-logs nightly-backup -f
 
-  orch logs [--follow] [--job <id>] [--tail <N>] [--json]
+  orch logs [--follow] [--job <id>] [--tail <N>] [--json] [--raw]
                                Read today's orchestrator or job log file (for a job, prefer: orch job-logs <id> [-f])
                                --follow     Tail log in real-time (Ctrl+C to stop)
                                --job <id>   Show logs for specific job (default: daemon logs)
                                --tail <N>   Show last N lines (default: all)
                                --json       Output as JSON (timestamp + message per line)
+                               --raw        Keep escape sequences (colour, cursor codes); stripped by default
 
 Global flags:
   --json                       Force JSON output
@@ -1769,7 +1776,7 @@ Use --wait to block until the command finishes.`);
       const jsonFlag = has(rest, '--json');
       warnUnknownArgs(
         rest,
-        [...followFlags, '--job', '--tail', '--since', '--json'],
+        [...followFlags, '--job', '--tail', '--since', '--json', '--raw'],
         'orch logs',
         new Set(['--job', '--tail', '--since']),
       );
@@ -1798,7 +1805,11 @@ Use --wait to block until the command finishes.`);
         ? undefined
         : path.join(configDir, 'logs', 'daemon', `daemon-${today}.log`);
 
-      const printLines = (lines: string[]): void => {
+      // The one place every line of this view goes through (snapshot and tail): escape sequences are stripped
+      // unless --raw. Job output is stripped when written, but older logs and programs that ignore NO_COLOR have some.
+      const raw = has(rest, '--raw');
+      const printLines = (rawLines: string[]): void => {
+        const lines = raw ? rawLines : rawLines.map(stripAnsi);
         if (json) {
           for (const line of lines) {
             const match = line.match(/\[([\d-: ]+)\] (.*)/);
