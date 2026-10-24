@@ -82,3 +82,35 @@ describe('jobEnvironment', () => {
     assert.equal(env.no_color, 'mine');
   });
 });
+
+/*
+ * orch starts its own daemon with LAUNCHER_BUNDLE_OVERRIDE pointing at the daemon's bundle (cli.ts, startup.ts), and the
+ * shared-cli updater adds UPDATER_PKG_NAME. A job inherited them, so a CLI run as a job (app-core-cli under the job
+ * `npm run dev:all`) that finds itself through LAUNCHER_BUNDLE_OVERRIDE found orchestrator-cli instead and read its
+ * build-info.json. They belong to the daemon, not to its jobs.
+ */
+describe('jobEnvironment and the launcher variables of the daemon', () => {
+  test('a job does not inherit LAUNCHER_BUNDLE_OVERRIDE or UPDATER_PKG_NAME', () => {
+    const env = jobEnvironment({ PATH: '/bin', LAUNCHER_BUNDLE_OVERRIDE: '/orch/dist/orchestrator.cjs', UPDATER_PKG_NAME: '@wadeck-app/orchestrator-cli' }, undefined, true);
+    assert.equal(env.LAUNCHER_BUNDLE_OVERRIDE, undefined);
+    assert.equal(env.UPDATER_PKG_NAME, undefined);
+    assert.equal(env.PATH, '/bin');
+  });
+
+  test('this holds with jobsNoColor false too: it is not a colour matter', () => {
+    const env = jobEnvironment({ LAUNCHER_BUNDLE_OVERRIDE: '/orch/dist/orchestrator.cjs', FORCE_COLOR: '1' }, undefined, false);
+    assert.equal(env.LAUNCHER_BUNDLE_OVERRIDE, undefined);
+    assert.equal(env.FORCE_COLOR, '1');
+  });
+
+  test('a job that sets LAUNCHER_BUNDLE_OVERRIDE itself keeps its own value', () => {
+    // As the scheduler calls it: the base is the daemon's environment with the job's own env already laid over it.
+    const env = jobEnvironment({ LAUNCHER_BUNDLE_OVERRIDE: '/mine/bundle.cjs' }, { LAUNCHER_BUNDLE_OVERRIDE: '/mine/bundle.cjs' }, true);
+    assert.equal(env.LAUNCHER_BUNDLE_OVERRIDE, '/mine/bundle.cjs');
+  });
+
+  test('the job\'s secrets count as its own, like for colour', () => {
+    const env = jobEnvironment({ UPDATER_PKG_NAME: 'secret-value' }, undefined, true, { UPDATER_PKG_NAME: 'secret-value' });
+    assert.equal(env.UPDATER_PKG_NAME, 'secret-value');
+  });
+});

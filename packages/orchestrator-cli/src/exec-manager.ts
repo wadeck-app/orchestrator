@@ -89,9 +89,7 @@ export class ExecManager {
     const tmpDir = ensureTmpDir(this._configDir, runId);
     const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [command];
     const [bin, ...args] = parts;
-    const spawnEnv = (opts.env || this._noColor)
-      ? jobEnvironment({ ...process.env, ...opts.env }, opts.env, this._noColor)
-      : undefined;
+    const spawnEnv = jobEnvironment({ ...process.env, ...opts.env }, opts.env, this._noColor);
 
     const child = nodeSpawn(bin!, args, {
       cwd: opts.cwd ?? tmpDir,

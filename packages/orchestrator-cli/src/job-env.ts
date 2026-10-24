@@ -17,6 +17,9 @@
  *
  * Variable names are case-insensitive on Windows, so `no_color` in a job's env is that job's NO_COLOR there.
  */
+/** Variables the daemon is started with for its own sake; a job must not see them. */
+const DAEMON_ONLY_VARIABLES = ['LAUNCHER_BUNDLE_OVERRIDE', 'UPDATER_PKG_NAME'] as const;
+
 export function jobEnvironment(
   base: NodeJS.ProcessEnv,
   jobEnv: NodeJS.ProcessEnv | undefined,
@@ -24,14 +27,27 @@ export function jobEnvironment(
   secretEnv?: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base };
-  if (!noColor) {
-    return env;
-  }
   const insensitive = process.platform === 'win32';
   const same = (a: string, b: string): boolean => (insensitive ? a.toUpperCase() === b.toUpperCase() : a === b);
   const definedByJob = (name: string): boolean =>
     [jobEnv, secretEnv].some((own) => own !== undefined && Object.keys(own).some((k) => same(k, name)));
   const keysOf = (name: string): string[] => Object.keys(env).filter((k) => same(k, name));
+
+  // The daemon's own launcher variables are not its jobs': orch starts the daemon with LAUNCHER_BUNDLE_OVERRIDE (the
+  // daemon's bundle) and the shared-cli updater adds UPDATER_PKG_NAME. Inherited, a CLI run as a job that finds itself
+  // through LAUNCHER_BUNDLE_OVERRIDE (app-core-cli under `npm run dev:all`) found orchestrator-cli instead. A job that
+  // defines one of them keeps its own value, and this does not depend on the colour switch.
+  for (const name of DAEMON_ONLY_VARIABLES) {
+    if (!definedByJob(name)) {
+      for (const k of keysOf(name)) {
+        delete env[k];
+      }
+    }
+  }
+
+  if (!noColor) {
+    return env;
+  }
 
   // Set under the name the environment already uses, so Windows never ends up with two spellings of one variable.
   const set = (name: string, value: string): void => {

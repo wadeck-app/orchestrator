@@ -1985,10 +1985,8 @@ export class Scheduler extends EventEmitter {
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
     // Both paths (a direct spawn and the supervisor, whose environment the job inherits) start from this one value.
-    // Undefined only when nothing changes the daemon's own environment, as before.
-    const jobEnv = (job.env || job.secrets?.length || this._jobsNoColor)
-      ? jobEnvironment({ ...process.env, ...job.env, ...secretEnv }, job.env, this._jobsNoColor, secretEnv)
-      : undefined;
+    // Always built: even with nothing of its own, a job must not inherit the daemon's launcher variables.
+    const jobEnv = jobEnvironment({ ...process.env, ...job.env, ...secretEnv }, job.env, this._jobsNoColor, secretEnv);
     // Awaited only when it IS a promise: an `await` on a plain child would move everything below to a later
     // tick, and a child that closes right after being spawned (every test double, and a command that fails
     // at once) would emit before its listeners exist.
