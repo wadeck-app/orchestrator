@@ -132,14 +132,15 @@ describe('exec.started / exec.completed / exec.failed', () => {
     const { FakeTime } = require('../src/time-service');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-exec-clock-'));
     const script = path.join(dir, 'exec.js');
-    fs.writeFileSync(script, "console.log('ready'); setInterval(() => {}, 1000);");
+    fs.writeFileSync(script, "console.log('ready ' + process.pid); setInterval(() => {}, 1000);");
     const captured = capturingPublisher();
     track({ events: captured.events, problems: captured.problems });
     const time = new FakeTime(Date.now());
     const manager = new ExecManager(dir, captured.publisher, { time });
     const { runId } = manager.fireExec(`"${process.execPath}" "${script}"`, { timeout: 2 });
 
-    await untilTrue(() => manager.get(runId).logs.includes('ready'));
+    await untilTrue(() => manager.get(runId).logs.some((line) => /ready \d+/.test(line)));
+    const scriptPid = Number(/ready (\d+)/.exec(manager.get(runId).logs.join('\n'))[1]);
     time.advance(1999);
     assert.equal(manager.get(runId).status, 'running');
     assert.deepEqual(captured.events.map((e) => e.event), ['exec.started']);
@@ -149,6 +150,11 @@ describe('exec.started / exec.completed / exec.failed', () => {
     assert.equal(manager.get(runId).status, 'killed');
     assert.equal(captured.events.filter((e) => e.event === 'exec.failed').length, 1);
     assert.equal(captured.events[1].payload.durationMs, 2000, 'the duration is measured on the same clock');
+    // The timeout must END the script, not only mark the run: a process left behind by a test (or by `orch exec`) keeps
+    // running for ever. Waited on the process's own exit, never on a fixed delay.
+    await untilTrue(() => {
+      try { process.kill(scriptPid, 0); return false; } catch { return true; }
+    });
   });
 
   test('two runs have two runIds and one terminal event each', async () => {
