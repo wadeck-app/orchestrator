@@ -178,6 +178,16 @@ interface SchedulerOptions {
    */
   processName?:           (pid: number) => Promise<string | undefined>;
   /**
+   * How the whole process tree of a job is ended (killJob, restart-job, a resource-limit kill). Defaults to the real one.
+   *
+   * A test with a fake child must not use the real one: the fake pid belongs to some other process on the machine, and that
+   * process and its descendants are what gets signalled (on a CI runner a pid like 4242 is a live one, the test runner's
+   * own ancestors included).
+   */
+  killTree?:              (pid: number) => Promise<void>;
+  /** Same as killTree, for the places that cannot wait (the job timeout, a resource-limit breach). */
+  killTreeSync?:          (pid: number) => void;
+  /**
    * How often the resource monitor samples. Lowered in tests.
    *
    * Needed alongside sampleUsage to test the overlap guard at all: overlap only happens when a
@@ -481,6 +491,8 @@ export class Scheduler extends EventEmitter {
   private readonly _peakFlushMs:     number;
   private readonly _sampleUsage:     (rootPid: number) => Promise<TreeUsage | null>;
   private readonly _processName:     (pid: number) => Promise<string | undefined>;
+  private readonly _killTree:        (pid: number) => Promise<void>;
+  private readonly _killTreeSync:    (pid: number) => void;
   private readonly _sampleIntervalMs: number;
   private readonly _sustainSamples: number | undefined;
   private readonly _jobsNoColor: boolean;
@@ -534,6 +546,8 @@ export class Scheduler extends EventEmitter {
     this._peakFlushMs           = options.peakFlushMs           ?? 10_000;
     this._sampleUsage           = options.sampleUsage           ?? sampleProcessTree;
     this._processName           = options.processName           ?? lookupProcessName;
+    this._killTree              = options.killTree              ?? killTree;
+    this._killTreeSync          = options.killTreeSync          ?? killTreeSync;
     this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
     this._sustainSamples        = options.sustainSamples;
     this._jobsNoColor           = options.jobsNoColor           ?? true;
@@ -1033,7 +1047,7 @@ export class Scheduler extends EventEmitter {
       child.requestKill(reason);
     }
     if (child.pid !== undefined) {
-      killTreeSync(child.pid);
+      this._killTreeSync(child.pid);
       return;
     }
     // No pid: an unspawned or already-reaped handle. Signalling it is all we can do.
@@ -1126,7 +1140,7 @@ export class Scheduler extends EventEmitter {
       child.requestKill(reason);
     }
     if (child.pid !== undefined) {
-      await killTree(child.pid);
+      await this._killTree(child.pid);
       return;
     }
     child.kill('SIGTERM');
@@ -2397,12 +2411,19 @@ export class Scheduler extends EventEmitter {
       }
       echo(process.stderr, d);
     });
+    // A child that could not be spawned (EAGAIN, EMFILE, EACCES...) emits 'error', and so does each of its pipes when it
+    // goes away. With no listener that is an uncaughtException, fatal for the daemon: one job must never be able to take
+    // the scheduler of every other job down. A failed spawn is followed by 'close' with a negative errno, which ends the run
+    // through the usual path; this only records why, in the run's own log.
+    child.on('error', (err) => { jobLogger.write(`[error] the job's process reported an error: ${getErrorMessage(err)}`); });
+    child.stdout?.on('error', (err) => { jobLogger.write(`[warn] the job's stdout pipe failed: ${getErrorMessage(err)}`); });
+    child.stderr?.on('error', (err) => { jobLogger.write(`[warn] the job's stderr pipe failed: ${getErrorMessage(err)}`); });
 
     // Job timeout: kill process if it exceeds timeoutSeconds (default 5 min = 300s; 0 = no timeout).
     const fullTimeoutMs = (job.timeoutSeconds ?? 300) * 1000;
     // A run found again after a restart has already used part of its time.
     const timeoutMs = fullTimeoutMs > 0 && resume !== undefined
-      ? Math.max(1, fullTimeoutMs - (Date.now() - Date.parse(startedAt)))
+      ? Math.max(1, fullTimeoutMs - (this._time.now() - Date.parse(startedAt)))
       : fullTimeoutMs;
     let timeoutHandle: Timer | null = null;
     let timedOut = false;

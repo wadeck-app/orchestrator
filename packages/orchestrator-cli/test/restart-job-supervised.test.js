@@ -69,7 +69,7 @@ function isAlive(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-async function until(what, predicate, ms = 15_000) {
+async function until(what, predicate, ms = 60_000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     if (await predicate()) {

@@ -13,8 +13,7 @@ describe('SecretsManager', () => {
   let manager;
 
   beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `secrets-test-${Date.now()}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'secrets-test-'));
     manager = new SecretsManager(tmpDir);
   });
 

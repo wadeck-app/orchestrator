@@ -24,6 +24,16 @@ function emittedNames() {
   return names;
 }
 
+/** Polls a condition on something the test can observe, up to a limit far above any delay, then fails saying what it waited for. */
+async function until(predicate, what, ms = 30_000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (predicate()) { return; }
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assert.fail(`timed out waiting for ${what}`);
+}
+
 describe('event catalog: no drift between the code and the declaration', () => {
   test('the scan finds the emitters (a broken scan must not pass for an empty one)', () => {
     assert.ok(emittedNames().size >= 20, [...emittedNames()].join(', '));
@@ -167,11 +177,14 @@ describe('declaring the catalog to a queue daemon', () => {
 
     publisher.publish('job.started', { jobId: 'a' });
     await publisher.flush();
-    await new Promise((r) => setTimeout(r, 200));
+    // The retry is sent after the publish settled and flush() does not wait for it: wait for it to land at the daemon.
+    await until(() => daemon.registrations().length >= 2, 'the declaration to be sent again');
     assert.equal(daemon.registrations().length, 2, 'retried once after the first accepted publish');
 
     publisher.publish('job.completed', { jobId: 'a' });
     await publisher.flush();
+    // An absence cannot be awaited: this grace only lets a wrong second retry arrive. A slow machine can make the check
+    // pass too early, never fail.
     await new Promise((r) => setTimeout(r, 200));
     assert.equal(daemon.registrations().length, 2, 'not retried again');
   });

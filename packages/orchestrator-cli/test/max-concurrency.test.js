@@ -228,10 +228,14 @@ describe('orch trigger respects the limit unless forced', () => {
     const { sched, children } = makeEnv([JOB]);
     await sched.trigger('j');
 
+    // The limit only turns a wait that would never end into a message; it is far above a call that returns, and cleared
+    // so that it does not hold the process open.
+    let blockedLimit;
     const result = await Promise.race([
       sched.trigger('j', { kind: 'manual' }, true),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('blocked on a run that was never started')), 500)),
+      new Promise((_, reject) => { blockedLimit = setTimeout(() => reject(new Error('blocked on a run that was never started')), 30_000); }),
     ]);
+    clearTimeout(blockedLimit);
 
     assert.equal(result.status, 'already-running');
     finish(children[0]);

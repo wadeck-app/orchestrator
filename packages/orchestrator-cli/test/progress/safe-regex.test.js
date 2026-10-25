@@ -6,7 +6,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  compilePattern, createMatcher, MAX_PATTERN_LENGTH, MAX_LINE_LENGTH, COOLDOWN_CALLS,
+  compilePattern, createMatcher, matchBudgetMs, MAX_PATTERN_LENGTH, MAX_LINE_LENGTH, COOLDOWN_CALLS, DEFAULT_MATCH_BUDGET_MS, MATCH_BUDGET_ENV,
 } = require('../../src/progress/safe-regex');
 
 describe('compilePattern: accepted', () => {
@@ -93,15 +93,55 @@ describe('createMatcher', () => {
     assert.ok(tookMs < 5000, `took ${tookMs} ms`);
   });
 
+  // The budget is a wall-clock watchdog, so a real timeout followed by a "harmless" call that must finish in the budget
+  // failed on loaded machines (the harmless call was the one that ran out of time). The timeout of the first call is
+  // injected instead; the real watchdog is exercised by the test above.
   test('after a timeout the pattern is not run again for COOLDOWN_CALLS calls, then it is tried again', () => {
-    const m = createMatcher(new RegExp('(a+)+$'), { budgetMs: 100 });
-    assert.equal(m.matchLines(['a'.repeat(60) + '!']).timedOut, true);
+    let executions = 0;
+    const m = createMatcher(/^(a+)$/, {
+      budgetMs: 60_000,
+      execute: (real) => {
+        executions++;
+        if (executions === 1) {
+          throw Object.assign(new Error('Script execution timed out after 100ms'), { code: 'ERR_SCRIPT_EXECUTION_TIMEOUT' });
+        }
+        return real();
+      },
+    });
+    assert.equal(m.matchLines(['aaa']).timedOut, true);
+    assert.equal(executions, 1);
     // A harmless line would match at once if it were run: it is not, so a bad pattern costs one budget, not one per poll.
     for (let i = 0; i < COOLDOWN_CALLS; i++) {
       assert.equal(m.matchLines(['aaa']).timedOut, true, `call ${i + 1} of the cooldown`);
     }
+    assert.equal(executions, 1, 'the pattern was run during the cooldown');
     const after = m.matchLines(['aaa']);
     assert.equal(after.timedOut, false);
+    assert.equal(executions, 2);
     assert.deepEqual(after.matches[0], ['aaa', 'aaa']);
   });
+
+  test('an error that is not the budget running out is not taken for it', () => {
+    const m = createMatcher(/a/, { execute: () => { throw new Error('something else'); } });
+    assert.throws(() => m.matchLines(['a']), /something else/);
+  });
+});
+
+describe('the match budget', () => {
+  test('is 500 ms unless the environment says otherwise', () => {
+    assert.equal(DEFAULT_MATCH_BUDGET_MS, 500);
+    assert.equal(matchBudgetMs({}), 500);
+    assert.equal(matchBudgetMs({ [MATCH_BUDGET_ENV]: '' }), 500);
+  });
+
+  // The suite sets it high in its preload: with every core busy a 500 ms watchdog expired on trivial lines.
+  test('can be raised through the environment, for development and tests', () => {
+    assert.equal(matchBudgetMs({ [MATCH_BUDGET_ENV]: '60000' }), 60000);
+  });
+
+  for (const bad of ['0', '-5', '1.5', 'fast', '10s']) {
+    test(`refuses ${JSON.stringify(bad)} and says what to set`, () => {
+      assert.throws(() => matchBudgetMs({ [MATCH_BUDGET_ENV]: bad }), new RegExp(`${MATCH_BUDGET_ENV}.*whole number of milliseconds.*${bad.replace('.', '\\.')}`));
+    });
+  }
 });

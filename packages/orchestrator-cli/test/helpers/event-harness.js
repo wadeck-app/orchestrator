@@ -136,6 +136,13 @@ function makeHarness(jobs, options = {}) {
       throw err;
     }
   });
+  const killedPids = [];
+  const endChildren = (pid) => {
+    killedPids.push(pid);
+    for (const child of children) {
+      if (child.pid === pid) { child.kill(); }
+    }
+  };
   const sched = new Scheduler(registry, state, {
     configDir: dir,
     time,
@@ -152,6 +159,13 @@ function makeHarness(jobs, options = {}) {
     },
     liveness: async () => false,
     sampleUsage: async () => null,
+    // A fake child with a pid (options.pid) must not reach the real tree kill: its pid belongs to some other process on the
+    // machine (see scheduler-kill-seam.test.js). The fake kill ends the fake child the way a real kill would. A scenario that
+    // asks for real processes (`spawn: undefined`) keeps the real kill: it is killing its own.
+    ...(('spawn' in extra) && extra.spawn === undefined ? {} : {
+      killTree: async (pid) => { endChildren(pid); },
+      killTreeSync: (pid) => { endChildren(pid); },
+    }),
     eventPublisher: captured.publisher,
     ...extra,
     ...(extra.spawn === undefined ? {} : { spawn: countFailure(extra.spawn) }),
@@ -162,7 +176,7 @@ function makeHarness(jobs, options = {}) {
   sched.on('job-skipped', (ev) => signals.refused.push(ev));
   sched.on('job-interrupted', (ev) => signals.interrupted.push(ev));
   const harness = {
-    dir, registry, state, sched, time, children, spawned, signals,
+    dir, registry, state, sched, time, children, spawned, signals, killedPids,
     events: captured.events,
     problems: captured.problems,
     publisher: captured.publisher,

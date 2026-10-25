@@ -146,6 +146,11 @@ export class DashboardManager {
         }
       });
 
+      // The pipes of a server that goes away emit 'error'; with no listener that is fatal for the daemon (P-1).
+      child.stdout?.on('error', (err) => { this._log(`[dashboard-server] stdout pipe failed: ${getErrorMessage(err)}`); });
+      child.stderr?.on('error', (err) => { this._log(`[dashboard-server] stderr pipe failed: ${getErrorMessage(err)}`); });
+      rl.on('error', (err) => { this._log(`[dashboard-server] stdout reader failed: ${getErrorMessage(err)}`); });
+
       child.stderr?.on('data', (chunk: Buffer) => {
         // Route dashboard server stderr to the daemon log (not process.stderr which is
         // invisible when the daemon runs as a hidden Windows process)

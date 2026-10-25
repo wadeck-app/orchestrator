@@ -306,9 +306,13 @@ describe('killJob', () => {
     child.stdout = null;
     child.stderr = null;
 
+    // 99999 is not a process of this test: the real tree kill would signal whichever process owns that pid on the machine
+    // (a live one on some CI runners). The tree kill is a recording fake; real pids are killed for real in the next tests.
+    const killedTrees = [];
     const sched = new Scheduler(registry, state, {
       spawn: () => child,
       liveness: async () => false,
+      killTree: async (pid) => { killedTrees.push(pid); },
     });
 
     // Trigger (fire-and-forget -- does not wait for child to close)
@@ -317,6 +321,7 @@ describe('killJob', () => {
 
     const result = await sched.killJob('manual-a');
     assert.deepStrictEqual(result, { killed: true, count: 1 });
+    assert.deepStrictEqual(killedTrees, [99999]);
 
     // Deliberately no assertion on which signal or syscall was used. A stub cannot observe
     // a tree kill, and demanding child.kill() here is what previously forced _killChild to
@@ -759,7 +764,8 @@ describe('hard resource budget', () => {
     const { registry, state } = makeDeps(dir);
     const events = [];
     seedTinyBaseline(state, 'sustained');
-    registry.add(busyJob(dir, 'sustained', 20000));
+    // Long enough that only the monitor's kill can end it inside the bound below, whatever the host's speed.
+    registry.add(busyJob(dir, 'sustained', 120000));
 
     const sampleUsage = async () => ({ cpuPct: 5000, ramMb: 5000 });
 
@@ -780,11 +786,11 @@ describe('hard resource budget', () => {
     // off-by-one that kills a sample or two late go unnoticed.
     assert.equal(hard[0].payload.consecutiveSamples, 3,
       `expected the kill on the 3rd consecutive sample, got ${hard[0].payload.consecutiveSamples}`);
-    // The job asks for 20s, so finishing well inside that is what proves the monitor killed it.
+    // The job asks for 120s, so finishing well inside that (100s) is what proves the monitor killed it.
     // Kept as a real-clock assertion on purpose -- it is the one thing here a stubbed sampler
     // cannot fake -- and kept LOOSE on purpose: tightened to 5000 it failed at 7910ms on a machine
     // that was merely busy, which tests the host rather than the code.
-    assert.ok(elapsedMs < 15000, `job should have been killed early, ran ${elapsedMs}ms`);
+    assert.ok(elapsedMs < 100000, `job should have been killed early, ran ${elapsedMs}ms`);
   });
 });
 
@@ -855,11 +861,11 @@ describe('sampleProcessTree', () => {
     // wrapper alone is what left Peak CPU empty and Peak RAM stuck at a constant.
     // The busy loop lives in a file: passing it via -e would expose `<` to cmd.exe,
     // which reads it as input redirection and kills the command.
-    // 20s, killed in the finally: the job only has to outlive the sampling, and pidusage goes
+    // 120s, killed in the finally: the job only has to outlive the sampling (a 20s one ended first on a loaded host), and pidusage goes
     // through WMI on Windows. On a CI runner a 3s job had already exited by the time the
     // wrapper baseline was read, which surfaced as an opaque ENOENT from gwmi.
     const scriptPath = path.join(os.tmpdir(), `orch-busy-${process.pid}-${Date.now()}.js`);
-    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 20000);');
+    fs.writeFileSync(scriptPath, 'const t = Date.now(); while (Date.now() - t < 120000);');
     // The trailing `&& exit 0` is what makes this test mean anything on POSIX: for a single
     // command `sh -c` execs it in place, so there is no separate wrapper and "tree > wrapper"
     // compares a process against itself -- it failed on macOS with 50.1MB vs 50.1MB. A list

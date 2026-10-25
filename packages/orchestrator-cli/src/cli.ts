@@ -8,6 +8,7 @@ import { PROGRESS_MODES, PROGRESS_STRATEGY_IDS, progressSettingError } from './p
 import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
+import { readCrashMarker, type CrashMarker } from './crash-guard.js';
 import { classifyDashboard } from './dashboard-pidfile.js';
 import { parseActiveFor } from './active-window.js';
 import { onceScheduleDisplay, describeMoment, describeAgo } from './once-schedule.js';
@@ -633,10 +634,25 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       } catch (e) {
         if (!isDaemonDownError(e)) {
           console.error(`Orchestrator did not answer properly: ${getErrorMessage(e)}\nCheck: orch logs`);
-        } else if (forceJson || !process.stdout.isTTY) {
-          console.log(JSON.stringify({ running: false }));
         } else {
-          console.log('Orchestrator is not running. Start it with: orch start');
+          // A daemon that died of an uncaught error left crashed.json: "not running" alone hid a 47-minute outage.
+          let crashed: CrashMarker | null = null;
+          try {
+            crashed = readCrashMarker(configDir);
+          } catch (markerError) {
+            console.error(`warning: ${getErrorMessage(markerError)}`);
+          }
+          if (forceJson || !process.stdout.isTTY) {
+            console.log(JSON.stringify(crashed === null ? { running: false } : { running: false, crashed }));
+          } else if (crashed === null) {
+            console.log('Orchestrator is not running. Start it with: orch start');
+          } else {
+            console.log(
+              `Orchestrator is stopped: crashed at ${crashed.time} (${crashed.kind}: ${crashed.error}), version ${crashed.version}.
+`
+              + `See ${path.join(configDir, 'logs', 'app')} (daemon-*.log, "daemon crash" lines). Start it again with: orch start`,
+            );
+          }
         }
         process.exitCode = 1;
         break;

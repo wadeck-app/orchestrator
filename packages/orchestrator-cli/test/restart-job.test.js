@@ -234,10 +234,14 @@ describe('restart-job on a job whose triggerMode is "wait"', () => {
   test('replies once the new run has started, instead of waiting for a long-running job to end', async () => {
     const env = makeEnv({ job: { ...JOB, triggerMode: 'wait' } });
 
+    // 'hung' only has to tell a reply that waits for the end of the job (it never ends) from one that does not: the limit is
+    // far above a reply, and cleared so that it does not hold the process open.
+    let hungLimit;
     const reply = await Promise.race([
       env.commands['restart-job']({ id: 'srv' }),
-      new Promise((resolve) => setTimeout(() => resolve('hung'), 2000)),
+      new Promise((resolve) => { hungLimit = setTimeout(() => resolve('hung'), 30_000); }),
     ]);
+    clearTimeout(hungLimit);
 
     assert.notEqual(reply, 'hung', 'the restart waited for the new run to end');
     assert.equal(reply.started, true);

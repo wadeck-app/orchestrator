@@ -505,7 +505,17 @@ function startRealDaemon({ dir, queue, beforeStart } = {}) {
           req.on('error', reject);
           req.end();
         });
-        const code = await exited;
+        // Bounded so that a daemon that never ends fails with what it said, not with the runner's bare "timed out after 120000ms"
+        // (that is all two full-suite runs left behind, with nothing to tell a hang from a slow machine). The limit is far above
+        // a normal stop, which takes about a second.
+        let limit;
+        const code = await Promise.race([
+          exited,
+          new Promise((_, reject) => {
+            limit = setTimeout(() => reject(new Error(`the daemon (pid ${child.pid}) did not exit within 90 s of POST /quit; it said:\n${output}`)), 90_000);
+          }),
+        ]);
+        clearTimeout(limit);
         run.events = fake.pushes().map((p) => ({ event: p.event, payload: p.payload }));
         return code;
       },

@@ -20,6 +20,9 @@ const { createInterface } = require('node:readline');
 
 const SERVER_BIN = path.join(__dirname, '..', 'server', 'dist', 'index.js');
 
+const START_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+
 function startServer(configDir, basePort) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [
@@ -36,10 +39,12 @@ function startServer(configDir, basePort) {
       }
     });
 
+    // Only there so a server that never says "ready" fails with its stderr instead of at the runner's timeout: it is
+    // far above any start time, a loaded machine included (5 s was exceeded in runs with every core busy).
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error(`Server did not start within 5s. stderr: ${errors.join('\n')}`));
-    }, 5000);
+      reject(new Error(`Server did not start within ${START_TIMEOUT_MS / 1000}s. stderr: ${errors.join('\n')}`));
+    }, START_TIMEOUT_MS);
 
     rl.on('line', (line) => {
       try {
@@ -80,10 +85,10 @@ describe('orch-server integration', () => {
     const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-test-'));
     const { child, port } = await startServer(configDir, 48100);
     try {
-      const hb = await fetch(`http://localhost:${port}/api/heartbeat`, { method: 'POST', signal: AbortSignal.timeout(2000) });
+      const hb = await fetch(`http://localhost:${port}/api/heartbeat`, { method: 'POST', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       assert.equal(hb.status, 204, 'heartbeat must return 204');
 
-      const spa = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(2000) });
+      const spa = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       assert.equal(spa.status, 200, 'SPA must return 200');
     } finally {
       child.kill();
@@ -97,7 +102,7 @@ describe('orch-server integration', () => {
     const configDir = makeDeadDaemonConfigDir();
     const { child, port } = await startServer(configDir, 48200);
     try {
-      const res = await fetch(`http://localhost:${port}/api/jobs`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`http://localhost:${port}/api/jobs`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       // Must be 503 (daemon unreachable) -- NEVER 500 (internal server error)
       assert.notEqual(res.status, 500, `GET /api/jobs returned 500 (Internal Server Error) -- unhandled exception in proxy`);
       assert.equal(res.status, 503, `Expected 503 daemon-not-running, got ${res.status}`);

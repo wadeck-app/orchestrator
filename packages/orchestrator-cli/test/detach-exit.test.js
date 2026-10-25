@@ -53,6 +53,8 @@ function daemonScript(dir, jobFile) {
       void scheduler.stop();
       state.shutdown();
       process.stdout.write('SHUTDOWN_DONE\\n');
+      // If the exit is late, the failure message shows what the process still holds (a child process, a pipe, a timer).
+      setInterval(() => process.stdout.write('DIAG ' + JSON.stringify(process.getActiveResourcesInfo()) + '\\n'), 2000).unref();
     })().catch((e) => { process.stderr.write(String(e && e.stack || e) + '\\n'); process.exit(1); });
   `;
 }
@@ -81,29 +83,35 @@ test('a daemon that detached from a supervised job with a timeout and a resource
   // the spawn also counted tsx compiling the scheduler and the 2.5 s of monitoring, and on a loaded Windows runner
   // (run 3e369e1) the test failed at 20.8 s with SHUTDOWN_DONE printed: whether the exit was slow or only the start
   // was, the log could not tell. The start gets its own, longer, limit and a message of its own.
+  // Awaited on the daemon's own output, and the limit is cleared as soon as it is known: left armed, it held this test
+  // file's process open for the whole 90 s after a pass.
+  let startLimit;
   const shutDown = await Promise.race([
     exited.then(() => 'exited'),
     new Promise((resolve) => {
-      const poll = setInterval(() => {
-        if (out.includes('SHUTDOWN_DONE')) { clearInterval(poll); resolve('shutdown'); }
-      }, 50);
-      setTimeout(() => { clearInterval(poll); resolve('start-timed-out'); }, 90_000);
+      const seen = () => { if (out.includes('SHUTDOWN_DONE')) { resolve('shutdown'); } };
+      child.stdout.on('data', seen);
+      seen();
+      startLimit = setTimeout(() => resolve('start-timed-out'), 45_000);
     }),
   ]);
+  clearTimeout(startLimit);
   if (shutDown === 'start-timed-out') {
     child.kill();
   }
-  assert.notEqual(shutDown, 'start-timed-out', `the daemon script did not reach its shutdown within 90 s (stdout: ${out.trim()} stderr: ${err.trim()})`);
+  assert.notEqual(shutDown, 'start-timed-out', `the daemon script did not reach its shutdown within 45 s (stdout: ${out.trim()} stderr: ${err.trim()})`);
   const shutDownAt = Date.now();
+  let exitLimit;
   const verdict = await Promise.race([
     exited.then((code) => ({ code })),
-    new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 20_000)),
+    new Promise((resolve) => { exitLimit = setTimeout(() => resolve({ timedOut: true }), 60_000); }),
   ]);
+  clearTimeout(exitLimit);
   const exitTookMs = Date.now() - shutDownAt;
 
   const jobPid = Number(/JOB_PID=(\d+)/.exec(out)?.[1]);
   try {
-    assert.ok(!verdict.timedOut, `the daemon process did not exit within 20 s of shutting down (${exitTookMs} ms waited; stdout: ${out.trim()} stderr: ${err.trim()}): something it started keeps it alive`);
+    assert.ok(!verdict.timedOut, `the daemon process did not exit within 60 s of shutting down (${exitTookMs} ms waited; stdout: ${out.trim()} stderr: ${err.trim()}): something it started keeps it alive`);
     assert.equal(verdict.code, 0, `the daemon exited with ${verdict.code}: ${err}`);
     assert.ok(Number.isInteger(jobPid) && jobPid > 0, `no job pid reported: ${out}`);
     assert.equal(isAlive(jobPid), true, 'the job must outlive the daemon that started it');

@@ -4,8 +4,9 @@
 // Iterates STRATEGIES, so a strategy added later is covered without touching this file (it must get options in
 // OPTIONS, or the first test fails and says so).
 //
-// Cost is asserted on work, which is deterministic: bytes read from the logs by one estimate. Wall time is asserted
-// with a generous bound (the target is 200 ms; the bound is 5x that so a loaded machine does not make it flaky).
+// Cost is asserted on work, which is deterministic: bytes read from the logs by one estimate. Time is asserted as CPU
+// time of the process (process.cpuUsage), not wall time: a loaded machine can leave the process waiting for a core for
+// seconds (1.7 s and 2.7 s were measured for an estimate that needs well under 1 s of CPU), which says nothing about the code.
 const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -25,7 +26,7 @@ const OPTIONS = {
   'log-declared': { milestones: [{ pattern: '^Stage two', at: 0.35 }, { pattern: '^Stage three', at: 0.65 }] },
 };
 
-/** Wall time bound for one estimate (ms): 5 times the 200 ms target. */
+/** CPU time bound for one estimate (ms): 5 times the 200 ms target. */
 const TIME_BOUND_MS = 1000;
 /** Bytes one estimate may read: the current log (cap 5 MB) plus a few MB of past logs, whatever the strategy. */
 const READ_BYTES_BOUND = 12 * 1024 * 1024;
@@ -136,10 +137,11 @@ describe('every strategy, 20 logs of about 1 MB', () => {
         const { ctx } = counted(checked());
         // One call to warm the JIT and the regex compile, one measured: the first call of a process is not the daemon's steady state.
         strategy.estimate(counted(checked()).ctx);
-        const t0 = process.hrtime.bigint();
+        const t0 = process.cpuUsage();
         strategy.estimate(ctx);
-        const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-        assert.ok(ms < TIME_BOUND_MS, `${strategy.id} took ${ms.toFixed(1)} ms`);
+        const used = process.cpuUsage(t0);
+        const ms = (used.user + used.system) / 1000;
+        assert.ok(ms < TIME_BOUND_MS, `${strategy.id} used ${ms.toFixed(1)} ms of CPU`);
       });
     });
   }

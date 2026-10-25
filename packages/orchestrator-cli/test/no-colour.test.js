@@ -231,7 +231,7 @@ describe('orch exec', () => {
 });
 
 async function waitFinished(manager, runId) {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const run = manager.get(runId);
     if (run && run.finishedAt != null) {
@@ -239,5 +239,5 @@ async function waitFinished(manager, runId) {
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`exec run ${runId} did not finish within 20 s`);
+  throw new Error(`exec run ${runId} did not finish within 60 s`);
 }

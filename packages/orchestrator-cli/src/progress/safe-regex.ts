@@ -21,6 +21,25 @@ export const MAX_UNBOUNDED_QUANTIFIERS = 4;
  * only has to be far above what a sound pattern needs on a loaded machine.
  */
 export const DEFAULT_MATCH_BUDGET_MS = 500;
+/**
+ * Environment variable that replaces the budget, for development and tests. The budget is a wall-clock watchdog: on a
+ * machine where every core is busy a sound pattern on a trivial line has been seen to run out of 500 ms, and the test
+ * suite sets this variable high in its preload so that its results do not depend on how busy the host is.
+ */
+export const MATCH_BUDGET_ENV = 'ORCH_PROGRESS_MATCH_BUDGET_MS';
+
+/** The budget in force: the environment's when it is set, else the default. A value that is not usable is an error, never ignored. */
+export function matchBudgetMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[MATCH_BUDGET_ENV];
+  if (raw === undefined || raw === '') {
+    return DEFAULT_MATCH_BUDGET_MS;
+  }
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${MATCH_BUDGET_ENV} must be a whole number of milliseconds of at least 1 (for example 60000), got ${JSON.stringify(raw)}; unset it to use ${DEFAULT_MATCH_BUDGET_MS}`);
+  }
+  return value;
+}
 /** After a timeout the matcher answers "timed out" without running for this many calls, then tries again. */
 export const COOLDOWN_CALLS = 20;
 
@@ -264,6 +283,11 @@ export interface Matcher {
 
 export interface MatcherOptions {
   budgetMs?: number;
+  /**
+   * Runs the budgeted execution. `real` performs it (the vm run with the watchdog); a test replaces this to make a
+   * budget overrun happen at an exact moment instead of depending on how fast the machine is.
+   */
+  execute?: (real: () => unknown, budgetMs: number) => unknown;
 }
 
 /**
@@ -271,7 +295,8 @@ export interface MatcherOptions {
  * progress. A line is cut to MAX_LINE_LENGTH first. Flags other than `g`/`y` are kept.
  */
 export function createMatcher(regex: RegExp, options: MatcherOptions = {}): Matcher {
-  const budgetMs = options.budgetMs ?? DEFAULT_MATCH_BUDGET_MS;
+  const budgetMs = options.budgetMs ?? matchBudgetMs();
+  const execute = options.execute ?? ((real: () => unknown) => real());
   // violations-suppress: react/no-context-in-renderer node:vm sandbox context, not a React context
   const context = vm.createContext({ __src: regex.source, __flags: regex.flags.replace(/[gy]/g, ''), __re: undefined, __lines: [] });
   new vm.Script('__re = new RegExp(__src, __flags);').runInContext(context);
@@ -295,7 +320,7 @@ export function createMatcher(regex: RegExp, options: MatcherOptions = {}): Matc
       }
       context['__lines'] = lines.map(l => (l.length > MAX_LINE_LENGTH ? l.slice(0, MAX_LINE_LENGTH) : l));
       try {
-        const raw = script.runInContext(context, { timeout: budgetMs }) as Array<ArrayLike<string | undefined> | null>;
+        const raw = execute(() => script.runInContext(context, { timeout: budgetMs }), budgetMs) as Array<ArrayLike<string | undefined> | null>;
         return { matches: raw.map(m => (m === null ? null : Array.from(m))), timedOut: false };
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') {

@@ -161,9 +161,12 @@ describe('getLastFiring', () => {
 // get-schedule runs one per cron job, so twenty of them blocked the daemon for over two seconds.
 describe('sparse schedules stay cheap', () => {
   test('twenty yearly lookups stay well under a second', () => {
-    const started = Date.now();
+    // CPU time of the process, not wall time: a loaded machine can keep the process off the CPU for longer than the
+    // whole budget, which says nothing about the walk.
+    const before = process.cpuUsage();
     for (let i = 0; i < 20; i++) getNextFirings('0 9 1 7 *', 5, FROM);
-    const elapsed = Date.now() - started;
-    assert.ok(elapsed < 500, `twenty sparse lookups took ${elapsed}ms; the day-skip has regressed`);
+    const used = process.cpuUsage(before);
+    const elapsed = (used.user + used.system) / 1000;
+    assert.ok(elapsed < 500, `twenty sparse lookups used ${elapsed}ms of CPU; the day-skip has regressed`);
   });
 });

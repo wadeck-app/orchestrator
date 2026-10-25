@@ -166,7 +166,9 @@ describe('EventPublisher on the queue SDK', () => {
     const { publisher } = makePublisher(fake.dir);
     const t0 = Date.now();
     assert.doesNotThrow(() => publisher.publish('job.started', { jobId: 'a' }));
-    assert.ok(Date.now() - t0 < 100);
+    // A publish that waited for the queue would wait for ever on this one (it never answers), and the limit is far above a
+    // call that merely returns: a loaded machine pausing the process must not fail it.
+    assert.ok(Date.now() - t0 < 5000, `publish took ${Date.now() - t0} ms`);
   });
 
   test('QUEUE_SDK_OFF=1: nothing is sent, and the daemon log says once that the publisher is off', async () => {
@@ -198,7 +200,8 @@ describe('EventPublisher on the queue SDK', () => {
     b.publisher.publish('job.completed', { jobId: 'a' });
     const t0 = Date.now();
     await b.publisher.flush();
-    assert.ok(Date.now() - t0 < 1500, `flush took ${Date.now() - t0} ms`);
+    // Bound 300 ms; the limit is the point at which the bound is clearly not applied (the SDK's own push timeouts are longer).
+    assert.ok(Date.now() - t0 < 5000, `flush took ${Date.now() - t0} ms`);
   });
 });
 

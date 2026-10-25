@@ -37,6 +37,19 @@ if (!process.env.QUEUE_SDK_OFF) {
   process.env.QUEUE_SDK_OFF = '1';
 }
 
+// The progress strategies run user regexes under a wall-clock budget (500 ms). With every core busy a sound pattern on a
+// trivial line ran out of it (seen: log-declared tests answering "exceeded the 500 ms match budget"), so the suite runs
+// with a budget no starved process reaches. The tests of the budget itself pass their own (createMatcher's options).
+if (!process.env.ORCH_PROGRESS_MATCH_BUDGET_MS) {
+  process.env.ORCH_PROGRESS_MATCH_BUDGET_MS = '60000';
+}
+
+// No test starts a tray. A daemon a test launches would spawn a real orchestrator-tray.exe, and the test then kills the
+// daemon tree by force, which leaves a ghost icon in the Windows taskbar (15-25 on 2026-10-25). The daemon reads this in
+// TrayManager.start and logs one line saying the tray is off. Children inherit it. Forced to 1, even if the caller set it
+// otherwise: a run that can start trays is the bug. The few tests of the real TrayManager set it to 0 around a fake binary.
+process.env.ORCH_NO_TRAY = '1';
+
 if (!process.env.QUEUE_CONFIG_DIR) {
   process.env.QUEUE_CONFIG_DIR = path.join(dir, 'no-queue');
 }

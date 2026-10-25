@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { DailyLogger } from './logger.js';
 import { EventPublisher } from './event-publisher.js';
-import { ensureTmpDir } from './fsUtil.js';
+import { ensureTmpDir, getErrorMessage } from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
 import { jobEnvironment } from './job-env.js';
 import { stripAnsi } from './ansi.js';
@@ -137,6 +137,10 @@ export class ExecManager {
     };
     child.stdout?.on('data', (d: Buffer) => { takeStdout(stdoutLines.push(d)); });
     child.stderr?.on('data', (d: Buffer) => { takeStderr(stderrLines.push(d)); });
+    // Same rule as for scheduled jobs: an 'error' with no listener (spawn failure, broken pipe) is fatal for the daemon.
+    child.on('error', (err) => { takeStderr([`[error] the process reported an error: ${getErrorMessage(err)}`]); });
+    child.stdout?.on('error', (err) => { takeStderr([`[warn] stdout pipe failed: ${getErrorMessage(err)}`]); });
+    child.stderr?.on('error', (err) => { takeStderr([`[warn] stderr pipe failed: ${getErrorMessage(err)}`]); });
 
     const timeoutMs = (opts.timeout ?? 300) * 1000;
     let timeoutHandle: Timer | null = null;

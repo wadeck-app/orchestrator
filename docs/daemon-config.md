@@ -22,6 +22,14 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 
 Integers must be whole and non-negative. `0` is valid and means "keep none", except `auditMaxBytes` where it means "never rotate".
 
+## Environment: `ORCH_NO_TRAY`
+
+`ORCH_NO_TRAY=1` starts no tray process and kills none. For development and tests only; production never sets it.
+
+- The daemon logs `tray disabled by ORCH_NO_TRAY=1` once at start, so a variable left set by mistake shows.
+- Any other value leaves the tray on (and is logged as ignored).
+- `npm test` sets it for the whole run (`test/helpers/isolate-config-dir.js`): a daemon a test kills by force leaves a ghost icon in the Windows taskbar.
+
 ## Colour
 
 With `jobsNoColor: true` (default) a job, supervised or not, and an `orch exec` start with:

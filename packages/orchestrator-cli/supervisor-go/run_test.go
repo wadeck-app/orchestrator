@@ -387,3 +387,50 @@ func TestStripAnsiTable(t *testing.T) {
 		}
 	}
 }
+
+// The kill file is polled for existence and read in the next step. A file that exists but cannot be read for a moment
+// (a scanner or indexer holding a new file on Windows) used to be recorded as the reason "unspecified": the reason is
+// read again before giving up.
+func TestKillReasonIsReadAgainWhenTheFileCannotBeReadYet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kill")
+	if err := os.Mkdir(path, 0o755); err != nil { // reading a directory fails, like a file held by another process
+		t.Fatal(err)
+	}
+	pauses := 0
+	defer func(old func()) { killReadPause = old }(killReadPause)
+	killReadPause = func() {
+		pauses++
+		if pauses == 3 { // the other process lets go: the reason is there
+			_ = os.Remove(path)
+			_ = os.WriteFile(path, []byte("timeout\n"), 0o644)
+		}
+	}
+	if got := killReason(path); got != "timeout" {
+		t.Fatalf("expected the reason once readable, got %q after %d pauses", got, pauses)
+	}
+}
+
+func TestKillReasonSaysWhyWhenItNeverBecomesReadable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kill")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defer func(old func()) { killReadPause = old }(killReadPause)
+	killReadPause = func() {}
+	got := killReason(path)
+	if !strings.HasPrefix(got, "unspecified (kill file unreadable: ") {
+		t.Fatalf("an unreadable kill file must say so, got %q", got)
+	}
+}
+
+func TestKillReasonOfAnEmptyFileIsUnspecified(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kill")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer func(old func()) { killReadPause = old }(killReadPause)
+	killReadPause = func() {}
+	if got := killReason(path); got != "unspecified" {
+		t.Fatalf("got %q", got)
+	}
+}

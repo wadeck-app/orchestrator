@@ -16,6 +16,7 @@ const { State }     = require('../src/state');
 const { Scheduler } = require('../src/scheduler');
 const { findSupervisorBinary } = require('../src/platform-binary');
 const { startSupervised, runDirFor } = require('../src/supervised-run');
+const { FakeTime } = require('../src/time-service');
 const { endLeftoverRuns, withPidFile } = require('./helpers/end-leftover-runs');
 
 const supervisorPath = findSupervisorBinary();
@@ -79,7 +80,8 @@ function isAlive(pid) {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-async function until(what, predicate, ms = 15_000) {
+// Only the point at which a wait that will never end fails with its name; far above any delay of a loaded machine.
+async function until(what, predicate, ms = 60_000) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
     if (await predicate()) {
@@ -188,12 +190,14 @@ describe('a job still running when the daemon restarts (case 3)', () => {
     a.state.flushNow();
     a.sched.detachRuns();
     await a.sched.stop();
-    const b = daemon(dir, [job], { sampleUsage: async () => ({ cpuPct: 1, ramMb: 5, processes: [], walked: 1, counted: 1 }) });
+    let samples = 0;
+    const b = daemon(dir, [job], { sampleUsage: async () => { samples++; return { cpuPct: 1, ramMb: 5, processes: [], walked: 1, counted: 1 }; } });
     await b.sched.recoverRuns();
     assert.equal(b.state.getOpenRuns('job')[0].pid, pid);
 
-    // Let a few samples of 1 % / 5 MB come in, all of them lower than what was measured before the restart.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Let a few samples of 1 % / 5 MB come in, all of them lower than what was measured before the restart. Counted, not
+    // slept for: a fixed wait let the test pass having seen no sample at all on a slow machine.
+    await until('three samples after the restart', () => samples >= 3);
     fs.writeFileSync(release, '');
     await until('the run to be closed', () => b.state.get('job').exitCode === 0);
 
@@ -203,20 +207,23 @@ describe('a job still running when the daemon restarts (case 3)', () => {
 
   test('keeps enforcing the timeout with the time already used', async () => {
     const dir = tmpDir();
-    // 4 s of timeout, 2.5 s of them used while the daemon is away: about 1.5 s are left when it comes back (less if
-    // finding the run again is slow, as it is on a loaded Windows runner, and then the timeout is already over and
-    // fires at once). A daemon that granted the whole timeout again would end the run 4 s AFTER it came back.
-    const job = cronJob(dir, 'setInterval(() => {}, 1000)', { timeoutSeconds: 4 });
-    await startAndLeave(dir, job);
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    const b = daemon(dir, [job]);
+    // One hour of timeout, all of it but 1.5 s used while the daemon is away. The clock of the new daemon is a FakeTime set
+    // that long after the run started, so the test states the elapsed time instead of sleeping through it. The timeout is
+    // long in real time on purpose: the supervisor enforces its own copy of it on the real clock (a 4 s one expired under
+    // load before this test had looked, and the run was ended by it).
+    const job = cronJob(dir, 'setInterval(() => {}, 1000)', { timeoutSeconds: 3600 });
+    const { a } = await startAndLeave(dir, job);
+    const startedAt = Date.parse(a.state.getOpenRuns('job')[0].startedAt);
+    const time = new FakeTime(startedAt + 3_598_500);
+    const b = daemon(dir, [job], { time });
     await b.sched.recoverRuns();
-    const cameBackAt = Date.now();
 
-    await until('the timeout', () => names(b.events).includes('job.timed_out'), 20_000);
+    // A daemon that granted the whole timeout again would not end the run before 4 s.
+    time.advance(1400);
+    assert.equal(names(b.events).includes('job.timed_out'), false, 'the run was ended early');
+    time.advance(200);
 
-    const waited = Date.now() - cameBackAt;
-    assert.ok(waited < 3000, `the run ended ${waited} ms after the daemon came back, with 4 s of timeout of which 2.5 s were already used: the whole timeout was granted again`);
+    assert.equal(names(b.events).includes('job.timed_out'), true, 'the run was not ended once its timeout was used: the whole timeout was granted again');
     assert.match(runLog(dir, 'job'), /\[job:timeout\]/);
   });
 });
@@ -230,7 +237,8 @@ describe('a startup job whose run is still going (case 11)', () => {
     await b.sched.recoverRuns();
 
     await b.sched.start();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // The startup firing happens on a timer after start(): wait for its outcome, the refusal.
+    await until('the startup firing to be refused', () => names(b.events).includes('job.skipped'));
 
     assert.equal(b.sched.runningCount('job'), 1);
     assert.ok(names(b.events).includes('job.skipped'), names(b.events).join(', '));
@@ -254,7 +262,7 @@ describe('a startup job whose run is still going (case 11)', () => {
     const announced = [];
     b.sched.on('job-skipped', (ev) => announced.push(ev));
     await b.sched.start();
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await until('the startup firing to be refused', () => announced.length >= 1);
 
     assert.deepEqual(announced.map((ev) => [ev.id, ev.reason]), [['job', 'adopted']], 'the audit trail would not know the firing was refused');
     const runs = b.state.getAll()['job'] ?? [];
@@ -418,12 +426,21 @@ describe('a run that cannot be followed', () => {
 describe('detaching on shutdown (the daemon must be able to exit and leave the job running)', () => {
   test('a detached daemon neither follows nor ends the job, which keeps running', async () => {
     const dir = tmpDir();
-    const job = cronJob(dir, 'setTimeout(() => process.exit(0), 600)');
+    // The job ends when the test says so, after the detach: a job that ended on its own timer (600 ms) could end before
+    // the detach, or its start could take longer than the test's wait, on a loaded machine.
+    const release = path.join(dir, 'release');
+    const job = cronJob(dir, `setInterval(() => { if (require('node:fs').existsSync(${JSON.stringify(release)})) process.exit(0); }, 20)`);
     const a = daemon(dir, [job]);
     const { pid } = await a.sched._fire(job);
+    const startedAt = a.state.getOpenRuns('job')[0].startedAt;
 
     a.sched.detachRuns();
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    fs.writeFileSync(release, '');
+    // The supervisor records the end in status.json once the job is gone.
+    const statusFile = path.join(runDirFor(dir, 'job', startedAt), 'status.json');
+    await until('the supervisor to record the end of the job', () => {
+      try { return JSON.parse(fs.readFileSync(statusFile, 'utf8')).state === 'exited'; } catch { return false; }
+    }, 60_000);
 
     assert.equal(isAlive(pid), false, 'the job should have ended by itself');
     assert.deepEqual(names(a.events), ['job.started'], 'a detached daemon must not finalize a run it no longer follows');

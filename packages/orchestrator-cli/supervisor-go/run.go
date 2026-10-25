@@ -251,13 +251,33 @@ func fileExists(path string) bool {
 }
 
 // killReason is the content of the kill file: why the daemon asked ("manual", "resource-limit").
+//
+// The file is seen to exist before it is read, and a read can fail or find nothing for a moment even though the daemon
+// writes it whole (a scanner or indexer holding a new file on Windows; an older daemon writing it in place). That used
+// to be recorded as "unspecified", the run then reading as killed for no reason. It is read again for about two seconds
+// first, and when it never becomes readable the record says why instead of a bare "unspecified".
 func killReason(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil || strings.TrimSpace(string(data)) == "" {
-		return "unspecified"
+	var lastErr error
+	for attempt := 0; attempt < killReadAttempts; attempt++ {
+		if attempt > 0 {
+			killReadPause()
+		}
+		data, err := os.ReadFile(path)
+		lastErr = err
+		if err == nil && strings.TrimSpace(string(data)) != "" {
+			return strings.TrimSpace(string(data))
+		}
 	}
-	return strings.TrimSpace(string(data))
+	if lastErr != nil {
+		return "unspecified (kill file unreadable: " + lastErr.Error() + ")"
+	}
+	return "unspecified"
 }
+
+const killReadAttempts = 100
+
+// killReadPause is the wait between two reads of the kill file; a test replaces it.
+var killReadPause = func() { time.Sleep(20 * time.Millisecond) }
 
 // runLog writes the run log in the exact format the daemon's RunLogger used: "[YYYY-MM-DD HH:MM:SS] text" in
 // UTC, trailing whitespace trimmed, blank lines dropped, stderr lines prefixed. One write per line, appended,

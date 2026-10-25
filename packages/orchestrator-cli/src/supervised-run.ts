@@ -91,10 +91,33 @@ export class SupervisedChild extends ChildProcess {
    */
   requestKill(reason: string): void {
     this._killRequested = true;
+    const file = path.join(this.runDir, 'kill');
+    // The supervisor polls for this file and reads the reason in the same step. Written in place, the file exists
+    // empty between its creation and its content, and a poll landing there reads "unspecified" (seen in
+    // supervised-run.test.js: 'manual' expected). So it is written complete under another name and renamed.
+    const staging = path.join(this.runDir, `kill.${process.pid}.tmp`);
     try {
-      fs.writeFileSync(path.join(this.runDir, 'kill'), reason);
-    } catch {
-      // The run folder is gone: the run is already over and finalized.
+      fs.writeFileSync(staging, reason);
+      fs.renameSync(staging, file);
+    } catch (err) {
+      try {
+        fs.rmSync(staging, { force: true });
+      } catch {
+        // Nothing more to clean up than what the failure already left.
+      }
+      // Windows refuses to replace a file the supervisor has open at that instant. A kill file that is there was
+      // written whole, by an earlier request, so the supervisor has its reason; anything else is a real failure.
+      if (!fs.existsSync(file) && fs.existsSync(this.runDir)) {
+        // Not thrown: the caller ends the job's tree right after this, and that must still happen. The supervisor
+        // then records the kill without a reason.
+        try {
+          // violations-suppress: ts/no-err-message-direct instanceof-guarded accessor
+          process.stderr.write(`[supervised-run] cannot write the kill reason "${reason}" in ${this.runDir}: ${err instanceof Error ? err.message : String(err)}; the supervisor will record the kill as "unspecified"\n`);
+        } catch {
+          // stderr is closed (hidden launcher window): nothing left to tell.
+        }
+      }
+      // Otherwise the run folder is gone (the run is already over and finalized) or the reason is already in place.
     }
   }
 

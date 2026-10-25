@@ -15,9 +15,12 @@ const LOOKUP_TIMEOUT_MS = 5000;
  * failure is an absent name and never an error: the kill has to go ahead whether or not the lookup
  * worked. Hidden on Windows because this runs from the daemon, which has no console to show it on.
  *
+ * `options.timeoutMs` replaces the 5 s patience. A test of the real lookup passes a long one: a machine under load makes
+ * the tool slower than any short bound, and the answer is then "no name" by design.
+ *
  * Never the command line: arguments can carry secrets, and this ends up in a log file.
  */
-export function lookupProcessName(pid: number): Promise<string | undefined> {
+export function lookupProcessName(pid: number, options: { timeoutMs?: number } = {}): Promise<string | undefined> {
   if (process.platform === 'linux') {
     // `ps -o comm=` prints the name of the THREAD on Linux, and a Node process answers "MainThread",
     // which names nothing. The executable the kernel mapped is the honest answer.
@@ -32,7 +35,7 @@ export function lookupProcessName(pid: number): Promise<string | undefined> {
     const [command, args] = windows
       ? ['tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']] as const
       : ['ps', ['-p', String(pid), '-o', 'comm=']] as const;
-    execFile(command, args, { windowsHide: true, timeout: LOOKUP_TIMEOUT_MS }, (err, stdout) => {
+    execFile(command, args, { windowsHide: true, timeout: options.timeoutMs ?? LOOKUP_TIMEOUT_MS }, (err, stdout) => {
       if (err) {
         resolve(undefined);
         return;

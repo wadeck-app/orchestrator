@@ -17,6 +17,13 @@ import type { DashboardManager } from './dashboard-manager.js';
 
 const MAX_FAILURES = 5;
 
+/** A tray that dies more than this many times within RESTART_WINDOW_MS is not restarted again at full speed. */
+const MAX_RESTARTS_IN_WINDOW = 5;
+const RESTART_WINDOW_MS      = 10 * 60_000;
+const RESTART_BACKOFF_MAX_MS = 30_000;
+/** After giving up, one new attempt this long afterwards: a tray that never comes back is worse than a rare retry. */
+const RESTART_COOLDOWN_MS    = 30 * 60_000;
+
 /** All tray action IDs that can be triggered programmatically (e.g. via `orch tray <action>`). */
 export const TRAY_ACTIONS = [
   'open-dashboard',
@@ -49,7 +56,13 @@ export class TrayManager extends EventEmitter {
   private _tp:               TrayProcess | null = null;
   private _spawning          = false;   // guard: prevent concurrent _spawnTray() calls
   private _intentionalStop   = false;  // true during kill-before-restart/quit; suppresses onExit restart
-  private _restartAttempt    = 0;
+  /**
+   * Set by stop() and never cleared: a stopped manager starts no tray, however its last start or its last tray ends. A tray
+   * started (or restarted) after stop() is a child process with piped stdio, which keeps the daemon alive for ever.
+   */
+  private _stopped           = false;
+  /** When the tray died, newest last, within RESTART_WINDOW_MS: the count the restart policy works from. */
+  private _crashTimes:       number[] = [];
   private _restartTimer:     ReturnType<typeof setTimeout> | null = null;
   private _successTimer:   ReturnType<typeof setTimeout> | null = null;
   private _showSuccess     = false;
@@ -83,6 +96,21 @@ export class TrayManager extends EventEmitter {
     return path.join(this._configDir, 'config.tray-pid');
   }
 
+  /** The clock of the restart policy. Overridden by tests. */
+  protected _now(): number {
+    return Date.now();
+  }
+
+  /** Arms a timer. Overridden by tests, which record the delay instead of waiting for it. */
+  protected _startTimer(fn: () => void, ms: number): ReturnType<typeof setTimeout> {
+    return setTimeout(fn, ms);
+  }
+
+  /** Starts the tray process. Overridden by tests, which drive a fake by hand instead of running a binary. */
+  protected _createTray(binaryPath: string): TrayProcess {
+    return new TrayProcess(binaryPath);
+  }
+
   private _killByPid(pid: number): void {
     try {
       if (process.platform === 'win32') {
@@ -93,17 +121,49 @@ export class TrayManager extends EventEmitter {
     } catch { /* already dead */ }
   }
 
-  // Kill ALL running tray binaries by image name - prevents orphan accumulation.
-  // Safer than PID-based kill since PID tracking can get out of sync.
-  private _killAllTrayBinaries(): void {
-    const binary = path.basename(this._findBinary() ?? 'orchestrator-tray.exe');
+  /**
+   * True when the pid is a running tray binary. Checked before a pid read from a file is killed: the file can outlive its
+   * tray by a reboot, and the number may belong to anything by then.
+   */
+  protected _isTrayPid(pid: number): boolean {
     try {
       if (process.platform === 'win32') {
-        execFileSync('taskkill', ['/F', '/IM', binary], { stdio: 'ignore', windowsHide: true });
-      } else {
-        execFileSync('pkill', ['-f', binary], { stdio: 'ignore', windowsHide: true });
+        const out = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
+        return /orchestrator-tray/i.test(out);
       }
-    } catch { /* no tray processes running - that's fine */ }
+      const out = execFileSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf8', windowsHide: true });
+      return /orchestrator-tray/i.test(out);
+    } catch {
+      // tasklist/ps found nothing, or could not run: nothing that is known to be a tray, so nothing is killed.
+      return false;
+    }
+  }
+
+  /**
+   * Ends the tray a previous daemon of THIS config dir left behind, found through the pid file it wrote.
+   *
+   * It used to kill every tray binary on the machine by image name. That also killed the trays of every other daemon
+   * (a dev instance, the daemons the test suites start): a forced kill exits with code 1 and writes nothing, which the
+   * owner of the tray logged as a crash and restarted, 199 times on 2026-10-24.
+   */
+  private _killStaleTray(): void {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(this._trayPidFile, 'utf8').trim();
+    } catch {
+      return;
+    }
+    const pid = parseInt(raw, 10);
+    if (isNaN(pid) || pid <= 0) {
+      this._logAction(`[tray] pid file ${this._trayPidFile} holds "${raw}", not a pid: ignored and removed`);
+      return;
+    }
+    if (!this._isTrayPid(pid)) {
+      this._logAction(`[tray] pid file names ${pid}, which is not a tray (gone, or reused): left alone`);
+      return;
+    }
+    this._logAction(`[tray] killing the tray ${pid} a previous daemon of this config dir left behind`);
+    this._killByPid(pid);
   }
 
   private _writeTrayPid(pid: number): void {
@@ -115,11 +175,21 @@ export class TrayManager extends EventEmitter {
   }
 
   async start(): Promise<void> {
-    // Kill ALL existing tray binaries before spawning a fresh one.
+    // The only place ORCH_NO_TRAY is read. For development and tests: a daemon a test starts and then kills by force would
+    // leave a ghost icon in the taskbar. Production never sets it, hence the line in the log.
+    const noTray = process.env['ORCH_NO_TRAY'];
+    if (noTray === '1') {
+      this._logAction('[tray] tray disabled by ORCH_NO_TRAY=1 (development and tests only): no tray process is started');
+      return;
+    }
+    if (noTray !== undefined && noTray !== '' && noTray !== '0') {
+      this._logAction(`[tray] ORCH_NO_TRAY="${noTray}" ignored: only "1" disables the tray`);
+    }
+    // Kill the tray a previous daemon of this config dir left behind before spawning a fresh one.
     // Set intentionalStop FIRST so any onExit callbacks from the killed processes
     // don't schedule a restart (the new spawn below handles that).
     this._intentionalStop = true;
-    this._killAllTrayBinaries();
+    this._killStaleTray();
     this._clearTrayPid();
     this._intentionalStop = false;
 
@@ -202,6 +272,10 @@ export class TrayManager extends EventEmitter {
   }
 
   async stop(): Promise<void> {
+    // First, before anything is killed: the exit of the tray we are about to kill (a forced kill ends with a failure
+    // code on Windows) must not be taken for a crash, and a start still in flight must not retry.
+    this._stopped = true;
+    this._intentionalStop = true;
     if (this._restartTimer) {
       clearTimeout(this._restartTimer);
       this._restartTimer = null;
@@ -452,6 +526,10 @@ export class TrayManager extends EventEmitter {
   }
 
   private async _spawnTray(): Promise<void> {
+    if (this._stopped) {
+      this._logAction('[tray] _spawnTray() called after stop() - skipped');
+      return;
+    }
     if (this._spawning) {
       this._logAction('[tray] _spawnTray() called while already spawning - skipped');
       return;
@@ -473,7 +551,7 @@ export class TrayManager extends EventEmitter {
       try { fs.chmodSync(binaryPath, 0o755); } catch { /* ignore */ }
     }
 
-    const tp = new TrayProcess(binaryPath);
+    const tp = this._createTray(binaryPath);
     this._tp = tp;
 
     tp.onStderrLine((line) => {
@@ -481,8 +559,14 @@ export class TrayManager extends EventEmitter {
       console.error(`[tray-go] ${line}`);
     });
 
-    tp.onExit((code) => {
-      this._logAction(`[tray] process exited with code=${code} stderr=${JSON.stringify(tp.capturedStderr().slice(-500))}`);
+    tp.onExit((code, signal) => {
+      // Everything captured, not its tail: the cause of a crash is as often at the start of the output as at its end.
+      // A forced kill (exit code 1 on Windows, a signal on POSIX) writes nothing, and the line says so.
+      const stderr = tp.capturedStderr();
+      this._logAction(
+        `[tray] process exited with code=${code} signal=${signal ?? 'none'} `
+        + (stderr.length > 0 ? `stderr=${JSON.stringify(stderr)}` : 'no stderr (a tray that was killed from outside writes nothing)'),
+      );
       this._tp = null;
       if (!this._intentionalStop && code !== 0 && code !== null) {
         this._scheduleRestart();
@@ -498,11 +582,21 @@ export class TrayManager extends EventEmitter {
       }
     });
 
+    tp.onStreamError((stream, err) => {
+      this._logAction(`[tray] ${stream} of the tray process failed (${getErrorMessage(err)}): the tray is ended and restarted`);
+    });
+    tp.onSendFailed((reason) => {
+      this._logAction(`[tray] could not send to the tray: ${reason}`);
+    });
+
     tp.onClicked((id) => this._handleClick(id));
 
     try {
       await tp.ready();
-      this._restartAttempt = 0;
+      if (this._stopped) {
+        // stop() came while the tray was starting and is killing it: nothing to initialise.
+        return;
+      }
       // Record PID so the next daemon session can kill this orphan on startup.
       if (tp.process.pid) {
         this._writeTrayPid(tp.process.pid);
@@ -510,10 +604,17 @@ export class TrayManager extends EventEmitter {
       this._logAction('[tray] ready, sending init');
       // Write init DIRECTLY and synchronously to stdin - this guarantees it arrives
       // before any message that may have been queued via tp.send() from other code paths.
-      const initLine = JSON.stringify({ type: 'init', menu: this._buildMenu() }) + '\n';
-      tp.process.stdin!.write(initLine);
-      this._logAction('[tray] init sent (direct write)');
+      if (tp.writeNow({ type: 'init', menu: this._buildMenu() })) {
+        this._logAction('[tray] init sent (direct write)');
+      } else {
+        this._logAction('[tray] init not sent: the tray cannot receive it (the reason is logged above)');
+      }
     } catch (err) {
+      if (this._stopped) {
+        this._logAction(`[tray] start interrupted by stop(): ${getErrorMessage(err)}`);
+        this._tp = null;
+        return;
+      }
       this._logAction(`[tray] failed to start: ${getErrorMessage(err)}`);
       console.error('[tray] failed to start:', getErrorMessage(err));
       // Explicitly kill the tray that failed to init so it doesn't linger as an orphan.
@@ -527,16 +628,36 @@ export class TrayManager extends EventEmitter {
     }
   }
 
+  /**
+   * A tray died: start another, with a bound. Back-off doubles with the number of deaths in the last ten minutes (a
+   * tray reaches "ready" before anything can go wrong, so counting only restarts that never got ready is no bound at all),
+   * and past MAX_RESTARTS_IN_WINDOW it stops, says so in the log, and tries once more after the cool-down.
+   */
   private _scheduleRestart(): void {
-    if (this._restartTimer) {
+    if (this._restartTimer || this._stopped) {
       return;
     }
-    const delay = Math.min(1000 * Math.pow(2, this._restartAttempt), 30_000);
-    this._restartAttempt++;
-    this._restartTimer = setTimeout(() => {
+    const now = this._now();
+    this._crashTimes = this._crashTimes.filter((t) => now - t < RESTART_WINDOW_MS);
+    this._crashTimes.push(now);
+    const crashes = this._crashTimes.length;
+    let delay: number;
+    if (crashes > MAX_RESTARTS_IN_WINDOW) {
+      delay = RESTART_COOLDOWN_MS;
+      this._crashTimes = [];
+      this._logAction(
+        `[tray] the tray process died ${crashes} times in ${RESTART_WINDOW_MS / 60_000} minutes, not restarting it now: `
+        + `the daemon keeps running without a tray icon. Another attempt in ${RESTART_COOLDOWN_MS / 60_000} minutes; `
+        + `run "orch restart" to try right away. Causes are in ${path.join(this._configDir, 'logs', 'app')} (tray-*.log, "process exited" lines).`,
+      );
+    } else {
+      delay = Math.min(1000 * Math.pow(2, crashes - 1), RESTART_BACKOFF_MAX_MS);
+      this._logAction(`[tray] restart ${crashes} of ${MAX_RESTARTS_IN_WINDOW} allowed in ${RESTART_WINDOW_MS / 60_000} minutes, in ${delay / 1000}s`);
+    }
+    this._restartTimer = this._startTimer(() => {
       this._restartTimer = null;
       this._spawnTray().catch((err: unknown) => {
-        console.error('[tray] restart failed:', getErrorMessage(err));
+        this._logAction(`[tray] restart failed: ${getErrorMessage(err)}`);
       });
     }, delay);
   }

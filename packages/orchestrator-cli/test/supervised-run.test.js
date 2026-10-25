@@ -65,7 +65,7 @@ function isAlive(pid) {
 }
 
 async function until(what, predicate) {
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (predicate()) {
       return;

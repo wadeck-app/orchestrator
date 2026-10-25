@@ -1,6 +1,6 @@
 import { brief, clamp01, levelOfScore, noEstimate } from './estimate-utils.js';
 import { formatDuration, median } from './history-strategy.js';
-import { DEFAULT_MATCH_BUDGET_MS, compilePattern, matcherFor, type Matcher } from './safe-regex.js';
+import { compilePattern, matcherFor, matchBudgetMs, type Matcher } from './safe-regex.js';
 import type { LogLine, ProgressContext, ProgressEstimate, ProgressStrategy } from './types.js';
 
 /**
@@ -176,7 +176,7 @@ export function createLogDeclaredStrategy(deps: LogDeclaredDeps = {}): ProgressS
       const patterns = milestones.map(m => m.pattern);
       const matchers = milestones.map(m => matcherOf((compilePattern(m.pattern) as { ok: true; regex: RegExp }).regex));
       const slow = (): ProgressEstimate => none(
-        `a milestone pattern exceeded the ${DEFAULT_MATCH_BUDGET_MS} ms match budget on a log line; simplify the patterns (anchor them with ^, avoid nested repetition); ${fix}`);
+        `a milestone pattern exceeded the ${matchBudgetMs()} ms match budget on a log line; simplify the patterns (anchor them with ^, avoid nested repetition); ${fix}`);
 
       // Past runs: scan the ones not cached yet, within the byte budget.
       const past = ctx.logs.pastRuns(PAST_RUNS);

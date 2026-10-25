@@ -1,6 +1,6 @@
 import { agoText, freshness, levelOfScore, medianGapMs, noEstimate, projectEnd, type Sample } from './estimate-utils.js';
 import { HISTORY_MIN_RUNS, median, usableDurations } from './history-strategy.js';
-import { DEFAULT_MATCH_BUDGET_MS, compilePattern, matcherFor, type Matcher } from './safe-regex.js';
+import { compilePattern, matcherFor, matchBudgetMs, type Matcher } from './safe-regex.js';
 import type { ProgressEstimate, ProgressStrategy } from './types.js';
 
 /**
@@ -78,7 +78,7 @@ export function createRatioStrategy(deps: RatioDeps = {}): ProgressStrategy {
       const batch = matcherOf(regex.regex).matchLines(lines.map(l => l.text));
       if (batch.timedOut) {
         return noEstimate('ratio', now,
-          `the pattern ${shown} exceeded the ${DEFAULT_MATCH_BUDGET_MS} ms match budget on this log; simplify the pattern (anchor it with ^, avoid nested repetition) with: orch edit ${ctx.job.id} --progress ratio --progress-options ...`);
+          `the pattern ${shown} exceeded the ${matchBudgetMs()} ms match budget on this log; simplify the pattern (anchor it with ^, avoid nested repetition) with: orch edit ${ctx.job.id} --progress ratio --progress-options ...`);
       }
 
       let phase: Sample[] = [];

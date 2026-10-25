@@ -59,24 +59,40 @@ export class TrayProcess {
   // Serialises send() calls so messages are always written in call order,
   // regardless of when ready() resolves. Without this, two concurrent callers
   // that both await a already-resolved ready() race on stdin.write().
-  private _sendQueue: Promise<void> = Promise.resolve();
+  private _sendQueue: Promise<unknown> = Promise.resolve();
+  // Set once the child's 'exit' was seen: from then on nothing is written to a pipe nobody reads.
+  private _exited = false;
+  // Each kind of failure is reported once per child: a dead tray makes every later menu update fail the same way.
+  private _streamErrorReported = false;
+  private _sendFailureReported = false;
 
   private static readonly STDERR_MAX_BYTES = 4096;
 
-  constructor(binaryPath: string, env?: NodeJS.ProcessEnv) {
+  constructor(binaryPath: string, env?: NodeJS.ProcessEnv, spawnFn: typeof spawn = spawn) {
     this._readyPromise = new Promise<void>((resolve, reject) => {
       this._readyResolve = resolve;
       this._readyReject = reject;
     });
+    // A tray that dies before it is ready rejects this promise, and a rejection nobody has awaited yet is an
+    // unhandledRejection: a fatal one in the daemon. Callers still see the rejection through ready().
+    this._readyPromise.catch(() => { /* observed by ready() callers; here it only must not be unhandled */ });
 
-    this.process = spawn(binaryPath, [], {
+    this.process = spawnFn(binaryPath, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: env ?? process.env,
       windowsHide: true,
     });
 
+    // A stream of a child that dies emits 'error' (EPIPE, ECONNRESET, ERR_STREAM_DESTROYED), and an 'error' with no
+    // listener is an uncaughtException: it took the whole daemon down on 2026-10-25. Every stream has a listener, and
+    // none of them throws. The tray exiting is reported by 'exit'; this only makes sure the pipe cannot kill the daemon.
+    this.process.stdin?.on('error', (err) => { this._handleStreamError('stdin', err); });
+    this.process.stdout?.on('error', (err) => { this._handleStreamError('stdout', err); });
+    this.process.stderr?.on('error', (err) => { this._handleStreamError('stderr', err); });
+
     const rl = createInterface({ input: this.process.stdout! });
     rl.on('line', (line) => { this._handleLine(line); });
+    rl.on('error', (err) => { this._handleStreamError('stdout', err); });
 
     this.process.stderr?.on('data', (chunk: Buffer) => {
       this._handleStderr(chunk.toString('utf8'));
@@ -91,6 +107,7 @@ export class TrayProcess {
     });
 
     this.process.on('exit', (code, signal) => {
+      this._exited = true;
       if (!this._readySettled) {
         this._readySettled = true;
         this._readyReject(new Error(`tray process exited before ready (code=${code})`));
@@ -134,30 +151,97 @@ export class TrayProcess {
   }
 
   /**
+   * A pipe of the child failed. Reported once, then the child is ended if it is still there: a tray whose pipe is broken
+   * can no longer be updated or heard, and ending it lets the manager start one that works.
+   */
+  private _handleStreamError(stream: 'stdin' | 'stdout' | 'stderr', err: Error): void {
+    if (this._streamErrorReported) {
+      return;
+    }
+    this._streamErrorReported = true;
+    this._emitter.emit('stream-error', stream, err);
+    if (!this._exited && this.process.exitCode === null) {
+      try {
+        this.process.kill();
+      } catch { /* already gone: the exit event follows */ }
+    }
+  }
+
+  private _reportSendFailure(reason: string): void {
+    if (this._sendFailureReported) {
+      return;
+    }
+    this._sendFailureReported = true;
+    this._emitter.emit('send-failed', reason);
+  }
+
+  /** Why nothing can be written to the child, or null when its stdin looks usable. */
+  private _stdinProblem(): string | null {
+    const stdin = this.process.stdin;
+    if (this._exited) {
+      return `the tray process has exited (code=${this.process.exitCode})`;
+    }
+    if (!stdin || stdin.destroyed || !stdin.writable) {
+      return 'the tray process stdin is closed';
+    }
+    return null;
+  }
+
+  /**
+   * Writes one message and says whether it was accepted by the pipe. Never throws and never rejects: a tray that died
+   * is a fact to report, not an exception for a caller that only wanted to refresh a menu.
+   */
+  private _write(msg: StdinMessage): Promise<boolean> {
+    const problem = this._stdinProblem();
+    if (problem !== null) {
+      this._reportSendFailure(problem);
+      return Promise.resolve(false);
+    }
+    return new Promise<boolean>((resolve) => {
+      try {
+        this.process.stdin!.write(JSON.stringify(msg) + '\n', (err) => {
+          if (err) {
+            this._reportSendFailure(getErrorMessage(err));
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        });
+      } catch (err) {
+        this._reportSendFailure(getErrorMessage(err));
+        resolve(false);
+      }
+    });
+  }
+
+  /**
    * Sends a message to the tray process stdin.
    * Always awaits ready() first so no message can be written before the
    * process has signalled it is ready to receive.
+   * Resolves true when the pipe took the message, false when the tray cannot receive it (reported once through
+   * onSendFailed). Never rejects.
    */
-  async send(msg: StdinMessage): Promise<void> {
+  async send(msg: StdinMessage): Promise<boolean> {
     const next = this._sendQueue.then(async () => {
       await this._readyPromise.catch(() => { /* fall through if ready already rejected */ });
-      const line = JSON.stringify(msg) + '\n';
-      await new Promise<void>((resolve, reject) => {
-        this.process.stdin!.write(line, (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      });
+      return this._write(msg);
     });
-    this._sendQueue = next.catch((err: unknown) => {
-      const reason = getErrorMessage(err);
-      // Log via console as tray-process is remote process; errors here typically mean tray-go crashed
-      console.error(`[tray-process] send() failed: ${reason}`);
-    });
-    return next;
+    this._sendQueue = next;
+    return next as Promise<boolean>;
+  }
+
+  /**
+   * Writes a message now, outside the send() queue: for the init message, which must reach the tray before anything
+   * queued behind ready(). Returns false (and reports it once) when the tray cannot receive it. Never throws.
+   */
+  writeNow(msg: StdinMessage): boolean {
+    const problem = this._stdinProblem();
+    if (problem !== null) {
+      this._reportSendFailure(problem);
+      return false;
+    }
+    void this._write(msg);
+    return true;
   }
 
   onClicked(cb: (id: string) => void): void {
@@ -170,6 +254,16 @@ export class TrayProcess {
 
   onError(cb: (err: Error) => void): void {
     this._emitter.on('process-error', cb);
+  }
+
+  /** A pipe of the child failed: which one and why. Called at most once per child. */
+  onStreamError(cb: (stream: string, err: NodeJS.ErrnoException) => void): void {
+    this._emitter.on('stream-error', cb);
+  }
+
+  /** The tray could not take a message: the reason. Called at most once per child. */
+  onSendFailed(cb: (reason: string) => void): void {
+    this._emitter.on('send-failed', cb);
   }
 
   onStderrLine(cb: (line: string) => void): void {

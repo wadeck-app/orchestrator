@@ -47,6 +47,10 @@ function makeEnv() {
   const sched = new Scheduler(registry, state, {
     configDir: dir,
     time,
+    // The fake child's pid (4242) is some other process's on the machine: a step of the fake clock longer than the job's timeout
+    // reaches the timeout kill, which must not be the real one (see scheduler-kill-seam.test.js).
+    killTree: async () => {},
+    killTreeSync: () => {},
     liveness: async () => false,
     spawn: (cmd) => { spawned.push(cmd); return fakeChild(0); },
     eventPublisher: { publish: () => {} },

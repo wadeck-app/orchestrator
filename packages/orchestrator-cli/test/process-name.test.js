@@ -30,11 +30,13 @@ describe('parseProcessName', () => {
 
 describe('lookupProcessName', () => {
   test('finds this very process', async () => {
-    const name = await lookupProcessName(process.pid);
+    // The real tasklist/ps, given all the time it needs: the 5 s patience of the kill path answers "no name" on a machine
+    // too busy to run the tool in time (measured: 5.1 s with every core busy), which is not what is tested here.
+    const name = await lookupProcessName(process.pid, { timeoutMs: 110_000 });
     assert.ok(name !== undefined && /node/i.test(name), `expected a node executable, got ${String(name)}`);
   });
 
   test('gives nothing, rather than failing, for a pid that does not exist', async () => {
-    assert.equal(await lookupProcessName(2 ** 22 - 3), undefined);
+    assert.equal(await lookupProcessName(2 ** 22 - 3, { timeoutMs: 110_000 }), undefined);
   });
 });

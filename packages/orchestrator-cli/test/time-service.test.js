@@ -212,7 +212,12 @@ describe('FakeTime bookkeeping', () => {
 
 describe('systemTime is the real clock', () => {
   test('now tracks Date.now', () => {
-    assert.ok(Math.abs(systemTime.now() - Date.now()) < 50);
+    // Between two reads of Date.now(), so no bound on elapsed time is involved: a process that is descheduled between the
+    // reads cannot fail it.
+    const before = Date.now();
+    const read = systemTime.now();
+    const after = Date.now();
+    assert.ok(read >= before && read <= after, `systemTime.now() gave ${read}, outside [${before}, ${after}]`);
   });
 
   // Same fragility as the test below, one line away: a starved runner can leave `fired` at 0 in a

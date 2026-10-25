@@ -110,7 +110,7 @@ async function waitFor(predicate, label, timeoutMs = 20000) {
  * and `isAlive` cannot tell the difference -- it reported one such pid as a leak on the windows
  * runner. Only pids whose death was never established stay in the set.
  */
-async function waitAllGone(pids, timeoutMs = 8000) {
+async function waitAllGone(pids, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   // Registered on the way in, so the shell wrappers reach the final sweep too. Only the
   // fixtures' own pids used to be tracked, which left the wrapper covered by the calling test
@@ -149,8 +149,7 @@ describe('ExecManager', () => {
   let manager;
 
   beforeEach(() => {
-    tmpDir = path.join(os.tmpdir(), `exec-test-${Date.now()}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-test-'));
     manager = new ExecManager(tmpDir);
   });
 

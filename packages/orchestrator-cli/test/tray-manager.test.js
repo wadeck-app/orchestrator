@@ -102,7 +102,14 @@ describe('TrayManager restart - tray process must be killed before restart event
     // Patch _spawnTray so start() doesn't actually spawn a binary
     mgr._spawnTray = async () => {};
 
-    await mgr.start();  // registers the process.on('exit') hook
+    // The suite runs with ORCH_NO_TRAY=1, which makes start() return before the hook; _spawnTray is stubbed above, so no process starts.
+    const previous = process.env.ORCH_NO_TRAY;
+    process.env.ORCH_NO_TRAY = '0';
+    try {
+      await mgr.start();  // registers the process.on('exit') hook
+    } finally {
+      if (previous === undefined) { delete process.env.ORCH_NO_TRAY; } else { process.env.ORCH_NO_TRAY = previous; }
+    }
 
     // Inject fake tp with pid - exit hook now uses _killByPid(pid) via taskkill/SIGKILL
     let killedPid = null;

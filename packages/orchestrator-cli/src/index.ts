@@ -28,6 +28,7 @@ import { registerOnStart } from './app-core-registration.js';
 import { refreshStartupEntry, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
+import { guardStdio, makeFatalHandler, writeCrashMarker, readCrashMarker, clearCrashMarker, CRASH_MARKER_FILE } from './crash-guard.js';
 
 import type { OrchestratorCommands } from './types.js';
 
@@ -86,17 +87,10 @@ function resolveConfigDir(): string {
 
 const CONFIG_DIR: string = resolveConfigDir();
 
-// Suppress EPIPE errors on stdout/stderr globally.
-// When the launcher runs as a hidden window process, its stdout/stderr pipes can close
-// while the daemon is still running. Any console.log/console.error or process.stdout.write
-// then throws EPIPE - uncaught, it exits with code 1 with no log entry.
-// Suppressing EPIPE here makes the daemon survive pipe closure without crashing.
-process.stdout.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') {
-  throw err;
-} });
-process.stderr.on('error', (err: NodeJS.ErrnoException) => { if (err.code !== 'EPIPE') {
-  throw err;
-} });
+// The launcher's stdout/stderr pipes can close while the daemon runs (a hidden window), and any console write then
+// fails: EPIPE, or another code on another platform. An error with no listener is an uncaughtException, so every
+// error on these two streams is logged once and swallowed -- console output is never a reason to exit. See crash-guard.ts.
+// Installed right below, once _syncLogWrite exists.
 
 // Synchronous write to the daemon log file -- used for both pre-start markers and
 // early crash capture before daemonLog (DailyLogger) is initialised.
@@ -114,20 +108,15 @@ function writePreStartLog(): void {
   _syncLogWrite(`daemon pre-start (pid=${process.pid})`);
 }
 
-// Early-crash handler: active from module load until daemonLog is ready.
-// Catches crashes during import resolution and early async (ESM dynamic imports).
-// Replaced in main() by the daemonLog-based handler once the logger is initialised.
-function _earlyUncaughtHandler(err: Error): void {
-  _syncLogWrite(`daemon crash (uncaughtException, pre-init): ${getErrorMessage(err)}`);
-  if (err.stack) {
-    _syncLogWrite(err.stack);
-  }
-  process.exit(1);
-}
-function _earlyRejectionHandler(reason: unknown): void {
-  _syncLogWrite(`daemon crash (unhandledRejection, pre-init): ${getErrorMessage(reason)}`);
-  process.exit(1);
-}
+guardStdio([{ name: 'stdout', stream: process.stdout }, { name: 'stderr', stream: process.stderr }], _syncLogWrite);
+
+// Early-crash handlers: active from module load until daemonLog is ready.
+// Catch crashes during import resolution and early async (ESM dynamic imports).
+// Replaced in main() by the daemonLog-based handlers once the logger is initialised.
+// Policy (crash-guard.ts): fatal, exit 1 with the cause written first -- except a pipe or socket whose other end went away.
+const _earlyFatalDeps = { configDir: CONFIG_DIR, version, log: _syncLogWrite, closeLog: (): void => { /* nothing is open yet */ }, exit: (code: number): void => { process.exit(code); } };
+const _earlyUncaughtHandler = makeFatalHandler('uncaughtException', _earlyFatalDeps, ', pre-init');
+const _earlyRejectionHandler = makeFatalHandler('unhandledRejection', _earlyFatalDeps, ', pre-init');
 
 // Install early handlers immediately at module level.
 writePreStartLog();
@@ -167,22 +156,29 @@ async function main(): Promise<void> {
   // the logger is ready. This ensures ALL crashes (including pre-init) write to the log.
   process.removeListener('uncaughtException',  _earlyUncaughtHandler);
   process.removeListener('unhandledRejection', _earlyRejectionHandler);
-  process.on('uncaughtException', (err: Error) => {
-    daemonLog.write(`daemon crash (uncaughtException): ${getErrorMessage(err)}`);
-    if ((err as Error & { stack?: string }).stack) {
-      daemonLog.write((err as Error & { stack?: string }).stack!);
-    }
-    daemonLog.close();
-    process.exit(1);
-  });
-  process.on('unhandledRejection', (reason: unknown) => {
-    daemonLog.write(`daemon crash (unhandledRejection): ${getErrorMessage(reason)}`);
-    daemonLog.close();
-    process.exit(1);
-  });
+  // DailyLogger.write is synchronous (writeSync), so the cause is in the file before the exit.
+  const fatalDeps = {
+    configDir: CONFIG_DIR, version,
+    log: (line: string): void => { daemonLog.write(line); },
+    closeLog: (): void => { daemonLog.close(); },
+    exit: (code: number): void => { process.exit(code); },
+  };
+  process.on('uncaughtException', makeFatalHandler('uncaughtException', fatalDeps));
+  process.on('unhandledRejection', makeFatalHandler('unhandledRejection', fatalDeps));
 
   try {
     daemonLog.write(`daemon starting (pid=${process.pid})`);
+    // The previous run died of an uncaught error: say so here, where the log of this run starts, then clear the marker
+    // (orch status reports it only while the daemon is down).
+    try {
+      const crashed = readCrashMarker(CONFIG_DIR);
+      if (crashed !== null) {
+        daemonLog.write(`the previous daemon (pid=${crashed.pid}, version ${crashed.version}) crashed at ${crashed.time} (${crashed.kind}: ${crashed.error}); this run replaces it`);
+        clearCrashMarker(CONFIG_DIR);
+      }
+    } catch (e) {
+      daemonLog.write(`${CRASH_MARKER_FILE}: ${getErrorMessage(e)}`);
+    }
 
     // Before the registry: it needs the retention bounds, and a misread config line has to reach the
     // daemon log rather than being swallowed -- see loadDaemonConfig.
@@ -490,5 +486,10 @@ main().catch((e: unknown) => {
   } catch (logErr: unknown) {
     process.stderr.write(`[orchestrator] log write failed: ${getErrorMessage(logErr)}\n`);
   }
+  // A start that failed is a crash for `orch status` too.
+  writeCrashMarker(
+    { configDir: CONFIG_DIR, version, log: _syncLogWrite, closeLog: (): void => { /* nothing open */ }, exit: (): void => { /* exits below */ } },
+    'startup-failure', e,
+  );
   process.exit(1);
 });

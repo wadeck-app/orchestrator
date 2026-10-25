@@ -50,7 +50,9 @@ function hasDaemonLog(dir) {
  * Waits on the condition rather than on a fixed timeout: the daemon never exits on its own, so a
  * timeout would cost seconds per case and, worse, would pass a slow start off as a wrong directory.
  */
-async function daemonChose(dir, args, env = {}, timeoutMs = 8000) {
+// 60 s: it is only the point at which a daemon that never writes its log fails with a message. A start under a loaded machine
+// took longer than the 8 s this used to allow, and every caller expects the answer to be true.
+async function daemonChose(dir, args, env = {}, timeoutMs = 60_000) {
   const child = spawn(process.execPath, [DAEMON, ...args], {
     env: { ...process.env, ...env },
     stdio: 'ignore',
