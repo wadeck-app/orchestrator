@@ -61,3 +61,33 @@ describe('the module edit page', () => {
     expect(cancel).toMatch(/\n?\s*id:\s*\$route\.id/);
   });
 });
+
+/*
+ * app-core's dashboard is a grid of 100px cells and every widget should use all the room of its tile. The three
+ * figures share one row (each takes a third of it) and the daemon is one line, so the tile is as tall as its
+ * content and no taller.
+ */
+describe('the dashboard widget (status-widget.yaml)', () => {
+  const page = read('status-widget.yaml');
+  const items = (block: string): string[] => block.split(/^\s*- (?=\$type:)/m).slice(1);
+
+  it('puts the three figures in one HorizontalStack, each taking an equal share of the row', () => {
+    const row = /^ {2}- \$type: HorizontalStack\n([\s\S]*?)(?=^ {2}- \$type: (?!StatTile)|(?![\s\S]))/m.exec(page)?.[1] ?? '';
+    expect(row, 'no HorizontalStack row under the root stack').not.toBe('');
+    expect(row).toMatch(/itemSizes:\s*\[\s*flex\s*,\s*flex\s*,\s*flex\s*\]/);
+    const tiles = items(row.slice(row.indexOf('items:')));
+    expect(tiles.map(t => /label:\s*(.+)/.exec(t)?.[1]?.trim())).toEqual(['Jobs', 'Running', 'Recent failures']);
+    expect(tiles.every(t => t.startsWith('$type: StatTile'))).toBe(true);
+  });
+
+  it('has no StatTile outside that row, so none is stacked on its own', () => {
+    const before = page.slice(0, page.indexOf('HorizontalStack'));
+    const after = page.slice(page.indexOf('$type: orchestrator:DaemonStatus'));
+    expect(before).not.toContain('StatTile');
+    expect(after).not.toContain('StatTile');
+  });
+
+  it('shows the daemon as the compact line, whose details are on the Jobs page', () => {
+    expect(page).toMatch(/\$type:\s*orchestrator:DaemonStatus\n\s+compact:\s*true/);
+  });
+});

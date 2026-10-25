@@ -1722,7 +1722,8 @@ export const DaemonStatusEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const refreshMs = coerceProp(resolveExpressionValue(node['refreshMs'], ctx), 'DaemonStatus.refreshMs', 'primitive', false) as import('../../../dsl-lib-orch/src/components/DaemonStatus.js').DaemonStatusProps['refreshMs']
-		return <DaemonStatus refreshMs={refreshMs} />
+		const compact = coerceProp(resolveExpressionValue(node['compact'], ctx), 'DaemonStatus.compact', 'primitive', false) as import('../../../dsl-lib-orch/src/components/DaemonStatus.js').DaemonStatusProps['compact']
+		return <DaemonStatus refreshMs={refreshMs} compact={compact} />
 	},
 }
 
@@ -2302,7 +2303,7 @@ SortableColumnEntry.knownKeys = ["currentSort","label","onSort","sortKey"];
 AuditEntryIconEntry.knownKeys = ["entry","event"];
 AuditEntryRowEntry.knownKeys = ["entry"];
 AuditListEntry.knownKeys = ["entries"];
-DaemonStatusEntry.knownKeys = ["refreshMs"];
+DaemonStatusEntry.knownKeys = ["compact","refreshMs"];
 DesignSwitcherEntry.knownKeys = ["current","jobId"];
 EnableToggleEntry.knownKeys = ["job","onToggle"];
 FailureOverlayEntry.knownKeys = ["refreshMs"];

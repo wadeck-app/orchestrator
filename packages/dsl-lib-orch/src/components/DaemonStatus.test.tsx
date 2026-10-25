@@ -204,3 +204,131 @@ describe('DaemonStatus - refresh', () => {
     expect(screen.getByText(/could not be refreshed/i)).toBeInTheDocument();
   });
 });
+
+/*
+ * The dashboard widget has one row of room for the daemon: `compact` is a single line when all is well, and the
+ * line is what turns into a warning when it is not. The page keeps the full card.
+ */
+describe('DaemonStatus compact - healthy', () => {
+  it('is one line: supervised and every timer armed, with a link to the page that has the details', async () => {
+    configureOrchUi({ apiBase: '/api/modules/orchestrator', routeBase: '/modules/orchestrator' });
+    fetchMock.mockResolvedValue(reply(info({ scheduler: { armed: 8, desired: 8, problems: [] } })));
+
+    render(<DaemonStatus compact />);
+
+    const line = await screen.findByText('Supervised, all 8 timers armed');
+    expect(line).toHaveClass('text-success');
+    expect(screen.getByRole('link', { name: /details/i })).toHaveAttribute('href', '/modules/orchestrator/');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('leaves out what the full card says: version, uptime, the late-action window and the run counts', async () => {
+    fetchMock.mockResolvedValue(reply(info()));
+
+    render(<DaemonStatus compact />);
+    await screen.findByText(/Supervised, all 5 timers armed/);
+
+    expect(screen.queryByText(/1\.4\.2/)).toBeNull();
+    expect(screen.queryByText(/Up since/)).toBeNull();
+    expect(screen.queryByText(/ended less than/)).toBeNull();
+    expect(screen.queryByText(/followed again/)).toBeNull();
+  });
+
+  it('keeps the full card by default', async () => {
+    fetchMock.mockResolvedValue(reply(info()));
+
+    render(<DaemonStatus />);
+
+    expect(await screen.findByText(/1\.4\.2/)).toBeInTheDocument();
+  });
+});
+
+describe('DaemonStatus compact - a problem is not hidden', () => {
+  it('says the supervisor is missing, as an alert, when it was asked for and is not there', async () => {
+    fetchMock.mockResolvedValue(reply(info({ supervisor: { requested: true, active: false, note: 'no supervisor executable' } })));
+
+    render(<DaemonStatus compact />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Not supervised: a daemon restart stops running jobs/);
+    expect(alert).toHaveClass('text-warning');
+    expect(screen.queryByText(/Supervised, all/)).toBeNull();
+  });
+
+  it('says the supervisor is off, in warning colour, and still reports the timers', async () => {
+    fetchMock.mockResolvedValue(reply(info({ supervisor: { requested: false, active: false } })));
+
+    render(<DaemonStatus compact />);
+
+    const line = await screen.findByText(/Supervisor off: a daemon restart stops running jobs/);
+    expect(line).toHaveClass('text-warning');
+    expect(screen.getByText('All 5 timers armed')).toBeInTheDocument();
+  });
+
+  it('says how many timers are not armed and names the jobs, each linking to the job', async () => {
+    fetchMock.mockResolvedValue(reply(info({
+      scheduler: {
+        armed: 5, desired: 8,
+        problems: [
+          { jobId: 'backup', problem: 'p' }, { jobId: 'nightly', problem: 'p' }, { jobId: 'third', problem: 'p' },
+        ],
+      },
+    })));
+
+    render(<MemoryRouter><DaemonStatus compact /></MemoryRouter>);
+
+    const line = await screen.findByText(/5 of 8 timers armed/);
+    expect(line.closest('p')).toHaveClass('text-warning');
+    expect(screen.getByRole('link', { name: 'backup' })).toHaveAttribute('href', '/jobs/backup');
+    expect(screen.getByRole('link', { name: 'nightly' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'third' })).toBeNull();
+    expect(screen.getByText(/\+1 more/)).toBeInTheDocument();
+    expect(screen.queryByText(/Supervised, all/)).toBeNull();
+  });
+
+  it('reports both problems when both exist', async () => {
+    fetchMock.mockResolvedValue(reply(info({
+      supervisor: { requested: false, active: false },
+      scheduler: { armed: 0, desired: 2, problems: [] },
+    })));
+
+    render(<DaemonStatus compact />);
+
+    expect(await screen.findByText(/Supervisor off/)).toBeInTheDocument();
+    expect(screen.getByText(/0 of 2 timers armed/)).toBeInTheDocument();
+  });
+});
+
+describe('DaemonStatus compact - when there is no answer', () => {
+  it('says the daemon is not running and how to start it, in red, as an alert', async () => {
+    fetchMock.mockResolvedValue(reply({ error: 'daemon-not-running' }, 503));
+
+    render(<DaemonStatus compact />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/orchestrator daemon is not running/);
+    expect(alert).toHaveTextContent(/orch start/);
+    expect(alert.querySelector('.text-danger')).not.toBeNull();
+  });
+
+  it('says the dashboard server could not be reached', async () => {
+    fetchMock.mockRejectedValue(new Error('network down'));
+
+    render(<DaemonStatus compact />);
+
+    expect(await screen.findByText(/Could not reach the dashboard server \(network down\)/)).toBeInTheDocument();
+  });
+
+  it('keeps the last line and says the refresh failed', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    fetchMock.mockResolvedValueOnce(reply(info()));
+    fetchMock.mockRejectedValueOnce(new Error('gone'));
+
+    render(<DaemonStatus compact />);
+    await screen.findByText(/Supervised, all 5 timers armed/);
+    await act(async () => { await vi.advanceTimersByTimeAsync(DAEMON_STATUS_REFRESH_MS); });
+
+    expect(screen.getByText(/Supervised, all 5 timers armed/)).toBeInTheDocument();
+    expect(screen.getByText(/could not be refreshed/i)).toBeInTheDocument();
+  });
+});

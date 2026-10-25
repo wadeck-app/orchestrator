@@ -13,7 +13,8 @@
       "kind": "widget",
       "slot": "dashboard",
       "label": "Orchestrator",
-      "view": { "type": "path", "value": "./src/dsl-views/status-widget.yaml" }
+      "view": { "type": "path", "value": "./src/dsl-views/status-widget.yaml" },
+      "width": 4
     },
     {
       "kind": "widget",

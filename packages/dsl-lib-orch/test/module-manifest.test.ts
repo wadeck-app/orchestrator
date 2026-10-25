@@ -73,3 +73,28 @@ describe('the packaged manifest (dist-module/manifest.json)', () => {
     expect(packaged.dslLib.shared).toEqual((manifest as { dslLib: { shared: unknown } }).dslLib.shared);
   });
 });
+
+/*
+ * app-core's dashboard is a grid of 100px cells. A widget without `width` gets 2 cells (216px) and widens itself
+ * when its content overflows, so the tile's size depended on what was inside. The dashboard widget is sized for the
+ * three figures side by side.
+ */
+describe('manifest.json - the dashboard widget size', () => {
+  const widgets = (manifest as unknown as { extensionPoints: Array<{ kind: string; slot: string; label: string; width?: unknown }> })
+    .extensionPoints.filter(e => e.kind === 'widget' && e.slot === 'dashboard');
+
+  it('declares the dashboard widget', () => {
+    expect(widgets.map(w => w.label)).toEqual(['Orchestrator']);
+  });
+
+  it('gives every dashboard widget an explicit width in cells, between 1 and 12', () => {
+    for (const w of widgets) {
+      expect(w.width, `${w.label} has no "width": app-core gives it 2 cells and widens it on overflow`).toBeTypeOf('number');
+      expect(Number.isInteger(w.width) && (w.width as number) >= 1 && (w.width as number) <= 12, `${w.label}: width must be an integer of 1-12 cells`).toBe(true);
+    }
+  });
+
+  it('makes the Orchestrator widget 4 cells wide: 416px of content, room for three figures side by side without a wrapped label', () => {
+    expect(widgets.find(w => w.label === 'Orchestrator')?.width).toBe(4);
+  });
+});

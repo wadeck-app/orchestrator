@@ -4,19 +4,25 @@ $sources:
     url: GET /api/modules/orchestrator/api/health
     poll: 30s
 
-# Stacked, not side by side: a dashboard cell is about 270px wide and HorizontalStack cannot wrap, so
-# the third tile was cut off by the card's edge.
+# The dashboard tile is 4 cells wide (manifest.json, 416px of content): the three figures share one row, a third of
+# it each (flex). Narrower, the label "Recent failures" wraps and its tile gets taller than the other two (3 cells), then
+# the tiles overflow (2 cells). Under them the daemon is one line, with a link to the Jobs page for the details.
 $type: VerticalStack
 gap: gap-2
 items:
-  - $type: StatTile
-    label: Jobs
-    value: $sources.health.totalJobs
-  - $type: StatTile
-    label: Running
-    value: $sources.health.runningJobs
-  - $type: StatTile
-    label: Recent failures
-    value: $sources.health.recentFailures
-  # The daemon behind the numbers: version, uptime, supervisor, runs, timers. Reads /api/daemon itself.
+  - $type: HorizontalStack
+    gap: gap-2
+    itemSizes: [flex, flex, flex]
+    items:
+      - $type: StatTile
+        label: Jobs
+        value: $sources.health.totalJobs
+      - $type: StatTile
+        label: Running
+        value: $sources.health.runningJobs
+      - $type: StatTile
+        label: Recent failures
+        value: $sources.health.recentFailures
+  # Supervised and every timer armed, or the problem. Reads /api/daemon itself.
   - $type: orchestrator:DaemonStatus
+    compact: true

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getErrorMessage } from '../types.js';
 import { getApiBase } from '../runtime-config.js';
 import { JobLink } from './JobLink.js';
+import { PageLink } from './PageLink.js';
 import { describeAgo } from '../relative-time.js';
 
 /** The daemon status is re-read this often. */
@@ -33,6 +34,11 @@ export interface DaemonInfo {
 export interface DaemonStatusProps {
   /** How often the status is read again, in milliseconds (default 30 s). */
   refreshMs?: number;
+  /**
+   * One line for a dashboard tile: "Supervised, all 8 timers armed", or the problem in warning colour. The details
+   * (version, uptime, runs, late-action window) stay on the Jobs page, which the line links to.
+   */
+  compact?: boolean;
 }
 
 const STARTED_AT_FORMAT = new Intl.DateTimeFormat([], { dateStyle: 'medium', timeStyle: 'short' });
@@ -106,6 +112,51 @@ function schedulerLines(info: DaemonInfo): React.ReactElement {
   );
 }
 
+/** How many jobs with a timer problem the compact line names before "+N more". */
+const COMPACT_NAMED_PROBLEMS = 2;
+
+// A render helper, not a component: one component per file.
+function compactLines(info: DaemonInfo): React.ReactElement {
+  const { supervisor } = info;
+  const { armed, desired, problems } = info.scheduler;
+  const timersOk = problems.length === 0 && armed === desired;
+  if (supervisor.active && timersOk) {
+    return (
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <p className="text-success">{`Supervised, all ${desired} timers armed`}</p>
+        <PageLink path="/">Details</PageLink>
+      </div>
+    );
+  }
+  const named = problems.slice(0, COMPACT_NAMED_PROBLEMS);
+  const more = problems.length - named.length;
+  return (
+    <div className="space-y-1">
+      {supervisor.active && <p className="text-success">Supervised</p>}
+      {!supervisor.active && supervisor.requested && (
+        <p role="alert" className="text-warning">Not supervised: a daemon restart stops running jobs</p>
+      )}
+      {!supervisor.active && !supervisor.requested && (
+        <p className="text-warning">Supervisor off: a daemon restart stops running jobs</p>
+      )}
+      {timersOk
+        ? <p className="text-success">{`All ${desired} timers armed`}</p>
+        : (
+          <p className="text-warning">
+            {`${armed} of ${desired} timers armed`}
+            {named.length > 0 && <span> (</span>}
+            {named.map((p, i) => (
+              <span key={p.jobId}>{i > 0 && ', '}<JobLink jobId={p.jobId} /></span>
+            ))}
+            {more > 0 && <span>{`, +${more} more`}</span>}
+            {named.length > 0 && <span>)</span>}
+          </p>
+        )}
+      <PageLink path="/">Details</PageLink>
+    </div>
+  );
+}
+
 /**
  * The daemon itself on one card: its version and since when it is up, whether jobs run under a supervisor
  * (and what the late-action window means), the runs going now, and whether every timer is armed. Read every
@@ -114,7 +165,7 @@ function schedulerLines(info: DaemonInfo): React.ReactElement {
  * @registryCategory composite
  * @registryTags daemon status supervisor version scheduler timers
  */
-export function DaemonStatus({ refreshMs = DAEMON_STATUS_REFRESH_MS }: DaemonStatusProps): React.ReactElement {
+export function DaemonStatus({ refreshMs = DAEMON_STATUS_REFRESH_MS, compact = false }: DaemonStatusProps): React.ReactElement {
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const generation = useRef(0);
 
@@ -149,7 +200,9 @@ export function DaemonStatus({ refreshMs = DAEMON_STATUS_REFRESH_MS }: DaemonSta
     };
   }, [fetchOnce, refreshMs]);
 
-  const box = 'rounded-lg border border-border bg-surface p-3 text-sm space-y-2';
+  const box = compact
+    ? 'rounded-lg border border-border bg-surface px-3 py-2 text-sm space-y-1'
+    : 'rounded-lg border border-border bg-surface p-3 text-sm space-y-2';
   if (load.state === 'loading') {
     return <div className={box}><p className="text-muted">Reading the daemon status...</p></div>;
   }
@@ -158,6 +211,16 @@ export function DaemonStatus({ refreshMs = DAEMON_STATUS_REFRESH_MS }: DaemonSta
   }
 
   const { info } = load;
+  if (compact) {
+    return (
+      <div className={box}>
+        {compactLines(info)}
+        {load.refreshError !== undefined && (
+          <p className="text-warning text-xs">{`The status could not be refreshed: ${load.refreshError}`}</p>
+        )}
+      </div>
+    );
+  }
   const now = Date.now();
   return (
     <div className={box}>
