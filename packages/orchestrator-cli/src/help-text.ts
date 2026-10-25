@@ -67,7 +67,7 @@ Job (sub-commands of one job: orch job <jobId> <sub-command>; all of them: orch 
                                                 said on stderr
                                --list           The retained executions, newest first: exec id,
                                                 start (UTC), exit code or running, duration,
-                                                trigger
+                                                trigger, segments, size
                                --json           Lines as {t,text} (one array; with -f one object per
                                                 line); with --list an array of executions
                                --raw            Keep escape sequences (colour, cursor codes);
@@ -94,8 +94,8 @@ Job mutation:
                                Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
                                maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
                                skipExitCodes, liveness, label, triggerMode, description,
-                               restartOnExit, progress, resourceLimits (resourceLimits.<key> clears
-                               one key)
+                               restartOnExit, logRotation, progress, resourceLimits
+                               (resourceLimits.<key> clears one key)
                                Example: orch edit my-job --unset cwd
   orch remove <id>             Remove a job and the data derived from its runs (telemetry, resource
                                history, finished run folders). Its logs stay until age pruning.
@@ -175,6 +175,18 @@ a flag that is not listed here is refused, not ignored):
                                  count (default: 900)
     Options need --restart-on-exit on add, and on edit when the job does not restart yet. Reference:
     docs/daemon-config.md, "Keeping a job up"
+  Log rotation
+    The log of ONE run is written in segments, so a server job (--timeout 0) does not leave one
+    file that only grows. When the next line would take the current segment over --log-max-size,
+    the run goes on in the next segment (same exec id); only the last --log-keep segments stay.
+    A line is never split, and the first line of the segment after a drop says how many earlier
+    segments were dropped. Stored as logRotation; an edit changes only the keys you give. Without
+    them the daemon-wide values apply (config.yml: logMaxSizeMb 50, logKeepSegments 5).
+    --log-max-size <mb>          Segment size (default: 50; decimals allowed, at least 0.001;
+                                 0 = this job's log is never rotated)
+    --log-keep <n>               Segments kept per run, the newest (default: 5; 1-1000)
+    Back to the daemon-wide values: orch edit <id> --unset logRotation. Reference:
+    docs/daemon-config.md, "Log rotation"
   Resource limits
     Per job, stored as resourceLimits and shown by orch show. The monitor compares a run with the
     mean of the job's last 10 successful peaks (the baseline, needs 3 runs); a run that stays over
@@ -337,8 +349,15 @@ Choosing the execution
   <exec id>      The execution itself: its start stamp (UTC) exactly as in the log file name and as
                  --list prints it, e.g. 2026-10-24T08-35-01. 2026-10-24 08:35:01 is accepted too
   --list         Do not read a log: list the retained executions, newest first, with the exec id to
-                 copy, the start (UTC), the exit code or "running", the duration and the trigger.
+                 copy, the start (UTC), the exit code or "running", the duration, the trigger, the
+                 number of log segments (see "Rotated logs") and the total size.
                  Cannot be combined with an execId, -f or -n
+
+Rotated logs
+  A long run (a server with --timeout 0) is written in segments, see --log-max-size in orch --help.
+  They are read as one log, in order, with the same exec id; -n counts across them and -f goes on
+  when the writer moves to the next segment. When the oldest segments were dropped (--log-keep),
+  stderr says how many and where the log starts; --list shows "3 (+2 dropped)" in SEGMENTS
 
 Following
   -f, --follow   Print the end of the log, then keep streaming new lines of the running execution

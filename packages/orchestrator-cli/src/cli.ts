@@ -7,6 +7,7 @@ import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobP
 import { PROGRESS_MODES, PROGRESS_STRATEGY_IDS, progressSettingError } from './progress/setting.js';
 import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
 import { restartConflictError, restartOnExitError, type RestartOnExit } from './restart-policy.js';
+import { logRotationError, parseSegmentName, type LogRotation } from './log-rotation.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { readCrashMarker, type CrashMarker } from './crash-guard.js';
@@ -154,7 +155,7 @@ export interface FieldFlag {
    * 'resource' flags build the nested resourceLimits object (resourceLimitFlags), 'restart' flags the object form of
    * restartOnExit and 'restart-switch' (--restart-on-exit) turns it on (restartFlags).
    */
-  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence' | 'resource' | 'restart' | 'restart-switch';
+  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence' | 'resource' | 'restart' | 'restart-switch' | 'log-rotation';
 }
 
 export const JOB_FIELD_FLAGS: FieldFlag[] = [
@@ -187,6 +188,8 @@ export const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--restart-max',          field: 'maxRestarts',        kind: 'restart'     },
   { flag: '--restart-window',       field: 'windowSeconds',      kind: 'restart'     },
   { flag: '--restart-stable-after', field: 'stableAfterSeconds', kind: 'restart'     },
+  { flag: '--log-max-size',        field: 'maxSizeMb',          kind: 'log-rotation' },
+  { flag: '--log-keep',            field: 'keepSegments',       kind: 'log-rotation' },
   { flag: '--resource-enforce',     field: 'enforce',            kind: 'resource'    },
   { flag: '--hard-factor',          field: 'hardFactor',         kind: 'resource'    },
   { flag: '--soft-factor',          field: 'softFactor',         kind: 'resource'    },
@@ -262,7 +265,7 @@ function collectFieldFlags(argv: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const { flag: name, field, kind } of JOB_FIELD_FLAGS) {
     // Several flags, one nested field: read by resourceLimitFlags and restartFlags.
-    if (kind === 'resource' || kind === 'restart' || kind === 'restart-switch') {
+    if (kind === 'resource' || kind === 'restart' || kind === 'restart-switch' || kind === 'log-rotation') {
       continue;
     }
     if (kind === 'presence') {
@@ -406,6 +409,42 @@ function restartSettingOf(
     throw new Error(`${problem}${flagName === undefined ? '' : ` (flag: ${flagName})`}${startOver}`.replace(/<id>/g, job.id));
   }
   return setting;
+}
+
+const LOG_ROTATION_FLAGS = JOB_FIELD_FLAGS.filter(f => f.kind === 'log-rotation');
+
+/**
+ * The logRotation keys given as flags (--log-max-size, --log-keep); undefined when none is. A flag with no value or a number
+ * that is not one is an error here; ranges are checked by checkLogRotation on the whole object.
+ */
+function logRotationFlags(argv: string[]): LogRotation | undefined {
+  const out: Record<string, number> = {};
+  for (const { flag: name, field } of LOG_ROTATION_FLAGS) {
+    if (!has(argv, name)) {
+      continue;
+    }
+    const raw = flag(argv, name);
+    if (raw === undefined) {
+      throw new Error(`${name} needs a value, but was followed by nothing.`);
+    }
+    const n = raw.trim() === '' ? NaN : Number(raw);
+    if (!Number.isFinite(n)) {
+      throw new Error(`${name} expects ${field === 'maxSizeMb' ? 'a number of megabytes (0 turns the rotation off)' : 'a whole number of segments'}, but got "${raw}".`);
+    }
+    out[field] = n;
+  }
+  return Object.keys(out).length === 0 ? undefined : out as LogRotation;
+}
+
+/** Throws the validation sentence for `setting`, with the flag to change appended; no-op when valid. */
+function checkLogRotation(setting: LogRotation, jobId: string): void {
+  const problem = logRotationError(setting);
+  if (problem === null) {
+    return;
+  }
+  const key = /logRotation\.(\w+)/.exec(problem)?.[1];
+  const flagName = key === undefined ? undefined : LOG_ROTATION_FLAGS.find(f => f.field === key)?.flag;
+  throw new Error(`${problem}${flagName === undefined ? '' : ` (flag: ${flagName})`}`.replace(/<id>/g, jobId));
 }
 
 /** Throws the validation sentence for `limits`, with the flag to change appended; no-op when valid. */
@@ -1176,6 +1215,15 @@ Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
       }
+      try {
+        const logRotation = logRotationFlags(addRest);
+        if (logRotation !== undefined) {
+          checkLogRotation(logRotation, id);
+          body['logRotation'] = logRotation;
+        }
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
       const liveness = buildLiveness(addRest);
       if (liveness) {
         body['liveness'] = liveness;
@@ -1341,6 +1389,26 @@ Examples:
           errorExit(getErrorMessage(e), 4);
         }
       }
+      // An edit is a patch of logRotation too: the keys given as flags are merged over the job's current setting here.
+      let logRotationEdit: LogRotation | undefined;
+      try {
+        logRotationEdit = logRotationFlags(editRest);
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
+      if (logRotationEdit !== undefined) {
+        const current = await send('get-job', { id }) as { logRotation?: LogRotation } | null;
+        if (!current) {
+          errorExit(`Job not found: "${id}". Run \`orch list\` to see the available job ids.`, 3);
+        }
+        const merged = { ...(current.logRotation ?? {}), ...logRotationEdit };
+        try {
+          checkLogRotation(merged, id);
+        } catch (e) {
+          errorExit(getErrorMessage(e), 4);
+        }
+        updates['logRotation'] = merged;
+      }
       const delay = flag(editRest, '--delay');
       if (delay !== undefined) {
         updates['delaySeconds'] = parseInt(delay, 10);
@@ -1373,6 +1441,9 @@ Usage: orch edit <id> --unset <field>[,<field>...]
 Example: orch edit my-job --unset cwd
 
 Fields that can be unset: ${Object.keys(UNSETTABLE_FIELDS).join(', ')}`, 4);
+      }
+      if (unset.includes('logRotation') && 'logRotation' in updates) {
+        errorExit('Cannot clear logRotation (--unset logRotation) and change it in the same command -- drop --unset logRotation or the --log-max-size/--log-keep flags.', 4);
       }
       // An edit is a patch of the resourceLimits object too: the flags and the `resourceLimits.<key>`
       // unsets are applied to the job's current limits here, and the result is sent as a whole.
@@ -1872,10 +1943,14 @@ Use --wait to block until the command finishes.`);
         if (!jobLogDir || !fsLogs.existsSync(jobLogDir)) {
           return [];
         }
+        // A run rotated into segments is several files (<id>-<stamp>.log, .log.2, ...): run order first, then segment order.
         return fsLogs.readdirSync(jobLogDir)
-          .filter(f => f.startsWith(`${jobFlag}-${today}`) && f.endsWith('.log'))
-          .sort()
-          .map(f => path.join(jobLogDir, f));
+          .flatMap(f => {
+            const seg = f.startsWith(`${jobFlag}-${today}`) ? parseSegmentName(jobFlag!, f) : null;
+            return seg === null ? [] : [{ f, ...seg }];
+          })
+          .sort((a, b) => (a.stamp < b.stamp ? -1 : a.stamp > b.stamp ? 1 : a.n - b.n))
+          .map(({ f }) => path.join(jobLogDir, f));
       };
 
       const logFile = jobFlag

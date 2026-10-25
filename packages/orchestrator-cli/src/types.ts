@@ -1,4 +1,5 @@
 import type { RestartOnExit } from './restart-policy.js';
+import type { LogRotation } from './log-rotation.js';
 
 // Enum values - single source of truth
 export const JOB_TYPES = ['cron', 'startup', 'once', 'manual'] as const;
@@ -128,6 +129,12 @@ export interface Job {
    */
   restartOnExit?: boolean | RestartOnExit;
   /**
+   * Size-based rotation of the log of ONE run of this job: once a segment would pass `maxSizeMb`, the run continues in the
+   * next segment and only the last `keepSegments` are kept (log-rotation.ts). Absent means the daemon-wide values
+   * (`logMaxSizeMb`, `logKeepSegments` in config.yml; 50 MB and 5 segments). Clear it with `--unset logRotation`.
+   */
+  logRotation?: LogRotation;
+  /**
    * Exit codes that mean "this run deliberately did nothing", not "this run broke".
    *
    * Per job because the meaning of a code belongs to the program being launched, not to orch: the
@@ -198,6 +205,7 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
   retryOnExitCodes:   'delete',
   retryDelays:        'delete',
   restartOnExit:      'delete',
+  logRotation:        'delete',
   skipExitCodes:      'delete',
   liveness:           'delete',
   alertAfterFailures: 'delete',

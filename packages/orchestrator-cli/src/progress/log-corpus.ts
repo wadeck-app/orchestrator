@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { runLogPath } from '../logger.js';
+import { listSegmentFiles, parseSegmentName } from '../log-rotation.js';
 import type { RuntimeEntry } from '../types.js';
 import { isUsableRun } from './history-strategy.js';
 import type { LogCorpus, LogLine, LogReader } from './types.js';
@@ -57,13 +58,21 @@ export interface FileLogReaderOptions {
   finished?: boolean;
 }
 
-/** Reads `file` by byte offset. A missing file is an empty log; any other read error is thrown with its cause. */
-export function createFileLogReader(file: string, options: FileLogReaderOptions): LogReader {
+/**
+ * Reads the log of the run whose first segment is `first`, by byte offset. A run whose log was rotated (log-rotation.ts) is
+ * several files; they are one log for exists/size/tail (the end of the run, across segments), while the head (readFrom,
+ * fingerprint) is the first segment still kept, and a byte offset above 0 addresses that same segment. The strategies only
+ * read the head within a byte cap and the end of the run, which is what this keeps right. A run with no file is an empty
+ * log; any other read error is thrown with its cause.
+ */
+export function createFileLogReader(first: string, options: FileLogReaderOptions): LogReader {
   const byteCap = options.byteCap ?? CURRENT_RUN_BYTE_CAP;
   const finished = options.finished === true;
   const fallback = new Date(options.runStartedAt);
+  /** The first segment kept: the head of what is left of the run. `first` itself when nothing exists yet. */
+  const headFile = (): string => listSegmentFiles(first)[0]?.file ?? first;
 
-  const withFd = <T>(empty: T, fn: (fd: number, size: number) => T): T => {
+  const withFd = <T>(empty: T, fn: (fd: number, size: number) => T, file = headFile()): T => {
     let fd: number;
     try {
       fd = fs.openSync(file, 'r');
@@ -94,9 +103,9 @@ export function createFileLogReader(file: string, options: FileLogReaderOptions)
   };
 
   return {
-    exists: () => fs.existsSync(file),
+    exists: () => listSegmentFiles(first).length > 0,
 
-    size: () => withFd(0, (_fd, size) => size),
+    size: () => listSegmentFiles(first).reduce((sum, s) => sum + s.size, 0),
 
     readFrom(offset) {
       return withFd({ lines: [], nextOffset: offset, truncated: false }, (fd, size) => {
@@ -118,22 +127,39 @@ export function createFileLogReader(file: string, options: FileLogReaderOptions)
     },
 
     tail(maxBytes) {
-      return withFd([] as LogLine[], (fd, size) => {
-        const start = Math.max(0, size - maxBytes);
-        let text = read(fd, start, size - start).toString('utf8');
-        if (start > 0) {
-          const nl = text.indexOf('\n');
-          text = nl < 0 ? '' : text.slice(nl + 1);
+      // From the newest segment backwards, until maxBytes are covered. A piece that does not start at the start of its
+      // segment begins in the middle of a line, which is dropped; a segment always starts on a line.
+      let text = '';
+      let budget = maxBytes;
+      const segments = listSegmentFiles(first);
+      for (let i = segments.length - 1; i >= 0 && budget > 0; i--) {
+        const piece = withFd(null as { text: string; cut: boolean } | null, (fd, size) => {
+          const start = Math.max(0, size - budget);
+          const raw = read(fd, start, size - start);
+          budget -= raw.length;
+          let t = raw.toString('utf8');
+          if (start > 0) {
+            const nl = t.indexOf('\n');
+            t = nl < 0 ? '' : t.slice(nl + 1);
+          }
+          return { text: t, cut: start > 0 };
+        }, segments[i]!.file);
+        if (piece === null) {
+          continue; // dropped between the listing and the read
         }
-        if (!finished) {
-          const nl = text.lastIndexOf('\n');
-          text = nl < 0 ? '' : text.slice(0, nl + 1);
+        text = piece.text + text;
+        if (piece.cut) {
+          break;
         }
-        if (text === '') {
-          return [];
-        }
-        return parseLines(text.endsWith('\n') ? text.slice(0, -1) : text, fallback);
-      });
+      }
+      if (!finished) {
+        const nl = text.lastIndexOf('\n');
+        text = nl < 0 ? '' : text.slice(0, nl + 1);
+      }
+      if (text === '') {
+        return [];
+      }
+      return parseLines(text.endsWith('\n') ? text.slice(0, -1) : text, fallback);
     },
 
     fingerprint() {
@@ -156,13 +182,13 @@ export interface LogCorpusOptions {
   pastByteCap?: number;
 }
 
-/** `<jobId>-YYYY-MM-DDTHH-MM-SS.log` (per run). The legacy daily `<jobId>-YYYY-MM-DD.log` does not match. */
+/**
+ * `<jobId>-YYYY-MM-DDTHH-MM-SS.log` (per run), or a later segment of a rotated run (`.log.2`...): the run's key either way.
+ * The legacy daily `<jobId>-YYYY-MM-DD.log` does not match.
+ */
 function runFileKey(jobId: string, name: string): string | null {
-  const prefix = `${jobId}-`;
-  if (!name.startsWith(prefix) || !name.endsWith('.log')) {
-    return null;
-  }
-  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/.exec(name.slice(prefix.length, -4));
+  const parsed = parseSegmentName(jobId, name);
+  const m = parsed === null ? null : /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/.exec(parsed.stamp);
   return m ? `${m[1]}T${m[2]}:${m[3]}:${m[4]}` : null;
 }
 
@@ -235,7 +261,9 @@ export function createLogCorpus(options: LogCorpusOptions): LogCorpus {
       }
       for (const name of names) {
         const key = runFileKey(options.jobId, name);
+        // Once per run: a rotated run has several files.
         if (key !== null && !known.has(key.replace(/:/g, '-')) && before(`${key}.000Z`)) {
+          known.add(key.replace(/:/g, '-'));
           candidates.push({ startedAt: `${key}.000Z`, key });
         }
       }

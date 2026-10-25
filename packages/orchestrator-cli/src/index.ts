@@ -24,6 +24,7 @@ import { DashboardManager } from './dashboard-manager.js';
 import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
+import { daemonLogRotation } from './log-rotation.js';
 import { registerOnStart } from './app-core-registration.js';
 import { refreshStartupEntry, reportStartupRefresh, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
@@ -219,6 +220,7 @@ async function main(): Promise<void> {
       lateActionWindowMs: daemonCfg.lateActionWindowMinutes * 60_000,
       supervisor: supervisorSetup.launcher,
       jobsNoColor: daemonCfg.jobsNoColor,
+      logRotation: daemonLogRotation(daemonCfg),
     });
 
     // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must

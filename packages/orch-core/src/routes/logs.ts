@@ -1,42 +1,68 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as readline from 'node:readline';
 import type { IdleSignal, RouteHost } from '../route-host.js';
 
 const JOB_ID_RE = /^[a-z0-9-]+$/i;
 const POLL_INTERVAL_MS = 500;
 
-/**
- * Returns all log files for a job, sorted oldest->newest.
- * Supports both formats:
- *   - per-run:  <jobId>-YYYY-MM-DDTHH-MM-SS.log  (new)
- *   - daily:    <jobId>-YYYY-MM-DD.log             (legacy)
- */
-export function listLogFiles(logDir: string, jobId: string): string[] {
-  if (!fs.existsSync(logDir)) {
-    return [];
-  }
-  const esc = escapeRegExp(jobId);
-  const runPat   = new RegExp(`^${esc}-\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}\\.log$`);
-  const dailyPat = new RegExp(`^${esc}-\\d{4}-\\d{2}-\\d{2}\\.log$`);
-  let entries: string[];
-  try { entries = fs.readdirSync(logDir); } catch { return []; }
-  return entries
-    .filter(f => runPat.test(f) || dailyPat.test(f))
-    .sort()
-    .map(f => path.join(logDir, f));
+/** One file of a run's log. A run that was never rotated has one, segment 1. */
+interface Segment {
+  /** 1 for `<id>-<stamp>.log`, n for `<id>-<stamp>.log.<n>` (size-based rotation, orchestrator-cli's log-rotation.ts). */
+  n: number;
+  file: string;
 }
 
-/**
- * Returns the path to the most recent log file for a job, or null if none exists.
- */
-export function findLatestLogFile(logDir: string, jobId: string): string | null {
-  const files = listLogFiles(logDir, jobId);
-  return files.length > 0 ? files[files.length - 1]! : null;
+/** One log in the job's folder: a run (possibly several segments) or a legacy daily file. */
+interface LogEntry {
+  /** What follows `<jobId>-` in the name: the run stamp, or the date of a legacy daily file. */
+  key: string;
+  segments: Segment[];
 }
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Every log of a job, oldest->newest, each with its segments in order. Supports the formats:
+ *   - per-run:  <jobId>-YYYY-MM-DDTHH-MM-SS.log, then .log.2, .log.3... when the run was rotated by size
+ *   - daily:    <jobId>-YYYY-MM-DD.log             (legacy)
+ * The segments of a run whose first ones were dropped start at the first one kept.
+ */
+function listLogEntries(logDir: string, jobId: string): LogEntry[] {
+  let names: string[];
+  try { names = fs.readdirSync(logDir); } catch { return []; }
+  const esc = escapeRegExp(jobId);
+  const runPat   = new RegExp(`^${esc}-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})\\.log(?:\\.([2-9]|[1-9]\\d+))?$`);
+  const dailyPat = new RegExp(`^${esc}-(\\d{4}-\\d{2}-\\d{2})\\.log$`);
+  const byKey = new Map<string, Segment[]>();
+  for (const name of names) {
+    const run = runPat.exec(name);
+    const key = run?.[1] ?? dailyPat.exec(name)?.[1];
+    if (key === undefined) {
+      continue;
+    }
+    const list = byKey.get(key) ?? [];
+    list.push({ n: run?.[2] === undefined ? 1 : Number(run[2]), file: path.join(logDir, name) });
+    byKey.set(key, list);
+  }
+  return [...byKey.keys()].sort().map(key => ({ key, segments: byKey.get(key)!.sort((a, b) => a.n - b.n) }));
+}
+
+/**
+ * Returns all log files for a job, sorted oldest->newest (the segments of a run in their order).
+ */
+export function listLogFiles(logDir: string, jobId: string): string[] {
+  return listLogEntries(logDir, jobId).flatMap(e => e.segments.map(s => s.file));
+}
+
+/**
+ * Returns the path to the most recent log file for a job, or null if none exists. For a rotated run that is the newest
+ * segment, the one still being written.
+ */
+export function findLatestLogFile(logDir: string, jobId: string): string | null {
+  const files = listLogFiles(logDir, jobId);
+  return files.length > 0 ? files[files.length - 1]! : null;
 }
 
 /**
@@ -54,13 +80,17 @@ const GLOBAL_TIMERS: LogsTimers = {
   clearInterval: (handle) => { clearInterval(handle as NodeJS.Timeout); },
 };
 
+function sizeOf(file: string): number {
+  try { return fs.statSync(file).size; } catch { return 0; }
+}
+
 export async function logsRoutes(
   fastify: RouteHost,
   opts: { configDir: string; idleTimer: IdleSignal; timers?: LogsTimers }
 ): Promise<void> {
   const { configDir, idleTimer, timers = GLOBAL_TIMERS } = opts;
 
-  // List available run log files for a job
+  // List available run log files for a job: one entry per run, however many segments it has
   fastify.get('/api/logs/:jobId/runs', async (req, reply) => {
     const { jobId } = req.params as { jobId: string };
     if (!JOB_ID_RE.test(jobId)) {
@@ -68,11 +98,14 @@ export async function logsRoutes(
     }
     idleTimer.reset();
     const logDir = path.join(configDir, 'logs', 'jobs', jobId);
-    const files  = listLogFiles(logDir, jobId);
-    const runs = files.map(f => {
-      const name = path.basename(f, '.log').slice(jobId.length + 1); // strip "<jobId>-"
-      return { name, file: path.basename(f), sizeBytes: (() => { try { return fs.statSync(f).size; } catch { return 0; } })() };
-    }).reverse(); // most recent first
+    const runs = listLogEntries(logDir, jobId).map(e => ({
+      name: e.key,
+      // The first segment kept; the whole run when it was not rotated.
+      file: path.basename(e.segments[0]!.file),
+      sizeBytes: e.segments.reduce((sum, s) => sum + sizeOf(s.file), 0),
+      segments: e.segments.length,
+      droppedSegments: e.segments[0]!.n - 1,
+    })).reverse(); // most recent first
     return reply.send(runs);
   });
 
@@ -101,20 +134,60 @@ export async function logsRoutes(
       reply.raw.write(`data: ${line}\n\n`);
     };
 
-    // Send historical lines from the requested run log, or the latest
-    let currentLogPath = runName
-      ? (() => { const p = path.join(logDir, `${jobId}-${runName}.log`); return fs.existsSync(p) ? p : null; })()
-      : findLatestLogFile(logDir, jobId);
-    let fileSize = 0;
+    /** The log being followed: a run (or daily file) by key, the segment being read and how far into it. */
+    let cursor: { key: string; n: number; offset: number } | null = null;
 
-    if (currentLogPath !== null) {
+    const fileOf = (entry: LogEntry, n: number): string | undefined => entry.segments.find(s => s.n === n)?.file;
+
+    /** Sends what is new in the segment of the cursor. A segment dropped since is nothing to read. */
+    const readNew = (entry: LogEntry): void => {
+      const file = fileOf(entry, cursor!.n);
+      if (file === undefined) {
+        return;
+      }
+      let size: number;
+      try { size = fs.statSync(file).size; } catch { return; }
+      if (size <= cursor!.offset) {
+        return;
+      }
+      const buf = Buffer.alloc(size - cursor!.offset);
+      const fd = fs.openSync(file, 'r');
+      try { fs.readSync(fd, buf, 0, buf.length, cursor!.offset); } finally { fs.closeSync(fd); }
+      cursor!.offset = size;
+      const text = buf.toString('utf8');
+      for (const line of (text.endsWith('\n') ? text.slice(0, -1) : text).split(/\r?\n/)) {
+        send(line);
+      }
+    };
+
+    /**
+     * Reads the rest of the followed log: its current segment, then every later segment the writer moved on to. A line can
+     * still land in the segment just left, so the rest of it is read before leaving. Segments dropped meanwhile (the reader
+     * was too slow) are skipped: it goes on at the oldest one kept.
+     */
+    const follow = (): void => {
+      for (;;) {
+        const entry = listLogEntries(logDir, jobId).find(e => e.key === cursor!.key);
+        if (entry === undefined) {
+          return;
+        }
+        readNew(entry);
+        const next = entry.segments.find(s => s.n > cursor!.n);
+        if (next === undefined) {
+          return;
+        }
+        cursor = { key: cursor!.key, n: next.n, offset: 0 };
+      }
+    };
+
+    // Send historical lines from the requested run log, or the latest. The run is looked up among the job's own logs, so a
+    // name that is a path names nothing.
+    const entries = listLogEntries(logDir, jobId);
+    const first = runName !== undefined ? entries.find(e => e.key === runName) : entries[entries.length - 1];
+    if (first !== undefined) {
+      cursor = { key: first.key, n: first.segments[0]!.n, offset: 0 };
       try {
-        const rl = readline.createInterface({
-          input: fs.createReadStream(currentLogPath),
-          crlfDelay: Infinity,
-        });
-        for await (const line of rl) send(line);
-        fileSize = fs.statSync(currentLogPath).size;
+        follow();
       } catch {
         // log file may not be readable yet
       }
@@ -128,35 +201,30 @@ export async function logsRoutes(
         // with nothing marking where the first ended. Reported as "it shows the logs of both".
         // Without ?run= the request means "what is happening now", so there the switch is the point.
         if (runName === undefined) {
-          const latestPath = findLatestLogFile(logDir, jobId);
-          if (latestPath === null) {
+          const latest = listLogEntries(logDir, jobId).pop();
+          if (latest === undefined) {
             return;
           }
 
-          // A new run started, or the date rolled over on a legacy daily file.
-          if (latestPath !== currentLogPath) {
-            currentLogPath = latestPath;
-            fileSize = 0;
+          // A new run started, or the date rolled over on a legacy daily file. A new SEGMENT of the same run is not a new run.
+          if (latest.key !== cursor?.key) {
+            cursor = { key: latest.key, n: latest.segments[0]!.n, offset: 0 };
             // Signal the client to reset its line buffer before the new run's content arrives,
             // so two runs are never interleaved in the same pane.
-            const newRunName = path.basename(currentLogPath, '.log').slice(jobId.length + 1);
-            reply.raw.write(`event: run-changed\ndata: ${newRunName}\n\n`);
+            reply.raw.write(`event: run-changed\ndata: ${latest.key}\n\n`);
           }
+        } else if (cursor === null) {
+          // A pinned run whose file had not appeared yet starts being followed when it does.
+          const pinned = listLogEntries(logDir, jobId).find(e => e.key === runName);
+          if (pinned === undefined) {
+            return;
+          }
+          cursor = { key: pinned.key, n: pinned.segments[0]!.n, offset: 0 };
         }
-        // A pinned run whose file never appeared has nothing to poll for.
-        if (currentLogPath === null) {
+        if (cursor === null) {
           return;
         }
-
-        const newSize = fs.statSync(currentLogPath).size;
-        if (newSize <= fileSize) {
-          return;
-        }
-
-        const stream = fs.createReadStream(currentLogPath, { start: fileSize });
-        fileSize = newSize;
-        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-        rl.on('line', send);
+        follow();
       } catch {
         // transient error - file may be rotating
       }

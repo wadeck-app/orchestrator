@@ -2,6 +2,7 @@ import { ChildProcess, spawn as nodeSpawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runLogPath } from './logger.js';
+import type { ResolvedLogRotation } from './log-rotation.js';
 import pidusage from 'pidusage';
 import { atomicWriteJson, getErrorMessage, readJsonFile } from './fsUtil.js';
 import type { TriggerSource } from './types.js';
@@ -50,6 +51,11 @@ export interface SupervisedRequest {
   timeoutSeconds: number;
   label?: string;
   trigger: TriggerSource;
+  /**
+   * The size limits the supervisor writes the run log with (log-rotation.ts), written in spec.json. Absent: the run log is
+   * one file. The daemon's markers go to the same run through a RunLogger with the same limits.
+   */
+  logRotation?: ResolvedLogRotation;
 }
 
 /** status.json, as written by the supervisor. */
@@ -241,6 +247,7 @@ export async function startSupervised(options: SupervisorOptions, request: Super
     command: request.command,
     cwd: request.cwd,
     logPath: runLogPath(logDir, request.jobId, request.startedAt),
+    ...(request.logRotation === undefined ? {} : { logRotation: request.logRotation }),
     timeoutSeconds: request.timeoutSeconds > 0 ? request.timeoutSeconds + margin : 0,
     heartbeatMs,
     // What a finished run needs to be understood by whoever finds it, even if the job was edited or deleted since.

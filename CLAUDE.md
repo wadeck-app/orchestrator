@@ -13,6 +13,7 @@ orch kill <id>               # stop a running job (alias: orch terminate)
 orch restart-job <id>        # end a job's running instances, then start it again (orch restart = the daemon)
 orch server start            # web dashboard
 orch job <jobId> logs [execId] [-f]  # one execution's log, plain text (default latest; --list, -n, --raw; orch job --help)
+orch edit <id> --log-max-size 20 --log-keep 3   # cap a run's log: segments of 20 MB, newest 3 kept (docs/daemon-config.md)
 orch progress replay <jobId>  # score the progress/ETA strategies on a job's past runs (add/edit: --progress, --progress-options)
 orch logs [--follow]         # daemon log
 orch cli update              # update orch itself -- never `npm install -g` by hand

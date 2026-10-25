@@ -76,6 +76,8 @@ export interface Job {
    * the defaults, an object tunes them. A manual kill never restarts. Not combinable with retryOnExitCodes/retryDelays.
    */
   restartOnExit?: boolean | RestartOnExit;
+  /** Size-based rotation of one run's log; absent means the daemon-wide values (50 MB, 5 segments). Clear it with --unset logRotation. */
+  logRotation?: LogRotation;
   /**
    * Exit codes that mean "this run deliberately did nothing", not "this run broke". The run is recorded
    * as skipped (real exit code kept) and never counted as a failure.
@@ -94,6 +96,14 @@ export interface Job {
   spentAt?: string;
   /** How the progress and estimated end of a running job are computed. Absent means 'auto'. */
   progress?: JobProgressSetting;
+}
+
+/** The `logRotation` setting of a job; every key is optional. Mirrors LogRotation in orchestrator-cli's log-rotation.ts. */
+export interface LogRotation {
+  /** A segment is closed when the next line would take it over this many MB (decimals allowed, min 0.001). 0 = never rotate. Default 50. */
+  maxSizeMb?: number;
+  /** How many segments of a run are kept, the newest ones, 1-1000. Default 5. */
+  keepSegments?: number;
 }
 
 /** The object form of `restartOnExit`; every key is optional. Mirrors RestartOnExit in orchestrator-cli's restart-policy.ts. */
@@ -127,7 +137,7 @@ export type JobProgressSetting = string | { strategy: string; options?: unknown 
  */
 export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
-  | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'restartOnExit' | 'skipExitCodes' | 'liveness'
+  | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'restartOnExit' | 'logRotation' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
   | 'label' | 'triggerMode' | 'maxConcurrency' | 'description' | 'resourceLimits' | 'progress'
   // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it

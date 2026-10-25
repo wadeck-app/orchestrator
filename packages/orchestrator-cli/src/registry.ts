@@ -9,6 +9,7 @@ import { activeWindowError } from './active-window.js';
 import { resourceLimitsError } from './resource-limits.js';
 import { progressSettingError } from './progress/setting.js';
 import { restartOnExitError, restartConflictError } from './restart-policy.js';
+import { logRotationError } from './log-rotation.js';
 
 /*
  * The shape a cron expression must have: five space-separated fields.
@@ -78,6 +79,13 @@ export function validateJob(job: Partial<Job>): void {
     const problem = resourceLimitsError(job.resourceLimits);
     if (problem !== null) {
       throw new Error(problem);
+    }
+  }
+
+  {
+    const problem = logRotationError(job.logRotation);
+    if (problem !== null) {
+      throw new Error(problem.replace(/<id>/g, job.id));
     }
   }
 

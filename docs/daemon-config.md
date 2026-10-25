@@ -19,8 +19,10 @@ Read once at daemon startup. Changes take effect after `orch restart`.
 | `onceRetentionMaxJobs` | int | `50` | How many spent `once` jobs are kept at most |
 | `auditMaxBytes` | int | `5242880` | Size at which `audit.ndjson` is rotated. `0` turns rotation off |
 | `auditMaxFiles` | int | `5` | Rotated audit files kept, newest first |
+| `logMaxSizeMb` | int | `50` | Size of one segment of a run's log. `0` never rotates (jobs without their own `logRotation`). Max `10240`. See "Rotating the log of a run" |
+| `logKeepSegments` | int | `5` | Segments of a run kept, newest first. `1`-`1000` |
 
-Integers must be whole and non-negative. `0` is valid and means "keep none", except `auditMaxBytes` where it means "never rotate".
+Integers must be whole and non-negative. `0` is valid and means "keep none", except `auditMaxBytes` and `logMaxSizeMb` where it means "never rotate".
 
 ## Environment: `ORCH_NO_TRAY`
 
@@ -239,6 +241,28 @@ For a server that must come back after ANY exit: `orch add startup web --command
 - With `retryOnExitCodes`/`retryDelays` on the same job: refused by `add`/`edit`. In a hand-edited registry `restartOnExit` wins and the retry settings are ignored (logged at start).
 - `orch edit <id> --restart-delay 5` changes only the given keys; `--unset restartOnExit` turns the policy off.
 - Events: `job.restart_scheduled` and `job.restart_abandoned`; the restarted run is `job.started` with `trigger: "restart"`. `orch timers` shows a pending restart as a `restart` timer.
+
+## Rotating the log of a run -- `logRotation`
+
+A run has one log (`logs/jobs/<id>/<id>-<stamp>.log`). A server job (`--timeout 0`) used to grow it without bound; now the run continues in the next segment once the next line would take the current one over the limit.
+
+| Key (flag) | Default | Meaning |
+|---|---|---|
+| `maxSizeMb` (`--log-max-size`) | `50` (config.yml `logMaxSizeMb`) | Segment size, decimals allowed, min `0.001`, max `10240`. `0` = never rotate this job |
+| `keepSegments` (`--log-keep`) | `5` (config.yml `logKeepSegments`) | Newest segments kept, `1`-`1000` |
+
+A run therefore keeps at most about 250 MB by default. A job's keys override the daemon-wide values key by key; `orch edit <id> --log-keep 9` changes only that key; `--unset logRotation` goes back to the daemon-wide values. Invalid values are refused by `add`, `edit` and the API with the key (and flag) to fix.
+
+- Naming: segment 1 is the plain `<id>-<stamp>.log`, later ones `<id>-<stamp>.log.2`, `.log.3`... Never renamed (Windows cannot rename an open file). Readers that only know `*.log` see segment 1 and ignore the rest; once segment 1 is dropped, such a reader no longer sees the run.
+- A line is never split: a line goes whole into one segment, a segment holds up to the limit exactly, and a line longer than the limit sits alone in its own segment.
+- Dropping: the writer that starts segment N deletes segments up to N-`keepSegments`. When it did, the new segment opens with `[orch] log rotation: K earlier segments of this run were dropped (...)`. A segment a reader holds open on Windows is deleted at the next rotation.
+- Both writers behave the same: the supervisor writes the job's output, the daemon its markers (`[job:started]`, `[job:finished]`) into the same run. They share no state; each follows the files, so the daemon's end marker lands in the newest segment. The limits reach the supervisor in `spec.json` (`logRotation: {maxBytes, keepSegments}`), fixed when the run starts: editing the job does not change a run in progress. A run started before this feature has no limits and stays one file.
+- Retention (120 days, or more than 100 runs and older than 30 days) counts runs, not files, and removes all the segments of a run.
+- Readers:
+  - `orch job <id> logs`: segments are one log in order; `-n` counts across them; `-f` goes on when the writer moves to the next segment (segments dropped while following are reported on stderr); `--list` shows `SEGMENTS` (`3 (+2 dropped)`) and `SIZE`, `--json` adds `segments`, `droppedSegments`, `sizeBytes`. Dropped segments at the start are announced on stderr.
+  - `orch logs --job <id>`: today's segments in order.
+  - Dashboard (`/api/logs/<id>/runs` and `/stream`): one entry per run with the total size (plus `segments`, `droppedSegments`); the stream replays all kept segments and follows into the next one without a run change. The run picker UI shows the total size only.
+  - Progress/ETA strategies: `tail` reads the end of the run across segments; the head (`readFrom`, fingerprint) is the first segment kept, so a rotated run teaches the learned strategy only that head, and a byte offset above 0 addresses that segment.
 
 ## Example
 

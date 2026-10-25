@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { HookConfig } from '@wadeck-app/shared-cli/HookDispatcher';
 import { ONCE_RETENTION_DEFAULTS } from './registry.js';
 import { AUDIT_DEFAULTS } from './audit.js';
+import { KEEP_SEGMENTS_MAX, LOG_ROTATION_DEFAULTS, MAX_SIZE_MB_MAX } from './log-rotation.js';
 
 export interface DaemonConfig {
   autoUpdate?: boolean;
@@ -35,6 +36,13 @@ export interface DaemonConfig {
   auditMaxBytes?: number;
   /** How many rotated audit files are kept, the newest (default: 5). 0 keeps none. */
   auditMaxFiles?: number;
+  /**
+   * Size of one segment of a run's log, in MB: past it the run continues in the next segment (default: 50). 0 turns the
+   * rotation off for every job without a `logRotation` of its own. A job overrides it with --log-max-size.
+   */
+  logMaxSizeMb?: number;
+  /** How many segments of a run's log are kept, the newest ones, 1-1000 (default: 5). A job overrides it with --log-keep. */
+  logKeepSegments?: number;
 }
 
 const DEFAULTS: Required<DaemonConfig> = {
@@ -51,6 +59,14 @@ const DEFAULTS: Required<DaemonConfig> = {
   onceRetentionMaxJobs:        ONCE_RETENTION_DEFAULTS.onceRetentionMaxJobs,
   auditMaxBytes:               AUDIT_DEFAULTS.maxBytes,
   auditMaxFiles:               AUDIT_DEFAULTS.maxFiles,
+  logMaxSizeMb:                LOG_ROTATION_DEFAULTS.maxSizeMb,
+  logKeepSegments:             LOG_ROTATION_DEFAULTS.keepSegments,
+};
+
+/** Bounds of the keys that have some, as the registry applies them to a job's `logRotation`; both ends included. */
+const KEY_RANGES: Partial<Record<keyof Required<DaemonConfig>, { min: number; max: number }>> = {
+  logMaxSizeMb:    { min: 0, max: MAX_SIZE_MB_MAX },
+  logKeepSegments: { min: 1, max: KEEP_SEGMENTS_MAX },
 };
 
 type BooleanKey = 'autoUpdate' | 'appCore' | 'supervisedJobs' | 'jobsNoColor';
@@ -72,6 +88,8 @@ const KEY_KINDS: Record<keyof Required<DaemonConfig>, 'boolean' | 'nonNegativeIn
   onceRetentionMaxJobs:       'nonNegativeInt',
   auditMaxBytes:              'nonNegativeInt',
   auditMaxFiles:              'nonNegativeInt',
+  logMaxSizeMb:               'nonNegativeInt',
+  logKeepSegments:            'nonNegativeInt',
 };
 
 /**
@@ -160,6 +178,15 @@ export function loadDaemonConfig(
     if (val === '' || !Number.isInteger(num) || num < 0) {
       const fallback = DEFAULTS[key as 'catchUpStaggerSeconds'];
       onWarn(`${where}: ${key} must be a non-negative whole number, found ${JSON.stringify(val)} -- using ${fallback}`);
+      continue;
+    }
+    const range = KEY_RANGES[key as keyof Required<DaemonConfig>];
+    if (range !== undefined && (num < range.min || num > range.max)) {
+      const fallback = DEFAULTS[key as 'catchUpStaggerSeconds'];
+      const bound = range.min >= 1
+        ? `a whole number from ${range.min} to ${range.max}`
+        : `at most ${range.max} (0 turns it off)`;
+      onWarn(`${where}: ${key} must be ${bound}, found ${JSON.stringify(val)} -- using ${fallback}`);
       continue;
     }
     result[key as 'catchUpStaggerSeconds'] = num;

@@ -6,6 +6,7 @@ import os   from 'node:os';
 import { EventEmitter } from 'node:events';
 import { checkLiveness } from './liveness.js';
 import { RunLogger }     from './logger.js';
+import { LOG_ROTATION_DEFAULTS, daemonLogRotation, resolveLogRotation, type ResolvedLogRotation } from './log-rotation.js';
 import { jobEnvironment } from './job-env.js';
 import { stripAnsi }      from './ansi.js';
 import { OutputLines }     from './output-lines.js';
@@ -74,10 +75,23 @@ interface RunContext {
   previousRunFailed: boolean;
 }
 
+/** The limits a run found again is logged with: the ones its supervisor was given, none for a run that predates the rotation. */
+function specRotation(spec: SupervisedSpec): ResolvedLogRotation | undefined {
+  return spec.logRotation;
+}
+
+/** 50 MB and 5 segments: what a daemon without `logMaxSizeMb` / `logKeepSegments` in config.yml uses. */
+export const DEFAULT_RUN_LOG_ROTATION: ResolvedLogRotation = daemonLogRotation({
+  logMaxSizeMb: LOG_ROTATION_DEFAULTS.maxSizeMb,
+  logKeepSegments: LOG_ROTATION_DEFAULTS.keepSegments,
+});
+
 /** What startSupervised wrote in spec.json, as far as recovery needs it. */
 interface SupervisedSpec {
   command: string;
   logPath: string;
+  /** The limits the supervisor of this run writes its log with; absent for a run started before the rotation existed. */
+  logRotation?: ResolvedLogRotation;
   context: { jobId: string; label?: string; trigger: TriggerSource; startedAt: string };
 }
 
@@ -204,6 +218,11 @@ interface SchedulerOptions {
   sustainSamples?:        number;
   /** `jobsNoColor` in config.yml (default true): jobs start with NO_COLOR=1 and FORCE_COLOR=0, see job-env.ts. */
   jobsNoColor?:           boolean;
+  /**
+   * The daemon-wide size limits of a run's log (`logMaxSizeMb` / `logKeepSegments` in config.yml), which a job's own
+   * `logRotation` overrides key by key. Defaults to 50 MB and 5 segments.
+   */
+  logRotation?:           ResolvedLogRotation;
   /**
    * The passage of time. Defaults to the real clock.
    *
@@ -502,6 +521,7 @@ export class Scheduler extends EventEmitter {
   private readonly _sampleIntervalMs: number;
   private readonly _sustainSamples: number | undefined;
   private readonly _jobsNoColor: boolean;
+  private readonly _logRotation: ResolvedLogRotation;
   private readonly _retryCounters  = new Map<string, number>();
   /** What restartOnExit remembers of a job between two exits: the attempt number and the restarts inside the window. In memory only. */
   private readonly _restartStates  = new Map<string, RestartState>();
@@ -561,6 +581,7 @@ export class Scheduler extends EventEmitter {
     this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
     this._sustainSamples        = options.sustainSamples;
     this._jobsNoColor           = options.jobsNoColor           ?? true;
+    this._logRotation           = options.logRotation           ?? DEFAULT_RUN_LOG_ROTATION;
     // Said out loud rather than swallowed: a deadline callback that throws is a job that will not run,
     // and the queue keeps going so one broken job cannot stop the others. Silence here would make the
     // difference invisible.
@@ -1245,7 +1266,7 @@ export class Scheduler extends EventEmitter {
       startedAt: entry.startedAt,
       pid: entry.pid ?? null,
       // Appends to the log the run already has.
-      jobLogger: new RunLogger(path.join(this._configDir, 'logs', 'jobs', id), id, entry.startedAt),
+      jobLogger: this._runLogger(job, entry.startedAt),
       telemetry: null,
       previousRunFailed: previous !== null && isFailure(previous),
     };
@@ -1609,7 +1630,7 @@ export class Scheduler extends EventEmitter {
     });
     // Same per-run log file layout as a real run, so the skip shows up in `orch logs --job <id>`
     // right where the run would have been.
-    const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, at);
+    const jobLogger = this._runLogger(job, at);
     jobLogger.write(`[job:skipped] reason=${reason} -- target already alive, nothing was done`);
     jobLogger.close();
     this._announceSkip(job, reason);
@@ -1695,7 +1716,7 @@ export class Scheduler extends EventEmitter {
       }
       const note = `supervisor pid ${status.supervisorPid} of the run of "${spec.context.jobId}" started ${spec.context.startedAt} is not running (or is not the supervisor it was): the run ended without a record, so it is closed as interrupted. Its process ${status.childPid ?? '?'} may still be alive`;
       report.lost.push(`${runDir}: ${note}`);
-      const jobLogger = new RunLogger(path.dirname(spec.logPath), spec.context.jobId, spec.context.startedAt);
+      const jobLogger = new RunLogger(path.dirname(spec.logPath), spec.context.jobId, spec.context.startedAt, { rotation: specRotation(spec) });
       jobLogger.write(`[recovery] ${note}`);
       jobLogger.close();
       // Closed and announced now, not left for the sweep at daemon start: a run found lost while the daemon is already
@@ -1774,7 +1795,7 @@ export class Scheduler extends EventEmitter {
     const entry = this._state.getRun(jobId, startedAt);
     const previous = this._state.getRunBefore(jobId, startedAt);
     const child = new SupervisedChild(runDir, status.childPid);
-    const jobLogger = new RunLogger(path.dirname(spec.logPath), jobId, startedAt);
+    const jobLogger = new RunLogger(path.dirname(spec.logPath), jobId, startedAt, { rotation: specRotation(spec) });
     const siblings = this._register(child, job, jobLogger);
     claimRun(runDir);
     const key = `${jobId}|${startedAt}`;
@@ -1856,7 +1877,7 @@ export class Scheduler extends EventEmitter {
       trigger: spec.context.trigger,
       startedAt,
       pid: entry?.pid ?? status.childPid ?? null,
-      jobLogger: new RunLogger(path.dirname(spec.logPath), jobId, startedAt),
+      jobLogger: new RunLogger(path.dirname(spec.logPath), jobId, startedAt, { rotation: specRotation(spec) }),
       telemetry: null,
       previousRunFailed: previous !== null && isFailure(previous),
     };
@@ -1914,6 +1935,13 @@ export class Scheduler extends EventEmitter {
     }
   }
 
+  /** The log of one run of `job`, with the rotation limits that apply to it (its own setting over the daemon-wide default). */
+  private _runLogger(job: Job, startedAt: string): RunLogger {
+    return new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, startedAt, {
+      rotation: resolveLogRotation(job.logRotation, this._logRotation),
+    });
+  }
+
   /** What the supervisor needs to run this job: the same command line, directory and environment as a direct spawn. */
   private _supervisedRequest(job: Job, trigger: TriggerSource, startedAt: string, env: NodeJS.ProcessEnv | undefined): SupervisedRequest {
     // Tokens re-joined with single spaces, which is what node's `shell: true` hands to the shell.
@@ -1927,6 +1955,7 @@ export class Scheduler extends EventEmitter {
       timeoutSeconds: job.timeoutSeconds ?? 300,
       label: job.label,
       trigger,
+      logRotation: resolveLogRotation(job.logRotation, this._logRotation),
     };
   }
 
@@ -1938,7 +1967,7 @@ export class Scheduler extends EventEmitter {
     job: Job, trigger: TriggerSource, startedAt: string, err: unknown, waitForExit: boolean,
   ): { pid: number | null; startError?: string } | { exitCode: number | null } {
     const reason = getErrorMessage(err);
-    const jobLogger = new RunLogger(path.join(this._configDir, 'logs', 'jobs', job.id), job.id, startedAt);
+    const jobLogger = this._runLogger(job, startedAt);
     jobLogger.write(`[error] could not start the job: ${reason}`);
     // A failed run like any other (exit code 1): the history entry, the log marker, job.failed, the consecutive-failure
     // alert, the retry policy and the signal the tray and the audit listen to all come from _finishRun. Read before the
@@ -2311,11 +2340,7 @@ export class Scheduler extends EventEmitter {
     const pid   = child.pid ?? null;
 
     // Per-run log: one file per execution -- <jobId>-<startedAt>.log
-    const jobLogger = new RunLogger(
-      path.join(this._configDir, 'logs', 'jobs', job.id),
-      job.id,
-      startedAt,
-    );
+    const jobLogger = this._runLogger(job, startedAt);
 
     const siblings = this._register(child, job, jobLogger);
     if (child instanceof SupervisedChild && child.startError !== undefined) {

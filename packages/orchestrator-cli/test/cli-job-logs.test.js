@@ -180,10 +180,10 @@ describe('orch job <jobId> logs: --list', () => {
     const lines = out.trimEnd().split('\n');
 
     assert.equal(exitCode, 0);
-    assert.match(lines[0], /^EXEC ID\s+START \(UTC\)\s+EXIT\s+DURATION\s+TRIGGER$/);
-    assert.match(lines[1], /^2026-10-22T03-00-00\s+2026-10-22 03:00:00\s+running\s+\S+\s+cron$/);
-    assert.match(lines[2], /^2026-10-21T03-00-00\s+2026-10-21 03:00:00\s+0\s+12s\s+cron$/);
-    assert.match(lines[3], /^2026-10-20T03-00-00\s+2026-10-20 03:00:00\s+3\s+12s\s+manual$/);
+    assert.match(lines[0], /^EXEC ID\s+START \(UTC\)\s+EXIT\s+DURATION\s+TRIGGER\s+SEGMENTS\s+SIZE$/);
+    assert.match(lines[1], /^2026-10-22T03-00-00\s+2026-10-22 03:00:00\s+running\s+\S+\s+cron\s+1\s+\d+ B$/);
+    assert.match(lines[2], /^2026-10-21T03-00-00\s+2026-10-21 03:00:00\s+0\s+12s\s+cron\s+1\s+\d+ B$/);
+    assert.match(lines[3], /^2026-10-20T03-00-00\s+2026-10-20 03:00:00\s+3\s+12s\s+manual\s+1\s+\d+ B$/);
     assert.equal(lines.length, 4);
   });
 
@@ -201,8 +201,8 @@ describe('orch job <jobId> logs: --list', () => {
     const runs = JSON.parse(out);
 
     assert.equal(runs.length, 3);
-    assert.deepEqual(runs[0], { execId: '2026-10-22T03-00-00', startedAt: '2026-10-22 03:00:00', status: 'running', exitCode: null, durationMs: runs[0].durationMs, trigger: 'cron' });
-    assert.deepEqual(runs[2], { execId: '2026-10-20T03-00-00', startedAt: '2026-10-20 03:00:00', status: 'finished', exitCode: 3, durationMs: 12000, trigger: 'manual' });
+    assert.deepEqual(runs[0], { execId: '2026-10-22T03-00-00', startedAt: '2026-10-22 03:00:00', status: 'running', exitCode: null, durationMs: runs[0].durationMs, trigger: 'cron', segments: 1, droppedSegments: 0, sizeBytes: runs[0].sizeBytes });
+    assert.deepEqual(runs[2], { execId: '2026-10-20T03-00-00', startedAt: '2026-10-20 03:00:00', status: 'finished', exitCode: 3, durationMs: 12000, trigger: 'manual', segments: 1, droppedSegments: 0, sizeBytes: runs[2].sizeBytes });
   });
 
   test('a run missing from the history takes its exit code and trigger from the file markers', async () => {

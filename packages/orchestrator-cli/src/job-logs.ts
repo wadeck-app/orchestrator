@@ -3,6 +3,7 @@ import path from 'node:path';
 import { getErrorMessage } from './fsUtil.js';
 import { stripAnsi } from './ansi.js';
 import { systemTime, type TimeService } from './time-service.js';
+import { listRunSegments, segmentPath, type RunSegment } from './log-rotation.js';
 
 /**
  * `orch job <jobId> logs [execId]`: an execution's log as plain text, a snapshot or followed.
@@ -131,7 +132,8 @@ export interface JobLogsDeps {
 interface RunFile {
   /** `YYYY-MM-DDTHH-MM-SS`, the part of the file name after `<id>-`. */
   name: string;
-  file: string;
+  /** The retained segments of the run in order (log-rotation.ts); one when the log was never rotated. */
+  segments: RunSegment[];
 }
 
 type RunStatus = 'running' | 'finished' | 'unknown';
@@ -143,6 +145,73 @@ interface RunInfo extends RunFile {
   trigger: string | null;
 }
 
+/** How many segments were dropped from the start of the run: the numbers are never reused, so the first kept one tells. */
+function droppedSegments(run: RunFile): number {
+  return run.segments[0]!.n - 1;
+}
+
+function plural(n: number, one: string, many: string): string {
+  return n === 1 ? one : many;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+function readFileLines(file: string): string[] {
+  try {
+    return splitLines(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return []; // dropped by the rotation between the listing and the read
+    }
+    throw e;
+  }
+}
+
+/** The lines of a file without holding it: newlines counted in chunks. A last line without a newline counts. */
+function countLines(file: string): number {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return 0;
+    }
+    throw e;
+  }
+  try {
+    const chunk = Buffer.alloc(65536);
+    let count = 0;
+    let lastByte = 0x0a;
+    for (;;) {
+      const n = fs.readSync(fd, chunk, 0, chunk.length, null);
+      if (n === 0) {
+        break;
+      }
+      for (let i = 0; i < n; i++) {
+        if (chunk[i] === 0x0a) {
+          count++;
+        }
+      }
+      lastByte = chunk[n - 1]!;
+    }
+    return lastByte === 0x0a ? count : count + 1;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function compactStart(startedAt: string): string {
   return startedAt.replace(/:/g, '-').slice(0, 19);
 }
@@ -151,25 +220,10 @@ function displayStart(name: string): string {
   return `${name.slice(0, 10)} ${name.slice(11).replace(/-/g, ':')}`;
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** The retained runs of a job, newest first. Legacy one-file-per-day logs are not runs and are not listed. */
+/** The retained runs of a job, newest first, each with its segments. Legacy one-file-per-day logs are not runs and are not listed. */
 function listRunFiles(configDir: string, jobId: string): RunFile[] {
-  const dir = path.join(configDir, 'logs', 'jobs', jobId);
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-  const pat = new RegExp(`^${escapeRegExp(jobId)}-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})\\.log$`);
-  const runs: RunFile[] = [];
-  for (const f of fs.readdirSync(dir)) {
-    const m = f.match(pat);
-    if (m) {
-      runs.push({ name: m[1]!, file: path.join(dir, f) });
-    }
-  }
-  return runs.sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
+  const runs = listRunSegments(path.join(configDir, 'logs', 'jobs', jobId), jobId);
+  return [...runs.entries()].map(([name, segments]) => ({ name, segments })).reverse();
 }
 
 const FINISH_RE = /\[job:(?:finished|skipped)\] exitCode=(-?\d+)(?: duration=([\d.]+)s)?/;
@@ -177,10 +231,14 @@ const START_RE = /\[job:started\] .*?triggeredBy=(\w+)/;
 
 function describeRun(run: RunFile, history: Map<string, RuntimeRecord>): RunInfo {
   const entry = history.get(run.name);
-  let text = '';
-  try { text = fs.readFileSync(run.file, 'utf8'); } catch { /* the file may be pruned between listing and reading */ }
-  const fin = text.match(FINISH_RE);
-  const trigger = entry?.triggeredBy?.kind ?? text.match(START_RE)?.[1] ?? null;
+  // The start marker is in the first segment, the end marker in the last one.
+  const readText = (seg: RunSegment): string => {
+    try { return fs.readFileSync(seg.file, 'utf8'); } catch { return ''; /* pruned between listing and reading */ }
+  };
+  const startText = readText(run.segments[0]!);
+  const endText = run.segments.length === 1 ? startText : readText(run.segments[run.segments.length - 1]!);
+  const fin = endText.match(FINISH_RE);
+  const trigger = entry?.triggeredBy?.kind ?? startText.match(START_RE)?.[1] ?? null;
   if (entry) {
     const finished = entry.finishedAt !== undefined || entry.exitCode !== null;
     const end = entry.finishedAt !== undefined ? Date.parse(entry.finishedAt) : Date.now();
@@ -273,11 +331,18 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
         exitCode: r.exitCode,
         durationMs: r.durationMs,
         trigger: r.trigger,
+        segments: r.segments.length,
+        droppedSegments: droppedSegments(r),
+        sizeBytes: r.segments.reduce((sum, s) => sum + s.size, 0),
       }))) + '\n');
       return 0;
     }
-    const rows = runs.map((r) => [r.name, displayStart(r.name), statusCell(r), formatDuration(r.durationMs), r.trigger ?? '-']);
-    const header = ['EXEC ID', 'START (UTC)', 'EXIT', 'DURATION', 'TRIGGER'];
+    const rows = runs.map((r) => [
+      r.name, displayStart(r.name), statusCell(r), formatDuration(r.durationMs), r.trigger ?? '-',
+      droppedSegments(r) > 0 ? `${r.segments.length} (+${droppedSegments(r)} dropped)` : String(r.segments.length),
+      formatSize(r.segments.reduce((sum, s) => sum + s.size, 0)),
+    ]);
+    const header = ['EXEC ID', 'START (UTC)', 'EXIT', 'DURATION', 'TRIGGER', 'SEGMENTS', 'SIZE'];
     const widths = header.map((h, c) => Math.max(h.length, ...rows.map(r => r[c]!.length)));
     const fmt = (cells: string[]): string => cells.map((c, i) => c.padEnd(widths[i]!)).join('  ').trimEnd();
     out(`${[fmt(header), ...rows.map(fmt)].join('\n')}\n`);
@@ -297,12 +362,21 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
   const info = describeRun(target, history);
   const isLatest = target === files[0];
 
+  // The run may be several segments (log-rotation.ts): they read as one log, in order. The newest is read first because it
+  // is the one a follower goes on with; the older ones only contribute lines.
+  const segments = target.segments;
+  const lastSegment = segments[segments.length - 1]!;
   let raw: Buffer;
   try {
-    raw = fs.readFileSync(target.file);
+    raw = fs.readFileSync(lastSegment.file);
   } catch (e) {
-    err(`Cannot read ${target.file}: ${getErrorMessage(e)}. Check that the file exists and is readable.\n`);
+    err(`Cannot read ${lastSegment.file}: ${getErrorMessage(e)}. Check that the file exists and is readable.\n`);
     return 1;
+  }
+  if (droppedSegments(target) > 0) {
+    const d = droppedSegments(target);
+    err(`[orch] ${d} earlier ${plural(d, 'segment', 'segments')} of this execution ${plural(d, 'was', 'were')} dropped by log rotation; `
+      + `the log starts at segment ${segments[0]!.n} (keepSegments, see docs/daemon-config.md)\n`);
   }
 
   const following = options.follow && info.status === 'running';
@@ -316,8 +390,26 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
     body = raw.subarray(0, cut + 1).toString('utf8');
   }
   const all = splitLines(body);
-  const shown = options.tail !== undefined && all.length > options.tail ? all.slice(all.length - options.tail) : all;
-  const cutCount = all.length - shown.length;
+  // -n reads back from the newest segment and stops as soon as it has enough; the older ones are only counted.
+  let shown = all;
+  let cutCount = 0;
+  if (options.tail === undefined) {
+    shown = [...segments.slice(0, -1).flatMap((s) => readFileLines(s.file)), ...all];
+  } else {
+    shown = all.slice(Math.max(0, all.length - options.tail));
+    cutCount = all.length - shown.length;
+    for (let i = segments.length - 2; i >= 0; i--) {
+      const room = options.tail - shown.length;
+      if (room > 0) {
+        const lines = readFileLines(segments[i]!.file);
+        const take = lines.slice(Math.max(0, lines.length - room));
+        shown = [...take, ...shown];
+        cutCount += lines.length - take.length;
+      } else {
+        cutCount += countLines(segments[i]!.file);
+      }
+    }
+  }
   if (cutCount > 0) {
     err(`[orch] ${cutCount} earlier line${cutCount === 1 ? '' : 's'} not shown (-n ${options.tail}). Drop -n for the whole run.\n`);
   }
@@ -359,13 +451,25 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
 
   // Everything read so far, the held partial line included: it is already in `pending`, so it must not be read twice.
   let offset = raw.length;
-  const drain = (): void => {
-    const size = fs.statSync(target.file).size;
+  // The segment being followed. The writer moves on to the next one when the current is full: this reads what is left of
+  // the current one (a line may still land there), prints a held partial line as the line it is, and goes on.
+  const baseFile = path.join(deps.configDir, 'logs', 'jobs', jobId, `${jobId}-${target.name}.log`);
+  let currentN = lastSegment.n;
+  const readRest = (): boolean => {
+    let size: number;
+    try {
+      size = fs.statSync(segmentPath(baseFile, currentN)).size;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false;
+      }
+      throw e;
+    }
     if (size <= offset) {
-      return;
+      return true;
     }
     const buf = Buffer.alloc(size - offset);
-    const fd = fs.openSync(target.file, 'r');
+    const fd = fs.openSync(segmentPath(baseFile, currentN), 'r');
     try { fs.readSync(fd, buf, 0, buf.length, offset); } finally { fs.closeSync(fd); }
     offset = size;
     const chunk = Buffer.concat([pending, buf]);
@@ -374,6 +478,37 @@ export async function runJobLogs(options: JobLogsOptions, deps: JobLogsDeps): Pr
     const lines = splitLines(chunk.subarray(0, cut + 1).toString('utf8'));
     lines.forEach(emitLine);
     scan(lines);
+    return true;
+  };
+  const drain = (): void => {
+    for (;;) {
+      const present = readRest();
+      if (present && !fs.existsSync(segmentPath(baseFile, currentN + 1))) {
+        return;
+      }
+      const later = (listRunSegments(path.dirname(baseFile), jobId).get(target.name) ?? []).find((s) => s.n > currentN);
+      if (later === undefined) {
+        if (!present) {
+          // Nothing left to follow: the file is gone and no segment took over (the log was deleted, not rotated).
+          throw new Error(`ENOENT: ${segmentPath(baseFile, currentN)} no longer exists`);
+        }
+        return;
+      }
+      if (pending.length > 0) {
+        const lines = splitLines(pending.toString('utf8'));
+        pending = Buffer.alloc(0);
+        lines.forEach(emitLine);
+        scan(lines);
+      }
+      const lostFrom = present ? currentN + 1 : currentN;
+      const lost = later.n - lostFrom;
+      if (lost > 0) {
+        err(`[orch] ${lost} ${plural(lost, 'segment', 'segments')} of this execution ${plural(lost, 'was', 'were')} dropped by log rotation while following; `
+          + `the output of ${lost === 1 ? `segment ${lostFrom}` : `segments ${lostFrom}-${later.n - 1}`} is lost. Read faster, or raise keepSegments (docs/daemon-config.md)\n`);
+      }
+      currentN = later.n;
+      offset = 0;
+    }
   };
 
   let interrupted = false;

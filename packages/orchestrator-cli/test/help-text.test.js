@@ -40,7 +40,7 @@ describe('help text', () => {
         sections[current] += `${line}\n`;
       }
     }
-    assert.deepEqual(Object.keys(sections), ['Identity and description', 'Schedule', 'Execution', 'Timeouts', 'Retry and skip', 'Restart on exit', 'Resource limits', 'Output']);
+    assert.deepEqual(Object.keys(sections), ['Identity and description', 'Schedule', 'Execution', 'Timeouts', 'Retry and skip', 'Restart on exit', 'Log rotation', 'Resource limits', 'Output']);
     const where = {
       'Identity and description': ['--command', '--label', '--description', '--cwd', '--tags', '--secrets', '--env', '--disabled', '--once'],
       Schedule: ['--schedule', '--delay', '--missed-firing', '--active-for', '--active-from', '--active-until', '--liveness-strategy', '--liveness-port-file', '--liveness-command'],
@@ -48,6 +48,7 @@ describe('help text', () => {
       Timeouts: ['--timeout'],
       'Retry and skip': ['--retry-on-exit-codes', '--retry-delays', '--skip-exit-codes', '--on-exit-code'],
       'Restart on exit': ['--restart-on-exit', '--restart-strategy', '--restart-delay', '--restart-factor', '--restart-step', '--restart-max-delay', '--restart-max', '--restart-window', '--restart-stable-after'],
+      'Log rotation': ['--log-max-size', '--log-keep'],
       'Resource limits': ['--resource-enforce', '--hard-factor', '--soft-factor', '--sustain', '--max-cpu', '--max-ram'],
       Output: ['--json'],
     };

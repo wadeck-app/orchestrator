@@ -14,10 +14,8 @@ package main
 // file, a timeout is enforced here, and the exit code is recorded by us because we are the job's parent.
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,8 +29,11 @@ type Spec struct {
 	// Command is run through the platform shell (cmd.exe /d /s /c, sh -c), as the daemon always did.
 	Command string `json:"command"`
 	Cwd     string `json:"cwd,omitempty"`
-	// LogPath receives stdout and stderr, appended.
+	// LogPath receives stdout and stderr, appended. It is segment 1 of the run log: with LogRotation, later segments are
+	// LogPath + ".2", ".3"...
 	LogPath string `json:"logPath"`
+	// LogRotation caps the size of one segment of the run log. Absent: one file, however big it grows.
+	LogRotation *LogRotation `json:"logRotation,omitempty"`
 	// TimeoutSeconds ends the job when it is positive. Zero means no timeout.
 	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
 	// HeartbeatMs defaults to 2000.
@@ -101,6 +102,9 @@ func readSpec(runDir string) (Spec, error) {
 	if spec.Command == "" || spec.LogPath == "" {
 		return spec, fmt.Errorf("spec.json in %s needs a command and a logPath", runDir)
 	}
+	if r := spec.LogRotation; r != nil && (r.MaxBytes < 0 || (r.MaxBytes > 0 && r.KeepSegments < 1)) {
+		return spec, fmt.Errorf("spec.json in %s has an invalid logRotation %+v: maxBytes must be 0 (no rotation) or more, and keepSegments at least 1 when maxBytes is set", runDir, *r)
+	}
 	return spec, nil
 }
 
@@ -132,11 +136,15 @@ func Run(runDir string) int {
 	if err != nil {
 		return failToStart(err.Error())
 	}
-	logFile, err := os.OpenFile(spec.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	var rotation LogRotation
+	if spec.LogRotation != nil {
+		rotation = *spec.LogRotation
+	}
+	log, err := openRunLog(spec.LogPath, rotation, time.Now)
 	if err != nil {
 		return failToStart(fmt.Sprintf("cannot open the run log %s: %v", spec.LogPath, err))
 	}
-	defer logFile.Close()
+	defer log.close()
 
 	cmd := buildCommand(spec)
 	// The supervisor, not the daemon, reads the job's output, so it keeps flowing while the daemon is away.
@@ -152,7 +160,6 @@ func Run(runDir string) int {
 	if err := cmd.Start(); err != nil {
 		return failToStart(fmt.Sprintf("cannot start %q (cwd %q): %v", spec.Command, spec.Cwd, err))
 	}
-	log := &runLog{file: logFile}
 	var readers sync.WaitGroup
 	readers.Add(2)
 	go func() { defer readers.Done(); log.copyLines(stdout, "") }()
@@ -278,35 +285,3 @@ const killReadAttempts = 100
 
 // killReadPause is the wait between two reads of the kill file; a test replaces it.
 var killReadPause = func() { time.Sleep(20 * time.Millisecond) }
-
-// runLog writes the run log in the exact format the daemon's RunLogger used: "[YYYY-MM-DD HH:MM:SS] text" in
-// UTC, trailing whitespace trimmed, blank lines dropped, stderr lines prefixed. One write per line, appended,
-// so the daemon can add its own markers to the same file without tearing a line.
-type runLog struct {
-	mu   sync.Mutex
-	file *os.File
-}
-
-func (l *runLog) write(prefix string, line string) {
-	// Escape sequences are stripped before the trim, so a line that was only an erase code is dropped like a blank one.
-	text := strings.TrimRight(stripAnsi(line), " \t\r\n")
-	if text == "" {
-		return
-	}
-	entry := "[" + time.Now().UTC().Format("2006-01-02 15:04:05") + "] " + prefix + text + "\n"
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	_, _ = l.file.WriteString(entry)
-}
-
-// copyLines reads r to its end, line by line, keeping a last line that has no newline.
-func (l *runLog) copyLines(r io.Reader, prefix string) {
-	reader := bufio.NewReader(r)
-	for {
-		line, err := reader.ReadString('\n')
-		l.write(prefix, line)
-		if err != nil {
-			return
-		}
-	}
-}
