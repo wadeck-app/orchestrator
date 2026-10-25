@@ -214,6 +214,31 @@ A job is long-running when `timeoutSeconds` is `0` (a process that must stay up)
 - The ended run keeps its normal manual-kill record. One `job.restarted` audit line is written (`jobId`, `label`, `wasRunning`, `killed`, `started`, `skipped?`).
 - Unlike a plain `orch trigger`, restart runs the liveness check before starting.
 
+## Keeping a job up -- `restartOnExit`
+
+For a server that must come back after ANY exit: `orch add startup web --command "..." --timeout 0 --restart-on-exit`. `true` means the defaults below; an object tunes them.
+
+| Key (flag) | Default | Meaning |
+|---|---|---|
+| `strategy` (`--restart-strategy`) | `exponential` | `fixed`, `linear` or `exponential` pause between restarts |
+| `initialDelaySeconds` (`--restart-delay`) | `1` | Pause before restart 1, above 0 |
+| `factor` (`--restart-factor`) | `2` | exponential only: pause x factor each time, above 1 |
+| `stepSeconds` (`--restart-step`) | initial delay | linear only: pause + step each time |
+| `maxDelaySeconds` (`--restart-max-delay`) | `30` | linear and exponential: ceiling of the pause, at least the initial delay |
+| `maxRestarts` (`--restart-max`) | `10` | Restarts allowed within `windowSeconds`; one more and the job is given up on |
+| `windowSeconds` (`--restart-window`) | `300` | Sliding window the limit is counted over |
+| `stableAfterSeconds` (`--restart-stable-after`) | `900` | A run that stayed up this long clears the backoff and the restart count |
+
+- Restarted: exit code 0, any failure, a signal, the job's own timeout (a job with the default 300 s timeout and `restartOnExit` is killed and restarted every 5 minutes: use `--timeout 0`), a hard resource kill, a skip code, a start that failed.
+- Never restarted: a manual stop (`orch kill`, `restart-job`, the dashboard). A kill during the wait before a restart cancels it (`orch kill` says so). A manual trigger, the schedule or a dependency starting the job also supersedes a pending restart and clears the counters.
+- Giving up: `job.restart_abandoned`, a `[restart] giving up` line in the last run's log and a line in the daemon log. The job stays stopped until `orch trigger <id>`, which starts with a full budget. With the defaults a job that dies at once is abandoned after 10 restarts (about 3 minutes).
+- A pending restart is dropped when the job is disabled or removed, or when `restartOnExit` is removed; an edit of other fields keeps it. Each case is one line in the daemon log. A restart is skipped when the job is already running.
+- The daemon stopping never restarts or counts anything: supervised runs are detached and followed again by the next daemon, which starts no second copy (the startup firing is refused as `adopted`). The attempt and window counters live in memory: a daemon restart starts them again, except that a restarted run keeps its attempt number.
+- Option that its strategy ignores (`factor` with `fixed`...), zero or negative values, an unknown strategy or key are refused by `orch add`, `orch edit` and the API with the key to fix. A registry.json edited by hand is not refused at load: the daemon logs the problem at start, restarts nothing for an invalid setting.
+- With `retryOnExitCodes`/`retryDelays` on the same job: refused by `add`/`edit`. In a hand-edited registry `restartOnExit` wins and the retry settings are ignored (logged at start).
+- `orch edit <id> --restart-delay 5` changes only the given keys; `--unset restartOnExit` turns the policy off.
+- Events: `job.restart_scheduled` and `job.restart_abandoned`; the restarted run is `job.started` with `trigger: "restart"`. `orch timers` shows a pending restart as a `restart` timer.
+
 ## Example
 
 ```yaml
@@ -481,6 +506,7 @@ The events reach the queue one at a time, in the order they were published: a ru
 |---|---|
 | Run of a job | `job.started`, `job.completed`, `job.failed`, `job.skipped`, `job.killed_manual`, `job.timed_out`, `job.recovered`, `job.anomaly` |
 | Requests | `job.triggered_manual`, `job.kill_requested`, `job.restarted` |
+| Restart policy | `job.restart_scheduled`, `job.restart_abandoned` (not terminal, they follow the run's end event) |
 | Job state | `job.window_expired`, `job.resource_soft_limit`, `job.resource_hard_limit` |
 | Alerts | `alert.consecutive_failures`, `alert.retry_exhausted`, `alert.sla_breach` |
 | `orch exec` | `exec.started`, `exec.completed`, `exec.failed` |

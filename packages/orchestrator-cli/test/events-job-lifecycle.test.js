@@ -337,6 +337,49 @@ describe('alert.retry_exhausted', () => {
   });
 });
 
+describe('job.restart_scheduled', () => {
+  test('is published after the terminal event of the run that ended, and the restarted run says it is a restart', async () => {
+    const h = await S.restartScheduled();
+    assert.deepEqual(h.names(), ['job.started', 'job.failed', 'job.restart_scheduled', 'job.started']);
+    assert.deepEqual(h.of('job.started').map((e) => e.payload.trigger), ['manual', 'restart']);
+  });
+
+  test('carries the exit code, the attempt, the delay and where the job stands against its limit', async () => {
+    const h = await S.restartScheduled();
+    assert.deepEqual(h.of('job.restart_scheduled')[0].payload, {
+      jobId: 'job', label: 'Job', exitCode: 1, attempt: 1, delaySeconds: 1, restartsInWindow: 1, maxRestarts: 10, windowSeconds: 300,
+    });
+  });
+
+  test('is not terminal: the job.failed before it is the one event that ended the run', async () => {
+    const h = await S.restartScheduled();
+    assert.equal(h.terminals().length, 1);
+  });
+
+  test('is not published for a job stopped by `orch kill`, and nothing starts afterwards', async () => {
+    const h = await S.restartAfterManualKill();
+    assert.deepEqual(h.names(), ['job.started', 'job.killed_manual']);
+  });
+});
+
+describe('job.restart_abandoned', () => {
+  test('is published once, after the job.failed of the run that went over the limit, instead of a further job.restart_scheduled', async () => {
+    const h = await S.restartAbandoned();
+    assert.deepEqual(h.names(), [
+      'job.started', 'job.failed', 'job.restart_scheduled',
+      'job.started', 'job.failed', 'job.restart_scheduled',
+      'job.started', 'job.failed', 'job.restart_abandoned',
+    ]);
+  });
+
+  test('carries the cause, the limit and what was counted', async () => {
+    const h = await S.restartAbandoned();
+    assert.deepEqual(h.of('job.restart_abandoned')[0].payload, {
+      jobId: 'job', label: 'Job', cause: 'limit', exitCode: 7, attempts: 2, restartsInWindow: 2, maxRestarts: 2, windowSeconds: 60,
+    });
+  });
+});
+
 describe('alert.sla_breach', () => {
   test('a scheduled firing that did not succeed within the window is announced once, with the firing time and the window', async () => {
     const h = await S.sla(1, 3, 1);

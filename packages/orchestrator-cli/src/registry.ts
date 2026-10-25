@@ -8,6 +8,7 @@ import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 import { activeWindowError } from './active-window.js';
 import { resourceLimitsError } from './resource-limits.js';
 import { progressSettingError } from './progress/setting.js';
+import { restartOnExitError, restartConflictError } from './restart-policy.js';
 
 /*
  * The shape a cron expression must have: five space-separated fields.
@@ -186,6 +187,14 @@ export function validateJob(job: Partial<Job>): void {
   if (job.retryDelays !== undefined) {
     if (!Array.isArray(job.retryDelays) || job.retryDelays.some(d => typeof d !== 'number' || d <= 0)) {
       throw new Error('retryDelays must be an array of positive numbers');
+    }
+  }
+
+  {
+    // The setting first, then the combination: the message for a bad value must not be hidden by the one about retries.
+    const problem = restartOnExitError(job.restartOnExit) ?? restartConflictError(job);
+    if (problem !== null) {
+      throw new Error(problem.replace(/<id>/g, job.id));
     }
   }
 

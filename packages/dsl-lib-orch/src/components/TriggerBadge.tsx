@@ -27,6 +27,17 @@ export function TriggerBadge({ source }: TriggerBadgeProps): React.ReactElement 
       </span>
     );
   }
+  // The daemon bringing a job back under its restartOnExit policy: same amber as a retry, another word.
+  if (s.kind === 'restart') {
+    return (
+      <span
+        className="text-xs px-1.5 py-0.5 rounded bg-warning/10 text-warning"
+        title={`Started again by the daemon after the job exited (restartOnExit, restart ${s.attempt})`}
+      >
+        restart #{s.attempt}
+      </span>
+    );
+  }
   const label = s.ip ? `manual - ${s.ip}` : 'manual';
   return <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary" title={s.userAgent}>{label}</span>;
 }

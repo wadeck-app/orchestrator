@@ -74,6 +74,10 @@ describe('Jobs API Routes', () => {
             if ((payload as { id?: string })?.id === 'job1') {
               return { killed: true };
             }
+            // Not running, but waiting for the restart its restartOnExit scheduled: the kill cancelled that.
+            if ((payload as { id?: string })?.id === 'job-waiting') {
+              return { killed: false, count: 0, cancelledRestart: true };
+            }
             return { killed: false };
           default:
             throw new Error(`Unknown command: ${cmd}`);
@@ -458,6 +462,12 @@ describe('Jobs API Routes', () => {
         method: 'POST',
         url: '/api/jobs/job1/kill',
       });
+
+      expect(res.statusCode).toBe(204);
+    });
+
+    it('returns 204 for a job that only waited to be restarted: the kill cancelled that restart', async () => {
+      const res = await app.inject({ method: 'POST', url: '/api/jobs/job-waiting/kill' });
 
       expect(res.statusCode).toBe(204);
     });

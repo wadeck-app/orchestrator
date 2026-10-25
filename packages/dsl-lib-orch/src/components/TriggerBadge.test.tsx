@@ -18,6 +18,14 @@ describe('TriggerBadge', () => {
     expect(retry.firstElementChild?.className).not.toBe(manual.firstElementChild?.className);
   });
 
+  // restartOnExit starts the job again after any exit; it must not fall through to the manual branch like retry once did.
+  it('renders a restart as "restart #n", not as manual, and not as a retry', () => {
+    render(<TriggerBadge source={{ kind: 'restart', attempt: 2 }} />);
+    expect(screen.getByText('restart #2')).toBeInTheDocument();
+    expect(screen.queryByText(/manual/)).toBeNull();
+    expect(screen.queryByText(/retry/)).toBeNull();
+  });
+
   it('still renders manual, cron and dependency', () => {
     render(<TriggerBadge source={{ kind: 'manual', ip: '1.2.3.4' }} />);
     expect(screen.getByText('manual - 1.2.3.4')).toBeInTheDocument();

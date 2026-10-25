@@ -236,6 +236,42 @@ describe('what a recovered end sets in motion (policy C)', () => {
     assert.ok(armed.includes('cron'), 'the job\'s own schedule must still be armed too');
   });
 
+  test('a recent exit of a job with restartOnExit schedules its restart, announced as late, and it survives the scheduler start', async () => {
+    const env = makeEnv([cronJob({ timeoutSeconds: 0, restartOnExit: true })]);
+    leaveRun(env, { endedMinutesAgo: 10, status: { exitCode: 7 } });
+
+    await env.sched.recoverRuns();
+    await env.sched.start();
+
+    const scheduled = env.events.filter((e) => e.event === 'job.restart_scheduled');
+    assert.equal(scheduled.length, 1);
+    assert.equal(scheduled[0].payload.late, true);
+    assert.equal(scheduled[0].payload.exitCode, 7);
+    const armed = env.sched._deadlines.list().filter((d) => d.jobId === 'job').map((d) => d.kind);
+    assert.ok(armed.includes('restart'), `the restart was dropped when the scheduler started; armed: ${armed.join(', ')}`);
+  });
+
+  test('an old exit of a job with restartOnExit is announced but not restarted, and the log says why', async () => {
+    const env = makeEnv([cronJob({ timeoutSeconds: 0, restartOnExit: true })]);
+    const run = leaveRun(env, { endedMinutesAgo: 120, startedMinutesAgo: 150, status: { exitCode: 7 } });
+
+    await env.sched.recoverRuns();
+
+    assert.ok(names(env.events).includes('job.failed'));
+    assert.equal(names(env.events).includes('job.restart_scheduled'), false);
+    assert.equal(env.sched._deadlines.list().some((d) => d.kind === 'restart'), false);
+    assert.match(fs.readFileSync(run.logPath, 'utf8'), /retry\/restart\/dependents skipped: the run ended 120 min before the daemon came back/);
+  });
+
+  test('a manual kill that happened while the daemon was down is never restarted', async () => {
+    const env = makeEnv([cronJob({ timeoutSeconds: 0, restartOnExit: true })]);
+    leaveRun(env, { endedMinutesAgo: 5, status: { exitCode: 1, killed: true, killReason: 'manual' } });
+
+    await env.sched.recoverRuns();
+
+    assert.deepEqual(names(env.events), ['job.killed_manual']);
+  });
+
   test('an old failure is announced but not retried, and the log says why', async () => {
     const env = makeEnv([cronJob({ retryOnExitCodes: [7], retryDelays: [60] })]);
     const run = leaveRun(env, { endedMinutesAgo: 120, startedMinutesAgo: 150, status: { exitCode: 7 } });
@@ -245,7 +281,7 @@ describe('what a recovered end sets in motion (policy C)', () => {
     assert.ok(names(env.events).includes('job.failed'));
     assert.equal(env.hooks.length, 0);
     assert.equal(env.sched._retryCounters.has('job'), false);
-    assert.match(fs.readFileSync(run.logPath, 'utf8'), /retry\/dependents skipped: the run ended 120 min before the daemon came back \(window 30 min\)/);
+    assert.match(fs.readFileSync(run.logPath, 'utf8'), /retry\/restart\/dependents skipped: the run ended 120 min before the daemon came back \(window 30 min\)/);
   });
 
   test('a recent success fires its dependents, an old one does not', async () => {

@@ -91,7 +91,8 @@ Job mutation:
                                Repeatable. Fields: cwd, delaySeconds, missedFiring, timeoutSeconds,
                                maxConcurrency, env, tags, onExitCode, retryOnExitCodes, retryDelays,
                                skipExitCodes, liveness, label, triggerMode, description,
-                               progress, resourceLimits (resourceLimits.<key> clears one key)
+                               restartOnExit, progress, resourceLimits (resourceLimits.<key> clears
+                               one key)
                                Example: orch edit my-job --unset cwd
   orch remove <id>             Remove a job and the data derived from its runs (telemetry, resource
                                history, finished run folders). Its logs stay until age pruning.
@@ -150,6 +151,27 @@ a flag that is not listed here is refused, not ignored):
     --skip-exit-codes <c>        Exit codes meaning "nothing was done"; see "Exit codes that are not
                                  failures" below
     --on-exit-code CODE=MESSAGE  Repeatable. Systray message for an exit code
+  Restart on exit
+    Keep a job up: it is started again after ANY exit (code 0, a failure, a signal, its own timeout,
+    a resource kill), after a growing pause. Not combinable with --retry-on-exit-codes or
+    --retry-delays (refused). Stored as restartOnExit; an edit changes only the options you give.
+    A job with the default 300 s timeout is killed and restarted every 5 minutes: use --timeout 0.
+    Never restarted: a manual stop (orch kill, restart-job, the dashboard), which also cancels a
+    restart that is waiting. Gives up (job.restart_abandoned, logs, job stays stopped) after
+    --restart-max restarts within --restart-window; orch trigger <id> starts it again.
+    --restart-on-exit            Turn it on, with the defaults below. Off: --unset restartOnExit
+    --restart-strategy <s>       fixed | linear | exponential (default: exponential)
+    --restart-delay <seconds>    Pause before the first restart (default: 1; above 0)
+    --restart-factor <x>         exponential only: pause x factor each time (default: 2; above 1)
+    --restart-step <seconds>     linear only: pause + step each time (default: --restart-delay)
+    --restart-max-delay <sec>    linear and exponential: ceiling of the pause (default: 30; at least
+                                 --restart-delay)
+    --restart-max <n>            Restarts allowed within --restart-window (default: 10)
+    --restart-window <seconds>   Sliding window of that limit (default: 300)
+    --restart-stable-after <s>   A run that stayed up this long clears the backoff and the restart
+                                 count (default: 900)
+    Options need --restart-on-exit on add, and on edit when the job does not restart yet. Reference:
+    docs/daemon-config.md, "Keeping a job up"
   Resource limits
     Per job, stored as resourceLimits and shown by orch show. The monitor compares a run with the
     mean of the job's last 10 successful peaks (the baseline, needs 3 runs); a run that stays over
@@ -187,7 +209,8 @@ Manual execution:
   orch trigger <id> [--wait] [--force] [--json]
                                Fire a job immediately. A job at its --max-concurrency is not
                                started (reported, exit 0); --force starts another instance anyway
-  orch kill <id>               Stop a job that is currently running
+  orch kill <id>               Stop a job that is currently running; also cancels the restart a
+                               --restart-on-exit job is waiting for
   orch terminate <id>          Alias for kill, for shells that block the word
   orch restart-job <id> [--json]
                                End every running instance of the job, wait until it is gone, then

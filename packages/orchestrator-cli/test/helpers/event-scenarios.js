@@ -174,6 +174,38 @@ S.retryExhausted = async () => {
   return h;
 };
 
+/** A server that is restarted after every exit: the first run fails, the restart is scheduled and performed, the second run stays up. */
+S.restartScheduled = async () => {
+  const h = makeHarness([cronJob({ timeoutSeconds: 0, alertAfterFailures: 99, restartOnExit: true })], { exits: [1, undefined] });
+  await h.sched.trigger('job');
+  await settle();
+  await h.time.advanceAsync(1000, 1000);
+  await settle();
+  return h;
+};
+
+/** A server that dies at once, every time: two restarts are allowed in a minute, the third exit is given up on. */
+S.restartAbandoned = async () => {
+  const policy = { strategy: 'fixed', initialDelaySeconds: 1, maxRestarts: 2, windowSeconds: 60 };
+  const h = makeHarness([cronJob({ timeoutSeconds: 0, alertAfterFailures: 99, restartOnExit: policy })], { exits: [7] });
+  await h.sched.trigger('job');
+  await settle();
+  await h.time.advanceAsync(5000, 1000);
+  await settle();
+  return h;
+};
+
+/** `orch kill` on a job that restarts after every exit: the run is cancelled and nothing is scheduled. */
+S.restartAfterManualKill = async () => {
+  const h = makeHarness([cronJob({ timeoutSeconds: 0, restartOnExit: true })], { exits: [undefined] });
+  await h.sched.trigger('job');
+  await h.sched.killJob('job');
+  await settle();
+  await h.time.advanceAsync(60_000, 1000);
+  await settle();
+  return h;
+};
+
 /** A cron job with an SLA window of 3 minutes, firing every 5, whose runs end with `exit`. */
 S.sla = async (exit = 1, windowMinutes = 3, firings = 1) => {
   const h = makeHarness([cronJob({ schedule: '*/5 * * * *', slaWindowMinutes: windowMinutes, alertAfterFailures: 99 })], { exits: [exit] });

@@ -6,6 +6,7 @@ import type { ProgressEstimate } from './progress/types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobProgressSetting } from './types.js';
 import { PROGRESS_MODES, PROGRESS_STRATEGY_IDS, progressSettingError } from './progress/setting.js';
 import { RESOURCE_LIMIT_KEYS, resourceLimitsError } from './resource-limits.js';
+import { restartConflictError, restartOnExitError, type RestartOnExit } from './restart-policy.js';
 import { WindowsTask } from './windows/WindowsTask.js';
 import { getErrorMessage } from './fsUtil.js';
 import { readCrashMarker, type CrashMarker } from './crash-guard.js';
@@ -148,8 +149,11 @@ function has(argv: string[], name: string): boolean {
 export interface FieldFlag {
   flag:  string;
   field: string;
-  /** 'resource' flags build the nested resourceLimits object, see resourceLimitFlags. */
-  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence' | 'resource';
+  /**
+   * 'resource' flags build the nested resourceLimits object (resourceLimitFlags), 'restart' flags the object form of
+   * restartOnExit and 'restart-switch' (--restart-on-exit) turns it on (restartFlags).
+   */
+  kind:  'string' | 'int' | 'stringList' | 'numberList' | 'map' | 'presence' | 'resource' | 'restart' | 'restart-switch';
 }
 
 export const JOB_FIELD_FLAGS: FieldFlag[] = [
@@ -173,6 +177,15 @@ export const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--env',                  field: 'env',                kind: 'map'         },
   { flag: '--on-exit-code',         field: 'onExitCode',         kind: 'map'         },
   { flag: '--dry-run-supported',    field: 'dryRunSupported',    kind: 'presence'    },
+  { flag: '--restart-on-exit',      field: 'restartOnExit',      kind: 'restart-switch' },
+  { flag: '--restart-strategy',     field: 'strategy',           kind: 'restart'     },
+  { flag: '--restart-delay',        field: 'initialDelaySeconds', kind: 'restart'    },
+  { flag: '--restart-factor',       field: 'factor',             kind: 'restart'     },
+  { flag: '--restart-step',         field: 'stepSeconds',        kind: 'restart'     },
+  { flag: '--restart-max-delay',    field: 'maxDelaySeconds',    kind: 'restart'     },
+  { flag: '--restart-max',          field: 'maxRestarts',        kind: 'restart'     },
+  { flag: '--restart-window',       field: 'windowSeconds',      kind: 'restart'     },
+  { flag: '--restart-stable-after', field: 'stableAfterSeconds', kind: 'restart'     },
   { flag: '--resource-enforce',     field: 'enforce',            kind: 'resource'    },
   { flag: '--hard-factor',          field: 'hardFactor',         kind: 'resource'    },
   { flag: '--soft-factor',          field: 'softFactor',         kind: 'resource'    },
@@ -193,7 +206,7 @@ export const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json', '--progress', '
 function takesValue(flagName: string): boolean {
   const known = JOB_FIELD_FLAGS.find(f => f.flag === flagName);
   if (known) {
-    return known.kind !== 'presence';
+    return known.kind !== 'presence' && known.kind !== 'restart-switch';
   }
   return !['--once', '--disabled', '--json'].includes(flagName);
 }
@@ -247,8 +260,8 @@ function mapFlag(argv: string[], name: string): Record<string, string> | undefin
 function collectFieldFlags(argv: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const { flag: name, field, kind } of JOB_FIELD_FLAGS) {
-    // Several flags, one nested field: read by resourceLimitFlags.
-    if (kind === 'resource') {
+    // Several flags, one nested field: read by resourceLimitFlags and restartFlags.
+    if (kind === 'resource' || kind === 'restart' || kind === 'restart-switch') {
       continue;
     }
     if (kind === 'presence') {
@@ -331,6 +344,67 @@ function resourceLimitFlags(argv: string[]): ResourceLimits | undefined {
     out[field] = n;
   }
   return Object.keys(out).length === 0 ? undefined : out as ResourceLimits;
+}
+
+const RESTART_FLAGS = JOB_FIELD_FLAGS.filter(f => f.kind === 'restart');
+
+/** What --restart-on-exit and the --restart-* options say. */
+interface RestartFlags {
+  /** --restart-on-exit was given. */
+  switched: boolean;
+  /** The options given as flags, by their key in restartOnExit. */
+  options: Record<string, unknown>;
+  /** The first option flag given, to name it in an error. */
+  firstOption?: string;
+}
+
+/** The restart flags of a command; undefined when none is given. Throws on a flag without a value or a number that is not one. */
+function restartFlags(argv: string[]): RestartFlags | undefined {
+  const switched = has(argv, '--restart-on-exit');
+  const options: Record<string, unknown> = {};
+  let firstOption: string | undefined;
+  for (const { flag: name, field } of RESTART_FLAGS) {
+    if (!has(argv, name)) {
+      continue;
+    }
+    const raw = flag(argv, name);
+    if (raw === undefined) {
+      throw new Error(`${name} needs a value, but was followed by nothing.`);
+    }
+    firstOption ??= name;
+    if (field === 'strategy') {
+      options[field] = raw;
+      continue;
+    }
+    const n = raw.trim() === '' ? NaN : Number(raw);
+    if (Number.isNaN(n)) {
+      throw new Error(`${name} expects a number, but got "${raw}".`);
+    }
+    options[field] = n;
+  }
+  if (!switched && firstOption === undefined) {
+    return undefined;
+  }
+  return { switched, options, ...(firstOption === undefined ? {} : { firstOption }) };
+}
+
+/** The restartOnExit value the flags ask for, merged over `current` and validated; throws a sentence naming the flag to change. */
+function restartSettingOf(
+  flags: RestartFlags, current: boolean | RestartOnExit | undefined, job: { id: string; retryOnExitCodes?: unknown; retryDelays?: unknown },
+): boolean | RestartOnExit {
+  const base: RestartOnExit = typeof current === 'object' && current !== null ? current : {};
+  const merged = { ...base, ...flags.options } as RestartOnExit;
+  const setting: boolean | RestartOnExit = Object.keys(merged).length === 0 ? true : merged;
+  const problem = restartOnExitError(setting) ?? restartConflictError({ ...job, restartOnExit: setting });
+  if (problem !== null) {
+    const key = /restartOnExit\.(\w+)/.exec(problem)?.[1];
+    const flagName = key === undefined ? undefined : RESTART_FLAGS.find(f => f.field === key)?.flag;
+    const startOver = current !== undefined && current !== false && Object.keys(flags.options).length > 0
+      ? ' (to start over from the defaults: orch edit <id> --unset restartOnExit, then set the options again)'
+      : '';
+    throw new Error(`${problem}${flagName === undefined ? '' : ` (flag: ${flagName})`}${startOver}`.replace(/<id>/g, job.id));
+  }
+  return setting;
 }
 
 /** Throws the validation sentence for `limits`, with the flag to change appended; no-op when valid. */
@@ -1057,6 +1131,19 @@ Example: orch add cron backup --schedule "0 2 * * *" --command "~/backup.sh"`, 4
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
       }
+      try {
+        const restart = restartFlags(addRest);
+        if (restart !== undefined) {
+          if (!restart.switched) {
+            throw new Error(`${restart.firstOption} needs --restart-on-exit: the options tune a restart policy, they do not turn it on. Add --restart-on-exit.`);
+          }
+          body['restartOnExit'] = restartSettingOf(restart, undefined, {
+            id, retryOnExitCodes: numberListFlag(addRest, '--retry-on-exit-codes'), retryDelays: numberListFlag(addRest, '--retry-delays'),
+          });
+        }
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
       const liveness = buildLiveness(addRest);
       if (liveness) {
         body['liveness'] = liveness;
@@ -1196,6 +1283,31 @@ Examples:
         }
       } catch (e) {
         errorExit(getErrorMessage(e), 4);
+      }
+      // An edit is a patch of restartOnExit too: the options are merged over the job's current setting here.
+      let restartEdit: RestartFlags | undefined;
+      try {
+        restartEdit = restartFlags(editRest);
+      } catch (e) {
+        errorExit(getErrorMessage(e), 4);
+      }
+      if (restartEdit !== undefined) {
+        const current = await send('get-job', { id }) as {
+          restartOnExit?: boolean | RestartOnExit; retryOnExitCodes?: number[]; retryDelays?: number[];
+        } | null;
+        if (!current) {
+          errorExit(`Job not found: "${id}". Run \`orch list\` to see the available job ids.`, 3);
+        }
+        const restarts = current.restartOnExit !== undefined && current.restartOnExit !== false;
+        if (!restarts && !restartEdit.switched) {
+          errorExit(`${restartEdit.firstOption} tunes a restart policy, and job "${id}" does not restart. `
+            + `Add --restart-on-exit to turn it on: orch edit ${id} --restart-on-exit ${restartEdit.firstOption} <value>`, 4);
+        }
+        try {
+          updates['restartOnExit'] = restartSettingOf(restartEdit, current.restartOnExit === false ? undefined : current.restartOnExit, { ...current, id });
+        } catch (e) {
+          errorExit(getErrorMessage(e), 4);
+        }
       }
       const delay = flag(editRest, '--delay');
       if (delay !== undefined) {
@@ -1375,11 +1487,15 @@ Use --wait to block until the command finishes.`);
         console.error(`Unknown job "${id}". List them with: orch list`);
         process.exit(1);
       }
-      const { killed, count } = await send('kill-job', { id }) as { killed: boolean; count?: number };
+      const { killed, count, cancelledRestart } = await send('kill-job', { id }) as { killed: boolean; count?: number; cancelledRestart?: boolean };
       // Not an error: asking for a stopped job to stop is idempotent. Said out loud, though,
       // so a script does not read silence as "killed". `count` is absent from an older daemon.
       const instances = count !== undefined && count > 1 ? ` (${count} instances)` : '';
-      console.log(killed ? `Job "${id}" killed${instances}.` : `Job "${id}" is not running.`);
+      // A job that is only waiting to be restarted is not running, but the kill did stop something: say which.
+      const waiting = cancelledRestart === true;
+      console.log(killed
+        ? `Job "${id}" killed${instances}${waiting ? ' (its pending restart was cancelled)' : ''}.`
+        : `Job "${id}" is not running${waiting ? '; its pending restart was cancelled' : ''}.`);
       break;
     }
 

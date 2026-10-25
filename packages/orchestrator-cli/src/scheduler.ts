@@ -34,6 +34,7 @@ import { resolveResourceLimits, RESOURCE_LIMIT_DEFAULTS, type EffectiveResourceL
 import { appendResourceHistory, type ResourceHistoryRecord } from './resource-history.js';
 import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
+import { planRestart, resolveRestartPolicy, restartConflictError, restartOnExitError, type RestartState } from './restart-policy.js';
 
 // May be async: starting a job under a supervisor means waiting for its status file.
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess | Promise<ChildProcess>;
@@ -237,6 +238,11 @@ export interface TreeUsage {
   walked?:    number;
   /** Processes that were counted. */
   counted?:   number;
+}
+
+/** Whether the job asks to be restarted (valid or not: an invalid setting still takes the place of a retry list, and is reported). */
+function restartConfigured(job: Job): boolean {
+  return job.restartOnExit !== undefined && job.restartOnExit !== null && job.restartOnExit !== false;
 }
 
 /** One job's intent, as configured, next to what the scheduler has actually armed for it. */
@@ -497,6 +503,10 @@ export class Scheduler extends EventEmitter {
   private readonly _sustainSamples: number | undefined;
   private readonly _jobsNoColor: boolean;
   private readonly _retryCounters  = new Map<string, number>();
+  /** What restartOnExit remembers of a job between two exits: the attempt number and the restarts inside the window. In memory only. */
+  private readonly _restartStates  = new Map<string, RestartState>();
+  /** Set by stop(): a run that ends after it must not schedule a restart (the daemon is going away). Cleared by start(). */
+  private _stopped = false;
   /**
    * Live processes per job, for maxConcurrency and runningCount(). A counter of its own so that the
    * slot is released in the first `close` listener, before job-finished and the dependents it fires.
@@ -578,15 +588,19 @@ export class Scheduler extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    this._stopped = false;
     // Stagger catch-up jobs to avoid simultaneous load on wake from hibernate.
     // First job fires after catchUpInitialDelayMs, subsequent jobs add catchUpStaggerMs each.
     let catchUpStaggerMs = this._catchUpInitialDelayMs;
 
     for (const job of this._registry.list()) {
+      this._checkRestartConfig(job);
       if (!job.enabled) {
         continue;
       }
 
+      // A restart waiting for its delay is kept for the same reason as the retry below.
+      const pendingRestart = this._deadlines.take(job.id, 'restart');
       // A retry that recoverRuns armed for a run that ended while the daemon was down: re-planning the job below
       // drops every deadline of the job, and the retry would be announced in the log and never happen.
       const pendingRetry = this._deadlines.take(job.id, 'retry');
@@ -634,6 +648,9 @@ export class Scheduler extends EventEmitter {
 
       if (pendingRetry !== null) {
         this._deadlines.set(job.id, 'retry', pendingRetry.dueAt, pendingRetry.run);
+      }
+      if (pendingRestart !== null) {
+        this._deadlines.set(job.id, 'restart', pendingRestart.dueAt, pendingRestart.run);
       }
     }
 
@@ -720,7 +737,13 @@ export class Scheduler extends EventEmitter {
    * "reschedule after an edit".
    */
   scheduleJob(job: Job): void {
+    // A restart waiting for its delay is not a schedule: re-planning the job (an edit, an enable) must not lose it, or a job
+    // that was about to come back would stay down with nothing saying so. unscheduleJob (disable, remove) still drops it.
+    const pendingRestart = this._deadlines.take(job.id, 'restart');
     this.unscheduleJob(job.id);
+    if (pendingRestart !== null && job.enabled) {
+      this._deadlines.set(job.id, 'restart', pendingRestart.dueAt, pendingRestart.run);
+    }
     if (!job.enabled) {
       return;
     }
@@ -831,6 +854,8 @@ export class Scheduler extends EventEmitter {
     // A single queue makes that class of omission unexpressible.
     this._deadlines.clearAll();
     this._retryCounters.clear();
+    this._restartStates.clear();
+    this._stopped = true;
   }
 
   /**
@@ -1173,14 +1198,20 @@ export class Scheduler extends EventEmitter {
    * Stops every live instance of the job and says how many it stopped. `killed` is true iff at least
    * one was running.
    */
-  async killJob(id: string): Promise<{ killed: boolean; count: number }> {
+  async killJob(id: string): Promise<{ killed: boolean; count: number; cancelledRestart?: boolean }> {
+    // Stopping a job by hand also cancels the restart it was waiting for and forgets its failures: a person has taken over
+    // (restartOnExit never fights a manual kill). Said in the answer, or `orch kill` on a job that is only waiting reads "not running".
+    const waiting = this._deadlines.find(id, 'restart') !== null;
+    this._deadlines.clear(id, 'restart');
+    this._restartStates.delete(id);
+    const cancelledRestart = waiting ? { cancelledRestart: true } : {};
     const live = [...(this._activeChildren.get(id) ?? [])].filter(child => !child.killed);
     if (live.length > 0) {
       for (const child of live) {
         this._killedByUser.add(child);
       }
       await Promise.all(live.map(child => this._killChildAsync(child, 'manual')));
-      return { killed: true, count: live.length };
+      return { killed: true, count: live.length, ...cancelledRestart };
     }
     // Stale state: no active child but state still shows running - clean it up.
     // Liveness is finishedAt, not exitCode: a run killed by signal has no exit code,
@@ -1198,9 +1229,9 @@ export class Scheduler extends EventEmitter {
           peakCpuPct: entry.peakCpuPct ?? 0, peakRamMb: entry.peakRamMb ?? 0,
         }, { late: true, actionsAllowed: false });
       }
-      return { killed: true, count: open.length };
+      return { killed: true, count: open.length, ...cancelledRestart };
     }
-    return { killed: false, count: 0 };
+    return { killed: false, count: 0, ...cancelledRestart };
   }
 
   /** What _finishRun needs about a run that is open in the history and has no process this daemon watches. */
@@ -1235,7 +1266,7 @@ export class Scheduler extends EventEmitter {
       peakCpuPct: entry.peakCpuPct ?? 0, peakRamMb: entry.peakRamMb ?? 0,
     }, {
       late: true, actionsAllowed: false, recorded: true,
-      actionsSkippedNote: '[recovery] retry/dependents skipped: nobody saw this run end',
+      actionsSkippedNote: '[recovery] retry/restart/dependents skipped: nobody saw this run end',
     });
     this.emit('job-interrupted', { id, job: ctx.job });
   }
@@ -1843,7 +1874,7 @@ export class Scheduler extends EventEmitter {
     this._finishRun(ctx, outcome, {
       late: true,
       actionsAllowed: withinWindow,
-      actionsSkippedNote: `[recovery] retry/dependents skipped: the run ended ${spoken(agoMs)} before the daemon came back (window ${spoken(this._lateActionWindowMs)})`,
+      actionsSkippedNote: `[recovery] retry/restart/dependents skipped: the run ended ${spoken(agoMs)} before the daemon came back (window ${spoken(this._lateActionWindowMs)})`,
       ledger: new EffectLedger(path.join(runDir, 'effects.json')),
     });
     fs.writeFileSync(path.join(runDir, 'done'), '');
@@ -2046,7 +2077,8 @@ export class Scheduler extends EventEmitter {
         publish('alert.consecutive_failures', { jobId: job.id, label: job.label, consecutiveFailures: consecutive, threshold });
       }
       // Retry on specific exit codes (extension point: hooks fire for each retry/exhaustion)
-      if (job.retryOnExitCodes?.includes(exitCode)) {
+      // restartOnExit wins over a retry list (the registry refuses both; a hand-edited one is warned about at start).
+      if (job.retryOnExitCodes?.includes(exitCode) && !restartConfigured(job)) {
         if (!mayAct) {
           explainNoAction();
         } else {
@@ -2078,12 +2110,138 @@ export class Scheduler extends EventEmitter {
       }
     }
 
+    if (!cancelledByUser) {
+      this._applyRestartPolicy(ctx, outcome, reason, { mayAct, startActing, explainNoAction, publish });
+    }
+
     if (publishing) {
       ledger?.mark('events');
     }
     // Closed last: the retry and anomaly markers above are written to this logger, and used to be dropped
     // because it was already closed.
     jobLogger.close();
+  }
+
+  /**
+   * restartOnExit: what follows a run that ended on its own. Never reached for a manual kill.
+   *
+   * Decided here, in the daemon, and not by the supervisor: the supervisor only watches one run, the policy needs the
+   * history of the job (attempts, window), and a run found again after a daemon restart goes through the same code.
+   * The numbers come from planRestart (restart-policy.ts); this method does the effects: log lines, events, the timer.
+   */
+  private _applyRestartPolicy(
+    ctx: RunContext, outcome: RunOutcome, endReason: 'timeout' | 'resource-limit' | 'manual-kill' | undefined,
+    act: { mayAct: boolean; startActing: () => void; explainNoAction: () => void; publish: (event: string, payload: Record<string, unknown>) => void },
+  ): void {
+    const { job, trigger, startedAt, jobLogger } = ctx;
+    if (!restartConfigured(job)) {
+      return;
+    }
+    const problem = restartOnExitError(job.restartOnExit);
+    if (problem !== null) {
+      jobLogger.write(`[restart] not restarting: restartOnExit is invalid -- ${problem}`);
+      return;
+    }
+    if (this._stopped) {
+      jobLogger.write('[restart] not restarting: the daemon is stopping');
+      return;
+    }
+    if (!act.mayAct) {
+      act.explainNoAction();
+      return;
+    }
+    act.startActing();
+
+    const policy = resolveRestartPolicy(job.restartOnExit)!;
+    const exitCode = outcome.exitCode!;
+    const plan = planRestart(policy, this._restartStates.get(job.id), {
+      nowMs: this._time.now(),
+      startedAtMs: Date.parse(startedAt),
+      endedAtMs: Date.parse(outcome.finishedAt),
+      // After a daemon restart the memory is gone; a run that was itself a restart still carries its attempt.
+      ...(trigger.kind === 'restart' ? { seedAttempt: trigger.attempt } : {}),
+    });
+    const reason = endReason === 'timeout' || endReason === 'resource-limit' ? { endReason } : {};
+    if (plan.stable) {
+      const lasted = Date.parse(outcome.finishedAt) - Date.parse(startedAt);
+      const spoken = lasted < 120_000 ? `${Math.round(lasted / 1000)}s` : `${Math.round(lasted / 60_000)}min`;
+      jobLogger.write(`[restart] this run stayed up for ${spoken} (stable after ${policy.stableAfterSeconds}s): the backoff and the restart count start over`);
+    }
+
+    if (plan.action === 'abandon') {
+      this._restartStates.delete(job.id);
+      const counted = `${plan.restartsInWindow} restarts in the last ${policy.windowSeconds}s`;
+      jobLogger.write(
+        `[restart] giving up: ${counted} is the limit (maxRestarts=${policy.maxRestarts}, windowSeconds=${policy.windowSeconds}); `
+        + `the job stays stopped. Start it again with: orch trigger ${job.id}`,
+      );
+      console.error(
+        `[scheduler] job "${job.id}" is no longer restarted: ${counted} reached the limit (maxRestarts=${policy.maxRestarts}). `
+        + `It stays stopped; start it again with: orch trigger ${job.id}`,
+      );
+      act.publish('job.restart_abandoned', {
+        jobId: job.id, label: job.label, cause: plan.cause, exitCode, attempts: plan.attempts,
+        restartsInWindow: plan.restartsInWindow, maxRestarts: policy.maxRestarts, windowSeconds: policy.windowSeconds, ...reason,
+      });
+      return;
+    }
+
+    this._restartStates.set(job.id, plan.state);
+    jobLogger.write(
+      `[restart] attempt ${plan.attempt} in ${plan.delaySeconds}s (exitCode=${exitCode}; `
+      + `${plan.restartsInWindow} of ${policy.maxRestarts} restarts allowed in ${policy.windowSeconds}s)`,
+    );
+    act.publish('job.restart_scheduled', {
+      jobId: job.id, label: job.label, exitCode, attempt: plan.attempt, delaySeconds: plan.delaySeconds,
+      restartsInWindow: plan.restartsInWindow, maxRestarts: policy.maxRestarts, windowSeconds: policy.windowSeconds, ...reason,
+    });
+    this._deadlines.set(job.id, 'restart', this._time.now() + plan.delaySeconds * 1000, () => {
+      this._startPendingRestart(job.id, plan.attempt);
+    });
+  }
+
+  /** The delay of a restart is over: start the job again, unless something changed while it waited. Each refusal is said in the daemon log. */
+  private _startPendingRestart(id: string, attempt: number): void {
+    const cancelled = (why: string): void => {
+      console.error(`[scheduler] job "${id}": the pending restart was cancelled because ${why}`);
+      this._restartStates.delete(id);
+    };
+    // The job as it is now, not as it was when it ended: an edit (the command, a new policy) applies to the restart.
+    const current = this._registry.get(id);
+    if (current === null) {
+      cancelled('the job no longer exists');
+      return;
+    }
+    if (!current.enabled) {
+      cancelled('the job is disabled');
+      return;
+    }
+    if (!restartConfigured(current)) {
+      cancelled('restartOnExit was removed from the job');
+      return;
+    }
+    const problem = restartOnExitError(current.restartOnExit);
+    if (problem !== null) {
+      cancelled(`its restartOnExit is invalid (${problem})`);
+      return;
+    }
+    if ((this._running.get(id) ?? 0) > 0) {
+      console.error(`[scheduler] job "${id}": the restart was skipped, the job is already running`);
+      return;
+    }
+    this._fireUnlessFull(current, { kind: 'restart', attempt });
+  }
+
+  /** Says at daemon start what is wrong with a job's restartOnExit, once, where the daemon log is read. Nothing is changed. */
+  private _checkRestartConfig(job: Job): void {
+    const problem = restartOnExitError(job.restartOnExit);
+    if (problem !== null) {
+      console.error(`[scheduler] job "${job.id}" has an invalid restartOnExit: ${problem}. The job will NOT be restarted; fix it with: orch edit ${job.id} --restart-on-exit (or --unset restartOnExit)`);
+      return;
+    }
+    if (restartConfigured(job) && restartConflictError(job) !== null) {
+      console.error(`[scheduler] job "${job.id}" has both restartOnExit and retryOnExitCodes/retryDelays: restartOnExit wins and the retry settings are ignored. Remove one: orch edit ${job.id} --unset retryOnExitCodes,retryDelays`);
+    }
   }
 
   /**
@@ -2124,6 +2282,12 @@ export class Scheduler extends EventEmitter {
   }
 
   private async _fire(job: Job, trigger: TriggerSource = { kind: 'cron' }, waitForExit = false): Promise<{ pid: number | null; startError?: string } | { exitCode: number | null }> {
+    // Anything but the restart policy itself starting the job (a person, the schedule, a dependency) takes over: the restart
+    // that was waiting is no longer needed, and the failures it counted belong to a series that is over.
+    if (trigger.kind !== 'restart') {
+      this._deadlines.clear(job.id, 'restart');
+      this._restartStates.delete(job.id);
+    }
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
     // Both paths (a direct spawn and the supervisor, whose environment the job inherits) start from this one value.

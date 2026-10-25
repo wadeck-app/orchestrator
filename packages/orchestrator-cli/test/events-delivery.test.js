@@ -159,7 +159,7 @@ describe('the declaration of the events', () => {
     assert.equal(registrations.length, 1);
     assert.equal(registrations[0].source, 'orchestrator');
     assert.deepEqual(registrations[0].events, JSON.parse(JSON.stringify(EVENT_CATALOG)));
-    assert.equal(EVENT_CATALOG.length, 22);
+    assert.equal(EVENT_CATALOG.length, 24);
   });
 });
 

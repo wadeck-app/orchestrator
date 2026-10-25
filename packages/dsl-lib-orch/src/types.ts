@@ -72,6 +72,11 @@ export interface Job {
   /** Seconds to wait before each retry; its length is the number of retries. */
   retryDelays?: number[];
   /**
+   * Bring the job back after ANY exit (code 0, a failure, a signal, its timeout), for a job that must stay up. `true` means
+   * the defaults, an object tunes them. A manual kill never restarts. Not combinable with retryOnExitCodes/retryDelays.
+   */
+  restartOnExit?: boolean | RestartOnExit;
+  /**
    * Exit codes that mean "this run deliberately did nothing", not "this run broke". The run is recorded
    * as skipped (real exit code kept) and never counted as a failure.
    */
@@ -91,6 +96,26 @@ export interface Job {
   progress?: JobProgressSetting;
 }
 
+/** The object form of `restartOnExit`; every key is optional. Mirrors RestartOnExit in orchestrator-cli's restart-policy.ts. */
+export interface RestartOnExit {
+  /** Default 'exponential'. */
+  strategy?: 'fixed' | 'linear' | 'exponential';
+  /** Pause before the first restart, seconds. Default 1. */
+  initialDelaySeconds?: number;
+  /** exponential only. Default 2. */
+  factor?: number;
+  /** linear only. Default: initialDelaySeconds. */
+  stepSeconds?: number;
+  /** linear and exponential: ceiling of the pause. Default 30. */
+  maxDelaySeconds?: number;
+  /** Restarts allowed within windowSeconds. Default 10. */
+  maxRestarts?: number;
+  /** Sliding window of the limit, seconds. Default 300. */
+  windowSeconds?: number;
+  /** A run this long clears the backoff and the restart count, seconds. Default 900. */
+  stableAfterSeconds?: number;
+}
+
 /** A string: 'auto' picks a strategy per run, 'off' disables the estimate, a strategy id forces it (no fallback). Or the object form with options. */
 export type JobProgressSetting = string | { strategy: string; options?: unknown };
 
@@ -102,7 +127,7 @@ export type JobProgressSetting = string | { strategy: string; options?: unknown 
  */
 export type UnsettableJobField =
   | 'cwd' | 'delaySeconds' | 'missedFiring' | 'timeoutSeconds' | 'env' | 'tags'
-  | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'skipExitCodes' | 'liveness'
+  | 'onExitCode' | 'retryOnExitCodes' | 'retryDelays' | 'restartOnExit' | 'skipExitCodes' | 'liveness'
   | 'alertAfterFailures' | 'dependsOn' | 'slaWindowMinutes' | 'secrets' | 'dryRunSupported'
   | 'label' | 'triggerMode' | 'maxConcurrency' | 'description' | 'resourceLimits' | 'progress'
   // Clearing the end of a window leaves the job running indefinitely; clearing the start makes it
@@ -160,7 +185,9 @@ export type TriggerSource =
   | { kind: 'manual'; ip?: string; userAgent?: string }
   | { kind: 'dependency'; dependsOnJobId: string }
   // A re-run the daemon started after an exit code listed in retryOnExitCodes; `attempt` counts from 1.
-  | { kind: 'retry'; attempt: number };
+  | { kind: 'retry'; attempt: number }
+  // A run the daemon started because the job's restartOnExit brought it back after an exit; `attempt` counts from 1.
+  | { kind: 'restart'; attempt: number };
 
 export interface RuntimeEntry {
   startedAt: string;

@@ -1,3 +1,5 @@
+import type { RestartOnExit } from './restart-policy.js';
+
 // Enum values - single source of truth
 export const JOB_TYPES = ['cron', 'startup', 'once', 'manual'] as const;
 
@@ -119,6 +121,13 @@ export interface Job {
   retryOnExitCodes?: number[];
   retryDelays?: number[];
   /**
+   * Bring the job back after ANY exit (code 0, a failure, a signal, its own timeout), for a job that must stay up. `true`
+   * means the defaults, an object tunes them: see RestartOnExit and restart-policy.ts. A manual kill never restarts, and a
+   * job that exceeds maxRestarts within windowSeconds is given up on (job.restart_abandoned). Cannot be combined with
+   * retryOnExitCodes/retryDelays (refused by validateJob). Clear it with `--unset restartOnExit`.
+   */
+  restartOnExit?: boolean | RestartOnExit;
+  /**
    * Exit codes that mean "this run deliberately did nothing", not "this run broke".
    *
    * Per job because the meaning of a code belongs to the program being launched, not to orch: the
@@ -188,6 +197,7 @@ export const UNSETTABLE_FIELDS: Record<string, 'delete' | ((job: Job) => unknown
   onExitCode:         'delete',
   retryOnExitCodes:   'delete',
   retryDelays:        'delete',
+  restartOnExit:      'delete',
   skipExitCodes:      'delete',
   liveness:           'delete',
   alertAfterFailures: 'delete',
@@ -252,7 +262,9 @@ export type TriggerSource =
   | { kind: 'cron' }
   | { kind: 'manual'; ip?: string; userAgent?: string }
   | { kind: 'dependency'; dependsOnJobId: string }
-  | { kind: 'retry'; attempt: number };
+  | { kind: 'retry'; attempt: number }
+  // A run started because the job's restartOnExit brought it back after an exit; `attempt` counts the restarts since the last stable run, from 1.
+  | { kind: 'restart'; attempt: number };
 
 /**
  * Version of the method that measures a run's CPU and RAM peaks. Raise it whenever a change would make

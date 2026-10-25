@@ -7,6 +7,7 @@ Cross-platform job orchestrator daemon (`@wadeck-app/orchestrator-cli`) + option
 ```sh
 orch start [--no-follow] / stop / restart / status
 orch add cron <id> --schedule "0 9 * * *" --command "node script.js"
+orch add startup <id> --command "..." --timeout 0 --restart-on-exit   # keep a server up after ANY exit (docs/daemon-config.md)
 orch trigger <id>            # fire now
 orch kill <id>               # stop a running job (alias: orch terminate)
 orch restart-job <id>        # end a job's running instances, then start it again (orch restart = the daemon)

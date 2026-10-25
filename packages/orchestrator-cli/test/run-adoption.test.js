@@ -275,6 +275,78 @@ describe('a startup job whose run is still going (case 11)', () => {
   });
 });
 
+// restartOnExit must treat a daemon restart as what it is -- not an exit of the job. The daemon going away detaches
+// the supervised run (no close, so nothing to count or restart), and the next daemon follows the same process.
+describe('a job with restartOnExit across a daemon restart', () => {
+  // Fixed and an hour: the policy is real, but a restart that is scheduled cannot start inside the test.
+  const POLICY = { strategy: 'fixed', initialDelaySeconds: 3600 };
+  const server = (dir, source = 'setInterval(() => {}, 1000)') => ({
+    ...cronJob(dir, source), type: 'startup', delaySeconds: 0, schedule: undefined, timeoutSeconds: 0, restartOnExit: POLICY,
+  });
+
+  test('the daemon that goes away records no exit, no failure, no restart: the job keeps running', async () => {
+    const dir = tmpDir();
+    const { pid, a } = await startAndLeave(dir, server(dir));
+
+    assert.deepEqual(names(a.events), ['job.started']);
+    assert.equal(a.sched._deadlines.list().some((d) => d.kind === 'restart'), false);
+    assert.equal(isAlive(pid), true);
+    assert.equal(a.state.getOpenRuns('job').length, 1, 'the run must stay open for the next daemon');
+  });
+
+  test('the next daemon follows the same process and starts no second copy, not now and not at its startup firing', async () => {
+    const dir = tmpDir();
+    const job = server(dir);
+    const { pid } = await startAndLeave(dir, job);
+    const b = daemon(dir, [job], { supervisor: () => { throw new Error('a second copy was started'); } });
+    const announced = [];
+    b.sched.on('job-skipped', (ev) => announced.push(ev));
+
+    await b.sched.recoverRuns();
+    await b.sched.start();
+    await until('the startup firing to be refused', () => announced.length >= 1);
+
+    assert.deepEqual(announced.map((ev) => ev.reason), ['adopted']);
+    assert.equal(b.sched.runningCount('job'), 1);
+    assert.equal(b.state.getOpenRuns('job')[0].pid, pid);
+    assert.equal(names(b.events).includes('job.restart_scheduled'), false);
+    assert.equal(b.sched._deadlines.list().some((d) => d.kind === 'restart'), false);
+    await b.sched.killJob('job');
+  });
+
+  test('a manual kill of the followed run does not restart it', async () => {
+    const dir = tmpDir();
+    const job = server(dir);
+    await startAndLeave(dir, job);
+    const b = daemon(dir, [job]);
+    await b.sched.recoverRuns();
+
+    await b.sched.killJob('job');
+    await until('the kill to be recorded', () => names(b.events).includes('job.killed_manual'));
+
+    assert.equal(names(b.events).includes('job.restart_scheduled'), false);
+    assert.equal(b.sched._deadlines.list().some((d) => d.kind === 'restart'), false);
+  });
+
+  test('positive control: the followed run ending on its own IS restarted by the next daemon', async () => {
+    const dir = tmpDir();
+    const flag = path.join(dir, 'stop-now');
+    const job = server(dir, `const fs = require('node:fs'); setInterval(() => { if (fs.existsSync(${JSON.stringify(flag)})) { process.exit(3); } }, 50);`);
+    await startAndLeave(dir, job);
+    const b = daemon(dir, [job]);
+    await b.sched.recoverRuns();
+    assert.equal(b.sched.runningCount('job'), 1);
+
+    fs.writeFileSync(flag, '');
+    await until('the restart to be scheduled', () => names(b.events).includes('job.restart_scheduled'));
+
+    const scheduled = b.events.find((e) => e.event === 'job.restart_scheduled');
+    assert.equal(scheduled.payload.exitCode, 3);
+    assert.equal(scheduled.payload.delaySeconds, 3600);
+    assert.equal(b.sched._deadlines.list().some((d) => d.kind === 'restart'), true);
+  });
+});
+
 describe('finding the runs again takes one look at the process table, not one per run', () => {
   // Seen live: each look costs about a second on Windows, so seven runs delayed the daemon's readiness by nine
   // seconds, and `orch restart` took the silence for a dead daemon and started a second one.

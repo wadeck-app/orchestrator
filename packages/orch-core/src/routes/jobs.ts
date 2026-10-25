@@ -251,7 +251,9 @@ export async function jobsRoutes(
       const ip        = req.ip;
       const userAgent = req.headers['user-agent'];
       const result = await proxy.send('kill-job', { id, ip, userAgent });
-      if (!(result as { killed: boolean }).killed) {
+      // A job waiting for a restartOnExit restart is not running, yet the kill did stop something: not an error.
+      const { killed, cancelledRestart } = result as { killed: boolean; cancelledRestart?: boolean };
+      if (!killed && cancelledRestart !== true) {
         return reply.code(404).send({ error: `Job "${id}" is not currently running` });
       }
       return reply.code(204).send();

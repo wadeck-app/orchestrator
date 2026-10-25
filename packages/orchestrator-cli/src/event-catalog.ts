@@ -45,7 +45,7 @@ export const EVENT_CATALOG: EventDeclaration[] = [
   {
     name: 'job.started',
     description: 'A run of a job was spawned. Fires once per run, so several times for one job (every cron firing, retry, dependency or manual trigger). Does NOT fire for a firing that was skipped (job.skipped) or whose process could not be started (job.failed with durationMs 0).',
-    schema: payload({ ...JOB, pid: { type: ['integer', 'null'] }, trigger: { enum: ['cron', 'manual', 'dependency', 'retry'] } }, [...JOB_REQUIRED, 'pid', 'trigger']),
+    schema: payload({ ...JOB, pid: { type: ['integer', 'null'] }, trigger: { enum: ['cron', 'manual', 'dependency', 'retry', 'restart'] } }, [...JOB_REQUIRED, 'pid', 'trigger']),
     example: { jobId: 'nightly-backup', label: 'Nightly backup', pid: 4242, trigger: 'cron' },
     correlationKey: 'payload.jobId',
   },
@@ -125,6 +125,26 @@ export const EVENT_CATALOG: EventDeclaration[] = [
     description: 'A job was restarted on request (`orch restart-job`): its running instances were ended and a new run started. Fires once per request, after the old runs ended (each of them ends with job.killed_manual) and the new one started. Not terminal. Does NOT fire for `orch restart` (the daemon, see daemon.restarted).',
     schema: payload({ ...JOB, wasRunning: bool, killed: int, started: bool, ...REQUEST }, [...JOB_REQUIRED, 'wasRunning', 'killed', 'started']),
     example: { jobId: 'dev-server', label: 'Dev server', wasRunning: true, killed: 1, started: true, ip: '127.0.0.1', userAgent: 'orch-cli' },
+    correlationKey: 'payload.jobId',
+  },
+  {
+    name: 'job.restart_scheduled',
+    description: 'A run of a job with restartOnExit ended on its own (any exit code, a signal, its timeout or a resource kill; not `orch kill`) and the daemon starts it again in delaySeconds. Fires once per restart, after the terminal event of that run; a job.started with trigger "restart" follows. Not terminal. Does NOT fire for `orch restart-job` (job.restarted) or for a retry.',
+    schema: payload({
+      ...JOB, exitCode: int, attempt: int, delaySeconds: num, restartsInWindow: int, maxRestarts: int, windowSeconds: int,
+      endReason: { enum: ['timeout', 'resource-limit'], description: 'Present when the run was ended by the daemon: its timeout or a hard resource limit.' }, ...LATE,
+    }, [...JOB_REQUIRED, 'exitCode', 'attempt', 'delaySeconds', 'restartsInWindow', 'maxRestarts', 'windowSeconds']),
+    example: { jobId: 'dev-server', label: 'Dev server', exitCode: 1, attempt: 3, delaySeconds: 4, restartsInWindow: 3, maxRestarts: 10, windowSeconds: 300 },
+    correlationKey: 'payload.jobId',
+  },
+  {
+    name: 'job.restart_abandoned',
+    description: 'A run of a job with restartOnExit ended on its own when maxRestarts restarts had already happened within windowSeconds: the daemon gives up and the job stays stopped until someone starts it (`orch trigger`). Fires once per series, after the terminal event of the last run. Not terminal. Does NOT fire while restarts remain (job.restart_scheduled) or after `orch kill`.',
+    schema: payload({
+      ...JOB, cause: { enum: ['limit'] }, exitCode: int, attempts: int, restartsInWindow: int, maxRestarts: int, windowSeconds: int,
+      endReason: { enum: ['timeout', 'resource-limit'], description: 'Present when the last run was ended by the daemon: its timeout or a hard resource limit.' }, ...LATE,
+    }, [...JOB_REQUIRED, 'cause', 'exitCode', 'attempts', 'restartsInWindow', 'maxRestarts', 'windowSeconds']),
+    example: { jobId: 'dev-server', label: 'Dev server', cause: 'limit', exitCode: 1, attempts: 10, restartsInWindow: 10, maxRestarts: 10, windowSeconds: 300 },
     correlationKey: 'payload.jobId',
   },
   {

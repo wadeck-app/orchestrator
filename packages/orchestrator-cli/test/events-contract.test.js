@@ -19,7 +19,7 @@ const { S } = require('./helpers/event-scenarios');
 afterEach(assertNoProblems);
 
 const EXEC_TERMINAL = ['exec.completed', 'exec.failed'];
-const FOLLOW_UPS = ['job.recovered', 'job.anomaly', 'alert.consecutive_failures', 'alert.retry_exhausted'];
+const FOLLOW_UPS = ['job.recovered', 'job.anomaly', 'alert.consecutive_failures', 'alert.retry_exhausted', 'job.restart_scheduled', 'job.restart_abandoned'];
 const DURING_THE_RUN = ['job.timed_out', 'job.resource_soft_limit', 'job.resource_hard_limit'];
 
 const observedNames = new Set();
