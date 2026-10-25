@@ -438,5 +438,7 @@ export interface CliDeps {
   startDaemon: () => void;
   configDir: string;
   /** `orch job <jobId> logs` seams: how often -f reads the followed file (ms, default 250) and where its output goes. Tests set them. */
+  /** `orch logs --follow` seam: the clock that paces the poll (default: the real one) and its period (ms, default 250). Tests set them. */
+  logs?: { pollMs?: number; time?: import('./time-service.js').TimeService };
   jobLogs?: { pollMs?: number; stdout?: (text: string) => void; stderr?: (text: string) => void; time?: import('./time-service.js').TimeService };
 }

@@ -1,8 +1,10 @@
 'use strict';
 
 // `orch logs` (the daemon log, or one job's runs of today): argument validation, the JSON view and --follow.
-// Follow waits on the output itself (a promise resolved when the text shows up), never on a timer. The date is
-// frozen so "today" cannot change under a test.
+// Follow is a poll paced by a FakeTime clock (test/helpers/follow-clock.js): the test changes the files while the loop
+// is asleep, then advances one poll, and every wait for output is bounded by a number of polls and fails with what it
+// was waiting for and what was printed. No watcher, no real timer, no fixed sleep. The date is frozen so "today"
+// cannot change under a test.
 const { test, describe, beforeEach, afterEach, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -10,6 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { runCli } = require('../src/cli');
+const { followClock } = require('./helpers/follow-clock');
 
 const TODAY = '2026-10-24';
 
@@ -37,11 +40,16 @@ function jobRun(jobId, time, content) {
   return f;
 }
 
-/** Starts `orch logs ...` with stdout/stderr/exit captured; `waitFor(text)` resolves when stdout holds it. */
-function start(argv) {
+const POLL_MS = 250;
+/** More polls than any test needs: reaching it means the output will never come. */
+const MAX_POLLS = 20;
+/** Event-loop turns (not time) granted for the follow loop to go back to sleep after a poll. */
+const MAX_TURNS = 1000;
+
+/** Starts `orch logs ...` with stdout/stderr/exit captured; the follow loop is paced by `clock` (see `pollUntil`). */
+function start(argv, clock) {
   const stdout = [];
   const stderr = [];
-  const waiters = [];
   const origOut = process.stdout.write;
   const origErr = process.stderr.write;
   const origExit = process.exit;
@@ -53,13 +61,6 @@ function start(argv) {
       return origOut.call(process.stdout, chunk, ...rest);
     }
     stdout.push(chunk);
-    for (const w of waiters.splice(0)) {
-      if (text().includes(w.needle)) {
-        w.resolve();
-      } else {
-        waiters.push(w);
-      }
-    }
     return true;
   };
   process.stderr.write = (chunk, ...rest) => {
@@ -75,23 +76,50 @@ function start(argv) {
     process.stderr.write = origErr;
     process.exit = origExit;
   };
-  const done = runCli(argv, { send: async () => ({}), startDaemon: () => {}, configDir: dir })
+  let finished = false;
+  const done = runCli(argv, { send: async () => ({}), startDaemon: () => {}, configDir: dir, logs: { pollMs: POLL_MS, time: clock.time } })
     .catch((e) => {
       if (e.message !== 'exit') {
         throw e;
       }
     })
-    .finally(restore)
+    .finally(() => { finished = true; restore(); })
     .then(() => ({ out: text(), err: stderr.join(''), exitCode }));
   return {
     done,
     text,
-    waitFor: (needle) => (text().includes(needle) ? Promise.resolve() : new Promise((resolve) => { waiters.push({ needle, resolve }); })),
+    get finished() { return finished; },
+    stderrText: () => stderr.join(''),
     interrupt: () => process.emit('SIGINT'),
   };
 }
 
-const run = (argv) => start(argv).done;
+const run = (argv) => start(argv, followClock()).done;
+
+/**
+ * Advances the clock one poll at a time until stdout holds `needle`. Bounded twice, both with a message that says what
+ * was awaited and what was seen: by the number of polls, and by the event-loop turns granted for the loop to go back to
+ * sleep after a poll (a loop that ended or never armed its timer).
+ */
+async function pollUntil(cli, clock, needle) {
+  const seen = () => `stdout so far: ${JSON.stringify(cli.text())}; stderr: ${JSON.stringify(cli.stderrText())}`;
+  for (let polls = 0; polls < MAX_POLLS; polls++) {
+    if (cli.text().includes(needle)) {
+      return;
+    }
+    let turns = 0;
+    while (clock.pending === 0 && !cli.finished && turns++ < MAX_TURNS) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    if (cli.finished || clock.pending === 0) {
+      throw new Error(`waiting for ${JSON.stringify(needle)}: the follow loop ${cli.finished ? 'ended' : 'never went to sleep'} after ${polls} poll(s). ${seen()}`);
+    }
+    await clock.tick(POLL_MS, cli.done);
+  }
+  if (!cli.text().includes(needle)) {
+    throw new Error(`waiting for ${JSON.stringify(needle)}: still not printed after ${MAX_POLLS} polls of ${POLL_MS} ms. ${seen()}`);
+  }
+}
 
 describe('orch logs: --tail', () => {
   beforeEach(() => { daemonLog('[2026-10-24 10:00:00] one\n[2026-10-24 10:00:01] two\n[2026-10-24 10:00:02] three\n'); });
@@ -217,28 +245,49 @@ describe('orch logs --follow', () => {
 
   test('--job: a run that starts after the follow began is read from its first line, the previous one is not repeated', async () => {
     const first = jobRun('tick', '10-00-00', '[2026-10-24 10:00:00] one\n');
-    const cli = start(['logs', '--follow', '--job', 'tick']);
+    const clock = followClock();
+    const cli = start(['logs', '--follow', '--job', 'tick'], clock);
 
-    await cli.waitFor('one');
+    await pollUntil(cli, clock, '"one"');
     fs.appendFileSync(first, '[2026-10-24 10:00:01] two\n');
-    await cli.waitFor('two');
+    await pollUntil(cli, clock, '"two"');
     jobRun('tick', '11-00-00', '[2026-10-24 11:00:00] fresh run\n');
-    await cli.waitFor('fresh run');
+    await pollUntil(cli, clock, '"fresh run"');
     fs.appendFileSync(path.join(dir, 'logs', 'jobs', 'tick', `tick-${TODAY}T11-00-00.log`), '[2026-10-24 11:00:01] more\n');
-    await cli.waitFor('more');
+    await pollUntil(cli, clock, '"more"');
     cli.interrupt();
     const { out: o, exitCode } = await cli.done;
 
     assert.deepEqual(o.trimEnd().split('\n').map((l) => JSON.parse(l).message), ['one', 'two', 'fresh run', 'more']);
     assert.equal(exitCode, 0);
+    assert.equal(clock.pending, 0, 'the poll timer is cancelled on interrupt');
+  });
+
+  test('--job: lines the old run wrote in the same poll as the new run appears are not lost', async () => {
+    const first = jobRun('tick', '10-00-00', '[2026-10-24 10:00:00] one\n');
+    const clock = followClock();
+    const cli = start(['logs', '--follow', '--job', 'tick'], clock);
+
+    await pollUntil(cli, clock, '"one"');
+    // Both happen between two polls: the old run's last line, then the new run.
+    await clock.tick(POLL_MS, cli.done, () => {
+      fs.appendFileSync(first, '[2026-10-24 10:00:01] last of old\n');
+      jobRun('tick', '11-00-00', '[2026-10-24 11:00:00] first of new\n');
+    });
+    await pollUntil(cli, clock, '"first of new"');
+    cli.interrupt();
+    const { out: o } = await cli.done;
+
+    assert.deepEqual(o.trimEnd().split('\n').map((l) => JSON.parse(l).message), ['one', 'last of old', 'first of new']);
   });
 
   test('the daemon log missing at the start: says so, then prints the lines once the file appears', async () => {
-    const cli = start(['logs', '--follow']);
+    const clock = followClock();
+    const cli = start(['logs', '--follow'], clock);
 
-    await cli.waitFor('No daemon logs for today');
+    await pollUntil(cli, clock, 'No daemon logs for today');
     daemonLog('[2026-10-24 10:00:00] daemon up\n');
-    await cli.waitFor('daemon up');
+    await pollUntil(cli, clock, 'daemon up');
     cli.interrupt();
     const { out: o, exitCode } = await cli.done;
 
@@ -249,14 +298,36 @@ describe('orch logs --follow', () => {
 
   test('the daemon log: lines appended after the snapshot are printed once, in order', async () => {
     const f = daemonLog('[2026-10-24 10:00:00] first\n');
-    const cli = start(['logs', '--follow']);
+    const clock = followClock();
+    const cli = start(['logs', '--follow'], clock);
 
-    await cli.waitFor('first');
+    await pollUntil(cli, clock, '"first"');
     fs.appendFileSync(f, '[2026-10-24 10:00:01] second\n');
-    await cli.waitFor('second');
+    await pollUntil(cli, clock, '"second"');
     cli.interrupt();
     const { out: o } = await cli.done;
 
     assert.deepEqual(o.trimEnd().split('\n').map((l) => JSON.parse(l).message), ['first', 'second']);
+  });
+
+  test('output that never comes fails after a bounded number of polls, saying what was awaited and what was printed (it cannot hang)', async () => {
+    daemonLog('[2026-10-24 10:00:00] first\n');
+    const clock = followClock();
+    const cli = start(['logs', '--follow'], clock);
+
+    await assert.rejects(
+      pollUntil(cli, clock, 'never written'),
+      (e) => /waiting for "never written"/.test(e.message) && /after 20 polls/.test(e.message) && e.message.includes('first'),
+    );
+    cli.interrupt();
+    await cli.done;
+  });
+
+  test('a follow that ends before the awaited output fails at once with a message, instead of waiting', async () => {
+    const clock = followClock();
+    const cli = start(['logs', '--follow', '--job', 'never-ran'], clock);
+
+    await assert.rejects(pollUntil(cli, clock, 'anything'), /the follow loop ended after 0 poll\(s\)/);
+    await cli.done;
   });
 });

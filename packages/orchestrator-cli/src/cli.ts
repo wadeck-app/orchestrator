@@ -16,6 +16,7 @@ import { parseJobLogsArgs, runJobLogs } from './job-logs.js';
 import { PROGRESS_REPLAY_USAGE, parseReplayArgs, runProgressReplay } from './progress/replay-report.js';
 import { HELP_TEXT, JOB_HELP, JOB_LOGS_HELP } from './help-text.js';
 import { stripAnsi } from './ansi.js';
+import { systemTime } from './time-service.js';
 import { isReleaseVersion, devBuildRefusalMessage } from './dev-build-guard.js';
 import { updateNotice } from './update-notice.js';
 
@@ -1805,34 +1806,50 @@ Use --wait to block until the command finishes.`);
         printLines(buf.toString('utf8').split('\n').filter(l => l));
       };
 
-      await new Promise<void>((resolve) => {
+      // Polled for both views, never fs.watch / fs.watchFile: a watcher is armed some time after the call returns
+      // (fs.watchFile takes its baseline stat late; on macOS a directory watch goes through FSEvents, which is
+      // asynchronous and coalesces), so a line written between the snapshot and the moment it is live was never
+      // reported, and the report of a later one depended on the platform. A poll reads the file's size, which is
+      // what is actually wanted, and is paced by an injectable clock.
+      const time   = deps.logs?.time ?? systemTime;
+      const pollMs = deps.logs?.pollMs ?? 250;
+      const pollOnce = (): void => {
         if (jobFlag) {
-          // Each run writes a brand-new file (no single file to grow), so follow has to watch
-          // the job's log directory and switch to whichever file is newest after each change.
-          const dirWatcher = fsLogs.watch(jobLogDir!, { persistent: true }, () => {
-            const files = todaysJobLogFiles();
-            const latest = files[files.length - 1];
-            if (!latest) {
-              return;
+          // Each run writes a brand-new file (no single file to grow), so follow looks at the job's folder
+          // and switches to the newest run (the name carries the start stamp, so the name order is the run order).
+          const files = todaysJobLogFiles();
+          const latest = files[files.length - 1];
+          if (!latest) {
+            return;
+          }
+          if (latest !== watchedFile) {
+            // Lines the previous run wrote since the last poll are read before leaving it.
+            if (watchedFile !== undefined && fsLogs.existsSync(watchedFile)) {
+              tailFile(watchedFile);
             }
-            if (latest !== watchedFile) {
-              watchedFile = latest;
-              offset = 0;
-            }
-            tailFile(watchedFile);
-          });
-          process.on('SIGINT', () => { dirWatcher.close(); resolve(); });
-        } else {
-          // Polled, not fs.watchFile: its baseline stat is taken after the call returns, so a line written between
-          // the snapshot and that stat was never reported.
-          const poll = setInterval(() => {
-            if (!fsLogs.existsSync(watchedFile!)) {
-              return;
-            }
-            tailFile(watchedFile!);
-          }, 250);
-          process.on('SIGINT', () => { clearInterval(poll); resolve(); });
+            watchedFile = latest;
+            offset = 0;
+          }
         }
+        if (watchedFile !== undefined && fsLogs.existsSync(watchedFile)) {
+          tailFile(watchedFile);
+        }
+      };
+      await new Promise<void>((resolve) => {
+        let timer: { cancel(): void };
+        const onSigint = (): void => {
+          timer.cancel();
+          process.off('SIGINT', onSigint);
+          resolve();
+        };
+        const arm = (): void => {
+          timer = time.after(pollMs, () => {
+            pollOnce();
+            arm();
+          });
+        };
+        arm();
+        process.on('SIGINT', onSigint);
       });
       return;
     }
