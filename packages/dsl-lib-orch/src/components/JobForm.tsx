@@ -5,6 +5,8 @@ import { describeCron } from '../cron-describe.js';
 import { inputsFromLimits, limitsFromInputs, validateResourceLimitFields, type ResourceLimitErrors } from '../resource-limits.js';
 import { ResourceLimitsFields } from './ResourceLimitsFields.js';
 import { PROGRESS_MODES, progressModeOf } from '../progress-modes.js';
+import { inputsFromRestart, restartFromInputs, retryConflictMessage, validateRestartInputs, type RestartFieldErrors } from '../restart-policy.js';
+import { RestartFields } from './RestartFields.js';
 import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, FieldTextarea, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
 // @formatter:off
@@ -94,6 +96,8 @@ interface FormErrors {
   activePeriod?: string;
   resourceLimits?: ResourceLimitErrors;
   progressOptions?: string;
+  restart?: RestartFieldErrors;
+  restartConflict?: string;
 }
 
 // registry.ts validateJob() enforces this. Checked here too, so the field that is wrong gets named
@@ -271,6 +275,9 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
   const [progressOptions, setProgressOptions] = useState(() => progressFormState(initial?.progress).options);
   // Collapsed unless the job already has a setting other than the default.
   const [showProgress, setShowProgress] = useState(() => progressFormState(initial?.progress).mode !== 'auto');
+  // The restart policy: the switch and the boxes as typed. An existing policy is loaded, so a Save that touches nothing
+  // sends it back unchanged, and Cancel sends nothing at all.
+  const [restart, setRestart] = useState(() => inputsFromRestart(initial?.restartOnExit));
   const [showBuilder, setShowBuilder] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>();
@@ -358,6 +365,17 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     if (!progressParsed.ok) {
       e.progressOptions = progressParsed.error;
       setShowProgress(true);
+    }
+    if (restart.enabled) {
+      // The daemon refuses both, in these words. Said here so the field that is wrong is named before the request.
+      const restartErrors = validateRestartInputs(restart.inputs, restart.strategyExplicit);
+      if (Object.keys(restartErrors).length > 0) {
+        e.restart = restartErrors;
+      }
+      const conflict = retryConflictMessage(initial ?? {});
+      if (conflict !== null) {
+        e.restartConflict = conflict;
+      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -551,6 +569,14 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         data.progress = progressParsed.value === undefined ? progressMode : { strategy: progressMode, options: progressParsed.value };
       }
 
+      // Restart policy. Off is the absence of the key (a stored false is already off), so switching it off is an unset.
+      if (restart.enabled) {
+        data.restartOnExit = restartFromInputs(restart.inputs, restart.strategyExplicit);
+      }
+      else {
+        clearIfWasConfigured('restartOnExit', initial?.restartOnExit || undefined);
+      }
+
       // Only when there is something to clear: an empty array would still reach the daemon and read
       // as an edit that clears nothing.
       if (unset.length > 0) {
@@ -715,6 +741,17 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
           required
         />
       )}
+
+      <RestartFields
+        enabled={restart.enabled}
+        onToggle={enabled => setRestart(prev => ({ ...prev, enabled }))}
+        inputs={restart.inputs}
+        onChange={inputs => setRestart(prev => ({ ...prev, inputs }))}
+        errors={errors?.restart ?? {}}
+        timeoutSeconds={timeoutSeconds}
+        lockedReason={retryConflictMessage(initial ?? {}) ?? undefined}
+        conflictError={errors?.restartConflict}
+      />
 
       <div>
         {/* violations-suppress: react/no-raw-button text-link toggle - no Button variant for inline text links */}
