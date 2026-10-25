@@ -96,6 +96,16 @@ describe('orch cli self-check integration', () => {
 
 describe('orch cli update integration', () => {
 
+  // A checkout runs as version 0.2.0 (package.json's placeholder). It must refuse before it looks for the updater, with
+  // the reason and what to do: the updater would otherwise run `npm install -g` over the real install.
+  test('cli update from a development build refuses, names the version and the way out, and exits 1', async () => {
+    const { code, stdout, stderr } = await runCli(['cli', 'update']);
+    assert.equal(code, 1);
+    assert.match(stderr, /\[fail\] this is a development build \(version \d+\.\d+\.\d+\): it does not update the global install/);
+    assert.match(stderr, /run it from the repo or install the published package/);
+    assert.doesNotMatch(stdout, /Running updater/, 'it went on to run the updater');
+  });
+
   test('cli update in dev mode prints [fail] and exits 1 (no bundle)', async () => {
     const { code, stderr } = await runCli(['cli', 'update']);
     // In dev mode (no orchestrator-updater.cjs bundle present), must fail visibly

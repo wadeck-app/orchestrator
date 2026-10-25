@@ -6,12 +6,13 @@
 // npm install is done by Node.js (windowsHide:true) - zero terminal windows, proven by PoC.
 // After successful install, writes config.restart sentinel then POST /quit so the
 // Go launcher restarts the daemon with the new version.
-import { runUpdater, execNpm, appendLog } from '@wadeck-app/shared-updater';
+import { runUpdater, execNpm, appendLog, readState, stateFilePath } from '@wadeck-app/shared-updater';
 import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolveSelfCheckTarget } from './self-check-target.js';
+import { resolveSelfCheckTarget, armSelfCheck } from './self-check-target.js';
 import { getErrorMessage } from '../fsUtil.js';
+import { isReleaseVersion, devBuildRefusalMessage } from '../dev-build-guard.js';
 import * as http from 'node:http';
 import semver from 'semver';
 
@@ -20,6 +21,22 @@ declare const __ORCH_VERSION__: string;
 const PKG_NAME = '@wadeck-app/orchestrator-cli';
 const configDir = process.env['ORCH_CONFIG_DIR'] ?? ConfigDir.get('orchestrator');
 const currentVersion = typeof __ORCH_VERSION__ !== 'undefined' ? __ORCH_VERSION__ : '0.0.0-dev';
+
+// Dev build guard, before ANY npm call or config edit. A repo-built bundle (0.2.0, or the 0.0.0-dev of an
+// unbundled run) is older than every published version, so the updater would find an "update" and run
+// `npm install -g` over the user's real install; killed halfway, that leaves the CLI uninstalled
+// (incident 2026-10-24). Every route lands here: the daemon's startup/30-minute checks, the tray, and
+// `orch cli update`. Detached with stdio ignored, so the reason goes to the log `orch logs` shows.
+if (!isReleaseVersion(currentVersion)) {
+  const message = `${PKG_NAME}: ${devBuildRefusalMessage(currentVersion)}`;
+  appendLog(configDir, 'warn', message);
+  if (process.env['UPDATER_FORCE'] === '1') {
+    // Someone asked for this update: say so where they can read it, and fail.
+    process.stderr.write(`[fail] ${message}\n`);
+    process.exit(1);
+  }
+  process.exit(0);
+}
 
 // When UPDATER_FORCE=1 (manual update from tray), shared-updater still exits early on
 // autoUpdate:false. Work around by temporarily commenting out that line so runUpdater proceeds.
@@ -50,42 +67,33 @@ function restoreConfigYml(): void {
 }
 
 // Compute the self-check command so shared-updater can verify the install and roll back.
+// It also validates the repair of an interrupted install ('applying' journaled by a previous run): see armSelfCheck.
 if (!process.env['UPDATER_SELF_CHECK_CMD']) {
-  let npmRoot: string;
+  const interrupted = readState(stateFilePath(configDir))?.status === 'applying';
+  let resolved: { ok: true; target: string } | { ok: false; reason: string };
   try {
-    npmRoot = execNpm(['root', '-g'], { timeout: 10_000 }).trim();
+    const npmRoot = execNpm(['root', '-g'], { timeout: 10_000 }).trim();
+    resolved = resolveSelfCheckTarget(npmRoot, PKG_NAME);
   } catch (e) {
-    // shared-updater treats a missing UPDATER_SELF_CHECK_CMD as "self-check passed", so
-    // carrying on here would install an unverified upgrade with no rollback. Fail closed,
-    // and record it where `orch logs` can show it: this process is detached with stdio
-    // ignored, so writing to the console would go nowhere.
-    appendLog(configDir, 'error',
-      `${PKG_NAME} update aborted: cannot resolve 'npm root -g', so the post-install `
-      + `self-check could not be armed and an unverified update would not be rollback-able. `
-      + `Cause: ${getErrorMessage(e)}`);
-    // Restore config.yml before leaving. Under UPDATER_FORCE the autoUpdate:false line was
-    // commented out above, and it is otherwise only restored once runUpdater completes. Exiting
-    // here would leave the user's explicit "do not auto-update" disabled for good, so failing
-    // closed on one axis would have silently opened another.
+    resolved = { ok: false, reason: `cannot resolve 'npm root -g': ${getErrorMessage(e)}` };
+  }
+  const armed = armSelfCheck({ nodeExe: process.execPath, resolved, interrupted });
+  if (armed.abort !== undefined) {
+    // shared-updater treats a missing UPDATER_SELF_CHECK_CMD as "self-check passed", so carrying on would install an
+    // unverified upgrade with no rollback; and arming a command whose target is absent is what caused the permanent
+    // rollback loop described on resolveSelfCheckTarget. Refusing to update is recoverable; looping is not.
+    // Recorded where `orch logs` can show it: this process is detached with stdio ignored.
+    appendLog(configDir, 'error', `${PKG_NAME} update aborted: ${armed.abort}`);
+    // Restore config.yml before leaving. Under UPDATER_FORCE the autoUpdate:false line was commented out above, and it
+    // is otherwise only restored once runUpdater completes. Exiting here would leave the user's explicit "do not
+    // auto-update" disabled for good, so failing closed on one axis would have silently opened another.
     restoreConfigYml();
     process.exit(1);
   }
-  const resolved = resolveSelfCheckTarget(npmRoot, PKG_NAME);
-  if (!resolved.ok) {
-    // Arming a command whose target is absent is what caused the permanent rollback loop
-    // described on resolveSelfCheckTarget. Refusing to update is recoverable; looping is not.
-    appendLog(configDir, 'error',
-      `${PKG_NAME} update aborted: ${resolved.reason}. Without a usable entry point the `
-      + `post-install self-check cannot be armed, and an unverified update would not be `
-      + `rollback-able. Repair with: npm install -g ${PKG_NAME}@latest`);
-    restoreConfigYml();
-    process.exit(1);
+  if (armed.note) {
+    appendLog(configDir, 'warn', `${PKG_NAME} ${armed.note}`);
   }
-  // execSync runs this through a shell, so both paths must be quoted. A default Windows
-  // violations-suppress: shared/no-out-of-repo-path prose naming the case this guards, not a path the code uses
-  // install puts node under "C:\Program Files\nodejs\", and an unquoted path is split at the
-  // space: the self-check then always fails and every update gets rolled back.
-  process.env['UPDATER_SELF_CHECK_CMD'] = `"${process.execPath}" "${resolved.target}" cli self-check`;
+  process.env['UPDATER_SELF_CHECK_CMD'] = armed.command;
 }
 
 /**

@@ -86,6 +86,16 @@ own spawn interval, not a `config.yml` key). `@wadeck-app/shared-updater`'s own 
 throttle, which other `@wadeck-app` CLIs rely on when they have no schedule of their own, is
 bypassed for this daemon (`skipThrottle`) since the two would otherwise beat against each other.
 
+### Interrupted updates and rollback
+
+The updater (`@wadeck-app/shared-updater`) journals the install in `<configDir>/update-state.json` (`status: "applying"`, with the updater `pid` and the `npmPid`) before it runs `npm install -g`. After the install it verifies the installed version and runs `orch cli self-check`; a failed install, a version mismatch or a failed self-check reinstalls the previous version.
+
+If an update was interrupted (machine off, process killed), do nothing: the next update run (daemon start, every 30 minutes, or `orch cli update`) finds `applying`, waits for or stops the orphaned npm, keeps the target if it is fully installed and passes the self-check, and otherwise reinstalls the previous version. The result is logged in `logs/<date>.ndjson` (`orch logs`) and shown by `orch` as `Rollback to ...` or `Update failed (...)`; a failure carries a `Fix manually: npm install -g ...` command.
+
+- `orch` and the daemon report an `applying` state: "in progress" while the updater lives, "interrupted" otherwise.
+- If `orch` itself is gone, run `npm install -g @wadeck-app/orchestrator-cli@latest`.
+- A development build (repo checkout, version not `YYYY.M.D-BBB-hash`) never updates: `orch cli update`, the daemon's checks and the tray refuse with "this is a development build (version X): it does not update the global install".
+
 ## Past `once` jobs
 
 A `once` job that has fired is marked `spent` + `spentAt` in `registry.json` instead of being deleted,

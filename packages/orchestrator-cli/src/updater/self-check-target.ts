@@ -45,3 +45,44 @@ export function resolveSelfCheckTarget(
   }
   return { ok: true, target };
 }
+
+/** Present in the failing command so a log line or a test can tell it from a real self-check. */
+export const FAILING_SELF_CHECK_MARKER = 'orchestrator-self-check-unavailable';
+
+export type SelfCheckArming = { command: string; note?: string; abort?: undefined } | { abort: string; command?: undefined; note?: undefined };
+
+/**
+ * Decides the command shared-updater runs after an install (or while repairing an interrupted one).
+ *
+ * Normally an unresolvable target aborts the run: shared-updater treats a missing command as "passed", so
+ * going on would install an unverified upgrade with no rollback.
+ *
+ * With an 'applying' state journaled (an install was killed) the same condition is the expected one: the
+ * package is half-removed. Aborting would stop shared-updater before its repair, leaving the CLI broken
+ * until someone reinstalls by hand. The repair keeps the target only when the self-check passes, so
+ * arming a command that fails makes it restore the previous version, which is the safe outcome.
+ */
+export function armSelfCheck(args: {
+  nodeExe: string;
+  resolved: { ok: true; target: string } | { ok: false; reason: string };
+  interrupted: boolean;
+}): SelfCheckArming {
+  const { nodeExe, resolved, interrupted } = args;
+  if (resolved.ok) {
+    // execSync runs this through a shell, so both paths must be quoted. A default Windows install puts node under
+    // violations-suppress: shared/no-out-of-repo-path prose naming the case this guards, not a path the code uses
+    // "C:\Program Files\nodejs\", and an unquoted path is split at the space: the self-check then always fails and
+    // every update gets rolled back.
+    return { command: `"${nodeExe}" "${resolved.target}" cli self-check` };
+  }
+  if (interrupted) {
+    return {
+      command: `"${nodeExe}" -e "process.exit(1)" ${FAILING_SELF_CHECK_MARKER}`,
+      note: `an interrupted install is journaled and the self-check cannot be armed (${resolved.reason}): the repair will restore the previous version`,
+    };
+  }
+  return {
+    abort: `${resolved.reason}. Without a usable entry point the post-install self-check cannot be armed, and an `
+      + `unverified update would not be rollback-able. Repair with: npm install -g @wadeck-app/orchestrator-cli@latest`,
+  };
+}

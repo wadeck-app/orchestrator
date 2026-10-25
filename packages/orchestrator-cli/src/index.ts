@@ -27,6 +27,8 @@ import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
 import { registerOnStart } from './app-core-registration.js';
 import { refreshStartupEntry, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
+import { createUpdateScheduler } from './update-scheduling.js';
+import { updateNotice } from './update-notice.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import { guardStdio, makeFatalHandler, writeCrashMarker, readCrashMarker, clearCrashMarker, CRASH_MARKER_FILE } from './crash-guard.js';
 
@@ -130,24 +132,21 @@ async function main(): Promise<void> {
   // Stale binary cleanup moved below refreshStartupEntry: deleting the old stamp before the
   // login entry is repointed at the new one could leave login pointing at a deleted path.
 
-  // Init updateManager before try/finally so scheduleUpdate fires even on crash paths.
+  // Init updateManager before try/finally so the update scheduler fires even on crash paths.
   // @wadeck-app/shared-cli is ESM-only - use dynamic import() from a CJS module context.
   const { UpdateManager } = await import('@wadeck-app/shared-cli');
   const updateManager = new UpdateManager('@wadeck-app/orchestrator-cli', CONFIG_DIR);
 
-  let updateScheduled = false;
-  // reason is log-only context for *why* this call fired -- scheduleBackgroundUpdate() itself is
-  // silent (stdio: 'ignore' on the spawned updater), so without this the daemon log never shows
-  // that a background check happened at all, only its eventual outcome (if any) in update-log.txt.
-  const scheduleUpdate = (reason: string): void => {
-    if (updateScheduled) {
-      daemonLog.write(`background update check (${reason}): skipped, already scheduled this run`);
-      return;
-    }
-    updateScheduled = true;
-    daemonLog.write(`background update check triggered (${reason})`);
-    updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
-  };
+  // The one place the updater is spawned from. reason is log-only context for *why* it fired --
+  // scheduleBackgroundUpdate() itself is silent (stdio: 'ignore' on the spawned updater), so without
+  // it the daemon log never shows that a background check happened at all. A development build
+  // spawns nothing (see update-scheduling.ts).
+  const updates = createUpdateScheduler({
+    version,
+    bundlePath: process.argv[1] ?? '',
+    manager: updateManager,
+    log: (message) => daemonLog.write(message),
+  });
 
   // Create the logger before try/finally so crash paths can always write to it.
   const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'app'), 'daemon');
@@ -390,17 +389,8 @@ async function main(): Promise<void> {
     trayManager.on('log', (msg: string) => daemonLog.write(msg));
     trayManager.on('check-update', () => {
       // Always trigger regardless of the startup guard -- user explicitly requested update.
-      // Set UPDATER_FORCE so entry.ts bypasses autoUpdate:false (manual update must always work).
-      const prev = process.env['UPDATER_FORCE'];
-      process.env['UPDATER_FORCE'] = '1';
-      daemonLog.write('background update check triggered (tray: manual check-update)');
-      updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
-      if (prev === undefined) {
-        delete process.env['UPDATER_FORCE'];
-      }
-      else {
-        process.env['UPDATER_FORCE'] = prev;
-      }
+      // force sets UPDATER_FORCE so entry.ts bypasses autoUpdate:false (manual update must always work).
+      updates.request('tray: manual check-update', { force: true });
     });
     // The tray's quit and restart exit the process directly, past the kit's stop: they flush first (bounded).
     trayManager.on('quit',    () => { void events.flush().finally(() => process.exit(0)); });
@@ -433,25 +423,20 @@ async function main(): Promise<void> {
     }
 
     // Read and log any update state written by the background updater on previous run.
-    const updateState = updateManager.readAndClearState();
-    if (updateState) {
-      if (updateState.status === 'success') {
-        daemonLog.write(`Updated to ${updateState.newVersion ?? '?'} -- restart completed`);
-      } else if (updateState.status === 'rolled-back') {
-        daemonLog.write(`Update to ${updateState.targetVersion ?? '?'} failed (self-check). Rolled back to ${updateState.previousVersion ?? '?'}`);
-      } else if (updateState.status === 'update-failed') {
-        daemonLog.write(`Update failed: ${updateState.reason ?? 'unknown'}`);
-      }
+    // 'applying' is journaled by the updater before npm runs and is not cleared by the read: a dead updater
+    // behind it is an interrupted install, which the updater started just below repairs.
+    const stateNotice = updateNotice(updateManager.readAndClearState());
+    if (stateNotice) {
+      daemonLog.write(`update state: ${stateNotice.text}`);
     }
 
     // Schedule background update check on startup and every 30m.
     // In dev/test mode (no orchestrator-updater.cjs bundle) this is a no-op.
     // The updater: npm install -g @wadeck/orchestrator-cli@edge -> orch cli self-check -> rollback if failed.
-    scheduleUpdate('startup');
+    updates.request('startup', { oncePerRun: true });
     // unref() ensures the interval never prevents the process from exiting on SIGTERM.
     setInterval(() => {
-      daemonLog.write('background update check triggered (periodic, every 30m)');
-      updateManager.scheduleBackgroundUpdate(process.argv[1] ?? '', 'orchestrator-updater.cjs');
+      updates.request('periodic, every 30m');
     }, 30 * 60 * 1000).unref();
 
     // Canary, independent of the update manager: proves Node's own timer subsystem is still
@@ -468,7 +453,7 @@ async function main(): Promise<void> {
     }, 5 * 60 * 1000).unref();
   } finally {
     // Fire once on crash path; no-op if already scheduled above.
-    scheduleUpdate('crash-path fallback');
+    updates.request('crash-path fallback', { oncePerRun: true });
   }
 }
 

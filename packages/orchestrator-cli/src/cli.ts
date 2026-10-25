@@ -16,6 +16,8 @@ import { parseJobLogsArgs, runJobLogs } from './job-logs.js';
 import { PROGRESS_REPLAY_USAGE, parseReplayArgs, runProgressReplay } from './progress/replay-report.js';
 import { HELP_TEXT, JOB_HELP, JOB_LOGS_HELP } from './help-text.js';
 import { stripAnsi } from './ansi.js';
+import { isReleaseVersion, devBuildRefusalMessage } from './dev-build-guard.js';
+import { updateNotice } from './update-notice.js';
 
 /** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
 const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -1432,6 +1434,13 @@ Use --wait to block until the command finishes.`);
       }
 
       if (subCmd === 'update') {
+        // Before anything else: a repo-built bundle is older than every published version, so the updater would
+        // run `npm install -g` over the real install. Refused here with the reason; the updater refuses too.
+        if (!isReleaseVersion(version)) {
+          process.stderr.write(`[fail] ${devBuildRefusalMessage(version)}
+`);
+          process.exit(1);
+        }
         const updaterPath = path.join(__dirname, 'orchestrator-updater.cjs');
         const fsCheck = require('node:fs') as typeof import('node:fs');
         if (!fsCheck.existsSync(updaterPath)) {
@@ -2086,14 +2095,11 @@ List available jobs:
   const { UpdateManager: CliUpdateManager } = await import('@wadeck-app/shared-cli');
   const cliUpdateManager = new CliUpdateManager('@wadeck-app/orchestrator-cli', configDir);
   const cliUpdateState = cliUpdateManager.readAndClearState();
-  if (cliUpdateState?.status === 'success') {
-    process.stderr.write(`[orch] Updated to v${cliUpdateState.targetVersion ?? cliUpdateState.newVersion}\n`);
-  }
-  if (cliUpdateState?.status === 'rolled-back') {
-    process.stderr.write(`[orch] Rollback to v${cliUpdateState.previousVersion}\n`);
-  }
-  if (cliUpdateState?.status === 'failed') {
-    process.stderr.write(`[orch] Update failed (${cliUpdateState.error ?? cliUpdateState.reason})\n`);
+  // 'applying' is not cleared by the read: it is the updater's journal, repaired by its next run.
+  const cliUpdateNotice = updateNotice(cliUpdateState);
+  if (cliUpdateNotice) {
+    process.stderr.write(`[orch] ${cliUpdateNotice.text}
+`);
   }
 
   await runCli(process.argv.slice(2), { send, startDaemon, configDir });
