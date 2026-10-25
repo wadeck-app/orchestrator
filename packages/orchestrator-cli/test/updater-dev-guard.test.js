@@ -39,7 +39,7 @@ describe('the updater entry refuses to run from a development build', () => {
   test('a background run logs why and exits 0 without touching the config or the state', () => {
     const { configDir, run, logs } = runEntry({});
     assert.equal(run.status, 0, `stderr: ${run.stderr}`);
-    assert.match(logs, /this is a development build \(version 0\.0\.0-dev\): it does not update the global install/);
+    assert.match(logs, /dev build 0\.0\.0-dev: refusing to update the global install of orch.*orch cli update/);
     assert.equal(fs.existsSync(path.join(configDir, 'update-state.json')), false);
   });
 
@@ -53,7 +53,7 @@ describe('the updater entry refuses to run from a development build', () => {
       encoding: 'utf8', windowsHide: true, timeout: 60_000,
     });
     assert.equal(run.status, 1, `stdout: ${run.stdout} stderr: ${run.stderr}`);
-    assert.match(run.stderr, /this is a development build \(version 0\.0\.0-dev\)/);
+    assert.match(run.stderr, /dev build 0\.0\.0-dev: refusing to update/);
     assert.equal(fs.readFileSync(path.join(configDir, 'config.yml'), 'utf8'), yml, 'config.yml was modified');
   });
 });

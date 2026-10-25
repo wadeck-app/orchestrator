@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolveSelfCheckTarget, armSelfCheck } from './self-check-target.js';
 import { getErrorMessage } from '../fsUtil.js';
-import { isReleaseVersion, devBuildRefusalMessage } from '../dev-build-guard.js';
+import { isReleaseVersion, devBuildRefusalMessage } from '@wadeck-app/shared-cli/ReleaseVersion';
 import * as http from 'node:http';
 import semver from 'semver';
 
@@ -28,7 +28,7 @@ const currentVersion = typeof __ORCH_VERSION__ !== 'undefined' ? __ORCH_VERSION_
 // (incident 2026-10-24). Every route lands here: the daemon's startup/30-minute checks, the tray, and
 // `orch cli update`. Detached with stdio ignored, so the reason goes to the log `orch logs` shows.
 if (!isReleaseVersion(currentVersion)) {
-  const message = `${PKG_NAME}: ${devBuildRefusalMessage(currentVersion)}`;
+  const message = `${PKG_NAME}: ${devBuildRefusalMessage('orch', currentVersion)}`;
   appendLog(configDir, 'warn', message);
   if (process.env['UPDATER_FORCE'] === '1') {
     // Someone asked for this update: say so where they can read it, and fail.

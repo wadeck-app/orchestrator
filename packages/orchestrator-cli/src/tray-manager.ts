@@ -13,7 +13,7 @@ import { getErrorMessage } from './fsUtil.js';
 import type { Scheduler } from './scheduler.js';
 import type { Job } from './types.js';
 import { isLongRunning } from './long-running.js';
-import { isReleaseVersion, devBuildRefusalMessage } from './dev-build-guard.js';
+import { isReleaseVersion, devBuildRefusalMessage } from '@wadeck-app/shared-cli/ReleaseVersion';
 import type { DashboardManager } from './dashboard-manager.js';
 
 const MAX_FAILURES = 5;
@@ -361,7 +361,7 @@ export class TrayManager extends EventEmitter {
     // A development build can never equal a published version: it would claim an update for ever, and the
     // install row would lead to the updater, which refuses. Say so instead of checking.
     if (!isReleaseVersion(this._version)) {
-      this._logAction(`[tray] check-update: ${devBuildRefusalMessage(this._version)}`);
+      this._logAction(`[tray] check-update: ${devBuildRefusalMessage('orch', this._version)}`);
       this._updateStatus = 'idle';
       this._setVersionLabel('Development build: no updates', 6_000);
       this._refresh();

@@ -33,7 +33,7 @@ describe('a development build', () => {
       assert.notEqual(mgr._updateStatus, 'checking');
       assert.match(mgr._versionLabel ?? '', /development build/i);
       assert.equal(mgr._buildMenu().items.some((i) => i.id === 'update-install'), false);
-      assert.match(logs.join('\n'), /development build/);
+      assert.match(logs.join('\n'), /dev build/);
     });
   }
 });

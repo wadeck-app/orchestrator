@@ -101,8 +101,8 @@ describe('orch cli update integration', () => {
   test('cli update from a development build refuses, names the version and the way out, and exits 1', async () => {
     const { code, stdout, stderr } = await runCli(['cli', 'update']);
     assert.equal(code, 1);
-    assert.match(stderr, /\[fail\] this is a development build \(version \d+\.\d+\.\d+\): it does not update the global install/);
-    assert.match(stderr, /run it from the repo or install the published package/);
+    assert.match(stderr, /\[fail\] dev build \d+\.\d+\.\d+: refusing to update the global install of orch/);
+    assert.match(stderr, /Use the installed binary instead: orch cli update/);
     assert.doesNotMatch(stdout, /Running updater/, 'it went on to run the updater');
   });
 

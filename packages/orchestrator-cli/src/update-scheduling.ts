@@ -1,7 +1,7 @@
-import { isReleaseVersion, devBuildRefusalMessage } from './dev-build-guard.js';
+import { isReleaseVersion, devBuildRefusalMessage } from '@wadeck-app/shared-cli/ReleaseVersion';
 
 export interface UpdateSpawner {
-  scheduleBackgroundUpdate(bundlePath: string, updaterName: string): void;
+  scheduleBackgroundUpdate(bundlePath: string, updaterName: string, currentVersion: string): void;
 }
 
 export interface RequestOptions {
@@ -15,7 +15,7 @@ export type RequestResult = 'scheduled' | 'skipped-already' | 'skipped-dev';
 
 /**
  * The single place the daemon spawns the updater from (startup, every 30 min, tray). A development build
- * spawns nothing: see devBuildRefusalMessage. Background requests explain it once per run, explicit ones
+ * spawns nothing: see devBuildRefusalMessage (shared-cli); the version is also passed to scheduleBackgroundUpdate, which refuses too. Background requests explain it once per run, explicit ones
  * every time, so a person who clicked is never left without an answer.
  */
 export function createUpdateScheduler(deps: {
@@ -30,7 +30,7 @@ export function createUpdateScheduler(deps: {
     request(reason: string, opts: RequestOptions = {}): RequestResult {
       if (!isReleaseVersion(deps.version)) {
         if (opts.force || !devExplained) {
-          deps.log(`background update check (${reason}) skipped: ${devBuildRefusalMessage(deps.version)}`);
+          deps.log(`background update check (${reason}) skipped: ${devBuildRefusalMessage('orch', deps.version)}`);
           devExplained = true;
         }
         return 'skipped-dev';
@@ -48,7 +48,7 @@ export function createUpdateScheduler(deps: {
         process.env['UPDATER_FORCE'] = '1';
       }
       try {
-        deps.manager.scheduleBackgroundUpdate(deps.bundlePath, 'orchestrator-updater.cjs');
+        deps.manager.scheduleBackgroundUpdate(deps.bundlePath, 'orchestrator-updater.cjs', deps.version);
       } finally {
         if (opts.force) {
           if (previous === undefined) {

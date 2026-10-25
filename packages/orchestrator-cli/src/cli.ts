@@ -18,7 +18,7 @@ import { PROGRESS_REPLAY_USAGE, parseReplayArgs, runProgressReplay } from './pro
 import { HELP_TEXT, JOB_HELP, JOB_LOGS_HELP } from './help-text.js';
 import { stripAnsi } from './ansi.js';
 import { systemTime } from './time-service.js';
-import { isReleaseVersion, devBuildRefusalMessage } from './dev-build-guard.js';
+import { isReleaseVersion, devBuildRefusalMessage } from '@wadeck-app/shared-cli/ReleaseVersion';
 import { updateNotice } from './update-notice.js';
 import { unsupervisedWarning } from './unsupervised-warning.js';
 
@@ -1590,7 +1590,7 @@ Use --wait to block until the command finishes.`);
         // run `npm install -g` over the real install. Refused here with the reason; the updater refuses too.
         const updateVersion = deps.cliUpdate?.version ?? version;
         if (!isReleaseVersion(updateVersion)) {
-          process.stderr.write(`[fail] ${devBuildRefusalMessage(updateVersion)}
+          process.stderr.write(`[fail] ${devBuildRefusalMessage('orch', updateVersion)}
 `);
           process.exit(1);
         }
