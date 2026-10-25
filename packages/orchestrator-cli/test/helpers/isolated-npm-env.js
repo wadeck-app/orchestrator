@@ -50,6 +50,19 @@ function npmIsolationVars(root, opts = {}) {
 }
 
 /**
+ * A working directory with no .npmrc and no package.json above it (it lives under the throwaway root), so the
+ * repository's project-level npm config, which names GitHub Packages for @wadeck-app and outranks the user and global
+ * files, cannot apply. Environment variables outrank it by npm's documented precedence, but CI (ubuntu, 2026-10-25)
+ * showed `npm view` reaching GitHub Packages from the repository directory with the scope variable set: do not rely on
+ * one mechanism. Every npm a test spawns itself should use this as `cwd`.
+ */
+function isolatedNpmCwd(root) {
+  const cwd = path.join(root, 'npm-cwd');
+  fs.mkdirSync(cwd, { recursive: true });
+  return cwd;
+}
+
+/**
  * A full environment for a spawned process: `base` minus the steering variables, plus the isolation. `opts.extra` goes last.
  */
 function createIsolatedNpmEnv(root, opts = {}, base = process.env) {
@@ -81,7 +94,9 @@ function applySuiteNpmGuard(root, env = process.env) {
     vars.NPM_CONFIG_PREFIX = env.ORCH_TEST_NPM_PREFIX;
   }
   Object.assign(env, vars);
+  // Not an npm variable: where a test that spawns npm itself should run it (see isolatedNpmCwd).
+  env.ORCH_TEST_NPM_CWD = isolatedNpmCwd(root);
   return Object.keys(vars);
 }
 
-module.exports = { SCOPE_REGISTRY_VAR, UNREACHABLE_REGISTRY, npmIsolationVars, createIsolatedNpmEnv, applySuiteNpmGuard };
+module.exports = { isolatedNpmCwd, SCOPE_REGISTRY_VAR, UNREACHABLE_REGISTRY, npmIsolationVars, createIsolatedNpmEnv, applySuiteNpmGuard };

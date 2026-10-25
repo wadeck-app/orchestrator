@@ -25,9 +25,31 @@ after(() => {
   }
 });
 
-function npm(args, env) {
+function npm(args, env, cwd) {
   // A command line, not an argument list: npm is npm.cmd on Windows and needs a shell; every argument here is a literal.
-  return spawnSync(`npm ${args.join(' ')}`, { env, encoding: 'utf8', shell: true, windowsHide: true, timeout: 60_000 });
+  return spawnSync(`npm ${args.join(' ')}`, { env, cwd, encoding: 'utf8', shell: true, windowsHide: true, timeout: 60_000 });
+}
+
+// Everything needed to tell, from a CI log alone, why npm reached (or did not reach) the wrong registry.
+// Environment variables are listed by NAME only: a value may be a token.
+function diagnostic(res, env, cwd) {
+  const ask = (key) => {
+    const r = npm(['config', 'get', key, '--workspaces=false'], env, cwd);
+    return r.status === 0 ? r.stdout.trim() : `(failed: ${String(r.stderr).trim()})`;
+  };
+  const names = Object.keys(env).filter((k) => /npm|auth|registry/i.test(k)).sort();
+  return [
+    '',
+    `--- npm isolation diagnostic (${process.platform}, node ${process.version}, npm ${npm(['--version'], env, cwd).stdout.trim()})`,
+    `cwd: ${cwd ?? `(inherited) ${process.cwd()}`}`,
+    `npm config get registry: ${ask('registry')}`,
+    `npm config get @wadeck-app:registry: ${ask('@wadeck-app:registry')}`,
+    `npm config get userconfig: ${ask('userconfig')}`,
+    `env names: ${names.join(', ')}`,
+    `exit status: ${res.status}, signal: ${res.signal}, error: ${res.error ? res.error.message : 'none'}`,
+    `stdout: ${String(res.stdout).trim()}`,
+    `stderr: ${String(res.stderr).trim()}`,
+  ].join('\n');
 }
 const inside = (child, parent) => {
   const rel = path.relative(parent, child);
@@ -51,11 +73,21 @@ describe('the suite environment (what every test process inherited from the prel
     }
   });
 
-  test('a real npm request fails at once instead of reaching GitHub Packages', () => {
-    const res = npm(['view', '@wadeck-app/orchestrator-cli', 'version'], process.env);
-    assert.notEqual(res.status, 0, `npm view succeeded: the registry was reachable\n${res.stdout}`);
-    assert.match(res.stderr, /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed|network|127\.0\.0\.1:9/i);
-  });
+  // Both directories: the clean one is what a test that spawns npm itself should use; the repository one is where the
+  // product code under test (tray `npm view`, updater) runs npm, with the project-level .npmrc naming GitHub Packages.
+  // Measured on Windows: without the scope variable, `npm view` from the repository reaches GitHub Packages (401).
+  // CI ubuntu 2026-10-25 reached it from the repository WITH the variable set, for a reason not established.
+  for (const [label, cwd] of [['a directory with no npm config', () => process.env.ORCH_TEST_NPM_CWD], ['the repository (project-level .npmrc applies)', () => undefined]]) {
+    test(`a real npm request fails at once instead of reaching GitHub Packages, run from ${label}`, () => {
+      assert.ok(process.env.ORCH_TEST_NPM_CWD, 'the preload did not run: use `npm test`, not node --test alone');
+      const dir = cwd();
+      const res = npm(['view', '@wadeck-app/orchestrator-cli', 'version'], process.env, dir);
+      const why = diagnostic(res, process.env, dir);
+      assert.notEqual(res.status, 0, `npm view succeeded: the registry was reachable${why}`);
+      assert.doesNotMatch(String(res.stderr), /npm\.pkg\.github\.com/i, `npm reached GitHub Packages${why}`);
+      assert.match(String(res.stderr), /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed|network|127\.0\.0\.1:9/i, `unexpected npm failure${why}`);
+    });
+  }
 
   test('npm root -g, the call the updater makes, is under the throwaway prefix', () => {
     const res = npm(['root', '-g', '--workspaces=false'], process.env);
@@ -108,6 +140,28 @@ describe('the helpers', () => {
     assert.equal(env.PATH, 'x');
     assert.ok(inside(env.NPM_CONFIG_PREFIX, root));
     assert.equal(env.NPM_CONFIG_REGISTRY, UNREACHABLE_REGISTRY);
+  });
+
+  test('both config files carry the registry and the scope registry on their own, so a dropped variable cannot reach GitHub', () => {
+    const env = createIsolatedNpmEnv(tmp('files'), {}, {});
+    for (const file of [env.NPM_CONFIG_USERCONFIG, env.NPM_CONFIG_GLOBALCONFIG]) {
+      const text = fs.readFileSync(file, 'utf8');
+      assert.match(text, /^registry=http:\/\/127\.0\.0\.1:9$/m);
+      assert.match(text, /^@wadeck-app:registry=http:\/\/127\.0\.0\.1:9$/m);
+    }
+  });
+
+  test('the npm working directory exists, is under the throwaway root and has no project-level npm config or package.json above it', () => {
+    const cwd = process.env.ORCH_TEST_NPM_CWD;
+    assert.ok(cwd && inside(cwd, process.env.ORCH_TEST_TMP_ROOT), `ORCH_TEST_NPM_CWD is ${cwd}`);
+    assert.deepEqual(fs.readdirSync(cwd), []);
+    // npm's project root is the nearest ancestor holding a package.json or a node_modules; only there is a project-level
+    // npm config read. (A file in the home directory is the user-level one, replaced by ours, unless a package.json
+    // makes the home directory a project.)
+    for (let dir = cwd; ; dir = path.dirname(dir)) {
+      assert.ok(!fs.existsSync(path.join(dir, 'package.json')) && !fs.existsSync(path.join(dir, 'node_modules')), `${dir} would be npm's project root for npm run from ${cwd}`);
+      if (path.dirname(dir) === dir) { break; }
+    }
   });
 
   test('a registry can be given for a test that exercises a real install against a mock', () => {
