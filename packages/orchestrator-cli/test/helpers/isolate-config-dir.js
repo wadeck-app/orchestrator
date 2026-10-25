@@ -70,7 +70,7 @@ if (!process.env.APP_CORE_CONFIG_DIR) {
 // tray's `npm view` all run npm; an `npm install -g` a test started was killed halfway on 2026-10-24 and left the global
 // CLI uninstalled. A throwaway global prefix, cache and npm config files, and a registry nothing listens on, for every
 // process of the run. Inherited npm_config_* are dropped (`npm test` exports the caller's whole npm config that way); a deliberate choice is ORCH_TEST_NPM_PREFIX / ORCH_TEST_NPM_REGISTRY. The config files are always ours
-// (a real one carries the scope registry and the token). Guarded by test/npm-isolation.test.js.
+// (a real one carries the scope registry and the token). Guarded by test/npm-isolation-env.test.js and test/npm-isolation-registry.test.js.
 {
   const { applySuiteNpmGuard } = require('./isolated-npm-env');
   const npmRoot = path.join(dir, 'npm');
