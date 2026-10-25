@@ -155,6 +155,18 @@ describe('crash marker', () => {
     assert.throws(() => readCrashMarker(dir), new RegExp(`${CRASH_MARKER_FILE}`));
   });
 
+  // The shape the Go launcher writes when the daemon died without a report of its own (singleton-daemon-kit
+  // crashrestart.go): an extra "source", the version unknown, no stack.
+  test('a marker written by the launcher is read, source included', () => {
+    const dir = tmpDir();
+    const launcherMarker = {
+      time: '2026-10-25T10:00:00.000Z', kind: 'exit', source: 'launcher',
+      error: 'exit code 1 and left no crash report of its own', version: 'unknown', pid: 4242,
+    };
+    fs.writeFileSync(path.join(dir, CRASH_MARKER_FILE), JSON.stringify(launcherMarker, null, 2));
+    assert.deepEqual(readCrashMarker(dir), launcherMarker);
+  });
+
   test('clearCrashMarker removes it and tolerates its absence', () => {
     const dir = tmpDir();
     const { deps } = makeDeps(dir);

@@ -43,5 +43,7 @@ func main() {
 		UpdateCmd: []string{
 			{{range .UpdateCmd}}{{end}}
 		},
+		// Enabled here, never from launcher.config.json (build.sh refuses a crashRestart key there).
+		CrashRestart: &launcher.CrashRestart{StartCommand: "orch start"},
 	})
 }

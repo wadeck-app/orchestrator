@@ -52,6 +52,8 @@ export interface CrashMarker {
   kind:    string;
   error:   string;
   stack?:  string;
+  /** "launcher" when the Go launcher wrote it because the daemon died without a report (then version is "unknown"). */
+  source?: 'launcher';
   version: string;
   pid:     number;
 }
