@@ -739,6 +739,9 @@ export class TrayManager extends EventEmitter {
           if (result.ok) {
             this._startupEnabled = true;
             this._logAction(`[tray] startup-toggle: enabled (${result.detail})`);
+            for (const w of result.warnings ?? []) {
+              this._logAction(`[tray] startup-toggle: warning: ${w}`);
+            }
           } else {
             this._logAction(`[tray] startup-toggle: enable failed: ${result.error}`);
           }

@@ -244,6 +244,8 @@ export interface StartupResult {
   ok: boolean;
   detail?: string;
   error?: string;
+  /** The entry was written, but something the user should act on happened (e.g. the login-shell PATH could not be read). */
+  warnings?: string[];
 }
 
 export type TriggerSource =

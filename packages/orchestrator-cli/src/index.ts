@@ -25,7 +25,7 @@ import { findOrchServerBinary } from './dashboard-binary.js';
 import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
 import { registerOnStart } from './app-core-registration.js';
-import { refreshStartupEntry, shouldPruneStaleBinaries } from './startup.js';
+import { refreshStartupEntry, reportStartupRefresh, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
 import { createUpdateScheduler } from './update-scheduling.js';
 import { updateNotice } from './update-notice.js';
@@ -409,9 +409,7 @@ async function main(): Promise<void> {
     let startupRefresh: ReturnType<typeof refreshStartupEntry> = null;
     try {
       startupRefresh = refreshStartupEntry(CONFIG_DIR);
-      if (startupRefresh && !startupRefresh.ok) {
-        daemonLog.write(`start-at-login refresh failed: ${startupRefresh.error}`);
-      }
+      reportStartupRefresh(startupRefresh, (line) => daemonLog.write(line));
     } catch (e) {
       daemonLog.write(`start-at-login refresh crashed: ${getErrorMessage(e)}`);
       startupRefresh = { ok: false, error: getErrorMessage(e) };

@@ -30,6 +30,31 @@ Integers must be whole and non-negative. `0` is valid and means "keep none", exc
 - Any other value leaves the tray on (and is logged as ignored).
 - `npm test` sets it for the whole run (`test/helpers/isolate-config-dir.js`): a daemon a test kills by force leaves a ghost icon in the Windows taskbar.
 
+## Where jobs get their PATH (macOS)
+
+A job inherits the daemon's `PATH`, and a job's own `env: { PATH }` **replaces** it (it is not appended). The daemon's PATH depends on how it started:
+
+| Started by | PATH |
+|---|---|
+| `orch start` / `orch restart` (the CLI spawns the Go launcher directly, launchd is not involved) | The PATH of the shell that ran the command |
+| launchd at login (`~/Library/LaunchAgents/com.wadeck.orchestrator.plist`) | `EnvironmentVariables.PATH` of the plist |
+
+launchd never reads `~/.zshrc`, so a tool found only through it (`~/.local/bin/claude`) failed with `command not found` (exit 127) in a login-started daemon. On macOS the plist now carries the PATH of your login shell:
+
+- Captured with `$SHELL -l -i -c` (fallback `/bin/zsh` when `$SHELL` is unset or not an absolute executable path; that is warned about), 5 s timeout, no PATH inherited from the daemon (the previous plist PATH would otherwise live forever).
+- Order: the daemon's node directory, your entries, then `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin` if absent. Your entries therefore come before the system ones, as in a terminal: a `~/bin/git` shadows `/usr/bin/git` for jobs too.
+- Only absolute directories are kept (relative entries are dropped and named in a warning), deduplicated, at most 100.
+- **Frozen at write time.** The plist is rewritten at every daemon start (and by `orch install`), so a `~/.zshrc` edit applies after `orch restart`. Do not edit the plist by hand: it is overwritten.
+- See what a job gets: `orch exec 'printenv PATH'`, or read `EnvironmentVariables` in the plist.
+
+When the capture fails (timeout, non-zero exit, shell missing, no markers in the output) the plist gets a default PATH (node dir, `~/.local/bin`, `/opt/homebrew/bin`, `/opt/homebrew/sbin`, then the fixed entries) and the daemon log (`orch logs`) shows:
+
+```
+start-at-login warning: could not read the PATH of your login shell (<reason>). The start-at-login entry uses a default PATH instead: ... Fix: make `/bin/zsh -l -i -c 'echo $PATH'` run cleanly in under 5s ..., then run `orch restart` to rewrite the plist.
+```
+
+Fix: run that command in a terminal; a slow or blocking command in `~/.zshrc` / `~/.zprofile` (or one that prompts) is the usual cause. Output printed by rc files is harmless (the PATH is read between unique markers). Windows start-at-login uses the registry and is unaffected.
+
 ## Colour
 
 With `jobsNoColor: true` (default) a job, supervised or not, and an `orch exec` start with:

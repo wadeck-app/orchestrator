@@ -318,3 +318,11 @@ exit-code claim was dropped for lack of sources in this checkout.
 **Problem:** The resource monitor's skip guard held only until the first stalled sample. `samplingSince` was cleared unconditionally when a walk settled, so the walk the stall escape had overtaken cleared the marker belonging to its still-outstanding successor -- and from then on every tick started another walk. Overlapping walks counted as consecutive `hardBreaches`, which kills a job early.
 **Fix:** Tag each walk with an incrementing id and clear the marker only when `walk === currentWalk`.
 **Context:** Surfaced as a Windows-only flake in "a sample is skipped while the previous one is still in flight", which only caught it when a runner happened to stretch a walk past the stall window on its own -- 10 green runs in a row, then red on an unrelated commit. Forcing the stall in the test makes the cascade deterministic on any host: 11 premature overlaps at ~62ms before the fix, none after. When an escape hatch is bounded by "one outstanding operation", the marker must identify *which* operation owns it; a bare timestamp cannot.
+
+---
+
+### A launchd-started daemon does not see the PATH of the user's terminals
+
+**Problem:** On macOS the `claude-update` job failed with `claude: command not found` (127): `~/.local/bin` is added in `~/.zshrc`, which launchd never reads, and the plist PATH was a fixed list (`nodeBinDir:/usr/local/bin:/usr/bin:...`) rewritten at every daemon start, so hand edits were lost.
+**Fix:** `planMacPath` (`src/login-shell-path.ts`) captures the login shell's PATH when the plist is written (markers around `printf`, 5 s timeout, SIGKILL, no inherited PATH) and merges it after the daemon's node dir; on failure it writes a default list and returns a warning that `reportStartupRefresh` puts in the daemon log.
+**Context:** `orch start` spawns the Go launcher directly with the shell's own PATH, so only login-started daemons were affected (and it works "on my terminal"). A job's own `env.PATH` replaces the daemon PATH rather than extending it. Do not pass the daemon's PATH to the capturing shell: it is the previous plist's, which would keep a stale node directory forever. Not run on a real Mac yet: all tests inject the shell runner.

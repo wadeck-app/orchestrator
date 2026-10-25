@@ -793,6 +793,9 @@ To restart the job, run: orch restart-job ${jobArg}`);
       const result = enableStartup(configDir);
       if (result.ok) {
         console.log(`Orchestrator registered for startup. (${result.detail})`);
+        for (const w of result.warnings ?? []) {
+          console.error(`Warning: ${w}`);
+        }
       } else {
         console.error(`Failed to register startup: ${result.error}`);
         process.exit(1);

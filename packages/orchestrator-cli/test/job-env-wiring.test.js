@@ -110,6 +110,28 @@ describe('Scheduler: the environment of a job', () => {
   });
 });
 
+describe('Scheduler: the PATH of a job', () => {
+  let savedPath;
+  beforeEach(() => { savedPath = process.env.PATH; });
+  afterEach(() => { process.env.PATH = savedPath; });
+
+  test('a job inherits the daemon PATH untouched', async () => {
+    process.env.PATH = '/daemon/bin:/usr/bin';
+    const env = await jobEnvOf();
+    assert.equal(env.PATH ?? env.Path, '/daemon/bin:/usr/bin');
+  });
+
+  test('a PATH in the job\'s own env REPLACES the daemon PATH, it is not appended to it', async () => {
+    process.env.PATH = '/daemon/bin:/usr/bin';
+    const env = await jobEnvOf({ job: { env: { PATH: '/job/bin' } } });
+    assert.equal(env.PATH, '/job/bin');
+    if (process.platform !== 'win32') {
+      // Windows keeps the daemon's `Path` beside the job's `PATH` in this plain copy; the rule being documented is POSIX's.
+      assert.ok(!JSON.stringify(env).includes('/daemon/bin'), 'the daemon PATH must not leak into a job that sets its own');
+    }
+  });
+});
+
 describe('ExecManager: the environment of a command', () => {
   function execEnvOf({ options = {}, env } = {}) {
     let seen;

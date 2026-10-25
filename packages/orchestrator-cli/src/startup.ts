@@ -4,6 +4,10 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import type { StartupResult } from './types.js';
 import { findLauncherBinary, findDaemonEntry, launcherToRun } from './platform-binary.js';
+import {
+  planMacPath, mergeMacPath, realShellRunner, realIsExecutableFile,
+  type MacPathDeps,
+} from './login-shell-path.js';
 
 const REG_KEY            = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
@@ -64,6 +68,22 @@ export function buildMacArgs(configDir: string): string[] {
   return [launcher, configDir];
 }
 
+/**
+ * Seams for tests and nothing else: production calls pass none. They let the macOS and Windows
+ * branches run on any host without touching the real ~/Library/LaunchAgents, launchctl, the
+ * registry or the user's shell.
+ */
+export interface StartupDeps {
+  platform?: NodeJS.Platform;
+  plistPath?: string;
+  exec?: typeof execFileSync;
+  macPath?: Partial<MacPathDeps>;
+  /** Replaces buildMacArgs / buildWindowsCommand (both need the Go launcher, absent on CI). */
+  programArguments?: string[];
+  windowsCommand?: string;
+  validateTarget?: () => string | null;
+}
+
 function macPlistPath(): string {
   // violations-suppress: shared/no-out-of-repo-path launchd only reads per-user agents from ~/Library/LaunchAgents; the location is macOS's, not ours
   return path.join(os.homedir(), 'Library', 'LaunchAgents', `${LAUNCH_AGENT_LABEL}.plist`);
@@ -73,11 +93,14 @@ function xmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function buildMacPlist(programArguments: string[], configDir: string): string {
+/**
+ * @param pathEntries the PATH of the daemon, in order (see planMacPath). Without it only the
+ *   historical fixed list is written, which cannot find anything under ~/.local/bin.
+ */
+export function buildMacPlist(programArguments: string[], configDir: string, pathEntries?: readonly string[]): string {
   const argsXml    = programArguments.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
   const logDir     = xmlEscape(path.join(configDir, 'logs'));
-  const nodeBinDir = xmlEscape(path.dirname(process.execPath));
-  const envPath    = [nodeBinDir, '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':');
+  const envPath    = xmlEscape((pathEntries ?? mergeMacPath(path.dirname(process.execPath), [])).join(':'));
   // launchd can inject environment variables, so on macOS the launcher is handed an absolute
   // bundle path and never has to resolve it relative to its own directory. That is what makes
   // start-at-login here independent of whether npm hoisted or nested the platform package.
@@ -113,54 +136,72 @@ ${argsXml}
 `;
 }
 
-export function enableStartup(configDir: string): StartupResult {
+export function enableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
+  const platform = deps.platform ?? process.platform;
+  const exec     = deps.exec ?? execFileSync;
   if (/[\r\n\x00]/.test(configDir)) {
     return { ok: false, error: 'configDir contains invalid characters' };
   }
 
   // Platform first: on a target with no start-at-login mechanism at all, reporting a missing
   // launcher would name a consequence instead of the actual reason.
-  if (process.platform !== 'darwin' && process.platform !== 'win32') {
-    return { ok: false, error: `Unsupported platform: ${process.platform}` };
+  if (platform !== 'darwin' && platform !== 'win32') {
+    return { ok: false, error: `Unsupported platform: ${platform}` };
   }
 
-  const unusable = validateStartupTarget();
+  const unusable = (deps.validateTarget ?? validateStartupTarget)();
   if (unusable) {
     return { ok: false, error: unusable };
   }
 
-  if (process.platform === 'darwin') {
-    const plistPath = macPlistPath();
+  if (platform === 'darwin') {
+    const plistPath = deps.plistPath ?? macPlistPath();
     const uid       = process.getuid?.() ?? 0;
     const target    = `gui/${uid}/${LAUNCH_AGENT_LABEL}`;
     const diag: string[] = [];
+    let warnings: string[] = [];
 
     try {
       fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-      const args  = buildMacArgs(configDir);
-      const plist = buildMacPlist(args, configDir);
+      const args  = deps.programArguments ?? buildMacArgs(configDir);
+      // Only here, only on darwin: the shell is read when the plist is written, never on Windows.
+      const plan  = planMacPath({
+        runShell:         realShellRunner,
+        shellEnv:         process.env.SHELL,
+        isExecutableFile: realIsExecutableFile,
+        // violations-suppress: shared/no-out-of-repo-path the user's home is where ~/.local/bin lives; it is the point of the default list
+        home:             os.homedir(),
+        nodeBinDir:       path.dirname(process.execPath),
+        env:              process.env,
+        ...deps.macPath,
+      });
+      warnings = plan.warnings;
+      diag.push(plan.captured ? 'path=login-shell' : 'path=default');
+      const plist = buildMacPlist(args, configDir, plan.entries);
       const tmp   = plistPath + '.tmp';
       fs.writeFileSync(tmp, plist, 'utf8');
       fs.renameSync(tmp, plistPath);
       diag.push('plist=written');
     } catch (e) { return { ok: false, error: `Failed to write plist: ${(e as Error).message}` }; }
 
-    try { execFileSync('launchctl', ['enable', target], { stdio: 'pipe', windowsHide: true }); diag.push('enable=ok'); }
+    try { exec('launchctl', ['enable', target], { stdio: 'pipe', windowsHide: true }); diag.push('enable=ok'); }
     catch (e) { diag.push(`enable=failed(${(e as Error).message?.trim()})`); }
 
-    return { ok: true, detail: diag.join(' | ') };
+    return warnings.length > 0
+      ? { ok: true, detail: diag.join(' | '), warnings }
+      : { ok: true, detail: diag.join(' | ') };
   }
 
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     const valueName = buildRegValueName(configDir);
-    const value     = buildWindowsCommand(configDir);
+    const value     = deps.windowsCommand ?? buildWindowsCommand(configDir);
     try {
-      execFileSync('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe', windowsHide: true });
+      exec('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe', windowsHide: true });
     } catch (e) { return { ok: false, error: `reg.exe failed: ${(e as Error).message}` }; }
     return { ok: true, detail: `registry key set: ${REG_KEY}\\${valueName}` };
   }
 
-  return { ok: false, error: `Unsupported platform: ${process.platform}` };
+  return { ok: false, error: `Unsupported platform: ${platform}` };
 }
 
 export function disableStartup(configDir: string): StartupResult {
@@ -195,14 +236,14 @@ export function disableStartup(configDir: string): StartupResult {
   return { ok: false, error: `Unsupported platform: ${process.platform}` };
 }
 
-export function isStartupEnabled(configDir: string): boolean {
-  if (process.platform === 'darwin') {
+export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boolean {
+  if ((deps.platform ?? process.platform) === 'darwin') {
     // The launchd label is a single global one, so the plist must also be checked to belong to
     // THIS configDir. Otherwise a second instance sees "enabled" and refreshStartupEntry, which
     // now runs on every daemon start, silently rewrites the plist to its own configDir and
     // steals the login entry from the first.
     try {
-      return fs.readFileSync(macPlistPath(), 'utf8').includes(`<string>${xmlEscape(configDir)}</string>`);
+      return fs.readFileSync(deps.plistPath ?? macPlistPath(), 'utf8').includes(`<string>${xmlEscape(configDir)}</string>`);
     } catch { return false; }
   }
   if (process.platform === 'win32') {
@@ -226,11 +267,21 @@ export function isStartupEnabled(configDir: string): boolean {
  * would then simply stop starting at login, with nothing to show why.
  * No-op when start-at-login is not enabled.
  */
-export function refreshStartupEntry(configDir: string): StartupResult | null {
-  if (!isStartupEnabled(configDir)) {
+export function refreshStartupEntry(configDir: string, deps: StartupDeps = {}): StartupResult | null {
+  if (!isStartupEnabled(configDir, deps)) {
     return null;
   }
-  return enableStartup(configDir);
+  return enableStartup(configDir, deps);
+}
+
+/** One daemon-log line per failure and per warning of a refresh; null (nothing to refresh) writes nothing. */
+export function reportStartupRefresh(result: StartupResult | null, write: (line: string) => void): void {
+  if (result && !result.ok) {
+    write(`start-at-login refresh failed: ${result.error}`);
+  }
+  for (const w of result?.warnings ?? []) {
+    write(`start-at-login warning: ${w}`);
+  }
 }
 
 /**
