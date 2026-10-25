@@ -78,16 +78,13 @@ export function formatEndTime(etaAt: string, nowMs: number): string {
 const CAP = 0.99;
 
 /**
- * Progress bar and end time of a running job, from the daemon's estimate (history of the job's past runs).
+ * "Now" for an estimate, in epoch millis, on the daemon's clock, and a re-render every second while the estimate has an end
+ * time to count down to. The offset between the two clocks is fixed when an estimate first arrives (a new `serverNow`).
+ * `nowMs` replaces the clock (and the tick) for the tests.
  *
- * Between two polls the percentage is moved toward the cap along the line to the end time, and the remaining time
- * counts down against the daemon's clock, so a 30 s poll does not make the bar look frozen. The estimate itself is
- * only ever replaced by the next poll.
- *
- * @registryCategory composite
- * @registryTags job progress eta running
+ * Shared by JobProgress and the cells of the list view, so a card and a table row never disagree on the countdown.
  */
-export function JobProgress({ progress, nowMs, fill = false }: JobProgressProps): React.ReactElement | null {
+export function useProgressNow(progress: ProgressEstimate | null | undefined, nowMs?: number): number {
   const [, setTick] = useState(0);
   const skew = useRef<{ serverNow: string; ms: number } | null>(null);
 
@@ -100,41 +97,78 @@ export function JobProgress({ progress, nowMs, fill = false }: JobProgressProps)
     return () => clearInterval(id);
   }, [ticks]);
 
+  if (progress != null && (skew.current === null || skew.current.serverNow !== progress.serverNow)) {
+    skew.current = { serverNow: progress.serverNow, ms: Date.parse(progress.serverNow) - Date.now() };
+  }
+  return nowMs ?? Date.now() + (skew.current === null || Number.isNaN(skew.current.ms) ? 0 : skew.current.ms);
+}
+
+/** What an estimate says at a given "now": the shared reading behind the card's row and the list view's two cells. */
+export interface ProgressView {
+  /** `none`: no percentage (the reason says why). `overdue`: a percentage but no end time. */
+  state: 'none' | 'estimate' | 'overdue';
+  /** Percentage to draw, 0-99; only meaningful unless `state` is `none`. */
+  pct: number;
+  /** "ends ~14:32 (in 6 min)" for an estimate, the reason otherwise. */
+  detail: string;
+  low: boolean;
+  /** Strategy-qualified reason, for a tooltip. */
+  tooltip: string;
+}
+
+/**
+ * Between two polls the percentage is moved toward the cap along the line to the end time, so a 30 s poll does not make the
+ * bar look frozen. The estimate itself is only ever replaced by the next poll.
+ */
+export function viewProgress(progress: ProgressEstimate, now: number): ProgressView {
+  const tooltip = `${progress.reason}${progress.strategyId ? ` [strategy: ${progress.strategyId}]` : ''}`;
+  const low = progress.confidence === 'low';
+  if (progress.progress === null) {
+    return { state: 'none', pct: 0, detail: progress.reason, low, tooltip };
+  }
+  if (progress.etaAt === null) {
+    return { state: 'overdue', pct: Math.round(progress.progress * 100), detail: progress.reason, low, tooltip };
+  }
+  const serverNow = Date.parse(progress.serverNow);
+  const eta = Date.parse(progress.etaAt);
+  const span = eta - serverNow;
+  const frac = span > 0 ? Math.min(1, Math.max(0, (now - serverNow) / span)) : 1;
+  const shown = Math.min(CAP, progress.progress + (CAP - progress.progress) * frac);
+  return {
+    state: 'estimate',
+    pct: Math.round(shown * 100),
+    detail: `ends ~${formatEndTime(progress.etaAt, now)} (${formatRemaining(eta - now)})`,
+    low,
+    tooltip,
+  };
+}
+
+/**
+ * Progress bar and end time of a running job, from the daemon's estimate (history of the job's past runs).
+ *
+ * Between two polls the percentage is moved toward the cap along the line to the end time, and the remaining time
+ * counts down against the daemon's clock, so a 30 s poll does not make the bar look frozen. The estimate itself is
+ * only ever replaced by the next poll.
+ *
+ * @registryCategory composite
+ * @registryTags job progress eta running
+ */
+export function JobProgress({ progress, nowMs, fill = false }: JobProgressProps): React.ReactElement | null {
+  const now = useProgressNow(progress, nowMs);
+
   if (progress == null) {
     return null;
   }
 
-  // The offset between the daemon's clock and this one, fixed when an estimate first arrives.
-  if (skew.current === null || skew.current.serverNow !== progress.serverNow) {
-    skew.current = { serverNow: progress.serverNow, ms: Date.parse(progress.serverNow) - Date.now() };
-  }
-  const now = nowMs ?? Date.now() + (Number.isNaN(skew.current.ms) ? 0 : skew.current.ms);
-  const tooltip = `${progress.reason}${progress.strategyId ? ` [strategy: ${progress.strategyId}]` : ''}`;
+  const { state, pct, detail, low, tooltip } = viewProgress(progress, now);
 
-  if (progress.progress === null) {
+  if (state === 'none') {
     // The reason is the whole content, so a tooltip would only say it twice.
     return fill
       ? <span data-progress-state="none" title={progress.reason} className="block w-full min-w-0 truncate text-xs text-muted">{progress.reason}</span>
       : <span data-progress-state="none" className="text-xs text-muted">{progress.reason}</span>;
   }
 
-  const serverNow = Date.parse(progress.serverNow);
-  let shown = progress.progress;
-  let detail: string;
-  let state: 'estimate' | 'overdue';
-  if (progress.etaAt === null) {
-    state = 'overdue';
-    detail = progress.reason;
-  } else {
-    state = 'estimate';
-    const eta = Date.parse(progress.etaAt);
-    const span = eta - serverNow;
-    const frac = span > 0 ? Math.min(1, Math.max(0, (now - serverNow) / span)) : 1;
-    shown = Math.min(CAP, progress.progress + (CAP - progress.progress) * frac);
-    detail = `ends ~${formatEndTime(progress.etaAt, now)} (${formatRemaining(eta - now)})`;
-  }
-  const low = progress.confidence === 'low';
-  const pct = Math.round(shown * 100);
   const fullDetail = `${detail}${low ? ' - low confidence' : ''}`;
 
   const body = (

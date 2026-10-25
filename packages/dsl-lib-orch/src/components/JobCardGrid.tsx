@@ -7,6 +7,8 @@ import { postTrigger, readErrorSentence } from '../trigger-job.js';
 import type { JobWithHistory } from '../job-with-history.js';
 import { JobCard, TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { JobStatusBadge } from './JobStatusBadge.js';
+import { JobEtaCell } from './JobEtaCell.js';
+import { JobProgressBarCell } from './JobProgressBarCell.js';
 import { relativeTime } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
 import { appPath, getApiBase } from '../runtime-config.js';
@@ -30,6 +32,14 @@ function readViewMode(): ViewMode {
 // @formatter:off
 const BULK_BAR_CLS  = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 bg-surface rounded-lg border border-border shadow-lg flex-wrap max-w-2xl';
 // @formatter:on
+
+// Column widths of the list view, in dsl-ui's spacing units (4 px each). Job is the narrow one: it truncates.
+const JOB_COL_WIDTH      = 48;
+const PROGRESS_COL_WIDTH = 28;
+// The name fills its column exactly (DataTable cells pad 12 px a side). A percentage or max-width would be ignored by the
+// auto table layout, which widens the column to the longest name instead of cutting it.
+const JOB_NAME_WIDTH_PX   = JOB_COL_WIDTH * 4 - 24;
+const ACTIONS_COL_WIDTH  = 42;
 
 /**
  * One job, flattened for DataTable's list view.
@@ -326,10 +336,20 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
         </span>
       ),
     },
-    ColumnHelpers.text<JobRow>('label', 'Job'),
+    // Truncated in a fixed width, the full name in a tooltip: a long name used to break mid-word over several
+    // lines (the default for a free-width column) and took the room the progress columns need. The span does it,
+    // not DataTable's own `truncate`, whose max-w-xs (20rem) cell is far wider than this column should be.
+    {
+      key: 'label',
+      label: 'Job',
+      nowrap: true,
+      width: JOB_COL_WIDTH,
+      render: ({ item }) => <span title={item.job.label} style={{ width: JOB_NAME_WIDTH_PX }} className="block truncate">{item.job.label}</span>,
+    },
     {
       key: 'type',
       label: 'Type',
+      nowrap: true,
       render: ({ item }) => (
         <span className={`${TYPE_BADGE_BASE} ${TYPE_COLORS[item.job.type as keyof typeof TYPE_COLORS] ?? 'bg-tag-once-bg text-tag-once'}`}>
           {item.job.type}
@@ -340,18 +360,38 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
     {
       key: 'status',
       label: 'Status',
+      nowrap: true,
       render: ({ item }) => {
         const last = latestRun(item.runHistory);
         return <JobStatusBadge exitCode={last?.exitCode ?? null} running={isJobRunning(item.runHistory)} cancelled={isRunCancelled(last)} skipped={isRunSkipped(last)} endReason={runEndReason(last)} />;
       },
     },
     ColumnHelpers.text<JobRow>('lastRun', 'Last run', { muted: true }),
+    // Both cells are empty (a dash) unless the job is running: a finished run has no progress to show.
+    {
+      key: 'progress',
+      label: 'Progress',
+      nowrap: true,
+      width: PROGRESS_COL_WIDTH,
+      render: ({ item }) => <JobProgressBarCell progress={isJobRunning(item.runHistory) ? item.progress : null} />,
+    },
+    {
+      key: 'eta',
+      label: 'ETA',
+      nowrap: true,
+      render: ({ item }) => <JobEtaCell progress={isJobRunning(item.runHistory) ? item.progress : null} />,
+    },
     {
       key: 'actions',
       label: 'Actions',
+      // A fixed width, as narrow as the two buttons: the spare room of the table then goes to the other columns
+      // instead of widening this one into dead space on the right of the buttons. The wrapper pushes them to the
+      // right edge in case the cell is still wider.
+      nowrap: true,
+      width: ACTIONS_COL_WIDTH,
       // Same pair as the card footer, at the same size. The spans stop the row's click.
       render: ({ item }) => (
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center justify-end gap-2">
           <span onClick={e => e.stopPropagation()}>
             <ButtonLink to={appPath(`/jobs/${item.job.id}/logs`)} label="Logs" icon={<FileText size={12} />} variant="secondary" size="sm" />
           </span>

@@ -103,6 +103,9 @@ function surfaces(theme: 'light' | 'dark'): Array<{ place: string; bg: string }>
     { place: 'amber alert card (design B)', bg: paletteBg(alertCls, dark) },
     { place: 'page background (design C inline row)', bg: dsl.get('--color-bg')! },
     { place: 'job card', bg: dsl.get('--color-surface')! },
+    // The list view's Progress column: DataTable paints the table bg-surface and a hovered row bg-bg-secondary.
+    { place: 'list view table row', bg: dsl.get('--color-surface')! },
+    { place: 'list view table row, hovered', bg: dsl.get('--color-bg-secondary')! },
   ];
   if (dark) {
     // The log toolbar is a ThemeScope that is dark whatever the app theme is.

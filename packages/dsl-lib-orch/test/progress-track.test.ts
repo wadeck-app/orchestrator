@@ -102,6 +102,9 @@ function surfaces(theme: 'light' | 'dark'): Array<{ place: string; bg: string }>
     { place: 'amber alert card (design B)', bg: paletteBg(alertCls, dark) },
     { place: 'page background (design C inline row)', bg: dsl.get('--color-bg')! },
     { place: 'job card', bg: dsl.get('--color-surface')! },
+    // The list view's Progress column: DataTable paints the table bg-surface and a hovered row bg-bg-secondary.
+    { place: 'list view table row', bg: dsl.get('--color-surface')! },
+    { place: 'list view table row, hovered', bg: dsl.get('--color-bg-secondary')! },
   ];
   if (dark) {
     // The log toolbar is a ThemeScope that is dark whatever the app theme is.
@@ -113,6 +116,10 @@ function surfaces(theme: 'light' | 'dark'): Array<{ place: string; bg: string }>
 describe('JobProgress track colour', () => {
   it('JobProgress paints the track with the progress-track token', () => {
     expect(read(path.join(pkg, 'src/components/JobProgress.tsx'))).toContain('bg-progress-track');
+  });
+
+  it('the list view Progress cell takes the same track', () => {
+    expect(read(path.join(pkg, 'src/components/JobProgressBarCell.tsx'))).toContain('PROGRESS_TRACK_CLS');
   });
 
   it('the uptime bar of the job card, which sits on the card surface checked below, takes the same track', () => {
