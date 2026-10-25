@@ -103,7 +103,7 @@ describe('orch stop', () => {
 describe('orch restart', () => {
   test('calls restart', async () => {
     const { calls } = await run(['restart']);
-    assert.equal(calls[0].command, 'restart');
+    assert.ok(calls.some((c) => c.command === 'restart'), 'restart was not sent');
   });
 });
 

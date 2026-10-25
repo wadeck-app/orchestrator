@@ -50,6 +50,10 @@ them in the same transaction and a rollback restores the matching pair. They are
 only when the binary hash changes, so their version has gaps and legitimately lags the main
 package.
 
+Linux has no platform package: an npm install there has no supervisor, so jobs run unsupervised and die
+with the daemon on stop, restart and update (`orch` warns first). The linux-x64 supervisor exists only in a
+source checkout (`npm run build-supervisor`); linux-arm64 has none.
+
 Never assume a fixed path between the two packages: npm hoists the platform package next to the
 main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the launcher,
 the tray and the daemon entry via `require.resolve`; the Go launcher resolves its own bundle from

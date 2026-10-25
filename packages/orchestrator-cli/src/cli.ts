@@ -20,6 +20,7 @@ import { stripAnsi } from './ansi.js';
 import { systemTime } from './time-service.js';
 import { isReleaseVersion, devBuildRefusalMessage } from './dev-build-guard.js';
 import { updateNotice } from './update-notice.js';
+import { unsupervisedWarning } from './unsupervised-warning.js';
 
 /** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
 const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -655,6 +656,34 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   const send        = deps.send        ?? (() => { throw new Error('no send'); });
   const startDaemon = deps.startDaemon ?? (() => {});
   const configDir   = deps.configDir   ?? DEFAULT_CONFIG_DIR;
+  const platform    = deps.platform    ?? process.platform;
+
+  /**
+   * Before a command that ends the daemon: says which running jobs die with it when no supervisor guards them
+   * (the supervisor is off, or was asked for and is missing). Never asks and never blocks: the command goes ahead.
+   * A daemon that is down has nothing to lose; any other failure to find out is said, not swallowed.
+   */
+  const warnJobsDie = async (action: string, knownState?: Record<string, RuntimeEntry[]>): Promise<void> => {
+    try {
+      const info = await send('get-daemon-info', undefined, { autoStart: false }) as DaemonInfo;
+      if (typeof info !== 'object' || info === null || !info.supervisor) {
+        throw new Error('the answer has no supervisor section');
+      }
+      if (info.supervisor.active) {
+        return;
+      }
+      const state = knownState ?? await send('list-state', undefined, { autoStart: false }) as Record<string, RuntimeEntry[]>;
+      const warning = unsupervisedWarning(action, info.supervisor, state, platform);
+      if (warning !== null) {
+        console.error(warning);
+      }
+    } catch (e) {
+      if (isDaemonDownError(e)) {
+        return;
+      }
+      console.error(`warning: could not check whether the running jobs survive ${action} (${getErrorMessage(e)}). If the daemon is older than this CLI, jobs without a supervisor die with it; see: orch status`);
+    }
+  };
   const forceJson   = has(argv, '--json');
 
   // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson
@@ -822,7 +851,8 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       let keepRunning: string[] = [];
       let ended = 0;
       try {
-        const running = runningJobs(await send('list-state') as Record<string, RuntimeEntry[]>);
+        const state = await send('list-state') as Record<string, RuntimeEntry[]>;
+        const running = runningJobs(state);
         if (killJobs) {
           for (const id of running.all) {
             try {
@@ -834,6 +864,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
           }
         } else {
           keepRunning = running.supervised;
+          await warnJobsDie('orch stop', state);
         }
       } catch (e) {
         console.error(`Stopping anyway, but could not list the running jobs (${getErrorMessage(e)}): supervised jobs keep running, see: orch list --verbose`);
@@ -858,6 +889,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 To restart the job, run: orch restart-job ${jobArg}`);
         process.exit(1);
       }
+      await warnJobsDie('orch restart');
       await send('restart');
       console.log('Orchestrator restarted.');
       break;
@@ -1556,18 +1588,25 @@ Use --wait to block until the command finishes.`);
       if (subCmd === 'update') {
         // Before anything else: a repo-built bundle is older than every published version, so the updater would
         // run `npm install -g` over the real install. Refused here with the reason; the updater refuses too.
-        if (!isReleaseVersion(version)) {
-          process.stderr.write(`[fail] ${devBuildRefusalMessage(version)}
+        const updateVersion = deps.cliUpdate?.version ?? version;
+        if (!isReleaseVersion(updateVersion)) {
+          process.stderr.write(`[fail] ${devBuildRefusalMessage(updateVersion)}
 `);
           process.exit(1);
         }
-        const updaterPath = path.join(__dirname, 'orchestrator-updater.cjs');
+        const updaterPath = deps.cliUpdate?.updaterPath ?? path.join(__dirname, 'orchestrator-updater.cjs');
         const fsCheck = require('node:fs') as typeof import('node:fs');
-        if (!fsCheck.existsSync(updaterPath)) {
+        if (deps.cliUpdate?.run === undefined && !fsCheck.existsSync(updaterPath)) {
           process.stderr.write(`[fail] Updater not found: ${updaterPath} (dev mode -- no bundle)\n`);
           process.exit(1);
         }
-        await cliUpdateCommand(updaterPath, '@wadeck-app/orchestrator-cli', { rawArgs: cliRest });
+        // The update restarts the daemon: say first what that does to the jobs no supervisor guards.
+        await warnJobsDie('orch cli update');
+        if (deps.cliUpdate?.run) {
+          await deps.cliUpdate.run(updaterPath, cliRest);
+        } else {
+          await cliUpdateCommand(updaterPath, '@wadeck-app/orchestrator-cli', { rawArgs: cliRest });
+        }
         return;
       }
 

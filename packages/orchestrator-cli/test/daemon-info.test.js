@@ -85,6 +85,14 @@ describe('get-daemon-info', () => {
     assert.match(reply.supervisor.note, /supervisedJobs: false/);
   });
 
+  test('the missing-supervisor note says jobs die on stop, restart and update, and that supervisedJobs: false only hides the message', () => {
+    const { note } = resolveSupervisor({ enabled: true, configDir: '/x', locate: () => null, log: () => {} }).status;
+
+    assert.match(note, /killed with the daemon on orch stop, orch restart and orch cli update/);
+    assert.match(note, /supervisedJobs: false/);
+    assert.match(note, /only hides this message/);
+  });
+
   test('reports the unsupervised case as off, without a note', () => {
     const { status } = resolveSupervisor({
       enabled: false, configDir: '/x', locate: () => { throw new Error('must not be looked for'); }, log: () => {},

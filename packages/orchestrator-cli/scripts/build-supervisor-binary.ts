@@ -9,8 +9,8 @@ const supervisorDir = path.join(__dirname, '..', 'supervisor-go');
 const distDir = path.join(supervisorDir, 'dist');
 fs.mkdirSync(distDir, { recursive: true });
 
-// linux/amd64 is built for a checkout and for CI, but no platform package carries it: the daemon has no
-// launcher or tray there either (see platform-binary.ts).
+// linux/amd64 is built for a checkout and for CI only: no platform package carries it, so an npm install on Linux has
+// no supervisor (see platform-binary.ts). linux/arm64 is not built at all.
 const targets = [
   { GOOS: 'windows', GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor.exe') },
   { GOOS: 'darwin',  GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-supervisor-arm64') },

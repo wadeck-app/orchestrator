@@ -26,11 +26,14 @@ Daemon lifecycle:
                                (Ctrl+C stops the tail, the daemon keeps running)
                                --no-follow  Return as soon as the daemon is up, without tailing
                                --follow,-f  Tail even when stdout is piped
-  orch stop [--kill-jobs]      Stop the daemon. Jobs run under their own supervisor keep running and
-                               are followed again at the next start; the jobs named in the answer
-                               do.
+  orch stop [--kill-jobs]      Stop the daemon. Where a supervisor exists (Windows, macOS,
+                               Linux x64 from a checkout) jobs under it keep running and are
+                               followed again at the next start; the jobs named in the answer do.
+                               Without one, running jobs die with the daemon; a warning names them.
                                --kill-jobs  End every running job first
-  orch restart                 Restart the daemon (not a job: use restart-job <id>)
+  orch restart                 Restart the daemon (not a job: use restart-job <id>).
+                               Where a supervisor exists jobs survive it; elsewhere running ones
+                               die, after a warning.
   orch status [--json]         Show daemon pid, port, uptime. Never starts the daemon: when it is
                                not running, says so and exits 1 (JSON: {"running":false})
                                plus the progress and end time of each running job ("42% ~14:32")

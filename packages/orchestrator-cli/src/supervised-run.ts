@@ -418,10 +418,10 @@ export function resolveSupervisor(setup: SupervisorSetup): { launcher: Superviso
   try {
     supervisorPath = setup.locate(setup.configDir);
   } catch (err) {
-    return unavailable(`supervisedJobs is on (the default), but the supervisor cannot be prepared (${getErrorMessage(err)}). Jobs run unsupervised and will not survive a daemon restart. Reinstall with: orch cli update`);
+    return unavailable(`supervisedJobs is on (the default), but the supervisor cannot be prepared (${getErrorMessage(err)}). Jobs run unsupervised: running jobs are killed with the daemon on orch stop, orch restart and orch cli update. Reinstall with: orch cli update`);
   }
   if (supervisorPath === null) {
-    return unavailable(`supervisedJobs is on (the default), but there is no supervisor executable for ${process.platform}-${process.arch}. Jobs run unsupervised and will not survive a daemon restart. Set supervisedJobs: false in config.yml to silence this.`);
+    return unavailable(`supervisedJobs is on (the default), but there is no supervisor executable for ${process.platform}-${process.arch}. Jobs run unsupervised: running jobs are killed with the daemon on orch stop, orch restart and orch cli update (orch warns before each). Setting supervisedJobs: false in config.yml only hides this message; it does not supervise anything.`);
   }
   setup.log(`supervisedJobs is on: jobs run under ${supervisorPath}`);
   const launcher: SupervisorLauncher = (request) => startSupervised({ supervisorPath, configDir: setup.configDir }, request);

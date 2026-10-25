@@ -449,6 +449,10 @@ export interface CliDeps {
   send: (command: string, payload?: unknown, options?: SendOptions) => Promise<unknown>;
   startDaemon: () => void;
   configDir: string;
+  /** The platform the daemon runs on (default: this process's); decides which way out a missing supervisor has. Tests set it. */
+  platform?: string;
+  /** `orch cli update` seams: the version checked for the dev-build refusal, the updater bundle to look for, and what runs it. Tests set them. */
+  cliUpdate?: { version?: string; updaterPath?: string; run?: (updaterPath: string, rawArgs: string[]) => Promise<void> };
   /** `orch job <jobId> logs` seams: how often -f reads the followed file (ms, default 250) and where its output goes. Tests set them. */
   /** `orch logs --follow` seam: the clock that paces the poll (default: the real one) and its period (ms, default 250). Tests set them. */
   logs?: { pollMs?: number; time?: import('./time-service.js').TimeService };

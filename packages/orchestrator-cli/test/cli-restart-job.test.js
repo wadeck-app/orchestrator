@@ -114,7 +114,7 @@ describe('orch restart with a job id', () => {
   test('without an argument it still restarts the daemon', async () => {
     const { calls, exitCode } = await run(['restart']);
 
-    assert.equal(calls[0].command, 'restart');
+    assert.ok(calls.some((c) => c.command === 'restart'), 'restart was not sent');
     assert.equal(exitCode, 0);
   });
 });

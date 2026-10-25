@@ -42,8 +42,9 @@ const TRAY_DEV_NAME: Record<string, string> = {
   'darwin-x64':   'orchestrator-tray-amd64',
 };
 
-// linux-x64 exists only here: no platform package carries it (there is no launcher or tray on Linux either), but a
-// checkout and CI build it so jobs can be supervised there too.
+// Source-checkout names only (supervisor-go/dist, from `npm run build-supervisor`). The platform packages carry the win32
+// and darwin supervisors. linux-x64 is built here for a checkout and CI but ships in no package, and linux-arm64 is built
+// nowhere: an npm install on Linux has no supervisor.
 const SUPERVISOR_DEV_NAME: Record<string, string> = {
   'win32-x64':    'orchestrator-supervisor.exe',
   'darwin-arm64': 'orchestrator-supervisor-arm64',
