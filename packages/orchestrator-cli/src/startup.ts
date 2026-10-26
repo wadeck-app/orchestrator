@@ -388,23 +388,63 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
   return { ok: false, error: `Unsupported platform: ${platform}` };
 }
 
+/**
+ * The login entry of macOS (one LaunchAgent label) and Linux (one unit) is shared by every config dir of the user. When it
+ * exists but names another config dir, disabling it from here would take the other instance's start at login away without
+ * a word (a dev checkout with its own .dev-config is the case that happens). Returns the refusal, or null when there is no
+ * entry or it is this config dir's.
+ */
+function foreignLoginEntry(platform: NodeJS.Platform, configDir: string, deps: StartupDeps): string | null {
+  let entryPath: string;
+  let ours: (text: string) => boolean;
+  if (platform === 'darwin') {
+    entryPath = deps.plistPath ?? macPlistPath();
+    ours      = (text) => text.includes(`<string>${xmlEscape(configDir)}</string>`);
+  } else if (platform === 'linux') {
+    entryPath = deps.unitPath ?? defaultUnitPath();
+    ours      = (text) => text.includes(`${systemdEnvLine('ORCH_CONFIG_DIR', configDir)}\n`);
+  } else {
+    return null;
+  }
+  let text: string;
+  try {
+    text = fs.readFileSync(entryPath, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
+    return `The start-at-login entry ${entryPath} cannot be read (${getErrorMessage(e)}), so it was not removed: it may belong to another config dir. Fix the permissions, or delete it by hand.`;
+  }
+  if (ours(text)) {
+    return null;
+  }
+  return `The start-at-login entry ${entryPath} belongs to another config dir, so nothing was removed. `
+    + 'Run orch uninstall with that config dir (set ORCH_CONFIG_DIR to it), or delete the entry by hand.';
+}
+
 export function disableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
+  const platform = deps.platform ?? process.platform;
+  const exec     = deps.exec ?? execFileSync;
   if (/[\r\n\x00]/.test(configDir)) {
     return { ok: false, error: 'configDir contains invalid characters' };
   }
-  if ((deps.platform ?? process.platform) === 'linux') {
-    return disableSystemd(deps, deps.exec ?? execFileSync);
+  const foreign = foreignLoginEntry(platform, configDir, deps);
+  if (foreign !== null) {
+    return { ok: false, error: foreign };
   }
-  if (process.platform === 'darwin') {
-    const plistPath = macPlistPath();
+  if (platform === 'linux') {
+    return disableSystemd(deps, exec);
+  }
+  if (platform === 'darwin') {
+    const plistPath = deps.plistPath ?? macPlistPath();
     const uid       = process.getuid?.() ?? 0;
     const target    = `gui/${uid}/${LAUNCH_AGENT_LABEL}`;
     const diag: string[] = [];
 
-    try { execFileSync('launchctl', ['bootout', target],  { stdio: 'pipe', windowsHide: true }); diag.push('bootout=ok'); }
+    try { exec('launchctl', ['bootout', target],  { stdio: 'pipe', windowsHide: true }); diag.push('bootout=ok'); }
     catch (e) { diag.push(`bootout=skipped(${(e as Error).message?.trim()})`); }
 
-    try { execFileSync('launchctl', ['disable', target], { stdio: 'pipe', windowsHide: true }); diag.push('disable=ok'); }
+    try { exec('launchctl', ['disable', target], { stdio: 'pipe', windowsHide: true }); diag.push('disable=ok'); }
     catch (e) { diag.push(`disable=failed(${(e as Error).message?.trim()})`); }
 
     try { fs.unlinkSync(plistPath); diag.push('plist=removed'); }
@@ -413,14 +453,14 @@ export function disableStartup(configDir: string, deps: StartupDeps = {}): Start
     return { ok: true, detail: diag.join(' | ') };
   }
 
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     const valueName = buildRegValueName(configDir);
-    try { execFileSync('reg', ['delete', REG_KEY, '/v', valueName, '/f'], { stdio: 'pipe', windowsHide: true }); }
+    try { exec('reg', ['delete', REG_KEY, '/v', valueName, '/f'], { stdio: 'pipe', windowsHide: true }); }
     catch { /* already absent */ }
     return { ok: true, detail: `registry key removed: ${REG_KEY}\\${valueName}` };
   }
 
-  return { ok: false, error: `Unsupported platform: ${process.platform}` };
+  return { ok: false, error: `Unsupported platform: ${platform}` };
 }
 
 export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boolean {
