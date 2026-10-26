@@ -15,8 +15,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wadeck-app/dsl-renderer": ">=2026.10.24-247-e0eef527",
-    "@wadeck-app/dsl-ui": ">=2026.10.24-247-e0eef527",
+    "@wadeck-app/dsl-renderer": ">=2026.10.26-296-546ff876",
+    "@wadeck-app/dsl-ui": ">=2026.10.26-296-546ff876",
     "@wadeck-app/dsl-lib-orch": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
