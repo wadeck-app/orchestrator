@@ -57,6 +57,17 @@ start-at-login warning: could not read the PATH of your login shell (<reason>). 
 
 Fix: run that command in a terminal; a slow or blocking command in `~/.zshrc` / `~/.zprofile` (or one that prompts) is the usual cause. Output printed by rc files is harmless (the PATH is read between unique markers). Windows start-at-login uses the registry and is unaffected.
 
+## Start at login on Linux (systemd user unit)
+
+`orch install` writes `$XDG_CONFIG_HOME/systemd/user/orchestrator.service` (default `~/.config/systemd/user/`), then runs `systemctl --user daemon-reload` and `systemctl --user enable orchestrator.service`. Never `--now`: a running daemon is left alone. `orch uninstall` runs `disable`, removes the unit, and reloads.
+
+- `ExecStart` is the staged launcher plus the config dir, `Restart=no` (the launcher already restarts the daemon), `KillMode=process` (a stop ends the launcher and so the unit; the default would kill the job supervisors and the jobs with it), `WantedBy=default.target`. Spaces, `%` and `$` in paths are escaped.
+- The unit carries `PATH` (login shell capture as on macOS, same fallbacks and warnings, default shell `/bin/sh`), `ORCH_CONFIG_DIR` and `LAUNCHER_BUNDLE_OVERRIDE`. A systemd user manager does not read `~/.bashrc` or `~/.profile`. Frozen at write time; rewritten at every daemon start.
+- Enabled means: the unit exists for this config dir and `default.target.wants/orchestrator.service` exists. Read from the filesystem, so it works without a session bus.
+- The daemon starts at your first login. To start at boot with no login, run `loginctl enable-linger $USER` yourself (needs privileges, never run by orch).
+
+Failures are reported, not skipped: no `systemctl` on PATH (systemd required), no reachable user session (headless server or container: needs lingering), or `enable` failed after the unit was written (both facts and the systemctl message are shown).
+
 ## Colour
 
 With `jobsNoColor: true` (default) a job, supervised or not, and an `orch exec` start with:
@@ -236,11 +247,11 @@ For a server that must come back after ANY exit: `orch add startup web --command
 - Giving up: `job.restart_abandoned`, a `[restart] giving up` line in the last run's log and a line in the daemon log. The job stays stopped until `orch trigger <id>`, which starts with a full budget. With the defaults a job that dies at once is abandoned after 10 restarts (about 3 minutes).
 - A pending restart is dropped when the job is disabled or removed, or when `restartOnExit` is removed; an edit of other fields keeps it. Each case is one line in the daemon log. A restart is skipped when the job is already running.
 - Without a supervisor (`supervisedJobs: false`, or its binary missing from the install) a daemon stop kills the run and nothing restarts it until the next start's schedule or trigger.
-- The daemon stopping never restarts or counts anything: supervised runs are detached and followed again by the next daemon, which starts no second copy (the startup firing is refused as `adopted`). The attempt and window counters live in memory: a daemon restart starts them again, except that a restarted run keeps its attempt number.
+- The daemon stopping never restarts or counts anything: supervised runs are detached and followed again by the next daemon, which starts no second copy (the startup firing is refused as `adopted`). The attempt and window counters are kept in `<configDir>/restart-state.json` (`{ version: 1, jobs: { <id>: { attempt, restarts: [ms...] } } }`, rewritten on each change, never by a daemon stop) and read back at the next start, so a crash loop does not get a fresh budget from a daemon restart. They apply to a run that ended while the daemon was down and to a startup job started by the new daemon; any other start (schedule, `orch trigger`, dependency) clears them as before. Dropped at load: restarts older than the job's window, jobs removed or without a valid `restartOnExit` (said in the daemon log). A corrupt or unreadable file is reported in the daemon log with its path, and the daemon starts with empty counters (delete the file if the message repeats). A failed write is reported the same way; restarts go on, unremembered. A budget already used up (job given up on) is not kept: the counters of an abandoned job are cleared.
 - Option that its strategy ignores (`factor` with `fixed`...), zero or negative values, an unknown strategy or key are refused by `orch add`, `orch edit` and the API with the key to fix. A registry.json edited by hand is not refused at load: the daemon logs the problem at start, restarts nothing for an invalid setting.
 - With `retryOnExitCodes`/`retryDelays` on the same job: refused by `add`/`edit`. In a hand-edited registry `restartOnExit` wins and the retry settings are ignored (logged at start).
 - `orch edit <id> --restart-delay 5` changes only the given keys; `--unset restartOnExit` turns the policy off.
-- Events: `job.restart_scheduled` and `job.restart_abandoned`; the restarted run is `job.started` with `trigger: "restart"`. `orch timers` shows a pending restart as a `restart` timer.
+- Events: `job.restart_scheduled` and `job.restart_abandoned`; the restarted run is `job.started` with `trigger: "restart"`. `orch timers` shows a pending restart as a `restart` timer. `orch status` lists them under `restarts` (job, time, attempt); `--json`: `info.pendingRestarts: [{ jobId, dueAt, attempt }]`, `get-daemon-info` likewise. A daemon older than the CLI makes `orch status` say `restarts: unknown`.
 
 ## Rotating the log of a run -- `logRotation`
 
@@ -261,7 +272,7 @@ A run therefore keeps at most about 250 MB by default. A job's keys override the
 - Readers:
   - `orch job <id> logs`: segments are one log in order; `-n` counts across them; `-f` goes on when the writer moves to the next segment (segments dropped while following are reported on stderr); `--list` shows `SEGMENTS` (`3 (+2 dropped)`) and `SIZE`, `--json` adds `segments`, `droppedSegments`, `sizeBytes`. Dropped segments at the start are announced on stderr.
   - `orch logs --job <id>`: today's segments in order.
-  - Dashboard (`/api/logs/<id>/runs` and `/stream`): one entry per run with the total size (plus `segments`, `droppedSegments`); the stream replays all kept segments and follows into the next one without a run change. The run picker UI shows the total size only.
+  - Dashboard (`/api/logs/<id>/runs` and `/stream`): one entry per run with the total size (plus `segments`, `droppedSegments`); the stream replays all kept segments and follows into the next one without a run change. The run picker shows `3 segments (+2 dropped)` after the run name for a rotated run; the job page's configuration card shows `restartOnExit`, `logRotation` and the liveness check (with its timeout, or the 30 s default).
   - Progress/ETA strategies: `tail` reads the end of the run across segments; the head (`readFrom`, fingerprint) is the first segment kept, so a rotated run teaches the learned strategy only that head, and a byte offset above 0 addresses that segment.
 
 ## Bounding a liveness command -- `liveness.timeoutSeconds`
