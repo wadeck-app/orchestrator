@@ -4,29 +4,30 @@
 
 | Item | Where |
 |---|---|
-| Daemon restarts after a crash (kit `CrashRestart`), checked live: kill, restart in 2 s, marker read and cleared | `df09f7d`; test `launcher-e2e.test.js` runs the same on Windows, macOS and Linux CI legs |
-| `orch cli update` through the new launcher: no crash restart | checked live, `-533`, `-535` |
+| Daemon restarts after a crash (kit `CrashRestart`), checked live: kill, restart in 2 s, marker read and cleared | `df09f7d`; `launcher-e2e.test.js` runs the same on Windows, macOS and Linux CI legs |
+| `orch cli update` through the new launcher: no crash restart | checked live (`-533`, `-535`, `-551`) |
 | Liveness `command` timeout (30 s default, `--liveness-timeout`, form field, display, parity test) | `f4b8301`, `1f0f1c6`, `1fb4097` |
-| Daemon stdout/stderr lost under the launcher (NUL) -> bridged into the daemon log | `fb0fadd` (replaces the one-call `warn` workaround) |
+| Daemon stdout/stderr lost under the launcher (NUL) -> bridged into the daemon log; seen live in the real daemon log | `fb0fadd` |
+| What the bridge revealed, fixed: tray `npm view` used `execFile` + `shell:true` (Node DEP0190 at every start); tray stderr logged twice | `5421b24`, `0954942` |
 | Linux x64/arm64 packages: launcher + supervisor, no tray; `PLATFORM_TARGETS` single table with a drift test | `787cbca`, kit `3bbfe66` |
-| Start at login on Linux (systemd user unit, `KillMode=process`) | `d1b9716` (tests only, no systemd host) |
+| Start at login on Linux (systemd user unit, `KillMode=process`); `orch uninstall` refuses another config dir's entry (macOS and Linux) | `d1b9716`, `cc75484` (tests only, no systemd host) |
 | `orch status` lists pending restarts; restart counters persisted | `ffaf631` |
-| Dashboard: restart policy, log rotation, liveness on the job page; segments in the log picker | `1fb4097`, seen in the real page |
-| Status widget showed two red messages for a down daemon | `d7158f8` |
-| Kit: `go test` on 3 OS before publish; stop signal that cannot be forwarded is warned; gofmt; version format in `package.json` | kit `aad0e94`..`8909a9d`, published `2026.10.26-100-8909a9d1` |
-| Cleanup of scratch files, vite dev server 63652, `.violations/.gitignore` of orch-app versioned | `dc1037e` |
+| Dashboard: restart policy, retries, skipped codes, log rotation, liveness on the job page; segments in the log picker; liveness timeout field | `1fb4097`, `a877843`, seen in the real page |
+| Down daemon: status widget one message (`d7158f8`); job list one message through the renderer's `shouldNotifyLoadFailure` (dsl-view `e3eadd2`) | `980e4ef`; seen in the real page |
+| Kit: `go test` on 3 OS before publish; unforwardable stop signal warned; gofmt; version format in `package.json` | kit `aad0e94`..`8909a9d`, published `2026.10.26-100-8909a9d1` |
+| Handled-run folder removal failure is said; its test no longer races a supervisor that is exiting | `ebf4ce7` |
+| Cleanup of scratch files, vite dev server, `.violations/.gitignore` of orch-app versioned | `dc1037e` |
 
 ## Still open
 
 1. **Real Linux host**: nothing has run on one. CI covers launcher/daemon e2e and the supervisor on ubuntu, not systemd, not arm64.
-2. **Job list and job detail pages show two red messages** with the daemon down (renderer banner + `DaemonStatus`/`ResourceHistory`). Cause: `notifyLoadFailure` in `@wadeck-app/dsl-renderer` has no per-source silence; `orch-app` cannot pass `hostNotify` without rewriting the banner. Needs a renderer option (other repo). Pinned by `orch-app/src/page-daemon-down.test.tsx`.
+2. **A table reads as empty when its source failed.** With the daemon down the job page shows "No runs yet" for a job that has runs, which is why its generic banner is kept (a page that owns the explanation is only the job list). Fix: use `$ctx.$sourceErrors` (dsl-view `2026.10.26-295`) to show "cannot be read" instead of the empty text, then the job page can drop the generic banner.
 3. **Windows console close**: the launcher cannot forward an interrupt (Go: `Process.Signal` is `os.Kill` only there); it now warns. Options: `Kill` (loses graceful shutdown) or a launcher `Config` field for an HTTP quit. Needs a decision.
 4. **Progress/ETA strategies learn from the head of a rotated run only**: the dropped segments are gone, so this is inherent, documented in `docs/daemon-config.md`. No change planned unless a learned strategy must work on runs above 250 MB.
-5. **Kit docs say version `1.YYYYMMDDHHMMSS.BUILD`** (real: `YYYY.MM.DD-BUILD-sha`): `CLAUDE.md`, `README.md` (both with uncommitted changes of someone else) and `.claude/guiding-principles.md` (untracked). Kit `CLAUDE.md` also says `go test ./go-launcher/...` from the root, which cannot work.
-6. Kit smaller: PE metadata is skipped with a plain echo when `goversioninfo` is absent (the published launcher can lack it); `realsignal_windows_test.go` leaves a `ping` child for ~30 s.
-7. `disableStartup` (macOS, Linux) does not check the entry belongs to this config dir.
-8. `packages/orchestrator-cli/app-module/dsl-frontend/status-widget.json` is a stale compiled copy.
-9. `retryOnExitCodes`, `retryDelays`, `skipExitCodes` are not shown on the job page.
+5. **Node DEP0190** still printed by `exec-manager.ts` and the default `spawn` of `scheduler.ts` (`spawn(bin, args, {shell:true})`), i.e. `orch exec` and unsupervised runs; the tests print it 23 times. Fix: pass the original command string (same shell semantics) and adapt the tests that assert `(bin, args)`.
+6. **CI ubuntu flake, unexplained**: run `40405633462` (`980e4ef`) ended with exit 137: the test output stops after a normal test, 31 s of silence, then the `strace` wrapper is `Killed`. No assertion failed; Windows and macOS legs of the same run and the four previous ubuntu runs were green. Same family as runs 419 and 421 noted in the workflow. Evidence is in the workflow's trace steps; nothing was changed for it.
+7. **Kit docs say version `1.YYYYMMDDHHMMSS.BUILD`** (real: `YYYY.MM.DD-BUILD-sha`): `CLAUDE.md`, `README.md` (both with uncommitted changes of someone else) and `.claude/guiding-principles.md` (untracked). Kit `CLAUDE.md` also says `go test ./go-launcher/...` from the root, which cannot work.
+8. Kit smaller: PE metadata is skipped with a plain echo when `goversioninfo` is absent (the published launcher can lack it); `realsignal_windows_test.go` leaves a `ping` child for ~30 s.
 
 ## Rules kept
 
