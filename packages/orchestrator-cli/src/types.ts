@@ -400,6 +400,8 @@ export interface DaemonInfo {
   supervisor: { requested: boolean; active: boolean; note?: string };
   runs: { running: number; supervised: number; followedAgain: number };
   scheduler: { armed: number; desired: number; problems: Array<{ jobId: string; problem: string }> };
+  /** Restarts (restartOnExit) waiting for their delay, soonest first. Absent from a daemon older than this field. */
+  pendingRestarts?: Array<{ jobId: string; dueAt: string; attempt: number }>;
 }
 
 /** RPC command map for the orchestrator daemon (used with singleton-daemon-kit). */

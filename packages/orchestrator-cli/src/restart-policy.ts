@@ -202,7 +202,7 @@ export function restartDelaySeconds(policy: ResolvedRestartPolicy, attempt: numb
   return Math.min(delay, max);
 }
 
-/** What the scheduler remembers of a job between two exits. In memory only: a daemon restart starts it again from nothing. */
+/** What the scheduler remembers of a job between two exits. Kept in restart-state.json (see parseRestartStates) so a daemon restart does not give a crash-looping job a fresh budget. */
 export interface RestartState {
   /** Restarts since the last stable run: the number the next delay is computed from. */
   attempt: number;
@@ -252,4 +252,59 @@ export function planRestart(policy: ResolvedRestartPolicy, previous: RestartStat
     action: 'restart', attempt, delaySeconds: restartDelaySeconds(policy, attempt),
     restartsInWindow: restarts.length, stable, state: { attempt, restarts },
   };
+}
+
+/** The file the counters are kept in, in the config dir. */
+export const RESTART_STATE_FILE = 'restart-state.json';
+
+/** What the file holds, as read back: the counters per job, and one sentence per entry (or per file) that could not be used. */
+export interface ParsedRestartStates {
+  states: Map<string, RestartState>;
+  /** What is wrong with an entry; `dropped` when the entry could not be used at all (otherwise it is kept, minus what was ignored). */
+  entryProblems: Array<{ jobId: string; problem: string; dropped: boolean }>;
+  /** Set when the whole file is unusable (not an object, another version, no `jobs`): the states are then empty. */
+  fileProblem: string | null;
+}
+
+function isRestartEntry(entry: unknown): entry is { attempt: number; restarts: number[] } {
+  if (typeof entry !== 'object' || entry === null) {
+    return false;
+  }
+  const attempt  = Reflect.get(entry, 'attempt');
+  const restarts = Reflect.get(entry, 'restarts');
+  return typeof attempt === 'number' && Number.isInteger(attempt) && attempt >= 0
+    && Array.isArray(restarts) && restarts.every(t => typeof t === 'number' && Number.isFinite(t));
+}
+
+/**
+ * Reads the content of restart-state.json (`{ version: 1, jobs: { <id>: { attempt, restarts: [ms...] } } }`) without trusting it.
+ * A restart moment after `nowMs` (the clock went back) is dropped and said, as a moment in the future would count for ever.
+ */
+export function parseRestartStates(raw: unknown, nowMs: number): ParsedRestartStates {
+  const states = new Map<string, RestartState>();
+  const entryProblems: ParsedRestartStates['entryProblems'] = [];
+  const unusable = (fileProblem: string): ParsedRestartStates => ({ states: new Map(), entryProblems: [], fileProblem });
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return unusable(`it holds ${show(raw)?.slice(0, 40)} instead of an object`);
+  }
+  const version = Reflect.get(raw, 'version');
+  if (version !== 1) {
+    return unusable(`its version is ${show(version)}, this daemon reads version 1 (written by another orch version?)`);
+  }
+  const jobs = Reflect.get(raw, 'jobs');
+  if (typeof jobs !== 'object' || jobs === null || Array.isArray(jobs)) {
+    return unusable('it has no "jobs" object');
+  }
+  for (const [jobId, entry] of Object.entries(jobs)) {
+    if (!isRestartEntry(entry)) {
+      entryProblems.push({ jobId, problem: `its entry is invalid (${show(entry)?.slice(0, 80)}), expected { attempt: whole number, restarts: [ms...] }`, dropped: true });
+      continue;
+    }
+    const past = entry.restarts.filter(t => t <= nowMs);
+    if (past.length !== entry.restarts.length) {
+      entryProblems.push({ jobId, problem: `${entry.restarts.length - past.length} restart moment(s) are in the future (the clock went back?) and were ignored`, dropped: false });
+    }
+    states.set(jobId, { attempt: entry.attempt, restarts: past });
+  }
+  return { states, entryProblems, fileProblem: null };
 }

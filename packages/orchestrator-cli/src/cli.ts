@@ -79,6 +79,16 @@ function describeDaemonInfo(info: DaemonInfo): string[] {
       lines.push(`  ${p.jobId}: ${p.problem}`);
     }
   }
+  if (info.pendingRestarts === undefined) {
+    lines.push('restarts  : unknown (this daemon is older than the CLI and does not report them); run: orch restart (or orch cli update)');
+  } else if (info.pendingRestarts.length > 0) {
+    lines.push(`restarts  : ${info.pendingRestarts.length} pending`);
+    for (const r of info.pendingRestarts) {
+      const at = new Date(r.dueAt);
+      const hms = [at.getHours(), at.getMinutes(), at.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+      lines.push(`  ${r.jobId}: restarts at ${hms} (attempt ${r.attempt})`);
+    }
+  }
   return lines;
 }
 

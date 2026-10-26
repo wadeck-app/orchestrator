@@ -191,6 +191,46 @@ describe('orch status: the daemon details', () => {
     assert.doesNotMatch(out, /timer problem/);
   });
 
+  describe('a restart that is pending (restartOnExit)', () => {
+    const due = new Date(2026, 9, 25, 14, 32, 7);
+    const pending = [{ jobId: 'web', dueAt: due.toISOString(), attempt: 3 }, { jobId: 'api', dueAt: new Date(2026, 9, 25, 14, 40, 0).toISOString(), attempt: 1 }];
+
+    test('is listed by job with the time it restarts at and the attempt', async () => {
+      const { send } = up({ ...INFO, pendingRestarts: pending });
+
+      const { out } = await run(['status'], send, { tty: true });
+
+      const lines = out.split('\n');
+      assert.ok(lines.includes('restarts  : 2 pending'), out);
+      assert.ok(lines.includes('  web: restarts at 14:32:07 (attempt 3)'), out);
+      assert.ok(lines.includes('  api: restarts at 14:40:00 (attempt 1)'), out);
+    });
+
+    test('says nothing when no restart is pending', async () => {
+      const { send } = up({ ...INFO, pendingRestarts: [] });
+
+      const { out } = await run(['status'], send, { tty: true });
+
+      assert.doesNotMatch(out, /restarts/);
+    });
+
+    test('a daemon that does not report them is said to be older, with the fix, instead of reading as "none"', async () => {
+      const { send } = up(INFO);
+
+      const { out } = await run(['status'], send, { tty: true });
+
+      assert.match(out, /restarts\s*: unknown.*older.*orch restart/);
+    });
+
+    test('--json carries them under info.pendingRestarts', async () => {
+      const { send } = up({ ...INFO, pendingRestarts: pending });
+
+      const { out } = await run(['status', '--json'], send);
+
+      assert.deepEqual(JSON.parse(out).info.pendingRestarts, pending);
+    });
+  });
+
   test('asks for the details without starting the daemon', async () => {
     const { send, calls } = up(INFO);
 

@@ -433,6 +433,7 @@ export function makeCommands(
         supervisor: { ...daemonInfo.supervisor },
         runs:       scheduler.runCounts(),
         scheduler:  summarizeTimers(scheduler.inspectTimers()),
+        pendingRestarts: scheduler.pendingRestarts(),
       };
     },
 

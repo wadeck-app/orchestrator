@@ -33,13 +33,14 @@ function timer(jobId, over = {}) {
   };
 }
 
-function makeEnv({ timers = [], supervisor, info = {} } = {}) {
+function makeEnv({ timers = [], supervisor, info = {}, pending = [] } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-info-'));
   tmpDirs.push(dir);
   const registry = new Registry(path.join(dir, 'registry.json'));
   const state = new State(path.join(dir, 'state.json'));
   const scheduler = {
     inspectTimers: () => timers,
+    pendingRestarts: () => pending,
     runCounts: () => ({ running: 3, supervised: 2, followedAgain: 1 }),
   };
   const commands = makeCommands(registry, state, scheduler, dir, undefined, undefined, undefined, undefined, {
@@ -69,6 +70,13 @@ describe('get-daemon-info', () => {
     assert.deepEqual(reply.supervisor, { requested: true, active: true });
     assert.deepEqual(reply.runs, { running: 3, supervised: 2, followedAgain: 1 });
     assert.deepEqual(reply.scheduler, { armed: 2, desired: 2, problems: [] });
+  });
+
+  test('pendingRestarts comes from the scheduler', () => {
+    const pending = [{ jobId: 'web', dueAt: '2026-10-25T14:32:07.000Z', attempt: 2 }];
+    const { commands } = makeEnv({ pending });
+
+    assert.deepEqual(commands['get-daemon-info']().pendingRestarts, pending);
   });
 
   test('reports a daemon whose supervisor was asked for and is missing, with the note', () => {

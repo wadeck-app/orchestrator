@@ -10,7 +10,7 @@ import { LOG_ROTATION_DEFAULTS, daemonLogRotation, resolveLogRotation, type Reso
 import { jobEnvironment } from './job-env.js';
 import { stripAnsi }      from './ansi.js';
 import { OutputLines }     from './output-lines.js';
-import { ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
+import { atomicWriteJson, ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
 import { killTree, killTreeSync } from './process-tree.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
@@ -35,7 +35,7 @@ import { resolveResourceLimits, RESOURCE_LIMIT_DEFAULTS, type EffectiveResourceL
 import { appendResourceHistory, type ResourceHistoryRecord } from './resource-history.js';
 import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
-import { planRestart, resolveRestartPolicy, restartConflictError, restartOnExitError, type RestartState } from './restart-policy.js';
+import { RESTART_STATE_FILE, parseRestartStates, planRestart, resolveRestartPolicy, restartConflictError, restartOnExitError, type RestartState } from './restart-policy.js';
 
 // May be async: starting a job under a supervisor means waiting for its status file.
 type SpawnFn    = (cmd: string, cwd?: string, env?: NodeJS.ProcessEnv, jobId?: string) => ChildProcess | Promise<ChildProcess>;
@@ -523,8 +523,15 @@ export class Scheduler extends EventEmitter {
   private readonly _jobsNoColor: boolean;
   private readonly _logRotation: ResolvedLogRotation;
   private readonly _retryCounters  = new Map<string, number>();
-  /** What restartOnExit remembers of a job between two exits: the attempt number and the restarts inside the window. In memory only. */
+  /**
+   * What restartOnExit remembers of a job between two exits: the attempt number and the restarts inside the window. Mirrored in
+   * <configDir>/restart-state.json on every change except stop() (see _restoreRestartStates), so a daemon restart keeps the budget.
+   */
   private readonly _restartStates  = new Map<string, RestartState>();
+  /** The counters were read from the file (once per start, by recoverRuns or start(), whichever comes first). */
+  private _restartStatesLoaded = false;
+  /** Startup jobs whose restored counters the daemon's own startup firing must not clear (see _fire). */
+  private readonly _startupKeepsRestartState = new Set<string>();
   /** Set by stop(): a run that ends after it must not schedule a restart (the daemon is going away). Cleared by start(). */
   private _stopped = false;
   /**
@@ -611,12 +618,17 @@ export class Scheduler extends EventEmitter {
 
   async start(): Promise<void> {
     this._stopped = false;
+    this._restoreRestartStates();
+    this._startupKeepsRestartState.clear();
     // Stagger catch-up jobs to avoid simultaneous load on wake from hibernate.
     // First job fires after catchUpInitialDelayMs, subsequent jobs add catchUpStaggerMs each.
     let catchUpStaggerMs = this._catchUpInitialDelayMs;
 
     for (const job of this._registry.list()) {
       this._checkRestartConfig(job);
+      if (job.type === 'startup' && this._restartStates.has(job.id)) {
+        this._startupKeepsRestartState.add(job.id);
+      }
       if (!job.enabled) {
         continue;
       }
@@ -876,7 +888,10 @@ export class Scheduler extends EventEmitter {
     // A single queue makes that class of omission unexpressible.
     this._deadlines.clearAll();
     this._retryCounters.clear();
+    // Memory only: the file keeps the counters for the next daemon. Stopping is not a crash and counts as no restart.
     this._restartStates.clear();
+    this._restartStatesLoaded = false;
+    this._startupKeepsRestartState.clear();
     this._stopped = true;
   }
 
@@ -1225,7 +1240,7 @@ export class Scheduler extends EventEmitter {
     // (restartOnExit never fights a manual kill). Said in the answer, or `orch kill` on a job that is only waiting reads "not running".
     const waiting = this._deadlines.find(id, 'restart') !== null;
     this._deadlines.clear(id, 'restart');
-    this._restartStates.delete(id);
+    this._forgetRestartState(id);
     const cancelledRestart = waiting ? { cancelledRestart: true } : {};
     const live = [...(this._activeChildren.get(id) ?? [])].filter(child => !child.killed);
     if (live.length > 0) {
@@ -1646,6 +1661,8 @@ export class Scheduler extends EventEmitter {
    * history entry, same log, kill, timeout and peaks, as if the daemon had never been away.
    */
   async recoverRuns(): Promise<RecoveryReport> {
+    // Before anything is decided about an ended run: its restart is planned from the counters of the daemon that died.
+    this._restoreRestartStates();
     const report: RecoveryReport = { finalized: 0, cleaned: 0, adopted: 0, lost: [], followedElsewhere: 0, unreadable: [] };
     const root = path.join(this._configDir, 'runs');
     let jobDirs: string[];
@@ -2199,7 +2216,7 @@ export class Scheduler extends EventEmitter {
     }
 
     if (plan.action === 'abandon') {
-      this._restartStates.delete(job.id);
+      this._forgetRestartState(job.id);
       const counted = `${plan.restartsInWindow} restarts in the last ${policy.windowSeconds}s`;
       jobLogger.write(
         `[restart] giving up: ${counted} is the limit (maxRestarts=${policy.maxRestarts}, windowSeconds=${policy.windowSeconds}); `
@@ -2216,7 +2233,7 @@ export class Scheduler extends EventEmitter {
       return;
     }
 
-    this._restartStates.set(job.id, plan.state);
+    this._rememberRestartState(job.id, plan.state);
     jobLogger.write(
       `[restart] attempt ${plan.attempt} in ${plan.delaySeconds}s (exitCode=${exitCode}; `
       + `${plan.restartsInWindow} of ${policy.maxRestarts} restarts allowed in ${policy.windowSeconds}s)`,
@@ -2234,7 +2251,7 @@ export class Scheduler extends EventEmitter {
   private _startPendingRestart(id: string, attempt: number): void {
     const cancelled = (why: string): void => {
       console.error(`[scheduler] job "${id}": the pending restart was cancelled because ${why}`);
-      this._restartStates.delete(id);
+      this._forgetRestartState(id);
     };
     // The job as it is now, not as it was when it ended: an edit (the command, a new policy) applies to the restart.
     const current = this._registry.get(id);
@@ -2260,6 +2277,117 @@ export class Scheduler extends EventEmitter {
       return;
     }
     this._fireUnlessFull(current, { kind: 'restart', attempt });
+  }
+
+  /** The restarts that wait for their delay: which job, when (ISO) and which attempt it will be. What `orch status` shows. */
+  pendingRestarts(): Array<{ jobId: string; dueAt: string; attempt: number }> {
+    const pending: Array<{ jobId: string; dueAt: string; attempt: number }> = [];
+    for (const d of this._deadlines.list().filter(item => item.kind === 'restart').sort((a, b) => a.dueAt - b.dueAt)) {
+      const attempt = this._restartStates.get(d.jobId)?.attempt;
+      if (attempt === undefined) {
+        // A restart is only ever armed together with its counters (_applyRestartPolicy): reaching this is a bug, not a state.
+        console.error(`[scheduler] job "${d.jobId}" has a restart armed but no restart counters; it is left out of the pending restarts. Please report this.`);
+        continue;
+      }
+      pending.push({ jobId: d.jobId, dueAt: new Date(d.dueAt).toISOString(), attempt });
+    }
+    return pending;
+  }
+
+  private _rememberRestartState(id: string, state: RestartState): void {
+    this._restartStates.set(id, state);
+    this._saveRestartStates();
+  }
+
+  /** Drops a job's counters; the file is only written when there was something to drop. */
+  private _forgetRestartState(id: string): void {
+    if (this._restartStates.delete(id)) {
+      this._saveRestartStates();
+    }
+  }
+
+  private _saveRestartStates(): void {
+    const file = path.join(this._configDir, RESTART_STATE_FILE);
+    const jobs: Record<string, RestartState> = {};
+    for (const [id, state] of this._restartStates) {
+      jobs[id] = { attempt: state.attempt, restarts: state.restarts };
+    }
+    try {
+      atomicWriteJson(file, { version: 1, jobs });
+    } catch (e) {
+      console.error(
+        `[scheduler] the restart counters could not be saved to ${file} (${getErrorMessage(e)}). Jobs keep restarting as configured, but a daemon restart will not remember the counters. `
+        + `Check that the folder is writable and that ${RESTART_STATE_FILE} is a file, not a folder.`,
+      );
+    }
+  }
+
+  /**
+   * Reads the counters the previous daemon left, once per start. Dropped, and said: an entry of a job that was removed or no
+   * longer restarts, or that is invalid. Dropped quietly: the restarts older than the job's window (nothing left to count).
+   * A file that cannot be read is reported and the daemon starts with empty counters; the next change rewrites it.
+   */
+  private _restoreRestartStates(): void {
+    if (this._restartStatesLoaded) {
+      return;
+    }
+    this._restartStatesLoaded = true;
+    const file = path.join(this._configDir, RESTART_STATE_FILE);
+    const empty = 'the daemon starts with empty counters: jobs that were restarting get a fresh restart budget';
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch (e) {
+      // No file is the normal first start (or nothing was restarting).
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error(`[scheduler] ${file} could not be read (${getErrorMessage(e)}): ${empty}. Check the permissions of the file.`);
+      }
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch (e) {
+      console.error(`[scheduler] ${file} is corrupt (${getErrorMessage(e)}): ${empty}. Delete the file if this message comes back; the next restart rewrites it.`);
+      return;
+    }
+    const now = this._time.now();
+    const parsed = parseRestartStates(raw, now);
+    if (parsed.fileProblem !== null) {
+      console.error(`[scheduler] ${file} is unusable (${parsed.fileProblem}): ${empty}. Delete the file if this message comes back; the next restart rewrites it.`);
+      return;
+    }
+    let changed = false;
+    for (const { jobId, problem, dropped } of parsed.entryProblems) {
+      console.error(`[scheduler] restart counters of job "${jobId}": ${problem}${dropped ? '; counters dropped' : ''}`);
+      changed = true;
+    }
+    for (const [id, state] of parsed.states) {
+      const job = this._registry.get(id);
+      let why: string | null = null;
+      if (job === null) {
+        why = 'no longer exists';
+      } else if (!restartConfigured(job) || restartOnExitError(job.restartOnExit) !== null) {
+        why = 'has no restartOnExit any more';
+      }
+      if (why !== null) {
+        console.error(`[scheduler] job "${id}" ${why}: counters dropped`);
+        changed = true;
+        continue;
+      }
+      const policy = resolveRestartPolicy(job!.restartOnExit)!;
+      const restarts = state.restarts.filter(t => t > now - policy.windowSeconds * 1000);
+      if (restarts.length === 0) {
+        changed = true;
+        continue;
+      }
+      this._restartStates.set(id, { attempt: state.attempt, restarts });
+      console.error(`[scheduler] restart counters restored for job "${id}": attempt ${state.attempt}, ${restarts.length} restarts in the last ${policy.windowSeconds}s`);
+    }
+    // Entries of the file that were not kept must not come back at the next start.
+    if (changed) {
+      this._saveRestartStates();
+    }
   }
 
   /** Says at daemon start what is wrong with a job's restartOnExit, once, where the daemon log is read. Nothing is changed. */
@@ -2316,7 +2444,11 @@ export class Scheduler extends EventEmitter {
     // that was waiting is no longer needed, and the failures it counted belong to a series that is over.
     if (trigger.kind !== 'restart') {
       this._deadlines.clear(job.id, 'restart');
-      this._restartStates.delete(job.id);
+      // The one exception: the firing of a startup job by the daemon that has just started is not "someone taking over", it
+      // is the same crash loop going on, and the counters read from the file are what keeps it from a fresh budget.
+      if (!(trigger.kind === 'cron' && this._startupKeepsRestartState.delete(job.id))) {
+        this._forgetRestartState(job.id);
+      }
     }
     const startedAt = this._now().toISOString();
     const secretEnv = job.secrets?.length ? this._secrets.resolveForJob(job.secrets) : {};
