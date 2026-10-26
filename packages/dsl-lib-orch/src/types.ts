@@ -6,7 +6,7 @@ export interface LivenessConfig {
   strategy: LivenessStrategy;
   portFile?: string;
   command?: string;
-  /** Command strategy only. Not editable in the form, which keeps what the job has. */
+  /** Command strategy only: the liveness command is killed after this many seconds (whole, 1-3600; default 30). */
   timeoutSeconds?: number;
 }
 

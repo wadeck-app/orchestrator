@@ -178,6 +178,39 @@ export function validateRestartInputs(inputs: RestartInputs, strategyExplicit: b
   return problem === null ? {} : { [problem.field]: problem.message };
 }
 
+/** 90 -> "90 s", 300 -> "5 min", 7200 -> "2 h": the largest unit that divides the value exactly. */
+function duration(seconds: number): string {
+  if (seconds >= 3600 && seconds % 3600 === 0) {
+    return `${seconds / 3600} h`;
+  }
+  if (seconds >= 60 && seconds % 60 === 0) {
+    return `${seconds / 60} min`;
+  }
+  return `${seconds} s`;
+}
+
+/** The stored policy in plain words, defaults filled in; null when the job has none. */
+export function describeRestartOnExit(setting: boolean | RestartOnExit | undefined): string | null {
+  if (setting === undefined || setting === false) {
+    return null;
+  }
+  const options: RestartOnExit = setting === true ? {} : setting;
+  const strategy = options.strategy ?? RESTART_DEFAULTS.strategy;
+  const initial = options.initialDelaySeconds ?? RESTART_DEFAULTS.initialDelaySeconds;
+  const max = options.maxDelaySeconds ?? RESTART_DEFAULTS.maxDelaySeconds;
+  let pause: string;
+  if (strategy === 'fixed') {
+    pause = `fixed ${duration(initial)}`;
+  } else if (strategy === 'linear') {
+    pause = `linear from ${duration(initial)} (+${duration(options.stepSeconds ?? initial)}) up to ${duration(max)}`;
+  } else {
+    pause = `exponential from ${duration(initial)} (x${options.factor ?? RESTART_DEFAULTS.factor}) up to ${duration(max)}`;
+  }
+  const limit = `at most ${options.maxRestarts ?? RESTART_DEFAULTS.maxRestarts} per ${duration(options.windowSeconds ?? RESTART_DEFAULTS.windowSeconds)}`;
+  const stable = options.stableAfterSeconds === undefined ? '' : `; a run that stays up ${duration(options.stableAfterSeconds)} resets the count`;
+  return `Restarts after any exit, ${pause}, ${limit}${stable}`;
+}
+
 /**
  * Why a job cannot have a restart policy and a retry list at once, or null. The daemon's restartConflictError says the
  * same; the form does not edit the retry list, so the way out it can name is the CLI command that clears it.

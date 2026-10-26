@@ -56,6 +56,37 @@ async function renderViewer(): Promise<HTMLElement> {
 	return waitFor(() => screen.getByLabelText('Which run to show'));
 }
 
+// A rotated run: the picker says how many segments are kept and how many were dropped, like `orch job <id> logs --list`.
+describe('the log run selector, rotated runs', () => {
+	const ROTATED = [
+		{ name: '2026-09-19T09-30-00', file: 'a.log', sizeBytes: 1, segments: 3, droppedSegments: 2 },
+		{ name: '2026-09-18T19-05-00', file: 'b.log', sizeBytes: 1, segments: 4, droppedSegments: 0 },
+		{ name: '2026-09-17T19-05-00', file: 'c.log', sizeBytes: 1, segments: 1, droppedSegments: 0 },
+		{ name: '2026-09-16T19-05-00', file: 'd.log', sizeBytes: 1, segments: 1, droppedSegments: 3 },
+	];
+
+	it('adds the segment count and the dropped ones to the tail option and to older runs, and nothing to an unrotated run', async () => {
+		stubFetch(ROTATED as unknown as typeof RUNS);
+		await renderViewer();
+
+		const labels = screen.getAllByRole('option').map(o => o.textContent);
+		expect(labels[0]).toContain('3 segments (+2 dropped)');
+		expect(labels[1]).toContain('4 segments');
+		expect(labels[1]).not.toContain('dropped');
+		expect(labels[2]).not.toMatch(/segment/);
+		expect(labels[3]).toContain('1 segment (+3 dropped)');
+	});
+
+	it('adds nothing for an unrotated run or an API answer without the segment fields', async () => {
+		stubFetch([...RUNS, { name: '2026-09-17T19-05-00', file: 'c.log', sizeBytes: 1, segments: 1, droppedSegments: 0 }] as unknown as typeof RUNS);
+		await renderViewer();
+
+		for (const o of screen.getAllByRole('option')) {
+			expect(o.textContent).not.toMatch(/segment/);
+		}
+	});
+});
+
 describe('the log run selector', () => {
 	it('is named, though it has no visible label', async () => {
 		await renderViewer();

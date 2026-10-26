@@ -6,6 +6,7 @@ import { inputsFromLimits, limitsFromInputs, validateResourceLimitFields, type R
 import { ResourceLimitsFields } from './ResourceLimitsFields.js';
 import { PROGRESS_MODES, progressModeOf } from '../progress-modes.js';
 import { inputsFromRestart, restartFromInputs, retryConflictMessage, validateRestartInputs, type RestartFieldErrors } from '../restart-policy.js';
+import { LIVENESS_TIMEOUT_DEFAULT_SECONDS, livenessTimeoutError } from '../liveness-timeout.js';
 import { RestartFields } from './RestartFields.js';
 import { ButtonAction, ButtonCancel, CronBuilder, FieldDateRange, FieldDateTime, FieldNumber, FieldSelect, FieldText, FieldTextarea, IconButton, type DateRange, type FieldSelectOption } from '@wadeck-app/dsl-ui';
 
@@ -98,6 +99,7 @@ interface FormErrors {
   progressOptions?: string;
   restart?: RestartFieldErrors;
   restartConflict?: string;
+  livenessTimeout?: string;
 }
 
 // registry.ts validateJob() enforces this. Checked here too, so the field that is wrong gets named
@@ -290,6 +292,9 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
   const [livenessStrategy, setLivenessStrategy] = useState<LivenessStrategy>(initLiveness?.strategy ?? 'none');
   const [livenessPort, setLivenessPort] = useState(initLiveness?.portFile ?? '');
   const [livenessCommand, setLivenessCommand] = useState(initLiveness?.command ?? '');
+  // As typed, so an emptied box stays empty (the daemon's default) and a bad value can be shown back. An existing timeout is
+  // loaded, so a Save that touches nothing sends it back unchanged.
+  const [livenessTimeout, setLivenessTimeout] = useState(initLiveness?.timeoutSeconds === undefined ? '' : String(initLiveness.timeoutSeconds));
 
   // onExitCode: array of [code, message] pairs for UI editing
   const initExitCodes = Object.entries(initial?.onExitCode ?? {}).map(([k, v]) => ({ code: k, msg: v }));
@@ -365,6 +370,12 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
     if (!progressParsed.ok) {
       e.progressOptions = progressParsed.error;
       setShowProgress(true);
+    }
+    // The Advanced section starts collapsed, so a refusal inside it opens it. Only for the strategy that has the box.
+    const livenessTimeoutProblem = livenessStrategy === 'command' ? livenessTimeoutError(livenessTimeout) : null;
+    if (livenessTimeoutProblem !== null) {
+      e.livenessTimeout = livenessTimeoutProblem;
+      setShowAdvanced(true);
     }
     if (restart.enabled) {
       // The daemon refuses both, in these words. Said here so the field that is wrong is named before the request.
@@ -479,9 +490,9 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         }
         if (livenessStrategy === 'command' && livenessCommand.trim()) {
           liveness.command = livenessCommand.trim();
-          // No field for it here: rebuilding liveness without it would reset the job to the default on every save.
-          if (initLiveness?.strategy === 'command' && initLiveness.timeoutSeconds !== undefined) {
-            liveness.timeoutSeconds = initLiveness.timeoutSeconds;
+          // Empty is the daemon's default, which is what leaving the key out means. validate() has checked the range.
+          if (livenessTimeout.trim() !== '') {
+            liveness.timeoutSeconds = Number(livenessTimeout);
           }
         }
         data.liveness = liveness;
@@ -801,6 +812,27 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
           )}
           {livenessStrategy === 'command' && (
             <FieldText label="Liveness command" value={livenessCommand} onChange={setLivenessCommand} placeholder="curl -sf http://localhost:3000/health" />
+          )}
+          {livenessStrategy === 'command' && (
+            <div>
+              <label htmlFor="liveness-timeout" className={labelClass}>Liveness timeout (seconds)</label>
+              {/* violations-suppress: react/no-raw-input needs a placeholder showing the default, which FieldNumber does not offer */}
+              <input
+                id="liveness-timeout"
+                type="number"
+                step="any"
+                value={livenessTimeout}
+                placeholder={String(LIVENESS_TIMEOUT_DEFAULT_SECONDS)}
+                aria-invalid={errors?.livenessTimeout !== undefined}
+                aria-describedby="liveness-timeout-hint"
+                onChange={e => setLivenessTimeout(e.target.value)}
+                className={`${MONO_INPUT} aria-[invalid=true]:border-danger`}
+              />
+              <p id="liveness-timeout-hint" className="mt-1 text-xs text-muted">
+                The liveness command is killed after this long and the target counts as not alive, so the job starts. Whole seconds, 1 to 3600. Empty means {LIVENESS_TIMEOUT_DEFAULT_SECONDS} s.
+              </p>
+              {errors?.livenessTimeout && <p role="alert" className="mt-1 text-xs text-danger">{errors.livenessTimeout}</p>}
+            </div>
           )}
 
           {/* onExitCode */}

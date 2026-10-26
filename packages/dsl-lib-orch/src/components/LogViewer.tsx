@@ -133,7 +133,18 @@ function linkify(line: string, highlight: string | undefined, apiBase: string): 
   return parts.length > 0 ? parts : line;
 }
 
-interface RunEntry { name: string; file: string; sizeBytes: number; }
+// `segments` and `droppedSegments` come from /api/logs/<id>/runs; an older server leaves them out.
+interface RunEntry { name: string; file: string; sizeBytes: number; segments?: number; droppedSegments?: number; }
+
+/** " - 3 segments (+2 dropped)" for a rotated run, like `orch job <id> logs --list`; empty for a run in one file. */
+function segmentNote(run: RunEntry | undefined): string {
+  const segments = run?.segments ?? 1;
+  const dropped = run?.droppedSegments ?? 0;
+  if (segments <= 1 && dropped === 0) {
+    return '';
+  }
+  return ` - ${segments} ${segments === 1 ? 'segment' : 'segments'}${dropped > 0 ? ` (+${dropped} dropped)` : ''}`;
+}
 
 function fmtRunName(name: string, index: number, total: number): string {
   const m = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})$/);
@@ -385,8 +396,8 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progres
               value={selectedRun === latestRunName ? '' : selectedRun}
               onChange={handleSelectRun}
               ariaLabel="Which run to show"
-              placeholder={`${isJobRunning === true ? 'Live' : 'Latest'}${latestRunName ? ` - ${fmtRunName(latestRunName, 0, runs.length)}` : ''}`}
-              options={runs.flatMap((r, i) => (r.name === latestRunName ? [] : [{ value: r.name, label: fmtRunName(r.name, i, runs.length) }]))}
+              placeholder={`${isJobRunning === true ? 'Live' : 'Latest'}${latestRunName ? ` - ${fmtRunName(latestRunName, 0, runs.length)}${segmentNote(runs[0])}` : ''}`}
+              options={runs.flatMap((r, i) => (r.name === latestRunName ? [] : [{ value: r.name, label: `${fmtRunName(r.name, i, runs.length)}${segmentNote(r)}` }]))}
             />
           </span>
         )}

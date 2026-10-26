@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Job } from '../types.js';
 import { isLongRunning } from '../long-running.js';
+import { describeRestartOnExit } from '../restart-policy.js';
 import { describeResourceLimits, hasCustomLimits } from '../resource-limits.js';
 
 /** Mode of the progress setting for display, or null for auto. Options are not shown, only that there are some. */
@@ -12,6 +13,37 @@ function progressSummary(setting: Job['progress']): string | null {
     return setting;
   }
   return setting.options === undefined ? setting.strategy : `${setting.strategy} (with options)`;
+}
+
+// What the daemon uses when liveness.timeoutSeconds is absent (LIVENESS_COMMAND_TIMEOUT_SECONDS).
+const LIVENESS_DEFAULT_TIMEOUT_SECONDS = 30;
+
+/** The log rotation in plain words; null when the job sets nothing (the daemon-wide values apply). */
+function describeLogRotation(rotation: Job['logRotation']): string | null {
+  if (rotation === undefined || (rotation.maxSizeMb === undefined && rotation.keepSegments === undefined)) {
+    return null;
+  }
+  if (rotation.maxSizeMb === 0) {
+    return 'Never rotated: one file per run';
+  }
+  const size = rotation.maxSizeMb === undefined ? 'the daemon-wide size' : `${rotation.maxSizeMb} MB`;
+  const kept = rotation.keepSegments === undefined ? '' : `, newest ${rotation.keepSegments} kept`;
+  return `Segments of ${size}${kept}`;
+}
+
+/** The liveness check in plain words; null for none. The timeout only exists for the command strategy. */
+function describeLiveness(liveness: Job['liveness']): string | null {
+  if (!liveness || liveness.strategy === 'none') {
+    return null;
+  }
+  if (liveness.strategy === 'portFile') {
+    return `Port file: ${liveness.portFile ?? ''}`;
+  }
+  if (liveness.strategy === 'pidFile') {
+    return 'PID file';
+  }
+  const timeout = liveness.timeoutSeconds === undefined ? `${LIVENESS_DEFAULT_TIMEOUT_SECONDS} s (default)` : `${liveness.timeoutSeconds} s`;
+  return `Command: ${liveness.command ?? ''}, killed after ${timeout}`;
 }
 
 export interface JobConfigDisplayProps { job: Job; }
@@ -29,6 +61,9 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
   if (!job) {
     return null;
   }
+  const restart = describeRestartOnExit(job.restartOnExit);
+  const rotation = describeLogRotation(job.logRotation);
+  const liveness = describeLiveness(job.liveness);
   return (
     <div className="bg-surface rounded-lg border border-border p-4 space-y-3">
       {/* whitespace-pre-wrap keeps the author's line breaks; break-words stops one long token from widening the card. */}
@@ -49,6 +84,9 @@ export function JobConfigDisplay({ job }: JobConfigDisplayProps): React.ReactEle
           </ul>
         </div>
       )}
+      {restart !== null && <div><span className={LABEL_CLS}>Restart on exit</span><p className="mt-1 text-sm text-content">{restart}</p></div>}
+      {rotation !== null && <div><span className={LABEL_CLS}>Log rotation</span><p className="mt-1 text-sm text-content">{rotation}</p></div>}
+      {liveness !== null && <div><span className={LABEL_CLS}>Liveness check</span><p className="mt-1 text-sm text-content">{liveness}</p></div>}
       {progressSummary(job.progress) !== null && <div><span className={LABEL_CLS}>Progress</span><p className="mt-1 text-sm text-content">{progressSummary(job.progress)}</p></div>}
       {job.maxConcurrency !== undefined && <div><span className={LABEL_CLS}>Max concurrent runs</span><p className="mt-1 text-sm text-content">{job.maxConcurrency}</p></div>}
     </div>

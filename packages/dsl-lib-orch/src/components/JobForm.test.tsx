@@ -654,16 +654,92 @@ describe('JobForm clears fields the user emptied', () => {
     expect(sent).not.toHaveProperty('unset');
   });
 
-  // The form has no field for the liveness command timeout. Rebuilding liveness without it would put the job back on the
-  // 30 s default on every save, without a word.
-  it('keeps the liveness command timeout it does not show', async () => {
+  // Rebuilding liveness without the timeout would put the job back on the 30 s default on every save, without a word:
+  // the box is seeded from the job, so a save that touches nothing sends it back.
+  it('keeps the liveness command timeout, loaded into its box', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it', timeoutSeconds: 90 } }, onSubmit);
 
+    showAdvanced();
+    expect(screen.getByLabelText(/^Liveness timeout/)).toHaveValue(90);
     saveButton().click();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(submitted(onSubmit).liveness).toEqual({ strategy: 'command', command: 'check-it', timeoutSeconds: 90 });
+  });
+
+  it('sends the typed liveness timeout as a number', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it' } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Liveness timeout/, '120');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).liveness).toEqual({ strategy: 'command', command: 'check-it', timeoutSeconds: 120 });
+  });
+
+  // Emptied on purpose: the box says 30 in its placeholder, so leaving the key out is the visible choice of the default.
+  it('sends no liveness timeout when its box is emptied, and says the default in the placeholder', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it', timeoutSeconds: 90 } }, onSubmit);
+
+    showAdvanced();
+    expect(screen.getByLabelText(/^Liveness timeout/)).toHaveAttribute('placeholder', '30');
+    fill(/^Liveness timeout/, '');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).liveness).toEqual({ strategy: 'command', command: 'check-it' });
+  });
+
+  it('shows the liveness timeout box only for the command strategy', () => {
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'portFile', portFile: '/tmp/a.port' } }, vi.fn());
+
+    showAdvanced();
+    expect(screen.queryByLabelText(/^Liveness timeout/)).toBeNull();
+    fill(/^Liveness check/, 'command');
+    expect(screen.getByLabelText(/^Liveness timeout/)).toBeInTheDocument();
+  });
+
+  it.each(['0', '3601', '2.5', '-4'])('refuses the liveness timeout %s on the field, with the daemon sentence, and sends nothing', async (value) => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it' } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Liveness timeout/, value);
+    saveButton().click();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('liveness.timeoutSeconds must be a whole number of seconds from 1 to 3600');
+    expect(alert.textContent).toContain(`got ${value}`);
+    expect(screen.getByLabelText(/^Liveness timeout/)).toHaveAttribute('aria-invalid', 'true');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // The Advanced section starts collapsed: a refusal inside it would be invisible.
+  it('opens the Advanced section when the liveness timeout is refused', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it', timeoutSeconds: 9999 } }, onSubmit);
+
+    saveButton().click();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('liveness.timeoutSeconds');
+    expect(screen.getByLabelText(/^Liveness timeout/)).toBeInTheDocument();
+  });
+
+  it('does not validate a stale timeout once the strategy is no longer command', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it' } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Liveness timeout/, '99999');
+    fill(/^Liveness check/, 'pidFile');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).liveness).toEqual({ strategy: 'pidFile' });
   });
 
   it('drops the liveness command timeout when the strategy is no longer command', async () => {

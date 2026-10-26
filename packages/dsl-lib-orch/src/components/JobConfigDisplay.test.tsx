@@ -110,3 +110,85 @@ describe('JobConfigDisplay progress', () => {
     expect(screen.getByText('history')).toBeInTheDocument();
   });
 });
+
+describe('JobConfigDisplay restartOnExit', () => {
+  it('says the defaults for true', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, restartOnExit: true }} />);
+
+    expect(screen.getByText('Restart on exit')).toBeInTheDocument();
+    expect(screen.getByText('Restarts after any exit, exponential from 1 s (x2) up to 30 s, at most 10 per 5 min')).toBeInTheDocument();
+  });
+
+  it('spells out a fixed strategy and its options', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, restartOnExit: { strategy: 'fixed', initialDelaySeconds: 5, maxRestarts: 10, windowSeconds: 600 } }} />);
+
+    expect(screen.getByText('Restarts after any exit, fixed 5 s, at most 10 per 10 min')).toBeInTheDocument();
+  });
+
+  it('shows linear step and ceiling, and the stable-after reset', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, restartOnExit: { strategy: 'linear', stepSeconds: 2, maxDelaySeconds: 20, stableAfterSeconds: 60 } }} />);
+
+    expect(screen.getByText('Restarts after any exit, linear from 1 s (+2 s) up to 20 s, at most 10 per 5 min; a run that stays up 1 min resets the count')).toBeInTheDocument();
+  });
+
+  it.each([undefined, false])('shows nothing for %s', (value) => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, restartOnExit: value }} />);
+
+    expect(screen.queryByText('Restart on exit')).toBeNull();
+  });
+});
+
+describe('JobConfigDisplay logRotation', () => {
+  it('shows the segment size and the number kept', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, logRotation: { maxSizeMb: 20, keepSegments: 3 } }} />);
+
+    expect(screen.getByText('Log rotation')).toBeInTheDocument();
+    expect(screen.getByText('Segments of 20 MB, newest 3 kept')).toBeInTheDocument();
+  });
+
+  it('names the daemon-wide default for a key that is not set', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, logRotation: { keepSegments: 9 } }} />);
+
+    expect(screen.getByText('Segments of the daemon-wide size, newest 9 kept')).toBeInTheDocument();
+  });
+
+  it('says it never rotates for 0 MB', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, logRotation: { maxSizeMb: 0 } }} />);
+
+    expect(screen.getByText('Never rotated: one file per run')).toBeInTheDocument();
+  });
+
+  it.each([undefined, {}])('shows nothing for %j', (value) => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, logRotation: value }} />);
+
+    expect(screen.queryByText('Log rotation')).toBeNull();
+  });
+});
+
+describe('JobConfigDisplay liveness', () => {
+  it('shows the command and its timeout', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, liveness: { strategy: 'command', command: 'curl -sf localhost', timeoutSeconds: 90 } }} />);
+
+    expect(screen.getByText('Liveness check')).toBeInTheDocument();
+    expect(screen.getByText('Command: curl -sf localhost, killed after 90 s')).toBeInTheDocument();
+  });
+
+  it('says the 30 s default when no timeout is set', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, liveness: { strategy: 'command', command: 'check-it' } }} />);
+
+    expect(screen.getByText('Command: check-it, killed after 30 s (default)')).toBeInTheDocument();
+  });
+
+  it('shows a port file without any timeout', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, liveness: { strategy: 'portFile', portFile: '/tmp/a.port' } }} />);
+
+    expect(screen.getByText('Port file: /tmp/a.port')).toBeInTheDocument();
+    expect(screen.queryByText(/killed after/)).toBeNull();
+  });
+
+  it.each([undefined, null, { strategy: 'none' as const }])('shows nothing for %j', (value) => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, liveness: value }} />);
+
+    expect(screen.queryByText('Liveness check')).toBeNull();
+  });
+});
