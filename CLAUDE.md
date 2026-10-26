@@ -53,8 +53,9 @@ only when the binary hash changes, so their version has gaps and legitimately la
 package.
 
 Linux packages carry the launcher and the supervisor but no tray (there is no Linux systray build: the daemon
-says so in its log and the dashboard is reached with `orch server start`). Start at login is not implemented on
-Linux (`orch` reports `Unsupported platform: linux`); start the daemon with `orch start`. The platforms are listed
+says so in its log and the dashboard is reached with `orch server start`). Start at login on Linux is a systemd
+user unit (`~/.config/systemd/user/orchestrator.service`, `orch install` / `orch uninstall`; see
+`docs/daemon-config.md`); verified by tests only, not on a real systemd host. The platforms are listed
 once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts,
 `optionalDependencies` and `scripts/build-supervisor-binary.ts` agree with it. Not yet run on a real Linux host.
 

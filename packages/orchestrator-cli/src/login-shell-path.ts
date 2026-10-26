@@ -49,6 +49,14 @@ export interface MacPathDeps {
   nodeBinDir: string;
   /** Environment the login shell is derived from (HOME, USER...). Its PATH is deliberately NOT passed on. */
   env: NodeJS.ProcessEnv;
+  /** Shell used when $SHELL is unusable. Default /bin/zsh (macOS); Linux passes /bin/sh. */
+  defaultShell?: string;
+  /** Entries written when the capture fails, before the fixed ones. Default ~/.local/bin and homebrew (macOS). */
+  fallbackEntries?: readonly string[];
+  /** What the entry is called in messages: 'plist' (default) or 'unit file'. */
+  entryName?: string;
+  /** Where the user's shell setup lives, for the fix sentence. Default '~/.zshrc or ~/.zprofile'. */
+  rcFiles?: string;
 }
 
 export interface MacPathPlan {
@@ -149,24 +157,27 @@ function defaultEntries(home: string): string[] {
 /** What the plist PATH will be, and what the user must be told. Never throws. */
 export function planMacPath(deps: MacPathDeps): MacPathPlan {
   const warnings: string[] = [];
+  const defaultShell = deps.defaultShell ?? DEFAULT_MAC_SHELL;
+  const entryName    = deps.entryName ?? 'plist';
+  const rcFiles      = deps.rcFiles ?? '~/.zshrc or ~/.zprofile';
 
-  let shell = DEFAULT_MAC_SHELL;
+  let shell = defaultShell;
   if (deps.shellEnv && path.posix.isAbsolute(deps.shellEnv) && deps.isExecutableFile(deps.shellEnv)) {
     shell = deps.shellEnv;
   } else {
     warnings.push(
       deps.shellEnv
-        ? `$SHELL is "${deps.shellEnv}", which is not an absolute path to an executable file; the PATH was read from ${DEFAULT_MAC_SHELL} instead. Fix: check "echo $SHELL" in a terminal.`
-        : `$SHELL is not set for the daemon; the PATH was read from ${DEFAULT_MAC_SHELL}. Fix: if your login shell is not zsh, start the daemon from a terminal ("orch restart") so it sees $SHELL.`,
+        ? `$SHELL is "${deps.shellEnv}", which is not an absolute path to an executable file; the PATH was read from ${defaultShell} instead. Fix: check "echo $SHELL" in a terminal.`
+        : `$SHELL is not set for the daemon; the PATH was read from ${defaultShell}. Fix: if your login shell is not ${path.posix.basename(defaultShell)}, start the daemon from a terminal ("orch restart") so it sees $SHELL.`,
     );
   }
 
   const fallback = (why: string): MacPathPlan => {
-    const entries = mergeMacPath(deps.nodeBinDir, defaultEntries(deps.home));
+    const entries = mergeMacPath(deps.nodeBinDir, deps.fallbackEntries ?? defaultEntries(deps.home));
     warnings.push(
       `could not read the PATH of your login shell (${why}). The start-at-login entry uses a default PATH instead: ${entries.join(':')}. `
       + `Jobs run from a login-started daemon will not find tools installed elsewhere (e.g. under ~/.local/bin or ~/.cargo/bin). `
-      + `Fix: make \`${shell} -l -i -c 'echo $PATH'\` run cleanly in under ${SHELL_CAPTURE_TIMEOUT_MS / 1000}s (a slow or blocking command in ~/.zshrc or ~/.zprofile is the usual cause), then run \`orch restart\` to rewrite the plist.`,
+      + `Fix: make \`${shell} -l -i -c 'echo $PATH'\` run cleanly in under ${SHELL_CAPTURE_TIMEOUT_MS / 1000}s (a slow or blocking command in ${rcFiles} is the usual cause), then run \`orch restart\` to rewrite the ${entryName}.`,
     );
     return { entries, warnings, captured: false };
   };

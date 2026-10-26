@@ -383,13 +383,9 @@ describe('realShellRunner (the production runner, driven with node as a stand-in
 });
 
 describe('enableStartup on unsupported platform', () => {
-  test('returns ok:false on non-Windows non-macOS', () => {
-    if (process.platform === 'win32' || process.platform === 'darwin') {
-      // Skip: we ARE on a supported platform, can't easily test this without mocking platform
-      return;
-    }
-    const result = enableStartup(FAKE_DIR);
+  test('returns ok:false on a platform with no start-at-login mechanism', () => {
+    const result = enableStartup(FAKE_DIR, { platform: 'freebsd' });
     assert.equal(result.ok, false);
-    assert.ok(result.error.includes(process.platform));
+    assert.equal(result.error, 'Unsupported platform: freebsd');
   });
 });

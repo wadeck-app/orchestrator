@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs   from 'node:fs';
 import os   from 'node:os';
 import type { StartupResult } from './types.js';
+import { getErrorMessage } from './fsUtil.js';
 import { findLauncherBinary, findDaemonEntry, launcherToRun } from './platform-binary.js';
 import {
   planMacPath, mergeMacPath, realShellRunner, realIsExecutableFile,
@@ -11,6 +12,7 @@ import {
 
 const REG_KEY            = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
+const SYSTEMD_UNIT_NAME  = 'orchestrator.service';
 
 export function buildRegValueName(configDir: string): string {
   return `Orchestrator (${configDir})`;
@@ -82,6 +84,12 @@ export interface StartupDeps {
   programArguments?: string[];
   windowsCommand?: string;
   validateTarget?: () => string | null;
+  /** Linux: where the systemd user unit lives (default: $XDG_CONFIG_HOME or ~/.config, then systemd/user). */
+  unitPath?: string;
+  /** Linux: the daemon bundle written as LAUNCHER_BUNDLE_OVERRIDE (null: none). Default: findDaemonEntry(). */
+  daemonEntry?: string | null;
+  /** Linux: how the unit PATH is captured (same mechanism as macOS; see planMacPath). */
+  linuxPath?: Partial<MacPathDeps>;
 }
 
 function macPlistPath(): string {
@@ -136,6 +144,178 @@ ${argsXml}
 `;
 }
 
+// ---- Linux: a systemd USER unit ------------------------------------------------------------------
+
+/**
+ * ~/.config/systemd/user/orchestrator.service, or under $XDG_CONFIG_HOME when it is an absolute
+ * path (an empty or relative value is ignored, as the XDG spec requires).
+ */
+export function systemdUnitPath(env: NodeJS.ProcessEnv, home: string): string {
+  const xdg  = env['XDG_CONFIG_HOME'];
+  const base = xdg && path.isAbsolute(xdg) ? xdg : path.join(home, '.config');
+  return path.join(base, 'systemd', 'user', SYSTEMD_UNIT_NAME);
+}
+
+function defaultUnitPath(): string {
+  // violations-suppress: shared/no-out-of-repo-path systemd only reads user units from $XDG_CONFIG_HOME/systemd/user; the location is systemd's, not ours
+  return systemdUnitPath(process.env, os.homedir());
+}
+
+/** The link `systemctl --user enable` creates for WantedBy=default.target, next to the unit. */
+function systemdWantsPath(unitPath: string): string {
+  return path.join(path.dirname(unitPath), 'default.target.wants', SYSTEMD_UNIT_NAME);
+}
+
+/**
+ * One double-quoted systemd word. Inside quotes systemd reads C escapes (\\ and \"), and expands
+ * % specifiers everywhere (so % becomes %%). In ExecStart a $ starts a variable, so it becomes $$;
+ * Environment= values are not expanded, there a $ stays as is. A control character cannot be
+ * represented safely, so it is refused rather than written.
+ */
+export function systemdQuote(value: string, opts: { exec: boolean }): string {
+  if (/[\x00-\x1f\x7f]/.test(value)) {
+    throw new Error(`systemd unit value contains a control character: ${JSON.stringify(value)}`);
+  }
+  let v = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
+  if (opts.exec) {
+    v = v.replace(/\$/g, '$$$$');
+  }
+  return `"${v}"`;
+}
+
+function systemdEnvLine(key: string, value: string): string {
+  return `Environment=${systemdQuote(`${key}=${value}`, { exec: false })}`;
+}
+
+/**
+ * Restart=no because the launcher already supervises the daemon and restarts it: a second restarter
+ * would fight it on `orch stop`. LAUNCHER_BUNDLE_OVERRIDE is set like in the macOS plist, so the
+ * launcher never has to find its bundle relative to itself. The unit declares what runs at login;
+ * it is never started by enabling it.
+ */
+export function buildSystemdUnit(
+  programArguments: string[], configDir: string, pathEntries: readonly string[], bundle: string | null,
+): string {
+  return [
+    '# Written by `orch install` and rewritten at every daemon start: do not edit.',
+    '[Unit]',
+    'Description=Orchestrator daemon (launcher and supervisor)',
+    '',
+    '[Service]',
+    'Type=simple',
+    // The launcher supervises the daemon and restarts it itself: systemd must not add a second restarter.
+    'Restart=no',
+    // A stop ends the launcher and so the unit. With the default KillMode (control-group) systemd would then kill every process
+    // of the unit, the job supervisors and the jobs with them, which a stop must leave running (docs/daemon-config.md).
+    'KillMode=process',
+    `ExecStart=${programArguments.map((a) => systemdQuote(a, { exec: true })).join(' ')}`,
+    systemdEnvLine('PATH', pathEntries.join(':')),
+    systemdEnvLine('ORCH_CONFIG_DIR', configDir),
+    ...(bundle ? [systemdEnvLine('LAUNCHER_BUNDLE_OVERRIDE', bundle)] : []),
+    '',
+    '[Install]',
+    'WantedBy=default.target',
+    '',
+  ].join('\n');
+}
+
+function execDetail(e: unknown): string {
+  const stderr = typeof e === 'object' && e !== null ? Reflect.get(e, 'stderr') : undefined;
+  const text   = stderr ? String(stderr).trim() : '';
+  return text || getErrorMessage(e).trim();
+}
+
+/** Turns a failed `systemctl --user <verb>` into what is wrong and what to do. `state` says what was done before it failed. */
+function systemctlFailure(e: unknown, verb: string, state: string): string {
+  const raw = execDetail(e);
+  if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+    return `systemctl was not found on PATH: start-at-login on Linux needs systemd. ${state} `
+      + 'Install systemd, or start the daemon yourself with `orch start`.';
+  }
+  if (/Failed to connect to (user scope )?bus|not been booted with systemd|XDG_RUNTIME_DIR|No medium found/i.test(raw)) {
+    return `\`systemctl --user ${verb}\` found no systemd user session (${raw}). ${state} `
+      + 'Run this from a login session (a desktop or ssh login that has a systemd user manager). For a headless server or '
+      + 'container, a daemon can only start without a login session if an administrator runs `loginctl enable-linger $USER` '
+      + '(orch does not run it: it needs privileges); then run `orch install` again.';
+  }
+  return `\`systemctl --user ${verb}\` failed: ${raw}. ${state}`;
+}
+
+function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFileSync): StartupResult {
+  const unitPath = deps.unitPath ?? defaultUnitPath();
+  const diag: string[] = [];
+  let warnings: string[] = [];
+
+  try {
+    fs.mkdirSync(path.dirname(unitPath), { recursive: true });
+    const args = deps.programArguments ?? buildMacArgs(configDir);
+    // Same capture as macOS: a systemd user manager does not read ~/.bashrc or ~/.profile either,
+    // and its own PATH is minimal, so `node` and the tools of the jobs would not be found.
+    // violations-suppress: shared/no-out-of-repo-path the user's home is where ~/.local/bin lives; it is the point of the default list
+    const home = deps.linuxPath?.home ?? os.homedir();
+    const plan = planMacPath({
+      runShell:         realShellRunner,
+      shellEnv:         process.env.SHELL,
+      isExecutableFile: realIsExecutableFile,
+      home,
+      nodeBinDir:       path.dirname(process.execPath),
+      env:              process.env,
+      defaultShell:     '/bin/sh',
+      fallbackEntries:  [path.posix.join(home, '.local', 'bin')],
+      entryName:        'unit file',
+      rcFiles:          "~/.bashrc, ~/.profile or your shell's equivalent",
+      ...deps.linuxPath,
+    });
+    warnings = plan.warnings;
+    diag.push(plan.captured ? 'path=login-shell' : 'path=default');
+    const bundle = deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
+    const unit   = buildSystemdUnit(args, configDir, plan.entries, bundle);
+    const tmp    = unitPath + '.tmp';
+    fs.writeFileSync(tmp, unit, 'utf8');
+    fs.renameSync(tmp, unitPath);
+    diag.push('unit=written');
+  } catch (e) { return { ok: false, error: `Failed to write the systemd unit ${unitPath}: ${(e as Error).message}` }; }
+
+  const written = `The unit was written to ${unitPath} but is not enabled.`;
+  const run = (...argv: string[]): string | null => {
+    try { exec('systemctl', ['--user', ...argv], { stdio: 'pipe', windowsHide: true }); return null; }
+    catch (e) { return systemctlFailure(e, argv.join(' '), written); }
+  };
+  // Not --now: the daemon may already be running, and enabling must not start a second one.
+  const failed = run('daemon-reload') ?? run('enable', SYSTEMD_UNIT_NAME);
+  if (failed) {
+    return { ok: false, error: failed };
+  }
+  diag.push('daemon-reload=ok', 'enable=ok');
+  diag.push('it starts at your login; to start at boot with no login run `loginctl enable-linger $USER` (needs privileges, not run by orch)');
+  return warnings.length > 0
+    ? { ok: true, detail: diag.join(' | '), warnings }
+    : { ok: true, detail: diag.join(' | ') };
+}
+
+function disableSystemd(deps: StartupDeps, exec: typeof execFileSync): StartupResult {
+  const unitPath = deps.unitPath ?? defaultUnitPath();
+  if (!fs.existsSync(unitPath) && !fs.existsSync(systemdWantsPath(unitPath))) {
+    return { ok: true, detail: 'already off: no systemd unit' };
+  }
+  const state = `The unit file ${unitPath} was removed.`;
+  let failure: string | null = null;
+  try { exec('systemctl', ['--user', 'disable', SYSTEMD_UNIT_NAME], { stdio: 'pipe', windowsHide: true }); }
+  catch (e) { failure = systemctlFailure(e, `disable ${SYSTEMD_UNIT_NAME}`, state); }
+
+  // Removed even when `disable` failed: without the unit file isStartupEnabled reads false, and a
+  // dangling link in default.target.wants is ignored by systemd.
+  try { fs.rmSync(unitPath, { force: true }); }
+  catch (e) { return { ok: false, error: `Failed to remove ${unitPath}: ${(e as Error).message}${failure ? ` Also: ${failure}` : ''}` }; }
+
+  if (failure) {
+    return { ok: false, error: failure };
+  }
+  try { exec('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe', windowsHide: true }); }
+  catch (e) { return { ok: false, error: systemctlFailure(e, 'daemon-reload', `${state} Start-at-login is off.`) }; }
+  return { ok: true, detail: 'disable=ok | unit=removed | daemon-reload=ok' };
+}
+
 export function enableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
   const platform = deps.platform ?? process.platform;
   const exec     = deps.exec ?? execFileSync;
@@ -145,13 +325,17 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
 
   // Platform first: on a target with no start-at-login mechanism at all, reporting a missing
   // launcher would name a consequence instead of the actual reason.
-  if (platform !== 'darwin' && platform !== 'win32') {
+  if (platform !== 'darwin' && platform !== 'win32' && platform !== 'linux') {
     return { ok: false, error: `Unsupported platform: ${platform}` };
   }
 
   const unusable = (deps.validateTarget ?? validateStartupTarget)();
   if (unusable) {
     return { ok: false, error: unusable };
+  }
+
+  if (platform === 'linux') {
+    return enableSystemd(configDir, deps, exec);
   }
 
   if (platform === 'darwin') {
@@ -204,9 +388,12 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
   return { ok: false, error: `Unsupported platform: ${platform}` };
 }
 
-export function disableStartup(configDir: string): StartupResult {
+export function disableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
   if (/[\r\n\x00]/.test(configDir)) {
     return { ok: false, error: 'configDir contains invalid characters' };
+  }
+  if ((deps.platform ?? process.platform) === 'linux') {
+    return disableSystemd(deps, deps.exec ?? execFileSync);
   }
   if (process.platform === 'darwin') {
     const plistPath = macPlistPath();
@@ -246,7 +433,7 @@ export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boo
       return fs.readFileSync(deps.plistPath ?? macPlistPath(), 'utf8').includes(`<string>${xmlEscape(configDir)}</string>`);
     } catch { return false; }
   }
-  if (process.platform === 'win32') {
+  if ((deps.platform ?? process.platform) === 'win32') {
     const valueName = buildRegValueName(configDir);
     try {
       // `reg query /v` exits non-zero when the value is absent, so reaching here means the
@@ -255,6 +442,18 @@ export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boo
       const out = execFileSync('reg', ['query', REG_KEY, '/v', valueName],
         { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
       return out.includes(valueName);
+    } catch { return false; }
+  }
+  if ((deps.platform ?? process.platform) === 'linux') {
+    // The filesystem, not `systemctl is-enabled`: that needs a reachable user bus, which a daemon
+    // started from ssh or a container may lack, and a false here would make refreshStartupEntry skip
+    // a stale unit in silence. `enable` creates this link for WantedBy=default.target. The unit must
+    // also belong to THIS configDir (it is a single global unit, like the launchd label).
+    try {
+      const unitPath = deps.unitPath ?? defaultUnitPath();
+      const unit     = fs.readFileSync(unitPath, 'utf8');
+      fs.lstatSync(systemdWantsPath(unitPath));
+      return unit.includes(`${systemdEnvLine('ORCH_CONFIG_DIR', configDir)}\n`);
     } catch { return false; }
   }
   return false;
