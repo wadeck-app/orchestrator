@@ -192,3 +192,38 @@ describe('JobConfigDisplay liveness', () => {
     expect(screen.queryByText('Liveness check')).toBeNull();
   });
 });
+
+describe('JobConfigDisplay retries and skipped exit codes', () => {
+  it('shows the exit codes that re-run the job and the wait before each retry', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, retryOnExitCodes: [2, 75], retryDelays: [30, 120, 600] }} />);
+
+    expect(screen.getByText('Retries')).toBeInTheDocument();
+    expect(screen.getByText('After exit code 2 or 75: 3 retries, waiting 30 s, then 2 min, then 10 min')).toBeInTheDocument();
+  });
+
+  it('says one retry in the singular', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, retryOnExitCodes: [1], retryDelays: [60] }} />);
+
+    expect(screen.getByText('After exit code 1: 1 retry, waiting 1 min')).toBeInTheDocument();
+  });
+
+  it('shows codes without delays as a setting that retries nothing, rather than hiding it', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, retryOnExitCodes: [2] }} />);
+
+    expect(screen.getByText('After exit code 2: no retry configured (retryDelays is empty)')).toBeInTheDocument();
+  });
+
+  it('shows the exit codes recorded as skipped, not as failures', () => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, skipExitCodes: [3, 4] }} />);
+
+    expect(screen.getByText('Skipped exit codes')).toBeInTheDocument();
+    expect(screen.getByText('3, 4: recorded as skipped, never counted as a failure')).toBeInTheDocument();
+  });
+
+  it.each([undefined, []])('shows nothing for %j', (value) => {
+    render(<JobConfigDisplay job={{ ...CRON_JOB, retryOnExitCodes: value, retryDelays: value, skipExitCodes: value }} />);
+
+    expect(screen.queryByText('Retries')).toBeNull();
+    expect(screen.queryByText('Skipped exit codes')).toBeNull();
+  });
+});

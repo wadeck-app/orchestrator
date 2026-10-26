@@ -179,7 +179,7 @@ export function validateRestartInputs(inputs: RestartInputs, strategyExplicit: b
 }
 
 /** 90 -> "90 s", 300 -> "5 min", 7200 -> "2 h": the largest unit that divides the value exactly. */
-function duration(seconds: number): string {
+export function duration(seconds: number): string {
   if (seconds >= 3600 && seconds % 3600 === 0) {
     return `${seconds / 3600} h`;
   }
