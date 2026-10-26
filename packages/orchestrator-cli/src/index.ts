@@ -221,6 +221,7 @@ async function main(): Promise<void> {
       supervisor: supervisorSetup.launcher,
       jobsNoColor: daemonCfg.jobsNoColor,
       logRotation: daemonLogRotation(daemonCfg),
+      warn: (message) => daemonLog.write(`[scheduler] ${message}`),
     });
 
     // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must

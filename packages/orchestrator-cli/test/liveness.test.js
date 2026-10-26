@@ -191,6 +191,34 @@ describe('command strategy timeout', () => {
   });
 });
 
+// The warning has to reach the daemon log, which console.error does not: the daemon's stderr is the launcher's, not
+// logs/app/daemon-*.log. The scheduler therefore takes a `warn` sink and index.ts hands it the daemon log.
+describe('the scheduler default liveness check says its timeout through options.warn', () => {
+  const fs   = require('node:fs');
+  const { Registry }  = require('../src/registry');
+  const { State }     = require('../src/state');
+  const { Scheduler } = require('../src/scheduler');
+
+  test('a hung command is killed after the configured seconds and the sink gets the line', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-livewarn-'));
+    try {
+      const time = new FakeTime();
+      const warnings = [];
+      const sched = new Scheduler(new Registry(path.join(dir, 'registry.json')), new State(path.join(dir, 'state.json')), {
+        time, warn: (m) => warnings.push(m), eventPublisher: { publish: () => {} }, configDir: dir,
+      });
+      const job = { id: 'hung', liveness: { strategy: 'command', command: 'node -e "setInterval(() => {}, 1000)"', timeoutSeconds: 2 } };
+      const pending = sched._liveness(job);
+      time.advance(2_000);
+      assert.equal(await pending, false);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /"hung".*2 s.*--liveness-timeout/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('startShellCommand', () => {
   test('its result is true for exit 0 and false for another exit', async () => {
     assert.equal(await startShellCommand('node -e "process.exit(0)"').result, true);
