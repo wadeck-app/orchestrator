@@ -59,7 +59,7 @@
     "fastify": "^5.0.0",
     "node-cron": "^4.6.0",
     "pidtree": "^1.0.0",
-    "pidusage": "^4.0.1",
+    "pidusage": "^4.1.0",
     "semver": "^7.6.0"
   },
   "devDependencies": {
