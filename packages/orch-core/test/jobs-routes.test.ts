@@ -622,6 +622,36 @@ describe('GET /api/health counting', () => {
   });
 });
 
+/*
+ * The dashboard widget reads /api/health for its three figures AND shows DaemonStatus, which says "the daemon is not
+ * running, start it with orch start". A 503 here made the renderer add its own red "Could not load the data:
+ * daemon-not-running (HTTP 503)" banner on top: two red messages for one cause, one of them with no action to take.
+ * A daemon that is down is therefore an answer ("no figures"), not a failure; any other error stays an error.
+ */
+describe('GET /api/health with the daemon down', () => {
+  async function appWith(send: (cmd: string) => Promise<unknown>): Promise<FastifyInstance> {
+    const app = fastify();
+    await app.register(jobsRoutes, { proxy: { send }, idleTimer: { reset: () => {} } });
+    await app.ready();
+    return app;
+  }
+
+  it('answers 200 with status "daemon-down" and no figures, instead of a 503', async () => {
+    const app = await appWith(async () => { throw new DaemonUnavailableError(); });
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'daemon-down', totalJobs: null, runningJobs: null, recentFailures: null, uptime: null });
+    await app.close();
+  });
+
+  it('does not hide a different failure: an error of the daemon stays an error', async () => {
+    const app = await appWith(async () => { throw new Error('boom'); });
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(res.statusCode).toBe(500);
+    await app.close();
+  });
+});
+
 // With several instances alive the newest run can have ended while an older one is still going.
 // Reading only the newest said the job was idle: "ok" while a process was running.
 describe('GET /api/health with several instances of one job', () => {

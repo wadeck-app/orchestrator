@@ -557,7 +557,21 @@ export async function jobsRoutes(
 
   fastify.get('/api/health', async (_req, reply) => {
     return guard(reply, async () => {
-      const [jobs, stateData, daemonUptime] = await Promise.all([
+      /*
+       * Only the dashboard widget reads this, next to DaemonStatus, which already tells the reader the daemon is not
+       * running and to run "orch start". A 503 here made the renderer add a second red banner ("Could not load the
+       * data: daemon-not-running (HTTP 503)") with no action in it. "No figures" is the answer instead; every other
+       * failure still throws and stays an error.
+       */
+      const noFigures = (): RouteReply => reply.send({
+        status: 'daemon-down',
+        totalJobs: null,
+        runningJobs: null,
+        recentFailures: null,
+        uptime: null,
+        timestamp: new Date().toISOString(),
+      });
+      const fetched = await Promise.all([
         proxy.send('list-jobs') as Promise<{ id: string }[]>,
         proxy.send('list-state') as Promise<Record<string, HealthRunEntry[]>>,
         // Uptime is a nicety: a daemon that cannot answer get-daemon-info (an older build, say) must not take
@@ -565,7 +579,16 @@ export async function jobsRoutes(
         proxy.send('get-daemon-info')
           .then(info => (info as { uptimeSeconds?: number }).uptimeSeconds ?? null)
           .catch(() => null),
-      ]);
+      ]).catch((err: unknown) => {
+        if (err instanceof DaemonUnavailableError) {
+          return null;
+        }
+        throw err;
+      });
+      if (fetched === null) {
+        return noFigures();
+      }
+      const [jobs, stateData, daemonUptime] = fetched;
       const latest = Object.values(stateData).map(newestRun);
       // Liveness is finishedAt: a run killed by signal has no exit code, so testing
       // exitCode would report it as still running forever. Jobs with ANY open run, not the newest
