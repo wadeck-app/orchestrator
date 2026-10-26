@@ -5,6 +5,7 @@ import { ToastProvider } from '@wadeck-app/dsl-ui';
 import { appRegistry } from './registry.js';
 import { fetcher } from './fetcher.js';
 import { dslRoutes } from './generated/routes.js';
+import { shouldNotifyLoadFailureFor } from './daemon-down-notice.js';
 import { FailureBanner, NavBar, useFailures } from '@wadeck-app/dsl-lib-orch/ui';
 
 export default function App(): React.ReactElement {
@@ -20,7 +21,7 @@ export default function App(): React.ReactElement {
         <FailureBanner failures={failures} onAcknowledge={acknowledgeOne} onAcknowledgeAll={acknowledgeAll} />
         <Routes>
           {dslRoutes.map(r => (
-            <Route key={r.route} path={r.route} element={<GenericPageRunner yamlText={r.yamlText} registry={appRegistry} fetcher={fetcher} />} />
+            <Route key={r.route} path={r.route} element={<GenericPageRunner yamlText={r.yamlText} registry={appRegistry} fetcher={fetcher} shouldNotifyLoadFailure={shouldNotifyLoadFailureFor(r.yamlText)} />} />
           ))}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

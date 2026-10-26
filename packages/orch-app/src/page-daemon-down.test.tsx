@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { GenericPageRunner } from '@wadeck-app/dsl-renderer';
 import type { Fetcher } from '@wadeck-app/dsl-renderer';
 import { appRegistry } from './registry.js';
+import { shouldNotifyLoadFailureFor } from './daemon-down-notice.js';
 
 const testFetcher: Fetcher = async (url, _params, body, extraHeaders) => {
   const spaceIdx = url.indexOf(' ');
@@ -60,50 +61,60 @@ async function alertsOf(container: HTMLElement, seen: () => boolean): Promise<st
   return Array.from(container.querySelectorAll('[role="alert"]')).map(e => e.textContent ?? '');
 }
 
+/*
+ * With the daemon down every API route answers 503 {error:'daemon-not-running'} (what orch-core does). Each page must say it ONCE
+ * and say what to do: the pages that carry a component with the command (DaemonStatus, ResourceHistory) keep that message alone;
+ * the pages that carry none keep the renderer's generic banner, so that none of them is ever silent.
+ */
+function renderPage(file: string, route: string, entry: string, routePath?: string): { container: HTMLElement; served: () => number } {
+  let served = 0;
+  server.use(http.get('http://localhost/api/*', () => {
+    served++;
+    return HttpResponse.json({ error: 'daemon-not-running' }, { status: 503 });
+  }));
+  const yamlText = page(file);
+  const runner = <GenericPageRunner yamlText={yamlText} registry={appRegistry} fetcher={testFetcher} shouldNotifyLoadFailure={shouldNotifyLoadFailureFor(yamlText)} />;
+  const { container } = render(
+    <ToastProvider><MemoryRouter initialEntries={[entry]}>
+      {routePath === undefined ? runner : <Routes><Route path={routePath} element={runner} /></Routes>}
+    </MemoryRouter></ToastProvider>,
+  );
+  void route;
+  return { container, served: () => served };
+}
+
+const GENERIC = 'Could not load the data: daemon-not-running (HTTP 503)×';
+
 describe('orch-app pages with the daemon down', () => {
-  it('job list: two alerts (known issue)', async () => {
-    let served = 0;
-    server.use(http.get('http://localhost/api/*', () => {
-      served++;
-      return HttpResponse.json({ error: 'daemon-not-running' }, { status: 503 });
-    }));
-    const { container } = render(
-      <ToastProvider><MemoryRouter initialEntries={['/']}>
-        <GenericPageRunner yamlText={page('job-list.yaml')} registry={appRegistry} fetcher={testFetcher} />
-      </MemoryRouter></ToastProvider>,
-    );
+  it('job list: one alert, the one with the command', async () => {
+    const { container, served } = renderPage('job-list.yaml', 'job-list', '/');
     // /api/jobs (source) and /api/daemon (DaemonStatus).
-    const alerts = await alertsOf(container, () => served >= 2);
-    // KNOWN ISSUE, TWO red messages today: the renderer's generic banner for the failed primary source (no action in
-    // it) plus DaemonStatus's own, which has the command. Root cause: the renderer's notifyLoadFailure has no per-source silence option, and orch-app
-    // cannot pass hostNotify without rewriting the banner. When that changes, this test should expect one alert.
+    const alerts = await alertsOf(container, () => served() >= 2);
     expect(alerts).toEqual([
-      'Could not load the data: daemon-not-running (HTTP 503)×',
       'The orchestrator daemon is not running, so its status cannot be read. Start it with "orch start", then reload this page.',
     ]);
   });
 
-  it('job detail: two alerts (known issue)', async () => {
-    let served = 0;
-    server.use(http.get('http://localhost/api/*', () => {
-      served++;
-      return HttpResponse.json({ error: 'daemon-not-running' }, { status: 503 });
-    }));
-    const { container } = render(
-      <ToastProvider><MemoryRouter initialEntries={['/jobs/backup-db']}>
-        <Routes>
-          <Route path="/jobs/:id" element={<GenericPageRunner yamlText={page('job-detail.yaml')} registry={appRegistry} fetcher={testFetcher} />} />
-        </Routes>
-      </MemoryRouter></ToastProvider>,
-    );
+  // The generic banner stays here although ResourceHistory also says the daemon is down: its message covers the charts only, and
+  // without the banner the run history table would read "No runs yet" for a job that has runs (seen on the real page).
+  it('job detail: the generic banner stays next to the resource history message', async () => {
+    const { container, served } = renderPage('job-detail.yaml', 'job-detail', '/jobs/backup-db', '/jobs/:id');
     // /api/jobs/backup-db (source) and its resource-history.
-    const alerts = await alertsOf(container, () => served >= 2);
-    // KNOWN ISSUE, TWO red messages today: the renderer's generic banner for the failed primary source (no action in
-    // it) plus ResourceHistory's own, which has the command. Root cause: the renderer's notifyLoadFailure has no per-source silence option, and orch-app
-    // cannot pass hostNotify without rewriting the banner. When that changes, this test should expect one alert.
+    const alerts = await alertsOf(container, () => served() >= 2);
     expect(alerts).toEqual([
-      'Could not load the data: daemon-not-running (HTTP 503)×',
+      GENERIC,
       'The orchestrator daemon is not running, so the resource history cannot be read. Start it with "orch start", then reload this page.',
     ]);
+  });
+
+  // These pages carry no component that says the daemon is down: the generic banner is all they have, and they must keep it.
+  it.each([
+    ['schedule.yaml', '/schedule'],
+    ['audit.yaml', '/audit'],
+  ])('%s: the generic banner stays, the page is not silent', async (file, entry) => {
+    const { container, served } = renderPage(file, file, entry);
+    const alerts = await alertsOf(container, () => served() >= 1);
+    expect(alerts).toContain(GENERIC);
+    expect(alerts.length).toBeGreaterThanOrEqual(1);
   });
 });
