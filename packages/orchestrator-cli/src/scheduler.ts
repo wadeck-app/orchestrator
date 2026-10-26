@@ -1942,13 +1942,22 @@ export class Scheduler extends EventEmitter {
       return;
     }
     for (const name of names) {
+      let handledAt: number;
       try {
-        const handledAt = fs.statSync(path.join(root, name, 'done')).mtimeMs;
-        if (Date.now() - handledAt > 10 * 60_000) {
-          fs.rmSync(path.join(root, name), { recursive: true, force: true });
-        }
+        handledAt = fs.statSync(path.join(root, name, 'done')).mtimeMs;
       } catch {
         // No done marker (a run still going, or one that is to be recovered), or already gone: left alone.
+        continue;
+      }
+      if (Date.now() - handledAt <= 10 * 60_000) {
+        continue;
+      }
+      const folder = path.join(root, name);
+      try {
+        fs.rmSync(folder, { recursive: true, force: true });
+      } catch (e) {
+        // Best effort, but not silent: on Windows the supervisor of the run may still be exiting and hold a file in it.
+        console.error(`[scheduler] could not remove the folder of the handled run ${folder} (${getErrorMessage(e)}); it is tried again at the next start of "${jobId}"`);
       }
     }
   }

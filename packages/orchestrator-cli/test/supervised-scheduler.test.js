@@ -195,18 +195,55 @@ describe('a supervised run that ended in front of the daemon', () => {
     assert.ok(job);
   });
 
+  // The old folder is made by the test, not taken from the first run: a real run's folder can still be held for a moment by the
+  // supervisor that is exiting (on Windows that makes the removal fail), which made this test depend on that race.
+  function oldHandledFolder(env, name = 'old-run') {
+    const runsRoot = path.join(env.dir, 'runs', 'job');
+    const dir = path.join(runsRoot, name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'done'), '');
+    const longAgo = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(path.join(dir, 'done'), longAgo, longAgo);
+    return { runsRoot, dir };
+  }
+
   test('its folder is cleaned up once it has been handled for a while, when the job next starts', async () => {
     const { env, job } = await runOnce();
-    const runsRoot = path.join(env.dir, 'runs', 'job');
-    const old = fs.readdirSync(runsRoot)[0];
-    const longAgo = new Date(Date.now() - 3_600_000);
-    fs.utimesSync(path.join(runsRoot, old, 'done'), longAgo, longAgo);
+    const { runsRoot, dir } = oldHandledFolder(env);
+    const justEnded = fs.readdirSync(runsRoot).filter((n) => n !== 'old-run');
+    assert.equal(justEnded.length, 1);
 
     await env.sched._fire(job);
 
-    assert.ok(!fs.existsSync(path.join(runsRoot, old)), 'a folder handled an hour ago is still there');
-    assert.equal(fs.readdirSync(runsRoot).length, 1, 'the run that just ended keeps its folder for now');
+    assert.ok(!fs.existsSync(dir), 'a folder handled an hour ago is still there');
+    assert.ok(fs.existsSync(path.join(runsRoot, justEnded[0])), 'the run that had just ended lost its folder');
     assert.ok(runDirFor);
+  });
+
+  test('a folder that cannot be removed is said, with the reason, and left for the next start', async () => {
+    const { mock } = require('node:test');
+    const { env, job } = await runOnce();
+    const { dir } = oldHandledFolder(env);
+    const real = fs.rmSync;
+    mock.method(fs, 'rmSync', (target, ...rest) => {
+      if (String(target) === dir) {
+        throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+      }
+      return real(target, ...rest);
+    });
+    const said = [];
+    mock.method(console, 'error', (m) => { said.push(String(m)); });
+    try {
+      await env.sched._fire(job);
+    } finally {
+      mock.restoreAll();
+    }
+
+    assert.ok(fs.existsSync(dir), 'the folder is still there');
+    const line = said.find((m) => m.includes(dir));
+    assert.ok(line, `nothing was said about ${dir}: ${JSON.stringify(said)}`);
+    assert.match(line, /EBUSY/);
+    assert.match(line, /next start/);
   });
 });
 
