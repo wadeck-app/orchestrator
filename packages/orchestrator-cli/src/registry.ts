@@ -3,7 +3,7 @@ import fs   from 'node:fs';
 import cron from 'node-cron';
 import type { Job, RegistryData } from './types.js';
 import { JOB_TYPES, MANUAL_REFUSED_FIELDS, MANUAL_DROPPED_ON_CONVERSION, TRIGGER_MODES, MISSED_FIRINGS, LIVENESS_STRATEGIES, DESCRIPTION_MAX_LENGTH,
-         UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
+         LIVENESS_TIMEOUT_MIN_SECONDS, LIVENESS_TIMEOUT_MAX_SECONDS, UNSETTABLE_FIELDS, unsettableFieldError } from './types.js';
 import { atomicWriteJson, readJsonFile } from './fsUtil.js';
 import { activeWindowError } from './active-window.js';
 import { resourceLimitsError } from './resource-limits.js';
@@ -216,6 +216,15 @@ export function validateJob(job: Partial<Job>): void {
     }
     if (s === 'command'  && !job.liveness.command)  {
       throw new Error('liveness.command is required for command strategy');
+    }
+    const timeout = job.liveness.timeoutSeconds;
+    if (timeout !== undefined) {
+      if (s !== 'command') {
+        throw new Error(`liveness.timeoutSeconds only applies to the command strategy, and this job uses "${s}": remove it (orch edit <id> --liveness-strategy ${s} ...) or switch to --liveness-strategy command`);
+      }
+      if (!Number.isInteger(timeout) || timeout < LIVENESS_TIMEOUT_MIN_SECONDS || timeout > LIVENESS_TIMEOUT_MAX_SECONDS) {
+        throw new Error(`liveness.timeoutSeconds must be a whole number of seconds from ${LIVENESS_TIMEOUT_MIN_SECONDS} to ${LIVENESS_TIMEOUT_MAX_SECONDS}, got ${JSON.stringify(timeout)} (--liveness-timeout)`);
+      }
     }
   }
 }

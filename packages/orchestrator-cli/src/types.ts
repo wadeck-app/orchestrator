@@ -25,10 +25,17 @@ export type TriggerMode = typeof TRIGGER_MODES[number];
 export type MissedFiring = typeof MISSED_FIRINGS[number];
 export type LivenessStrategy = typeof LIVENESS_STRATEGIES[number];
 
+/** How long a liveness `command` may run before it is killed and the target counts as not alive. */
+export const LIVENESS_COMMAND_TIMEOUT_SECONDS = 30;
+export const LIVENESS_TIMEOUT_MIN_SECONDS = 1;
+export const LIVENESS_TIMEOUT_MAX_SECONDS = 3600;
+
 export interface LivenessConfig {
   strategy: LivenessStrategy;
   portFile?: string;
   command?: string;
+  /** `command` strategy only; whole seconds, ${LIVENESS_TIMEOUT_MIN_SECONDS}-${LIVENESS_TIMEOUT_MAX_SECONDS}. Default LIVENESS_COMMAND_TIMEOUT_SECONDS. */
+  timeoutSeconds?: number;
 }
 
 /** What the resource monitor does when a run stays over its hard budget. */

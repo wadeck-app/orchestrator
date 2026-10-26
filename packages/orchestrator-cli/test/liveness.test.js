@@ -6,7 +6,8 @@ const fs   = require('node:fs');
 const path = require('node:path');
 const os   = require('node:os');
 
-const { checkLiveness } = require('../src/liveness');
+const { checkLiveness, startShellCommand, LIVENESS_COMMAND_TIMEOUT_SECONDS } = require('../src/liveness');
+const { FakeTime } = require('../src/time-service');
 
 function tmpFile() {
   return path.join(os.tmpdir(), `orch-liveness-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -90,6 +91,117 @@ describe('command strategy', () => {
 
   test('returns false when command does not exist', async () => {
     assert.equal(await checkLiveness({ id: 'x', liveness: { strategy: 'command', command: 'no-such-binary-xyz-12345' } }), false);
+  });
+});
+
+// A liveness command that never ends used to hold the decision to start the job forever. These tests never wait: the
+// clock is a FakeTime and the command is a fake whose end the test decides.
+describe('command strategy timeout', () => {
+  function fakeCommand() {
+    const run = { killed: 0, finish: null, started: [] };
+    run.start = (command) => {
+      run.started.push(command);
+      return {
+        result: new Promise((resolve) => { run.finish = resolve; }),
+        kill: () => { run.killed++; },
+      };
+    };
+    return run;
+  }
+  const job = (liveness) => ({ id: 'srv', liveness: { strategy: 'command', command: 'check-it', ...liveness } });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  test('the default is 30 seconds', () => {
+    assert.equal(LIVENESS_COMMAND_TIMEOUT_SECONDS, 30);
+  });
+
+  test('a command still running after the default timeout is killed and the target counts as not alive, with a warning', async () => {
+    const time = new FakeTime();
+    const run = fakeCommand();
+    const warnings = [];
+    let answer;
+    const pending = checkLiveness(job({}), { time, start: run.start, warn: (m) => warnings.push(m) }).then((v) => { answer = v; });
+    time.advance(29_999);
+    await flush();
+    assert.equal(answer, undefined, 'still waiting one millisecond before the timeout');
+    assert.equal(run.killed, 0);
+    time.advance(1);
+    await pending;
+    assert.equal(answer, false);
+    assert.equal(run.killed, 1);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /"srv"/);
+    assert.match(warnings[0], /30 s/);
+    assert.match(warnings[0], /--liveness-timeout/);
+  });
+
+  test('liveness.timeoutSeconds replaces the default', async () => {
+    const time = new FakeTime();
+    const run = fakeCommand();
+    let answer;
+    const pending = checkLiveness(job({ timeoutSeconds: 5 }), { time, start: run.start, warn: () => {} }).then((v) => { answer = v; });
+    time.advance(4_999);
+    await flush();
+    assert.equal(answer, undefined);
+    time.advance(1);
+    await pending;
+    assert.equal(answer, false);
+    assert.equal(run.killed, 1);
+  });
+
+  test('a command that exits 0 in time is alive: no kill, no warning, no timer left armed', async () => {
+    const time = new FakeTime();
+    const run = fakeCommand();
+    const warnings = [];
+    const pending = checkLiveness(job({}), { time, start: run.start, warn: (m) => warnings.push(m) });
+    run.finish(true);
+    assert.equal(await pending, true);
+    assert.equal(run.killed, 0);
+    assert.deepEqual(warnings, []);
+    assert.equal(time.pending, 0);
+  });
+
+  test('a command that fails in time is not alive, without a warning', async () => {
+    const time = new FakeTime();
+    const run = fakeCommand();
+    const warnings = [];
+    const pending = checkLiveness(job({}), { time, start: run.start, warn: (m) => warnings.push(m) });
+    run.finish(false);
+    assert.equal(await pending, false);
+    assert.deepEqual(warnings, []);
+    assert.equal(time.pending, 0);
+  });
+
+  test('an answer that arrives after the timeout does not change it', async () => {
+    const time = new FakeTime();
+    const run = fakeCommand();
+    const pending = checkLiveness(job({}), { time, start: run.start, warn: () => {} });
+    time.advance(30_000);
+    assert.equal(await pending, false);
+    run.finish(true);
+    await flush();
+    assert.equal(run.killed, 1);
+  });
+
+  test('a command that cannot be started is not alive', async () => {
+    const pending = checkLiveness(job({}), {
+      time: new FakeTime(), warn: () => {}, start: () => { throw new Error('spawn failed'); },
+    });
+    assert.equal(await pending, false);
+  });
+});
+
+describe('startShellCommand', () => {
+  test('its result is true for exit 0 and false for another exit', async () => {
+    assert.equal(await startShellCommand('node -e "process.exit(0)"').result, true);
+    assert.equal(await startShellCommand('node -e "process.exit(3)"').result, false);
+  });
+
+  // The end of the process is awaited as an event, not slept for: kill() has to end a command that never would.
+  test('kill ends a command that would never end', async () => {
+    const run = startShellCommand('node -e "setInterval(() => {}, 1000)"');
+    run.kill();
+    assert.equal(await run.result, false);
   });
 });
 

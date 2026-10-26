@@ -551,7 +551,7 @@ export class Scheduler extends EventEmitter {
       return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
     });
     this._supervisor = options.supervisor ?? null;
-    this._liveness  = options.liveness  ?? checkLiveness;
+    this._liveness  = options.liveness  ?? ((job) => checkLiveness(job, { time: this._time, warn: (m) => console.error(`[scheduler] ${m}`) }));
     this._time      = options.time      ?? systemTime;
     // Defaults to the time service rather than Date, so a test that moves the clock is not
     // contradicted by a `now` that never moved. An explicit `now` still wins, for the tests that only

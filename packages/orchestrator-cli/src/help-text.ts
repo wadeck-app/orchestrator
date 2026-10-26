@@ -128,6 +128,8 @@ a flag that is not listed here is refused, not ignored):
     --liveness-strategy <s>      none | portFile | pidFile | command (default: none), see below
     --liveness-port-file <p>     Port file to read (portFile strategy)
     --liveness-command <c>       Command to run (command strategy)
+    --liveness-timeout <s>       Seconds the command may run (command strategy, 1-3600, default
+                                 30); past it, it is killed and the target counts as not alive
   Execution
     --trigger-mode <mode>        fire-and-forget | wait (default: fire-and-forget)
     --max-concurrency <n>        Refuse to start a run while n are already running (default: no
@@ -218,7 +220,8 @@ Liveness strategies (skip firing if target is already alive):
   none       Always fire -- no liveness check (default)
   portFile   Read <portFile>, check if its PID is alive -> skip if alive
   pidFile    Find PID file by job id -> skip if PID is alive
-  command    Run <command> -> skip if it exits 0
+  command    Run <command> -> skip if it exits 0. Killed after --liveness-timeout (default
+             30 s): the target then counts as not alive, the job starts, the daemon log says so
 
 Manual execution:
   orch trigger <id> [--wait] [--force] [--json]

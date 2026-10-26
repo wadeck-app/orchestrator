@@ -264,6 +264,18 @@ A run therefore keeps at most about 250 MB by default. A job's keys override the
   - Dashboard (`/api/logs/<id>/runs` and `/stream`): one entry per run with the total size (plus `segments`, `droppedSegments`); the stream replays all kept segments and follows into the next one without a run change. The run picker UI shows the total size only.
   - Progress/ETA strategies: `tail` reads the end of the run across segments; the head (`readFrom`, fingerprint) is the first segment kept, so a rotated run teaches the learned strategy only that head, and a byte offset above 0 addresses that segment.
 
+## Bounding a liveness command -- `liveness.timeoutSeconds`
+
+The `command` liveness strategy runs `liveness.command` before each firing and skips the job when it exits 0. A command that never ends used to hold the firing forever; it is now killed (whole process tree) after `timeoutSeconds`.
+
+| Key (flag) | Default | Range |
+|---|---|---|
+| `timeoutSeconds` (`--liveness-timeout`) | `30` | whole seconds, `1`-`3600`; `command` strategy only |
+
+- On timeout the target counts as **not alive**: the job starts. The daemon log gets a `[scheduler]` line naming the job and the flag to raise.
+- Any other strategy with `timeoutSeconds`, or a value outside the range, is refused by `add`, `edit` and the API with the key (and flag) to fix.
+- `edit` replaces the whole `liveness` object: repeat `--liveness-strategy command --liveness-command "<cmd>"` with `--liveness-timeout`.
+
 ## Example
 
 ```yaml

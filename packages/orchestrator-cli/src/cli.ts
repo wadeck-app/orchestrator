@@ -200,10 +200,10 @@ export const JOB_FIELD_FLAGS: FieldFlag[] = [
 
 /** Flags accepted alongside the field flags, so the unknown-flag check does not reject them. */
 export const EXTRA_ADD_FLAGS  = ['--once', '--disabled', '--delay', '--json', '--progress', '--progress-options',
-                          '--liveness-strategy', '--liveness-port-file', '--liveness-command',
+                          '--liveness-strategy', '--liveness-port-file', '--liveness-command', '--liveness-timeout',
                           '--active-from', '--active-until', '--active-for'];
 export const EXTRA_EDIT_FLAGS = ['--unset', '--delay', '--json', '--progress', '--progress-options',
-                          '--liveness-strategy', '--liveness-port-file', '--liveness-command',
+                          '--liveness-strategy', '--liveness-port-file', '--liveness-command', '--liveness-timeout',
                           '--active-from', '--active-until', '--active-for'];
 
 /** Flags that consume the next argument; the rest are presence-only. */
@@ -604,16 +604,32 @@ function multiFlag(argv: string[], name: string): string[] {
 }
 
 
-function buildLiveness(argv: string[]): LivenessConfig | null {
+/** The seconds given to --liveness-timeout, or undefined when absent. Throws on a flag with no value or a non-integer. */
+export function livenessTimeoutFlag(argv: string[]): number | undefined {
+  const raw = flag(argv, '--liveness-timeout');
+  if (raw === undefined) {
+    if (has(argv, '--liveness-timeout')) {
+      throw new Error('--liveness-timeout needs a value, but was followed by nothing.');
+    }
+    return undefined;
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n)) {
+    throw new Error(`--liveness-timeout expects a whole number of seconds, but got "${raw}".`);
+  }
+  return n;
+}
+
+export function buildLiveness(argv: string[]): LivenessConfig | null {
   const strategy = flag(argv, '--liveness-strategy');
-  // These two are only ever read through a strategy, so on their own they would be accepted and then
+  // These are only ever read through a strategy, so on their own they would be accepted and then
   // do nothing -- which is how `--liveness-port-file` used to write a junk `livenessPortFile` field.
   if (!strategy) {
-    for (const orphan of ['--liveness-port-file', '--liveness-command']) {
+    for (const orphan of ['--liveness-port-file', '--liveness-command', '--liveness-timeout']) {
       if (has(argv, orphan)) {
         errorExit(`${orphan} needs --liveness-strategy, otherwise there is no check to attach it to.`
           + `\n\nExample: orch edit my-job --liveness-strategy `
-          + `${orphan === '--liveness-port-file' ? 'portFile --liveness-port-file <path>' : 'command --liveness-command "<cmd>"'}`
+          + `${orphan === '--liveness-port-file' ? 'portFile --liveness-port-file <path>' : 'command --liveness-command "<cmd>"' + (orphan === '--liveness-timeout' ? ' --liveness-timeout 60' : '')}`
           + `\n\nStrategies: none, portFile, pidFile, command`, 4);
       }
     }
@@ -627,6 +643,15 @@ function buildLiveness(argv: string[]): LivenessConfig | null {
   }
   if (strategy === 'command')  {
     liveness.command  = flag(argv, '--liveness-command');
+  }
+  try {
+    const timeout = livenessTimeoutFlag(argv);
+    // Set whatever the strategy: the registry refuses it with anything but `command`, and says why, rather than dropping it here.
+    if (timeout !== undefined) {
+      liveness.timeoutSeconds = timeout;
+    }
+  } catch (e) {
+    errorExit(getErrorMessage(e), 4);
   }
   return liveness;
 }
