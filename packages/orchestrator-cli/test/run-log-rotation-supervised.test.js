@@ -33,7 +33,7 @@ afterEach(async () => {
     await schedulers.pop().stop();
   }
   for (const d of dirs.splice(0)) {
-    fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
