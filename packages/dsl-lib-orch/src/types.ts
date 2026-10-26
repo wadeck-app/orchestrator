@@ -6,6 +6,8 @@ export interface LivenessConfig {
   strategy: LivenessStrategy;
   portFile?: string;
   command?: string;
+  /** Command strategy only. Not editable in the form, which keeps what the job has. */
+  timeoutSeconds?: number;
 }
 
 /** The longest description a job may have, counted on the trimmed text. Mirrors orchestrator-cli's types.ts. */

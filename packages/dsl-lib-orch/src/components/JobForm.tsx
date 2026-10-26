@@ -479,6 +479,10 @@ export function JobForm({ initial, onSubmit, onCancel, busy }: JobFormProps): Re
         }
         if (livenessStrategy === 'command' && livenessCommand.trim()) {
           liveness.command = livenessCommand.trim();
+          // No field for it here: rebuilding liveness without it would reset the job to the default on every save.
+          if (initLiveness?.strategy === 'command' && initLiveness.timeoutSeconds !== undefined) {
+            liveness.timeoutSeconds = initLiveness.timeoutSeconds;
+          }
         }
         data.liveness = liveness;
       } else {

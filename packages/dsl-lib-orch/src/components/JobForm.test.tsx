@@ -654,6 +654,30 @@ describe('JobForm clears fields the user emptied', () => {
     expect(sent).not.toHaveProperty('unset');
   });
 
+  // The form has no field for the liveness command timeout. Rebuilding liveness without it would put the job back on the
+  // 30 s default on every save, without a word.
+  it('keeps the liveness command timeout it does not show', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it', timeoutSeconds: 90 } }, onSubmit);
+
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).liveness).toEqual({ strategy: 'command', command: 'check-it', timeoutSeconds: 90 });
+  });
+
+  it('drops the liveness command timeout when the strategy is no longer command', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    renderEditForm({ ...EXISTING_CRON, liveness: { strategy: 'command', command: 'check-it', timeoutSeconds: 90 } }, onSubmit);
+
+    showAdvanced();
+    fill(/^Liveness check/, 'pidFile');
+    saveButton().click();
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(submitted(onSubmit).liveness).toEqual({ strategy: 'pidFile' });
+  });
+
   // retryOnExitCodes, retryDelays and skipExitCodes are unsettable in the daemon but absent from
   // this form. Unsetting what the user was never shown would delete config behind their back.
   it('never unsets retry or skip config the form does not edit', async () => {
