@@ -326,3 +326,43 @@ exit-code claim was dropped for lack of sources in this checkout.
 **Problem:** On macOS the `claude-update` job failed with `claude: command not found` (127): `~/.local/bin` is added in `~/.zshrc`, which launchd never reads, and the plist PATH was a fixed list (`nodeBinDir:/usr/local/bin:/usr/bin:...`) rewritten at every daemon start, so hand edits were lost.
 **Fix:** `planMacPath` (`src/login-shell-path.ts`) captures the login shell's PATH when the plist is written (markers around `printf`, 5 s timeout, SIGKILL, no inherited PATH) and merges it after the daemon's node dir; on failure it writes a default list and returns a warning that `reportStartupRefresh` puts in the daemon log.
 **Context:** `orch start` spawns the Go launcher directly with the shell's own PATH, so only login-started daemons were affected (and it works "on my terminal"). A job's own `env.PATH` replaces the daemon PATH rather than extending it. Do not pass the daemon's PATH to the capturing shell: it is the previous plist's, which would keep a stale node directory forever. Not run on a real Mac yet: all tests inject the shell runner.
+
+---
+
+### Under the launcher, everything the daemon prints on stdout/stderr is lost
+
+**Problem:** The 24 `console.error` / `process.stderr.write` calls of the daemon (among them "this cron job will NEVER fire") never reached any log: `orch logs` showed nothing. A one-call workaround (a `warn` option wired to the daemon log for the liveness timeout) hid the cause.
+**Fix:** `src/stdio-bridge.ts` patches `process.stdout.write` and `process.stderr.write` and copies each line, tagged `[stdout]` / `[stderr]`, into the daemon log (early file first, `daemonLog` once it exists). The streams keep their return value and callback. A write made by the sink itself is not fed back (DailyLogger reports its own failures on stderr).
+**Context:** The kit launcher gives node the NUL device when it has no console (`launcher.go`, `openNulStdio`) and the real terminal otherwise; neither is a file. New diagnostics can keep using `console.error`. `test/launcher-e2e.test.js` proves it with the real launcher.
+
+---
+
+### A test that starts daemons must identify its own, not "whoever answers on the port"
+
+**Problem:** `launcher-e2e.test.js` passed alone and failed in the full suite: after it killed its daemon, the port was free and a daemon of another test (the files of `npm test` run in parallel) answered `version` with a different pid, so the test believed its daemon had restarted.
+**Fix:** The daemon that counts is the pid in the launcher's own log (`PIDs: launcher=.. node=..`), and `version()` must report that pid.
+**Context:** Same family as the `pidtree` lesson: a pid or a port is not unique over time. A failing test should name both logs; the e2e test appends the launcher and daemon logs to its error.
+
+---
+
+### The platforms we ship for lived in six places, and Linux was missing from all of them
+
+**Problem:** `platform-binary.ts` tables, `generate/copy/publish-platform-packages.sh`, `optionalDependencies` and `build-supervisor-binary.ts` each listed the platforms. Linux was absent everywhere, silently: without a launcher an npm install there could not start the daemon at all.
+**Fix:** `PLATFORM_TARGETS` in `platform-binary.ts` is the one table; `test/platform-targets.test.js` parses the scripts and `package.json` and fails until they agree with it.
+**Context:** Linux packages carry the launcher and the supervisor but no tray (no Linux systray build): `platformHasTray` decides, `nativeBinaryProblem` is the updater's rollback-gate check. Start at login is still macOS and Windows only.
+
+---
+
+### `fs.rmSync` of a folder a process just left needs retries on Windows
+
+**Problem:** An `afterEach` removing a run folder failed with EPERM while the supervisor was still closing its log, so a green test went red on load.
+**Fix:** `{ recursive: true, force: true, maxRetries: 10, retryDelay: 100 }`, as the `isolate-config-dir.js` preload already does.
+**Context:** The failure is in the hook, not in an assertion, so the test name in the report is misleading.
+
+---
+
+### `npm install` can report a new version while `node_modules` still holds the old files
+
+**Problem:** After bumping an exact pin, `npm ls` and `node_modules/.package-lock.json` named the new version of `singleton-daemon-kit` but the folder had the old files (no `CrashRestart`, dates of the previous install).
+**Fix:** `npm uninstall <pkg> -w <workspace>` then `npm install <pkg>@<version> --save-exact -w <workspace>`. Deleting the folder by hand is blocked by the node_modules guardrail, rightly.
+**Context:** Check the content (`grep` for a symbol of the new version), not the version string. Unpack the published tarball into an empty folder to know what the package really holds.
