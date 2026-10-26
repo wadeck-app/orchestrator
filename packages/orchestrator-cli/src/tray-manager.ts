@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { execFile, execFileSync } from 'node:child_process';
+import { exec, execFile, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { DailyLogger } from './logger.js';
@@ -373,9 +373,10 @@ export class TrayManager extends EventEmitter {
     this._refresh();
     try {
       const latest = await new Promise<string>((resolve, reject) => {
-        // Use shell:true so npm resolves correctly on all platforms (npm.cmd on Windows)
-        execFile('npm', ['view', '@wadeck-app/orchestrator-cli', 'version', '--json'],
-          { timeout: 15_000, shell: true, windowsHide: true }, (err, stdout) => {
+        // One command string through the shell, so npm resolves on all platforms (npm.cmd on Windows). Not execFile with an args
+        // array and shell:true: Node deprecates that (DEP0190) and printed the warning at every daemon start. Nothing in it is user input.
+        exec('npm view @wadeck-app/orchestrator-cli version --json',
+          { timeout: 15_000, windowsHide: true }, (err, stdout) => {
             if (err) { reject(err); return; }
             try { resolve(JSON.parse(stdout.trim()) as string); }
             catch { reject(new Error('bad npm view output')); }
@@ -561,9 +562,9 @@ export class TrayManager extends EventEmitter {
     const tp = this._createTray(binaryPath);
     this._tp = tp;
 
+    // Once, in the tray log. A copy on console.error would end up in the daemon log as well (stdio-bridge.ts), every line twice.
     tp.onStderrLine((line) => {
       this._logAction(`[tray-go] ${line}`);
-      console.error(`[tray-go] ${line}`);
     });
 
     tp.onExit((code, signal) => {

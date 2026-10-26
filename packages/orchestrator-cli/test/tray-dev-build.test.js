@@ -26,6 +26,7 @@ describe('a development build', () => {
     test(`${version}: the version row checks nothing, says why, and never offers an install`, async () => {
       const calls = [];
       mock.method(childProcess, 'execFile', (...args) => { calls.push(args); });
+      mock.method(childProcess, 'exec', (...args) => { calls.push(args); });
       const { mgr, logs } = makeTray(version);
       await mgr._checkForUpdate();
       assert.deepEqual(calls, [], 'npm view was run for a development build');
@@ -39,11 +40,15 @@ describe('a development build', () => {
 });
 
 describe('a release build', () => {
-  test('still asks npm', async () => {
+  test('still asks npm, with one command string: an args array with shell:true is Node DEP0190, printed at every daemon start', { timeout: 10_000 }, async () => {
     const calls = [];
-    mock.method(childProcess, 'execFile', (...args) => { calls.push(args); const cb = args[args.length - 1]; cb(new Error('mocked: no network')); });
+    const execFileCalls = [];
+    mock.method(childProcess, 'exec', (...args) => { calls.push(args); const cb = args[args.length - 1]; cb(new Error('mocked: no network')); });
+    mock.method(childProcess, 'execFile', (...args) => { execFileCalls.push(args); });
     const { mgr } = makeTray('2026.10.24-514-aac78c7a');
     await mgr._checkForUpdate();
     assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], 'npm view @wadeck-app/orchestrator-cli version --json');
+    assert.deepEqual(execFileCalls, [], 'execFile with an args array and a shell');
   });
 });
