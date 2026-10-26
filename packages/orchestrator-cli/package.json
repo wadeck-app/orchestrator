@@ -40,6 +40,8 @@
   "optionalDependencies": {
     "@wadeck-app/orchestrator-cli-darwin-arm64": ">=0.0.0-0",
     "@wadeck-app/orchestrator-cli-darwin-x64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-linux-arm64": ">=0.0.0-0",
+    "@wadeck-app/orchestrator-cli-linux-x64": ">=0.0.0-0",
     "@wadeck-app/orchestrator-cli-win32-x64": ">=0.0.0-0"
   },
   "publishConfig": {
@@ -53,7 +55,7 @@
     "@wadeck-app/queue-sdk": ">=2026.10.24-190-aa15e847",
     "@wadeck-app/shared-cli": "^2026.10.25-044-51609e11",
     "@wadeck-app/shared-updater": ">=2026.10.25-020-6cb52900",
-    "@wadeck-app/singleton-daemon-kit": "2026.10.25-095-5f381eb2",
+    "@wadeck-app/singleton-daemon-kit": "2026.10.26-096-3bbfe66f",
     "fastify": "^5.0.0",
     "node-cron": "^4.6.0",
     "pidtree": "^1.0.0",

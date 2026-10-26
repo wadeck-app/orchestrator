@@ -9,15 +9,84 @@ import path from 'node:path';
 import fs   from 'node:fs';
 import { getErrorMessage } from './fsUtil.js';
 
-const PLATFORM_PKG: Record<string, string> = {
-  'win32-x64':    '@wadeck-app/orchestrator-cli-win32-x64',
-  'darwin-arm64': '@wadeck-app/orchestrator-cli-darwin-arm64',
-  'darwin-x64':   '@wadeck-app/orchestrator-cli-darwin-x64',
+/**
+ * The one table of the platforms we ship for. Everything that lists platforms (the platform package scripts in
+ * ci/scripts, optionalDependencies, scripts/build-supervisor-binary.ts) is checked against it by
+ * test/platform-targets.test.js, so a platform cannot be added here and forgotten there.
+ *
+ * *Dev names are the files a source checkout builds (launcher-go/dist, tray-go/dist, supervisor-go/dist); inside a
+ * platform package the files are named plainly. `trayDev` is null where there is no systray build (Linux).
+ */
+export interface PlatformTarget {
+  pkg:           string;
+  launcherDev:   string;
+  trayDev:       string | null;
+  supervisorDev: string;
+}
+
+export const PLATFORM_TARGETS: Readonly<Record<string, PlatformTarget>> = {
+  'win32-x64': {
+    pkg: '@wadeck-app/orchestrator-cli-win32-x64',
+    launcherDev: 'orchestrator_windows_release.exe', trayDev: 'orchestrator-tray.exe', supervisorDev: 'orchestrator-supervisor.exe',
+  },
+  'darwin-arm64': {
+    pkg: '@wadeck-app/orchestrator-cli-darwin-arm64',
+    launcherDev: 'orchestrator_darwin_arm64_release', trayDev: 'orchestrator-tray-arm64', supervisorDev: 'orchestrator-supervisor-arm64',
+  },
+  'darwin-x64': {
+    pkg: '@wadeck-app/orchestrator-cli-darwin-x64',
+    launcherDev: 'orchestrator_darwin_amd64_release', trayDev: 'orchestrator-tray-amd64', supervisorDev: 'orchestrator-supervisor-amd64',
+  },
+  'linux-arm64': {
+    pkg: '@wadeck-app/orchestrator-cli-linux-arm64',
+    launcherDev: 'orchestrator_linux_arm64_release', trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-arm64',
+  },
+  'linux-x64': {
+    pkg: '@wadeck-app/orchestrator-cli-linux-x64',
+    launcherDev: 'orchestrator_linux_amd64_release', trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-amd64',
+  },
 };
+
+/** The key of a platform and architecture: every architecture that is not arm64 counts as x64, as the package names do. */
+export function platformKeyOf(platform: string, arch: string): string {
+  return `${platform}-${arch === 'arm64' ? 'arm64' : 'x64'}`;
+}
+
+/** True where a systray binary is built (Windows, macOS). Linux has none: its daemon is reached with `orch server start`. */
+export function platformHasTray(platform: string): boolean {
+  return Object.entries(PLATFORM_TARGETS).some(([key, t]) => key.startsWith(`${platform}-`) && t.trayDev !== null);
+}
+
+/**
+ * What is wrong with the installed native binaries, or null. The tray is required only where one is built. Each name carries
+ * the package it should have come from, because npm skips a failed optionalDependency without a word.
+ */
+export function nativeBinaryProblem(found: { platform: string; pkg: string; launcher: boolean; tray: boolean; supervisor: boolean }): string | null {
+  if (!found.launcher) {
+    return `Go launcher not found; expected in ${found.pkg}`;
+  }
+  if (!found.supervisor) {
+    return `supervisor not found; expected in ${found.pkg}`;
+  }
+  if (platformHasTray(found.platform) && !found.tray) {
+    return `tray binary not found; expected in ${found.pkg}`;
+  }
+  return null;
+}
+
+/** The daemon-log line when no tray can be started: a broken install where a tray is built, a plain fact where none is. */
+export function trayUnavailableMessage(platform: string, arch: string, pkg: string | null): string {
+  const supported = Object.keys(PLATFORM_TARGETS).some((key) => key.startsWith(`${platform}-`));
+  if (supported && !platformHasTray(platform)) {
+    return `[tray] no systray build for ${platform}: the daemon runs without one. Open the dashboard with: orch server start`;
+  }
+  return `[tray] systray disabled: binary not found. Expected in ${pkg ?? `${platform}-${arch} (unsupported)`}`
+    + ', or in tray-go/dist for a monorepo checkout. Re-install with: npm install -g @wadeck-app/orchestrator-cli';
+}
 
 /** npm package holding the native binaries for the running platform, or null if unsupported. */
 export function platformPackage(): string | null {
-  return PLATFORM_PKG[platformKey()] ?? null;
+  return PLATFORM_TARGETS[platformKey()]?.pkg ?? null;
 }
 
 // Inside the platform package the arch is encoded in the package name, so the files are
@@ -28,32 +97,10 @@ const SUPERVISOR_IN_PLATFORM_PKG = process.platform === 'win32' ? 'orchestrator-
 
 // Keyed on the platform too, not just the arch: a bare arch ternary returned the darwin
 // binary on any non-Windows host, so a Linux checkout would find and try to exec a Mach-O
-// file. Only the targets build.sh and build-tray-binary.ts actually produce are listed;
-// anything else resolves to null and the caller reports an unsupported platform.
-const LAUNCHER_DEV_NAME: Record<string, string> = {
-  'win32-x64':    'orchestrator_windows_release.exe',
-  'darwin-arm64': 'orchestrator_darwin_arm64_release',
-  'darwin-x64':   'orchestrator_darwin_amd64_release',
-};
-
-const TRAY_DEV_NAME: Record<string, string> = {
-  'win32-x64':    'orchestrator-tray.exe',
-  'darwin-arm64': 'orchestrator-tray-arm64',
-  'darwin-x64':   'orchestrator-tray-amd64',
-};
-
-// Source-checkout names only (supervisor-go/dist, from `npm run build-supervisor`). The platform packages carry the win32
-// and darwin supervisors. linux-x64 is built here for a checkout and CI but ships in no package, and linux-arm64 is built
-// nowhere: an npm install on Linux has no supervisor.
-const SUPERVISOR_DEV_NAME: Record<string, string> = {
-  'win32-x64':    'orchestrator-supervisor.exe',
-  'darwin-arm64': 'orchestrator-supervisor-arm64',
-  'darwin-x64':   'orchestrator-supervisor-amd64',
-  'linux-x64':    'orchestrator-supervisor-linux-amd64',
-};
-
+// file. A target absent from PLATFORM_TARGETS resolves to null and the caller reports an
+// unsupported platform.
 function platformKey(): string {
-  return `${process.platform}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`;
+  return platformKeyOf(process.platform, process.arch);
 }
 
 function resolveInPlatformPackage(fileName: string): string | null {
@@ -167,7 +214,7 @@ export function findLauncherBinary(): string | null {
   if (fromPkg) {
     return fromPkg;
   }
-  const devName = LAUNCHER_DEV_NAME[platformKey()];
+  const devName = PLATFORM_TARGETS[platformKey()]?.launcherDev;
   if (!devName) {
     return null;
   }
@@ -180,7 +227,7 @@ export function findTrayBinary(): string | null {
   if (fromPkg) {
     return fromPkg;
   }
-  const devName = TRAY_DEV_NAME[platformKey()];
+  const devName = PLATFORM_TARGETS[platformKey()]?.trayDev;
   if (!devName) {
     return null;
   }
@@ -193,7 +240,7 @@ export function findSupervisorBinary(): string | null {
   if (fromPkg) {
     return fromPkg;
   }
-  const devName = SUPERVISOR_DEV_NAME[platformKey()];
+  const devName = PLATFORM_TARGETS[platformKey()]?.supervisorDev;
   if (!devName) {
     return null;
   }

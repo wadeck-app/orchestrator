@@ -34,12 +34,12 @@ concurrency:
 
 jobs:
     build-and-test:
-        # The published targets are win32-x64, darwin-arm64 and darwin-x64, yet this job only
-        # ever ran on ubuntu -- the one platform nothing is published for. Every Windows and
-        # macOS path was therefore untested: the registry entries, taskkill, the generated
+        # The published targets are win32-x64, darwin-arm64, darwin-x64, linux-x64 and linux-arm64. This
+        # job once ran on ubuntu alone, so every Windows and
+        # macOS path was untested: the registry entries, taskkill, the generated
         # VBScript, the launchd plist, launchctl, the MSYS2 detach behaviour. None of the
         # regressions shipped on 2026-09-15 could have been caught here.
-        # publish stays on ubuntu alone: build.sh cross-compiles all three targets via
+        # publish stays on ubuntu alone: build.sh cross-compiles every target via
         # GOOS/GOARCH, so matrixing it would publish the same version three times.
         strategy:
             fail-fast: false

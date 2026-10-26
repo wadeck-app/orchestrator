@@ -720,7 +720,6 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   const send        = deps.send        ?? (() => { throw new Error('no send'); });
   const startDaemon = deps.startDaemon ?? (() => {});
   const configDir   = deps.configDir   ?? DEFAULT_CONFIG_DIR;
-  const platform    = deps.platform    ?? process.platform;
 
   /**
    * Before a command that ends the daemon: says which running jobs die with it when no supervisor guards them
@@ -737,7 +736,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         return;
       }
       const state = knownState ?? await send('list-state', undefined, { autoStart: false }) as Record<string, RuntimeEntry[]>;
-      const warning = unsupervisedWarning(action, info.supervisor, state, platform);
+      const warning = unsupervisedWarning(action, info.supervisor, state);
       if (warning !== null) {
         console.error(warning);
       }

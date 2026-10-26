@@ -11,25 +11,18 @@ const {
   platformPackage,
   findLauncherBinary,
   findTrayBinary,
+  findSupervisorBinary,
+  PLATFORM_TARGETS,
   findDaemonEntry,
 } = require('../dist/platform-binary.js');
 
-// Binary names each platform is allowed to resolve to. A bare arch ternary used to return the
-// darwin name on any non-Windows host, so a Linux checkout resolved and tried to exec a Mach-O
-// file. These lists keep that class of mix-up from coming back.
-const ALLOWED_LAUNCHER = {
-  'win32-x64':    ['orchestrator.exe', 'orchestrator_windows_release.exe'],
-  'darwin-arm64': ['orchestrator', 'orchestrator_darwin_arm64_release'],
-  'darwin-x64':   ['orchestrator', 'orchestrator_darwin_amd64_release'],
-};
-const ALLOWED_TRAY = {
-  'win32-x64':    ['orchestrator-tray.exe'],
-  'darwin-arm64': ['orchestrator-tray', 'orchestrator-tray-arm64'],
-  'darwin-x64':   ['orchestrator-tray', 'orchestrator-tray-amd64'],
-};
-
+// Binary names each platform is allowed to resolve to: the plain name inside a platform package, or the dev name from
+// PLATFORM_TARGETS in a checkout. A bare arch ternary used to return the darwin name on any non-Windows host, so a Linux
+// checkout resolved and tried to exec a Mach-O file; keying on the platform keeps that mix-up from coming back.
 const key = `${process.platform}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`;
-const supported = Object.prototype.hasOwnProperty.call(ALLOWED_LAUNCHER, key);
+const target = PLATFORM_TARGETS[key];
+const supported = target !== undefined;
+const exe = process.platform === 'win32' ? '.exe' : '';
 
 describe('platformPackage', () => {
   test('names the platform package, or null when unsupported', () => {
@@ -51,22 +44,36 @@ describe('findLauncherBinary', () => {
     }
     assert.ok(p, 'no launcher found: run npm run build-launcher');
     assert.ok(fs.existsSync(p), `resolved to a missing file: ${p}`);
-    assert.ok(ALLOWED_LAUNCHER[key].includes(path.basename(p)),
+    assert.ok([`orchestrator${exe}`, target.launcherDev].includes(path.basename(p)),
       `${path.basename(p)} is not a ${key} launcher name`);
   });
 });
 
 describe('findTrayBinary', () => {
-  test('resolves to an existing file with a name valid for this platform', () => {
+  test('resolves to an existing file with a name valid for this platform, and to null where there is no tray', () => {
     const p = findTrayBinary();
-    if (!supported) {
+    if (!supported || target.trayDev === null) {
       assert.equal(p, null, `${key} has no tray binary, expected null`);
       return;
     }
     assert.ok(p, 'no tray binary found: run npm run build-tray');
     assert.ok(fs.existsSync(p), `resolved to a missing file: ${p}`);
-    assert.ok(ALLOWED_TRAY[key].includes(path.basename(p)),
+    assert.ok([`orchestrator-tray${exe}`, target.trayDev].includes(path.basename(p)),
       `${path.basename(p)} is not a ${key} tray name`);
+  });
+});
+
+describe('findSupervisorBinary', () => {
+  test('resolves to an existing file with a name valid for this platform', () => {
+    const p = findSupervisorBinary();
+    if (!supported) {
+      assert.equal(p, null, `${key} has no supervisor, expected null`);
+      return;
+    }
+    assert.ok(p, 'no supervisor found: run npm run build-supervisor');
+    assert.ok(fs.existsSync(p), `resolved to a missing file: ${p}`);
+    assert.ok([`orchestrator-supervisor${exe}`, target.supervisorDev].includes(path.basename(p)),
+      `${path.basename(p)} is not a ${key} supervisor name`);
   });
 });
 

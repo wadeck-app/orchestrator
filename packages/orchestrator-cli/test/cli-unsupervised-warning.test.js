@@ -78,7 +78,7 @@ const ACTIONS = [
 
 for (const { name, argv, acts } of ACTIONS) {
   describe(name, () => {
-    test('warns before acting, names the unsupervised running jobs, says they are killed, and says Linux has no way out', async () => {
+    test('warns before acting, names the unsupervised running jobs, says they are killed, and points at a reinstall (Linux ships a supervisor like the others)', async () => {
       const { events, err } = await run(argv, { info: INFO_UNAVAILABLE });
 
       assert.match(err, /warning/i);
@@ -87,8 +87,8 @@ for (const { name, argv, acts } of ACTIONS) {
       assert.doesNotMatch(err, /guarded|done/, 'a supervised job survives and a finished one is not running');
       assert.match(err, /killed with the daemon/);
       assert.match(err, /no supervisor executable for linux-arm64/, 'the daemon\'s own reason is repeated');
-      assert.match(err, /Linux/);
-      assert.match(err, /source checkout/);
+      assert.doesNotMatch(err, /no supervisor in the npm install on Linux|source checkout/, 'Linux is a supported target, with a supervisor package');
+      assert.match(err, /orch cli update/);
       assert.match(err, /wait for the jobs to finish/);
       const warnedAt = events.findIndex(e => e.startsWith('err:'));
       assert.ok(warnedAt >= 0 && warnedAt < events.indexOf(acts), `the warning must come before the action: ${events.join(' | ')}`);

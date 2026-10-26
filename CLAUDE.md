@@ -45,15 +45,18 @@ The published `@wadeck-app/orchestrator-cli` ships **only** JS: `dist/orchestrat
 (daemon), `dist/orchestrator-cli.cjs` (CLI), `dist/orchestrator-updater.cjs`, plus `bin/` and
 `server/`. No native binary.
 
-The Go launcher and the tray live in `@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,darwin-x64}`,
+The Go launcher, the supervisor and (Windows, macOS) the tray live in
+`@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,darwin-x64,linux-x64,linux-arm64}`,
 pulled in as `optionalDependencies` with an **exact** version pin, so `npm install -g` updates
 them in the same transaction and a rollback restores the matching pair. They are republished
 only when the binary hash changes, so their version has gaps and legitimately lags the main
 package.
 
-Linux has no platform package: an npm install there has no supervisor, so jobs run unsupervised and die
-with the daemon on stop, restart and update (`orch` warns first). The linux-x64 supervisor exists only in a
-source checkout (`npm run build-supervisor`); linux-arm64 has none.
+Linux packages carry the launcher and the supervisor but no tray (there is no Linux systray build: the daemon
+says so in its log and the dashboard is reached with `orch server start`). Start at login is not implemented on
+Linux (`orch` reports `Unsupported platform: linux`); start the daemon with `orch start`. The platforms are listed
+once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts,
+`optionalDependencies` and `scripts/build-supervisor-binary.ts` agree with it. Not yet run on a real Linux host.
 
 Never assume a fixed path between the two packages: npm hoists the platform package next to the
 main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the launcher,

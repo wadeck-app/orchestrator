@@ -9,13 +9,13 @@ const supervisorDir = path.join(__dirname, '..', 'supervisor-go');
 const distDir = path.join(supervisorDir, 'dist');
 fs.mkdirSync(distDir, { recursive: true });
 
-// linux/amd64 is built for a checkout and for CI only: no platform package carries it, so an npm install on Linux has
-// no supervisor (see platform-binary.ts). linux/arm64 is not built at all.
+// One entry per platform of PLATFORM_TARGETS (platform-binary.ts); test/platform-targets.test.js checks the names.
 const targets = [
   { GOOS: 'windows', GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor.exe') },
   { GOOS: 'darwin',  GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-supervisor-arm64') },
   { GOOS: 'darwin',  GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor-amd64') },
   { GOOS: 'linux',   GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor-linux-amd64') },
+  { GOOS: 'linux',   GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-supervisor-linux-arm64') },
 ];
 
 for (const { GOOS, GOARCH, out } of targets) {

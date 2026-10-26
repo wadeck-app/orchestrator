@@ -21,7 +21,6 @@ export function unsupervisedWarning(
   action: string,
   supervisor: DaemonInfo['supervisor'],
   state: Record<string, RuntimeEntry[]>,
-  platform: string,
 ): string | null {
   if (supervisor.active) {
     return null;
@@ -34,10 +33,7 @@ export function unsupervisedWarning(
     ? (supervisor.note ?? 'The supervisor is unavailable and no reason was reported; check: orch logs')
     : 'supervisedJobs is false in config.yml.';
   let wayOut: string;
-  if (platform === 'linux') {
-    wayOut = 'There is no supervisor in the npm install on Linux (linux-x64 has one only when running from a source checkout, linux-arm64 never), '
-      + 'so the only choices are to wait for the jobs to finish (see: orch status) or to accept their loss.';
-  } else if (!supervisor.requested) {
+  if (!supervisor.requested) {
     wayOut = 'To supervise the runs started from now on, set supervisedJobs: true in config.yml and run: orch restart. '
       + 'Until then, wait for the jobs to finish (see: orch status) or accept their loss.';
   } else {

@@ -6,7 +6,7 @@ import { DailyLogger } from './logger.js';
 import { TrayProcess, type MenuSnapshot, type MenuItemSnapshot } from './tray-process.js';
 import { getIcons } from './tray-icons.js';
 import { enableStartup, disableStartup, isStartupEnabled } from './startup.js';
-import { trayToRun, platformPackage } from './platform-binary.js';
+import { trayToRun, platformPackage, trayUnavailableMessage } from './platform-binary.js';
 import type { State } from './state.js';
 import type { Registry } from './registry.js';
 import { getErrorMessage } from './fsUtil.js';
@@ -550,10 +550,7 @@ export class TrayManager extends EventEmitter {
       this._spawning = false;
       // Goes through _logAction so it lands in the daemon log: the daemon's stdio is not
       // attached to a terminal, so a bare console.warn here disabled the tray silently.
-      this._logAction(
-        `[tray] systray disabled: binary not found. Expected in ${platformPackage() ?? `${process.platform}-${process.arch} (unsupported)`}`
-        + ', or in tray-go/dist for a monorepo checkout. Re-install with: npm install -g @wadeck-app/orchestrator-cli',
-      );
+      this._logAction(trayUnavailableMessage(process.platform, process.arch, platformPackage()));
       return;
     }
 

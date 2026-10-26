@@ -103,7 +103,7 @@ export async function runSelfCheck(quiet = false): Promise<void> {
       async () => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { findLauncherBinary, findTrayBinary, platformPackage } =
+          const { findLauncherBinary, findTrayBinary, findSupervisorBinary, platformPackage, nativeBinaryProblem } =
             require('./platform-binary.js') as typeof import('./platform-binary.js');
           const pkg = platformPackage();
           if (pkg === null) {
@@ -118,11 +118,12 @@ export async function runSelfCheck(quiet = false): Promise<void> {
               ok: true,
             };
           }
-          if (!findLauncherBinary()) {
-            throw new Error(`Go launcher not found; expected in ${pkg}`);
-          }
-          if (!findTrayBinary())     {
-            throw new Error(`tray binary not found; expected in ${pkg}`);
+          const problem = nativeBinaryProblem({
+            platform: process.platform, pkg,
+            launcher: findLauncherBinary() !== null, tray: findTrayBinary() !== null, supervisor: findSupervisorBinary() !== null,
+          });
+          if (problem !== null) {
+            throw new Error(problem);
           }
           return { name: 'native-binaries', ok: true };
         } catch (err) {

@@ -63,8 +63,7 @@ export const systemTime: TimeService = {
  *            would, and libuv uses it only in uv_uptime.
  *
  * So on Windows and macOS a long timer already fires at the right wall-clock moment across a sleep,
- * and Linux - the one platform where it would not - has no native package here (win32-x64,
- * darwin-arm64, darwin-x64). Re-deriving the remaining time once a day is left in because it costs
+ * and Linux - the one platform where it would not - is where this matters. Re-deriving the remaining time once a day is left in because it costs
  * nothing and bounds the error if someone moves the system clock by hand, which no clock source
  * follows.
  */

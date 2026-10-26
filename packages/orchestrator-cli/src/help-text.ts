@@ -27,7 +27,7 @@ Daemon lifecycle:
                                --no-follow  Return as soon as the daemon is up, without tailing
                                --follow,-f  Tail even when stdout is piped
   orch stop [--kill-jobs]      Stop the daemon. Where a supervisor exists (Windows, macOS,
-                               Linux x64 from a checkout) jobs under it keep running and are
+                               Linux) jobs under it keep running and are
                                followed again at the next start; the jobs named in the answer do.
                                Without one, running jobs die with the daemon; a warning names them.
                                --kill-jobs  End every running job first
