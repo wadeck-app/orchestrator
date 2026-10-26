@@ -98,7 +98,7 @@ export function makeCommands(
       registry.remove(id);
       // Before the registry write would be wrong too: an unscheduled-then-failed-removal leaves a
       // job that exists and never fires.
-      scheduler.unscheduleJob(id);
+      scheduler.unscheduleJob(id, { forgetRestarts: true });
       // A running instance is not stopped by a removal: what it is still writing stays (see removeJobData).
       const running = scheduler.runningCount(id) > 0;
       const cleanup = removeJobData(configDir, id, { running });
@@ -127,7 +127,7 @@ export function makeCommands(
       const job = registry.get(id);
       registry.disable(id);
       // Otherwise a disabled cron job keeps firing until the next restart.
-      scheduler.unscheduleJob(id);
+      scheduler.unscheduleJob(id, { forgetRestarts: true });
       audit?.log('job.disabled', { jobId: id, label: job?.label });
     },
 

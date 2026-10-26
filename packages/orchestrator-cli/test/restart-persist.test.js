@@ -130,6 +130,18 @@ describe('the restart counters are kept in <configDir>/restart-state.json', () =
     assert.deepEqual(readFile(h), { version: 1, jobs: {} });
   });
 
+  // orch remove and orch disable stop the job for good: its budget is not kept for a job that is gone or switched off. A plain
+  // unschedule is also what an edit goes through (scheduleJob), and that one keeps the budget.
+  test('forgotten, in memory and in the file, when the job is removed or disabled; kept by a plain unschedule', async () => {
+    const h = await crashLoopedTo(2);
+    h.sched.unscheduleJob('job');
+    assert.equal(readFile(h).jobs.job.attempt, 2, 'an edit must keep the counters');
+
+    h.sched.unscheduleJob('job', { forgetRestarts: true });
+    assert.deepEqual(readFile(h), { version: 1, jobs: {} });
+    assert.deepEqual(h.sched.pendingRestarts(), []);
+  });
+
   test('not created for a job that never restarts', async () => {
     const h = makeHarness([server()], { exits: [undefined] });
     await h.sched.trigger('job');

@@ -843,10 +843,17 @@ export class Scheduler extends EventEmitter {
   }
 
   /** Cancels a job's pending cron task or timer. Safe for an id that has neither. */
-  unscheduleJob(id: string): void {
+  /**
+   * `forgetRestarts`: the job is gone or switched off (remove, disable), so its restartOnExit counters go too. Not the default:
+   * an edit goes through here as well (scheduleJob) and must keep the budget of a job that is crash-looping.
+   */
+  unscheduleJob(id: string, options: { forgetRestarts?: boolean } = {}): void {
     // Every kind at once. This used to reach into three collections by hand, and forgetting one was
     // exactly how a stopped scheduler kept a window timer armed - see the fix that preceded this.
     this._deadlines.clear(id);
+    if (options.forgetRestarts === true) {
+      this._forgetRestartState(id);
+    }
   }
 
   /**
