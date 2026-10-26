@@ -286,6 +286,10 @@ onceRetentionDays: 360
 onceRetentionMaxJobs: 50
 ```
 
+## The daemon's own output -- `[stdout]` and `[stderr]`
+
+Under the launcher the daemon has no console, so what it prints used to be lost. It is now copied line by line into the daemon log (`logs/app/daemon-<date>.log`, shown by `orch logs`), tagged `[stdout]` or `[stderr]`: warnings such as a cron schedule that will never fire, a liveness command that timed out, Node's own warnings. Before the log exists the lines go to `logs/daemon/daemon-<date>.log`. In a terminal the output is still printed as before.
+
 ## Daemon status
 
 What the daemon says about itself; the config keys it echoes are the ones in the table above.

@@ -31,6 +31,7 @@ import { countActiveJobs } from './active-jobs.js';
 import { createUpdateScheduler } from './update-scheduling.js';
 import { updateNotice } from './update-notice.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
+import { bridgeStdio } from './stdio-bridge.js';
 import { guardStdio, makeFatalHandler, writeCrashMarker, readCrashMarker, clearCrashMarker, CRASH_MARKER_FILE } from './crash-guard.js';
 
 import type { OrchestratorCommands } from './types.js';
@@ -113,6 +114,10 @@ function writePreStartLog(): void {
 
 guardStdio([{ name: 'stdout', stream: process.stdout }, { name: 'stderr', stream: process.stderr }], _syncLogWrite);
 
+// Under the launcher the daemon's stdout and stderr go to the NUL device, so what is printed on them (console.error, a Node
+// warning, a dependency) would be lost. Copy it into the log: the early file now, the daemon log once it exists (below).
+const stdioBridge = bridgeStdio([{ name: 'stdout', stream: process.stdout }, { name: 'stderr', stream: process.stderr }], _syncLogWrite);
+
 // Early-crash handlers: active from module load until daemonLog is ready.
 // Catch crashes during import resolution and early async (ESM dynamic imports).
 // Replaced in main() by the daemonLog-based handlers once the logger is initialised.
@@ -151,6 +156,9 @@ async function main(): Promise<void> {
 
   // Create the logger before try/finally so crash paths can always write to it.
   const daemonLog = new DailyLogger(path.join(CONFIG_DIR, 'logs', 'app'), 'daemon');
+  stdioBridge.setSink((line) => daemonLog.write(line));
+  // The last partial line of a stream goes to the log before it closes.
+  const closeDaemonLog = (): void => { stdioBridge.flush(); daemonLog.close(); };
 
   // Upgrade from early module-level handlers to daemonLog-based handlers now that
   // the logger is ready. This ensures ALL crashes (including pre-init) write to the log.
@@ -160,7 +168,7 @@ async function main(): Promise<void> {
   const fatalDeps = {
     configDir: CONFIG_DIR, version,
     log: (line: string): void => { daemonLog.write(line); },
-    closeLog: (): void => { daemonLog.close(); },
+    closeLog: closeDaemonLog,
     exit: (code: number): void => { process.exit(code); },
   };
   process.on('uncaughtException', makeFatalHandler('uncaughtException', fatalDeps));
@@ -221,7 +229,6 @@ async function main(): Promise<void> {
       supervisor: supervisorSetup.launcher,
       jobsNoColor: daemonCfg.jobsNoColor,
       logRotation: daemonLogRotation(daemonCfg),
-      warn: (message) => daemonLog.write(`[scheduler] ${message}`),
     });
 
     // First: a run a supervisor saw end while the daemon was down is finished with its real exit code, and must
@@ -361,7 +368,7 @@ async function main(): Promise<void> {
         },
         onShutdown: (reason: string) => {
           daemonLog.write(`daemon shutdown: ${reason}`);
-          daemonLog.close();
+          closeDaemonLog();
           // Supervised jobs keep running; what follows them stops, so nothing here keeps the daemon alive.
           scheduler.detachRuns();
           void scheduler.stop();

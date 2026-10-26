@@ -1,6 +1,6 @@
 'use strict';
 
-const { test, describe } = require('node:test');
+const { test, describe, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
 const path = require('node:path');
@@ -191,9 +191,9 @@ describe('command strategy timeout', () => {
   });
 });
 
-// The warning has to reach the daemon log, which console.error does not: the daemon's stderr is the launcher's, not
-// logs/app/daemon-*.log. The scheduler therefore takes a `warn` sink and index.ts hands it the daemon log.
-describe('the scheduler default liveness check says its timeout through options.warn', () => {
+// The scheduler says the timeout on stderr. It reaches the daemon log because the daemon copies its stderr into it
+// (stdio-bridge.ts, tested in stdio-bridge.test.js); under the launcher stderr is the NUL device and would lose it otherwise.
+describe('the scheduler default liveness check says its timeout on stderr', () => {
   const fs   = require('node:fs');
   const { Registry }  = require('../src/registry');
   const { State }     = require('../src/state');
@@ -204,16 +204,18 @@ describe('the scheduler default liveness check says its timeout through options.
     try {
       const time = new FakeTime();
       const warnings = [];
+      const spy = mock.method(console, 'error', (m) => { warnings.push(String(m)); });
       const sched = new Scheduler(new Registry(path.join(dir, 'registry.json')), new State(path.join(dir, 'state.json')), {
-        time, warn: (m) => warnings.push(m), eventPublisher: { publish: () => {} }, configDir: dir,
+        time, eventPublisher: { publish: () => {} }, configDir: dir,
       });
       const job = { id: 'hung', liveness: { strategy: 'command', command: 'node -e "setInterval(() => {}, 1000)"', timeoutSeconds: 2 } };
       const pending = sched._liveness(job);
       time.advance(2_000);
       assert.equal(await pending, false);
       assert.equal(warnings.length, 1);
-      assert.match(warnings[0], /"hung".*2 s.*--liveness-timeout/);
+      assert.match(warnings[0], /^\[scheduler\] .*"hung".*2 s.*--liveness-timeout/);
     } finally {
+      mock.restoreAll();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
