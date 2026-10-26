@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { JobForm } from './JobForm.js';
 import type { Job } from '../types.js';
+import { createDateFormatter, DEFAULT_DATE_SETTINGS } from '@wadeck-app/dsl-ui';
 
 // Covers JobForm's own contract: a caller that awaits the save and rejects must see why.
 //
@@ -175,7 +176,7 @@ describe('JobForm sends what the daemon requires', () => {
     fill(/^Label/, 'One shot');
     fill(/^Command/, 'node --version');
     fill(/^Type/, 'once');
-    fill(/^Run at/, 'Dec 31, 2099');
+    fill(/^Run at/, createDateFormatter(DEFAULT_DATE_SETTINGS).format(new Date(2099, 11, 31), 'medium', 'date'));
     saveButton().click();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());

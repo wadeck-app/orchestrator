@@ -4,6 +4,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { JobForm } from './JobForm.js';
 import type { Job } from '../types.js';
+import { createDateFormatter, DEFAULT_DATE_SETTINGS } from '@wadeck-app/dsl-ui';
+
+// The date field prints and reads dates as the date settings of dsl-ui say (its default: English en-GB). Taken from the same
+// formatter, so the test does not depend on the spelling of a month ("Sep" or "Sept" changes with the ICU data).
+const dateFormatter = createDateFormatter(DEFAULT_DATE_SETTINGS);
+const shown = (year: number, monthIndex: number, day: number): string => dateFormatter.format(new Date(year, monthIndex, day), 'medium', 'date');
 
 /*
  * The form asked "run after how many seconds", which is not how anyone decides when a one-off job
@@ -72,7 +78,7 @@ describe('the once form takes a moment, not a duration', () => {
   it('seeds the field from the job, so editing does not silently move the firing', () => {
     renderForm({ ...EXISTING_ONCE });
     // scheduledAt + delayMs = 47h before now.
-    expect(dateInput()).toHaveValue('Sep 17, 2026');
+    expect(dateInput()).toHaveValue(shown(2026, 8, 17));
   });
 });
 
@@ -80,7 +86,7 @@ describe('what is sent on submit', () => {
   it('re-stamps scheduledAt so the daemon computes the moment the user picked', async () => {
     const onSubmit = renderForm({ ...EXISTING_ONCE });
 
-    fireEvent.change(dateInput(), { target: { value: 'Sep 25, 2026' } });
+    fireEvent.change(dateInput(), { target: { value: shown(2026, 8, 25) } });
     save();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -98,7 +104,7 @@ describe('what is sent on submit', () => {
   it('does not leave the original scheduledAt in place', async () => {
     const onSubmit = renderForm({ ...EXISTING_ONCE });
 
-    fireEvent.change(dateInput(), { target: { value: 'Sep 25, 2026' } });
+    fireEvent.change(dateInput(), { target: { value: shown(2026, 8, 25) } });
     save();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -109,7 +115,7 @@ describe('what is sent on submit', () => {
   it('delayMs stays a positive integer, which the daemon requires', async () => {
     const onSubmit = renderForm({ ...EXISTING_ONCE });
 
-    fireEvent.change(dateInput(), { target: { value: 'Sep 25, 2026' } });
+    fireEvent.change(dateInput(), { target: { value: shown(2026, 8, 25) } });
     save();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
