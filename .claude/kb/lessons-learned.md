@@ -361,6 +361,14 @@ exit-code claim was dropped for lack of sources in this checkout.
 
 ---
 
+### A test must not take its "old" folder from a run whose supervisor is still exiting
+
+**Problem:** "its folder is cleaned up once it has been handled for a while" passed 15 of 15 locally and failed once on the Windows CI leg: the folder came from the first run, the supervisor was still closing a file in it, `rmSync` failed, and `_cleanHandledRuns` swallowed the error.
+**Fix:** The test builds its own old folder (a `done` marker aged by `utimes`) that no process holds. `_cleanHandledRuns` now says a removal failure with the folder and the reason, and tries again at the next start.
+**Context:** Windows refuses to delete what a process still holds, so any "just after the run" cleanup has this race. A best-effort cleanup may fail, but it must not fail in silence.
+
+---
+
 ### `npm install` can report a new version while `node_modules` still holds the old files
 
 **Problem:** After bumping an exact pin, `npm ls` and `node_modules/.package-lock.json` named the new version of `singleton-daemon-kit` but the folder had the old files (no `CrashRestart`, dates of the previous install).
