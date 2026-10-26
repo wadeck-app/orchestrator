@@ -55,7 +55,7 @@
     "@wadeck-app/queue-sdk": ">=2026.10.24-190-aa15e847",
     "@wadeck-app/shared-cli": "^2026.10.25-044-51609e11",
     "@wadeck-app/shared-updater": ">=2026.10.25-020-6cb52900",
-    "@wadeck-app/singleton-daemon-kit": "2026.10.26-096-3bbfe66f",
+    "@wadeck-app/singleton-daemon-kit": "2026.10.26-100-8909a9d1",
     "fastify": "^5.0.0",
     "node-cron": "^4.6.0",
     "pidtree": "^1.0.0",
