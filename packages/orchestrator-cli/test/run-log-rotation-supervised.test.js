@@ -88,7 +88,7 @@ function segmentsOf(dir) {
 const rowOf = (i) => `row ${String(i).padStart(3, '0')} ${'p'.repeat(40)}`;
 
 describe('supervised run with rotation', () => {
-  test('the supervisor rotates the job output and the daemon\'s markers land in the first and the last segment; nothing is lost or split', async () => {
+  test('the supervisor rotates the job output and the daemon\'s start marker is kept once and its end marker lands in the last segment; nothing is lost or split', async () => {
     const dir = await runJob({ maxSizeMb: 0.002, keepSegments: 1000 });
     const segs = segmentsOf(dir);
     assert.ok(segs.length >= 3, `segments: ${segs.length}`);
@@ -99,7 +99,10 @@ describe('supervised run with rotation', () => {
     }
     const rows = lines.filter((l) => l.includes(' row ')).map((l) => l.replace(/^\[[^\]]+\] /, ''));
     assert.deepEqual(rows, Array.from({ length: ROWS }, (_, i) => rowOf(i)), 'every row, once, in order');
-    assert.match(segs[0].text, /\[job:started\]/);
+    // Not "in the first segment": the daemon writes this marker after the supervisor has started the job, and a loaded runner
+    // (macOS CI) lets the job's rows fill segment 1 before that. It lands in whichever segment is the newest at that moment;
+    // what rotation must guarantee is that it is neither lost nor duplicated.
+    assert.equal(lines.filter((l) => l.includes('[job:started]')).length, 1, 'exactly one [job:started] marker in the whole run');
     assert.match(segs[segs.length - 1].text, /\[job:finished\] exitCode=0/);
     for (const s of segs) {
       assert.ok(s.size <= 2097, `segment ${s.n} is ${s.size} bytes, over the 2097 limit`);
