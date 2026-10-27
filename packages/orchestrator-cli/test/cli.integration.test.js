@@ -9,35 +9,15 @@ const os = require('node:os');
 const ROOT = path.join(__dirname, '..');
 const CLI_TS = path.join(ROOT, 'src', 'cli.ts');
 
-// Walk up from __dirname to find the tsx bin (handles npm workspace hoisting)
-function findBin(name) {
-  const fs = require('node:fs');
-  const binName = process.platform === 'win32' ? name + '.cmd' : name;
-  let dir = __dirname;
-  while (true) {
-    const candidate = path.join(dir, 'node_modules', '.bin', binName);
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      throw new Error(`${name} not found in any node_modules/.bin`);
-    }
-    dir = parent;
-  }
-}
-const TSX_BIN = findBin('tsx');
-
 /**
  * Spawn the orchestrator CLI via tsx (dev mode, no bundle).
  * Returns { code, stdout, stderr }.
  */
 function runCli(args, env) {
   return new Promise((resolve) => {
-    const child = spawn(TSX_BIN, [CLI_TS, ...args], {
+    // node + the tsx loader directly: tsx.cmd needs `shell: true` on Windows, and args with a shell is DEP0190.
+    const child = spawn(process.execPath, ['--require', 'tsx/cjs', CLI_TS, ...args], {
       env: { ...process.env, ORCH_CONFIG_DIR: path.join(os.tmpdir(), 'orch-inttest'), ...env },
-      // Required on Windows: .cmd scripts cannot be spawned without shell:true
-      shell: process.platform === 'win32',
     });
     let stdout = '';
     let stderr = '';
