@@ -56,6 +56,15 @@
  * commit. Two sessions then read that install as evidence about the published package, and one
  * nearly reported a packaging regression that was only a local build. A dev build must not be
  * able to become the machine's install by accident, so the path is gone rather than guarded.
+ *
+ * IS THIS SCRIPT STILL USED? Yes (checked 2026-10-27). Do not delete it on a quick grep: the first search, limited to
+ * .md/.ts/.js files, only found lessons-learned entries and made it look unused. What uses it:
+ *   - the root package.json: `npm run deploy` runs it, and `npm run dev` runs it before scripts/dev-server.mjs;
+ *   - scripts/dev-server.mjs: its "CLI not built" error tells the reader to run it;
+ *   - the dashboard cannot be looked at without it: orch-app is built into orch-server/public by the steps below, and the dev
+ *     server serves that copy, so a UI change is invisible until this has run.
+ * To check again: `grep -rn deploy-dev --include=*.json --include=*.mjs --include=*.md --include=*.yml .` (not in node_modules,
+ * .claude/logs) and read root package.json "scripts". It is not run by CI.
  */
 import { execFileSync, execSync } from 'node:child_process';
 import { cpSync, rmSync, existsSync } from 'node:fs';
@@ -96,7 +105,7 @@ function run(cmd, args, cwd = ROOT) {
     execSync(`${cmd} ${args.join(' ')}`, { cwd, stdio: 'inherit', windowsHide: true });
     return;
   }
-  // node itself needs no shell, so a path like "C:\Program Files\nodejs\node.exe" stays one word.
+  // node itself needs no shell, so an install path with a blank in it (a Program Files install) stays one word.
   execFileSync(cmd, args, { cwd, stdio: 'inherit', windowsHide: true });
 }
 
