@@ -16,3 +16,15 @@ test('sampling a process with the resource monitor\'s library raises no Node dep
   assert.equal(run.status, 0, `exit ${run.status}; stderr:\n${run.stderr}`);
   assert.doesNotMatch(run.stderr, /DeprecationWarning/);
 });
+
+// `spawn(bin, args, { shell: true })` is DEP0190. Both direct-run paths (a scheduled job, `orch exec`) did it for every command.
+// The helpers run the real default spawn, nothing injected.
+for (const [name, helper] of [['a scheduled job', 'default-spawn-scheduler.js'], ['orch exec', 'default-spawn-exec.js']]) {
+  test(`starting a command for ${name} raises no Node deprecation`, () => {
+    const run = spawnSync(process.execPath, ['--throw-deprecation', '--require', 'tsx/cjs', path.join(__dirname, 'helpers', helper), 'node -v'], {
+      encoding: 'utf8', windowsHide: true, timeout: 60_000,
+    });
+    assert.equal(run.status, 0, `exit ${run.status}; stderr:\n${run.stderr}`);
+    assert.doesNotMatch(run.stderr, /DeprecationWarning/);
+  });
+}

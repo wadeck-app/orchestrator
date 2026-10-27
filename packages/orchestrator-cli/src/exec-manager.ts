@@ -10,6 +10,7 @@ import { killTree, killTreeSync } from './process-tree.js';
 import { jobEnvironment } from './job-env.js';
 import { stripAnsi } from './ansi.js';
 import { OutputLines } from './output-lines.js';
+import { shellCommandLine } from './shell-command.js';
 import { systemTime, type TimeService, type Timer } from './time-service.js';
 
 export interface ExecRun {
@@ -95,11 +96,10 @@ export class ExecManager {
     this._runs.set(runId, run);
 
     const tmpDir = ensureTmpDir(this._configDir, runId);
-    const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [command];
-    const [bin, ...args] = parts;
     const spawnEnv = jobEnvironment({ ...process.env, ...opts.env }, opts.env, this._noColor);
 
-    const child = this._spawn(bin!, args, {
+    // One string for the shell: bin + args with `shell: true` is DEP0190 (see shell-command.ts).
+    const child = this._spawn(shellCommandLine(command), {
       cwd: opts.cwd ?? tmpDir,
       windowsHide: true,
       shell: true,

@@ -26,6 +26,7 @@ import type { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import type { Registry } from './registry.js';
 import type { State } from './state.js';
 import { isFailure } from './state.js';
+import { shellCommandLine } from './shell-command.js';
 import { systemTime, waitUntil, type TimeService, type Timer } from './time-service.js';
 import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
@@ -552,10 +553,8 @@ export class Scheduler extends EventEmitter {
     this._state     = state;
     // Default spawn is set below after _tmpDir is resolved.
     this._spawn     = options.spawn     ?? ((cmd, cwd, env, _jobId) => {
-      const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
-      const [bin, ...args] = parts;
       // violations-suppress: shared/no-out-of-repo-path a job with no configured cwd runs from the user's home, like a shell would -- the repo is not where a user's job belongs
-      return nodeSpawn(bin!, args, { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
+      return nodeSpawn(shellCommandLine(cmd), { cwd: cwd ?? os.homedir(), windowsHide: true, shell: true, env: env ?? process.env });
     });
     this._supervisor = options.supervisor ?? null;
     // The warning goes to stderr, which the daemon copies into its log (stdio-bridge.ts).
@@ -603,10 +602,8 @@ export class Scheduler extends EventEmitter {
     if (!options.spawn) {
       const configDir = this._configDir;
       this._spawn = (cmd, cwd, env, jobId) => {
-        const parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [cmd];
-        const [bin, ...args] = parts;
         const jobTmpDir = jobId ? ensureTmpDir(configDir, jobId) : this._tmpDir;
-        return nodeSpawn(bin!, args, {
+        return nodeSpawn(shellCommandLine(cmd), {
           cwd: cwd ?? jobTmpDir,
           windowsHide: true,
           shell: true,

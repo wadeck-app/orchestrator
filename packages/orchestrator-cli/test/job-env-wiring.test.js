@@ -137,7 +137,7 @@ describe('ExecManager: the environment of a command', () => {
     let seen;
     const manager = new ExecManager(tmp(), { publish() {} }, {
       time: new FakeTime(Date.now()),
-      spawn: (bin, args, spawnOptions) => { seen = spawnOptions.env; return endingChild(); },
+      spawn: (command, spawnOptions) => { seen = spawnOptions.env; return endingChild(); },
       ...options,
     });
     manager.fireExec('node x.js', { env });
