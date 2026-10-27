@@ -161,7 +161,7 @@ describe('estimateProgress: which run and which setting', () => {
     }).a;
 
     assert.equal(asked, 0);
-    assert.match(e.reason, /no completion expected \(no timeout\)/);
+    assert.match(e.reason, /^long-running$/);
   });
 
   test('a job that is off and not running is absent, not answered', () => {

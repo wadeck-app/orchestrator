@@ -165,8 +165,8 @@ export function JobProgress({ progress, nowMs, fill = false }: JobProgressProps)
   if (state === 'none') {
     // The reason is the whole content, so a tooltip would only say it twice.
     return fill
-      ? <span data-progress-state="none" title={progress.reason} className="block w-full min-w-0 truncate text-xs text-muted">{progress.reason}</span>
-      : <span data-progress-state="none" className="text-xs text-muted">{progress.reason}</span>;
+      ? <span data-progress-state="none" title={progress.reason} className="block w-full min-w-0 truncate text-xs italic text-muted">{progress.reason}</span>
+      : <span data-progress-state="none" className="text-xs italic text-muted">{progress.reason}</span>;
   }
 
   const fullDetail = `${detail}${low ? ' - low confidence' : ''}`;

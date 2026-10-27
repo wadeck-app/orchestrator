@@ -17,7 +17,7 @@ export function JobEtaCell({ progress, nowMs }: JobProgressCellProps): React.Rea
   }
   const { state, detail, low, tooltip } = viewProgress(progress, now);
   if (state === 'none') {
-    return <span data-progress-state="none" title={progress.reason} className="inline-block max-w-[10.5rem] truncate align-middle text-xs text-muted">{progress.reason}</span>;
+    return <span data-progress-state="none" title={progress.reason} className="inline-block max-w-[10.5rem] truncate align-middle text-xs italic text-muted">{progress.reason}</span>;
   }
   return (
     <span

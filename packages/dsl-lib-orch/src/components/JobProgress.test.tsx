@@ -53,6 +53,15 @@ describe('JobProgress states', () => {
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
+  // A reason is not a measurement: muted and in italics, in both layouts, so "long-running" reads as a state, not as data.
+  it.each([[false], [true]])('writes the reason in italics (fill: %s)', (fill) => {
+    const { container } = render(
+      <JobProgress progress={estimate({ progress: null, etaAt: null, confidence: 'none', reason: 'long-running' })} nowMs={SERVER_NOW} fill={fill} />,
+    );
+
+    expect(container.querySelector('[data-progress-state="none"]')!.getAttribute('class')).toContain('italic');
+  });
+
   it('shows the reason when the daemon could not compute progress', () => {
     const reason = 'progress unavailable: Unknown command: get-progress. Check: orch logs';
     render(

@@ -123,7 +123,7 @@ export function estimateProgress(input: EstimateProgressInput): Record<string, P
       continue;
     }
     if (isLongRunning(job)) {
-      result[job.id] = noEstimate(null, 'no completion expected (no timeout)', input.now());
+      result[job.id] = noEstimate(null, 'long-running', input.now());
       continue;
     }
     const seam = input.strategies?.(job);

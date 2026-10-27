@@ -31,7 +31,7 @@ describe('estimateProgress', () => {
     const result = estimateProgress({ jobs, history: { a: [open(T0, 60), ...usable(5, 600)] }, now });
     assert.equal(result.a.progress, null);
     assert.equal(result.a.confidence, 'none');
-    assert.match(result.a.reason, /no completion expected \(no timeout\)/);
+    assert.match(result.a.reason, /^long-running$/);
   });
 
   test('a manual job behaves like the others', () => {

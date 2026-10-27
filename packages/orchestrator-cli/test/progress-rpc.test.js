@@ -105,7 +105,7 @@ describe('get-progress', () => {
     const { registry, state, commands } = makeEnv();
     addJob(registry, 'svc', { timeoutSeconds: 0 });
     state.record('svc', { startedAt: iso(NOW), exitCode: null, pid: 7 });
-    assert.match(commands['get-progress']().svc.reason, /no completion expected \(no timeout\)/);
+    assert.match(commands['get-progress']().svc.reason, /^long-running$/);
   });
 
   test('answers from the state on disk after a daemon restart', () => {
