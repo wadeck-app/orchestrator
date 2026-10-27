@@ -57,7 +57,7 @@
  * nearly reported a packaging regression that was only a local build. A dev build must not be
  * able to become the machine's install by accident, so the path is gone rather than guarded.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { cpSync, rmSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,9 +84,20 @@ const node = process.execPath;
 
 function run(cmd, args, cwd = ROOT) {
   console.log(`$ ${cmd} ${args.join(' ')}`);
-  // shell:true required on Windows for .cmd scripts (npm.cmd, etc.)
   // windowsHide:true prevents any CMD window from flashing on screen.
-  execFileSync(cmd, args, { cwd, stdio: 'inherit', shell: isWin, windowsHide: true });
+  if (isWin && cmd === npm) {
+    // npm.cmd needs a shell on Windows. One command string, not execFileSync(cmd, args, { shell: true }): Node deprecates the args
+    // array with a shell (DEP0190) because it only concatenates the pieces. An argument with a blank would be cut by the shell, so
+    // it is refused rather than run wrong.
+    const blank = args.find((a) => /\s/.test(a));
+    if (blank !== undefined) {
+      throw new Error(`deploy-dev: the npm argument "${blank}" contains a blank, which cmd.exe would split. Use a name without one.`);
+    }
+    execSync(`${cmd} ${args.join(' ')}`, { cwd, stdio: 'inherit', windowsHide: true });
+    return;
+  }
+  // node itself needs no shell, so a path like "C:\Program Files\nodejs\node.exe" stays one word.
+  execFileSync(cmd, args, { cwd, stdio: 'inherit', windowsHide: true });
 }
 
 /**
