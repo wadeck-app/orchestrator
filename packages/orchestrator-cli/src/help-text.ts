@@ -31,6 +31,8 @@ Daemon lifecycle:
                                followed again at the next start; the jobs named in the answer do.
                                Without one, running jobs die with the daemon; a warning names them.
                                --kill-jobs  End every running job first
+                               Running "orch exec" commands always die with the daemon (never
+                               supervised); stop, restart and "cli update" name them first.
   orch restart                 Restart the daemon (not a job: use restart-job <id>).
                                Where a supervisor exists jobs survive it; elsewhere running ones
                                die, after a warning.

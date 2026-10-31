@@ -21,7 +21,7 @@ import { stripAnsi } from './ansi.js';
 import { systemTime } from './time-service.js';
 import { isReleaseVersion, devBuildRefusalMessage } from '@wadeck-app/shared-cli/ReleaseVersion';
 import { updateNotice } from './update-notice.js';
-import { unsupervisedWarning } from './unsupervised-warning.js';
+import { execWarning, unsupervisedWarning, type ExecRunView } from './unsupervised-warning.js';
 
 /** Error codes that mean "the connection to the daemon failed", whatever Node's message happens to say. */
 const CONNECTION_FAILURE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE']);
@@ -757,6 +757,29 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       console.error(`warning: could not check whether the running jobs survive ${action} (${getErrorMessage(e)}). If the daemon is older than this CLI, jobs without a supervisor die with it; see: orch status`);
     }
   };
+  /**
+   * The same, for the running `orch exec` commands: never supervised, so they die with the daemon whatever the supervisor
+   * says, and `stop --kill-jobs` does not end them either. Asked of `exec-list` (get-daemon-info is read by the dashboard
+   * and carries no command line). Never asks and never blocks; a daemon that is down has nothing to lose, any other failure
+   * to find out is said.
+   */
+  const warnExecDie = async (action: string): Promise<void> => {
+    try {
+      const runs = await send('exec-list', undefined, { autoStart: false }) as ExecRunView[];
+      if (!Array.isArray(runs)) {
+        throw new Error('the answer is not a list');
+      }
+      const warning = execWarning(action, runs, Date.now());
+      if (warning !== null) {
+        console.error(warning);
+      }
+    } catch (e) {
+      if (isDaemonDownError(e)) {
+        return;
+      }
+      console.error(`warning: could not check whether the running exec commands survive ${action} (${getErrorMessage(e)}). Running orch exec commands are never supervised and die with the daemon.`);
+    }
+  };
   const forceJson   = has(argv, '--json');
 
   // Log every CLI invocation to configDir/logs/YYYY-MM-DD.ndjson
@@ -942,6 +965,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
       } catch (e) {
         console.error(`Stopping anyway, but could not list the running jobs (${getErrorMessage(e)}): supervised jobs keep running, see: orch list --verbose`);
       }
+      await warnExecDie('orch stop');
       await send('quit');
       if (killJobs && ended > 0) {
         console.log(`${ended} job(s) ended.`);
@@ -963,6 +987,7 @@ To restart the job, run: orch restart-job ${jobArg}`);
         process.exit(1);
       }
       await warnJobsDie('orch restart');
+      await warnExecDie('orch restart');
       await send('restart');
       console.log('Orchestrator restarted.');
       break;
@@ -1707,6 +1732,7 @@ Use --wait to block until the command finishes.`);
         }
         // The update restarts the daemon: say first what that does to the jobs no supervisor guards.
         await warnJobsDie('orch cli update');
+        await warnExecDie('orch cli update');
         if (deps.cliUpdate?.run) {
           await deps.cliUpdate.run(updaterPath, cliRest);
         } else {
