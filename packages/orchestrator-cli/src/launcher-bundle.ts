@@ -8,8 +8,8 @@ export const LAUNCHER_BUNDLE_SPEC = '@wadeck-app/orchestrator-cli/dist/orchestra
  * LAUNCHER_BUNDLE_OVERRIDE to hand the launcher, or undefined for none.
  *
  * An override is fixed for the launcher's whole life. After `nvm use` it kept starting the previous node's bundle while the
- * updater installed into the new one: 822 daemon restarts in a day. When the launcher finds this very bundle by itself at every
- * spawn (<dirname of the node on PATH>/node_modules/<spec>, which on nvm for Windows is a junction that follows `nvm use`),
+ * updater installed into the new one: 822 daemon restarts in a day. When the launcher finds this very bundle by itself each time
+ * it starts the daemon (<dirname of the node on PATH>/node_modules/<spec>, which on nvm for Windows is a junction that follows `nvm use`),
  * nothing is fixed. Any other bundle (a checkout, a unix global prefix, which keeps its modules in lib/) stays fixed.
  */
 export function launcherBundleOverride(opts: {
