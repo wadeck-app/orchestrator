@@ -403,6 +403,27 @@ MAE = mean absolute error of the end time; flips = ETA jumps over 20% of the run
 
 **Calibration.** An estimate states an end time (`etaAt`) and a confidence score s; the interval it states is `etaAt` +- (1 - s) x the predicted duration (for `history`, s = 1 - MAD / median, so the interval is +- the MAD). `calib` is the share of samples whose real end falls inside it (boundary included): a strategy whose score means what it says sits near the coverage that interval implies, far below it means the score is overconfident. Samples with no `etaAt` (overdue) state no interval and are not counted; `-` means none did.
 
+### Reporting progress from a job (`declared`)
+
+A job that prints this on stdout or stderr gets an end time extrapolated from its own reports:
+
+```
+##orch-progress 42 reading the input
+```
+
+| Rule | Detail |
+|---|---|
+| Line | The text must start with `##orch-progress`, then a value, then an optional message (the rest of the line). |
+| Value | A number from 0 to 100, integer or decimal (`12.5`), no `%`, no sign. Anything else, or above 100, is ignored and counted: the reason says `N malformed ##orch-progress line(s) ignored`. |
+| Message | Shortened in the reason: `job reports 42 % ("reading the input"), last report 3 s ago`. |
+| Time of a report | When the line reached the run log (second resolution). The log is read again at each estimate, over its last 256 KB, across rotation segments. |
+| Going backwards | A value below the previous one is ignored and counted; `##orch-progress reset` starts a new phase. |
+| Estimate | From the last 8 reports of the phase; confidence falls as the last report ages. |
+| Before the first line | The reason says `no "##orch-progress <0-100>" line in the log of this run yet`. `auto` takes `declared` only once a valid line exists (until then another strategy answers, `history` for a job with past runs); with `--progress declared` there is no estimate until then. |
+| File instead | `options.file`: JSON `{ "progress": 0..100, "message"?: "..." }`, at most 64 KB, written after the run started. |
+
+The whole reason, message included, is in `orch status --json` (`progress.<job>.reason`) and in the dashboard tooltip; the human line of `orch status` shows the percent and the end time.
+
 ### Where it shows
 
 The audit trail names the field (`changes: ["progress"]`), not its options.
