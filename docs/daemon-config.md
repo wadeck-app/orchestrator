@@ -135,6 +135,17 @@ If an update was interrupted (machine off, process killed), do nothing: the next
 - If `orch` itself is gone, run `npm install -g @wadeck-app/orchestrator-cli@latest`.
 - A development build (repo checkout, version not `YYYY.M.D-BBB-hash`) never updates: `orch cli update`, the daemon's checks and the tray refuse with "this is a development build (version X): it does not update the global install".
 
+### Update loop guard
+
+At each start that follows a successful update, the daemon suspends its automatic checks (startup, every 30 minutes) and logs `ERROR automatic updates suspended: <reason>` when either holds:
+
+| Condition | Reason | Way out |
+|---|---|---|
+| The update installed a version other than the one this daemon runs | The updater installs into the npm prefix of the active node; this daemon was started from another bundle (typically after a node version switch) | `orch stop`, then `orch start` under the node you use now |
+| 3 daemon restarts caused by updates within 30 minutes (`<configDir>/update-starts.json`) | An update loop, whatever its cause | Wait for the oldest restart to leave the window; `orch cli update` reports what is wrong with the install |
+
+An explicit request (`orch cli update`, tray "Update") is never blocked. An unreadable or unwritable `update-starts.json` is logged and counts as empty.
+
 ## Past `once` jobs
 
 A `once` job that has fired is marked `spent` + `spentAt` in `registry.json` instead of being deleted,

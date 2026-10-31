@@ -29,6 +29,7 @@ import { registerOnStart } from './app-core-registration.js';
 import { refreshStartupEntry, reportStartupRefresh, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
 import { createUpdateScheduler } from './update-scheduling.js';
+import { guardUpdates, UPDATE_STARTS_FILE } from './update-guard.js';
 import { updateNotice } from './update-notice.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import { bridgeStdio } from './stdio-bridge.js';
@@ -147,11 +148,14 @@ async function main(): Promise<void> {
   // scheduleBackgroundUpdate() itself is silent (stdio: 'ignore' on the spawned updater), so without
   // it the daemon log never shows that a background check happened at all. A development build
   // spawns nothing (see update-scheduling.ts).
+  // Set at start by guardUpdates (update-guard.ts): while set, background checks spawn nothing.
+  let updatesSuspended: string | null = null;
   const updates = createUpdateScheduler({
     version,
     bundlePath: process.argv[1] ?? '',
     manager: updateManager,
     log: (message) => daemonLog.write(message),
+    suspended: () => updatesSuspended,
   });
 
   // Create the logger before try/finally so crash paths can always write to it.
@@ -433,10 +437,21 @@ async function main(): Promise<void> {
     // Read and log any update state written by the background updater on previous run.
     // 'applying' is journaled by the updater before npm runs and is not cleared by the read: a dead updater
     // behind it is an interrupted install, which the updater started just below repairs.
-    const stateNotice = updateNotice(updateManager.readAndClearState());
+    const updateState = updateManager.readAndClearState();
+    const stateNotice = updateNotice(updateState);
     if (stateNotice) {
       daemonLog.write(`update state: ${stateNotice.text}`);
     }
+    // An update that did not change the version this daemon runs, or updates that restart it again and again, stop the
+    // automatic updates (a loop restarted the daemon 822 times in a day); an explicit request still goes through.
+    updatesSuspended = guardUpdates({
+      version,
+      state: updateState,
+      bundlePath: process.argv[1] ?? '',
+      startsFile: path.join(CONFIG_DIR, UPDATE_STARTS_FILE),
+      now: Date.now(),
+      log: (message) => daemonLog.write(message),
+    });
 
     // Schedule background update check on startup and every 30m.
     // In dev/test mode (no orchestrator-updater.cjs bundle) this is a no-op.
