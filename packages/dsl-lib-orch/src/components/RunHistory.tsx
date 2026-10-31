@@ -10,11 +10,17 @@ import { LateMarker } from './LateMarker.js';
 import { JobStatusPill } from './JobStatusPill.js';
 import { TriggerBadge } from './TriggerBadge.js';
 import { RunLogLink } from './RunLogLink.js';
+import { cannotBeReadMessage, type SourceFailure } from '../source-failure.js';
 
 export interface RunHistoryProps {
   entries: RuntimeEntry[];
   /** Enables the per-run Logs link. Without it the run cannot be addressed, so no link is shown. */
   jobId?: string;
+  /**
+   * Set by the page from `$ctx.$sourceErrors.<source>` when the source of the entries failed to load. Replaces the "no runs"
+   * text (never rows already loaded), so that an unreadable history does not read as an empty one.
+   */
+  loadError?: SourceFailure;
 }
 
 /** The average peak of the job's recent successful runs, as the daemon computes it; null while it has fewer than 3. */
@@ -150,7 +156,7 @@ function toRow(entry: RuntimeEntry): RunRow {
  * @registryCategory composite
  * @registryTags history table runs
  */
-export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElement {
+export function RunHistory({ entries, jobId, loadError }: RunHistoryProps): React.ReactElement {
   const rows = (entries ?? []).map(toRow);
   const baseline = useBaseline(jobId);
   // The run whose chart is open. Until one is picked it is the newest, which is the one a reader opens the page for.
@@ -249,7 +255,7 @@ export function RunHistory({ entries, jobId }: RunHistoryProps): React.ReactElem
   // formatted string that would sort lexically.
   return (
     <div className="space-y-3">
-      <DataTable rows={rows} columns={columns} emptyMessage="No runs yet" />
+      <DataTable rows={rows} columns={columns} emptyMessage={loadError === undefined ? 'No runs yet' : cannotBeReadMessage(loadError)} />
       {jobId !== undefined && shownEntry !== null && (
         <section aria-label="CPU and RAM of a run" className="space-y-1">
           <h3 className="text-sm font-medium">Telemetry of the run started {rows.find(r => r.entry === shownEntry)?.started ?? shownEntry.startedAt}</h3>

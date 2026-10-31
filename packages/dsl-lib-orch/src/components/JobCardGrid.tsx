@@ -11,6 +11,8 @@ import { JobEtaCell } from './JobEtaCell.js';
 import { JobProgressBarCell } from './JobProgressBarCell.js';
 import { relativeTime } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { CannotBeRead } from '../cannot-be-read.js';
+import type { SourceFailure } from '../source-failure.js';
 import { appPath, getApiBase } from '../runtime-config.js';
 
 // Extends the shared shape rather than redeclaring it: a second exported interface with the
@@ -98,6 +100,8 @@ export function getConsecutiveFailures(runHistory: RuntimeEntry[]): number {
 
 export interface JobCardGridProps {
   items?: JobWithUptime[];
+  /** Set by the page from `$ctx.$sourceErrors.<source>` when the jobs failed to load: said instead of a spinner that never ends. */
+  loadError?: SourceFailure;
   // Filter props -- driven by DSL $vars (SearchBar + JobFilterChips)
   search?: string;
   filter?: string;
@@ -147,7 +151,7 @@ export interface JobCardGridProps {
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk, onAfterTrigger }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, loadError, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk, onAfterTrigger }: JobCardGridProps): React.ReactElement {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -264,6 +268,9 @@ export function JobCardGrid({ items, search = '', filter = 'all', filters, uptim
   }, [selected, onBulkDelete, onAfterBulk, ask]);
 
   // dsl-ui's Spinner rather than a hand-rolled div, for the accessible name the raw one lacked.
+  if (!items && loadError !== undefined) {
+    return <CannotBeRead failure={loadError} />;
+  }
   if (!items) {
     return <div className="flex justify-center py-12"><Spinner size="lg" /></div>;
   }

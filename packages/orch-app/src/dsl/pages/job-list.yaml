@@ -68,6 +68,8 @@ sections:
   - $type: JobCardGrid
     $id: jobGrid
     items: $sources.jobs
+    # Set when the jobs could not be loaded: said instead of a spinner that never ends.
+    loadError: $ctx.$sourceErrors.jobs
     search: $vars.search
     filter: $vars.filter
     # Filters go in the grid's own toolbar, beside its actions, rather than stacking above

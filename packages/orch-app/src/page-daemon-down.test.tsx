@@ -95,26 +95,29 @@ describe('orch-app pages with the daemon down', () => {
     ]);
   });
 
-  // The generic banner stays here although ResourceHistory also says the daemon is down: its message covers the charts only, and
-  // without the banner the run history table would read "No runs yet" for a job that has runs (seen on the real page).
-  it('job detail: the generic banner stays next to the resource history message', async () => {
+  // The generic banner is gone here: the run history table says it cannot be read (it used to read "No runs yet" for a job that
+  // has runs, seen on the real page), and ResourceHistory says the same for the charts. One alert, one table text.
+  it('job detail: one alert, and the run history says it cannot be read', async () => {
     const { container, served } = renderPage('job-detail.yaml', 'job-detail', '/jobs/backup-db', '/jobs/:id');
     // /api/jobs/backup-db (source) and its resource-history.
     const alerts = await alertsOf(container, () => served() >= 2);
     expect(alerts).toEqual([
-      GENERIC,
       'The orchestrator daemon is not running, so the resource history cannot be read. Start it with "orch start", then reload this page.',
     ]);
+    expect(container.textContent).toContain('Cannot be read: the daemon is not running (orch start)');
+    expect(container.textContent).not.toContain('No runs yet');
   });
 
   // These pages carry no component that says the daemon is down: the generic banner is all they have, and they must keep it.
+  // Their list also says it cannot be read, instead of "No upcoming cron jobs" / an endless spinner.
   it.each([
     ['schedule.yaml', '/schedule'],
     ['audit.yaml', '/audit'],
   ])('%s: the generic banner stays, the page is not silent', async (file, entry) => {
     const { container, served } = renderPage(file, file, entry);
     const alerts = await alertsOf(container, () => served() >= 1);
-    expect(alerts).toContain(GENERIC);
-    expect(alerts.length).toBeGreaterThanOrEqual(1);
+    expect(alerts).toEqual([GENERIC]);
+    expect(container.textContent).toContain('Cannot be read: the daemon is not running (orch start)');
+    expect(container.textContent).not.toContain('No upcoming cron jobs');
   });
 });

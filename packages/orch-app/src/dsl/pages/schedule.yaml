@@ -19,5 +19,7 @@ sections:
   - $type: ScheduleTimeline
     $id: scheduleTimeline
     firings: $sources.schedule
+    # Set when the schedule could not be loaded: said instead of "No upcoming cron jobs".
+    loadError: $ctx.$sourceErrors.schedule
     $outputs:
       onAfterRunEarly: [_]

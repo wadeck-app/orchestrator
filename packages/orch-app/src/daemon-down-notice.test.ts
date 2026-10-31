@@ -11,9 +11,16 @@ describe('pageTellsDaemonDown', () => {
     expect(pageTellsDaemonDown(page('job-list.yaml'))).toBe(true);
   });
 
-  // job-detail has ResourceHistory, whose message only covers the resource charts: without the generic banner the run history
-  // table would read "No runs yet" for a job that has runs.
-  it.each(['job-detail.yaml', 'schedule.yaml', 'audit.yaml', 'job-logs.yaml', 'job-form-new.yaml', 'job-form-edit.yaml'])('%s does not', (file) => {
+  // job-detail binds its run history table to the failure of its source (`loadError`), so the table says it cannot be read.
+  it('the job page counts: its run history says it cannot be read', () => {
+    expect(pageTellsDaemonDown(page('job-detail.yaml'))).toBe(true);
+  });
+
+  it('a RunHistory without loadError does not count', () => {
+    expect(pageTellsDaemonDown('sections:\n  - $type: RunHistory\n    entries: $sources.jobData.runHistory\n  - $type: Section\n    title: loadError: $ctx.$sourceErrors.jobData')).toBe(false);
+  });
+
+  it.each(['schedule.yaml', 'audit.yaml', 'job-logs.yaml', 'job-form-new.yaml', 'job-form-edit.yaml'])('%s does not', (file) => {
     expect(pageTellsDaemonDown(page(file))).toBe(false);
   });
 });
@@ -21,6 +28,10 @@ describe('pageTellsDaemonDown', () => {
 describe('shouldNotifyLoadFailureFor', () => {
   it('drops the generic banner for a down daemon on a page that says it itself', () => {
     expect(shouldNotifyLoadFailureFor(page('job-list.yaml'))(down)).toBe(false);
+  });
+
+  it('drops it on the job page too', () => {
+    expect(shouldNotifyLoadFailureFor(page('job-detail.yaml'))(down)).toBe(false);
   });
 
   it('keeps it on a page that does not', () => {

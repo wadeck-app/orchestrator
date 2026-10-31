@@ -1823,7 +1823,8 @@ export const AuditListEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const entries = coerceProp(resolveExpressionValue(node['entries'], ctx), 'AuditList.entries', 'array', false) as import('../components/AuditList.js').AuditListProps['entries']
-		return <AuditList entries={entries} />
+		const loadError = coerceProp(resolveExpressionValue(node['loadError'], ctx), 'AuditList.loadError', 'object', false) as import('../components/AuditList.js').AuditListProps['loadError']
+		return <AuditList entries={entries} loadError={loadError} />
 	},
 }
 
@@ -1890,6 +1891,7 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 	nodeSchema: null as never,
 	render: ({ node, registry, ctx }: RegistryRenderProps) => {
 		const items = coerceProp(resolveExpressionValue(node['items'], ctx), 'JobCardGrid.items', 'array', false) as import('../components/JobCardGrid.js').JobCardGridProps['items']
+		const loadError = coerceProp(resolveExpressionValue(node['loadError'], ctx), 'JobCardGrid.loadError', 'object', false) as import('../components/JobCardGrid.js').JobCardGridProps['loadError']
 		const search = coerceProp(resolveExpressionValue(node['search'], ctx), 'JobCardGrid.search', 'string', false) as import('../components/JobCardGrid.js').JobCardGridProps['search']
 		const filter = coerceProp(resolveExpressionValue(node['filter'], ctx), 'JobCardGrid.filter', 'string', false) as import('../components/JobCardGrid.js').JobCardGridProps['filter']
 		const filters = node['filters'] as unknown[] | undefined
@@ -1905,7 +1907,7 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const onAfterTrigger = coerceProp(resolveExpressionValue(node['onAfterTrigger'], ctx), 'JobCardGrid.onAfterTrigger', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onAfterTrigger']
 		const onExport = coerceProp(resolveExpressionValue(node['onExport'], ctx), 'JobCardGrid.onExport', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = coerceProp(resolveExpressionValue(node['onImport'], ctx), 'JobCardGrid.onImport', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onAfterTrigger={onAfterTrigger} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} loadError={loadError} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onAfterTrigger={onAfterTrigger} onExport={onExport} onImport={onImport} />
 	},
 }
 
@@ -2053,7 +2055,8 @@ export const RunHistoryEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const entries = coerceProp(resolveExpressionValue(node['entries'], ctx), 'RunHistory.entries', 'array', true) as import('../components/RunHistory.js').RunHistoryProps['entries']
 		const jobId = coerceProp(resolveExpressionValue(node['jobId'], ctx), 'RunHistory.jobId', 'string', false) as import('../components/RunHistory.js').RunHistoryProps['jobId']
-		return <RunHistory entries={entries} jobId={jobId} />
+		const loadError = coerceProp(resolveExpressionValue(node['loadError'], ctx), 'RunHistory.loadError', 'object', false) as import('../components/RunHistory.js').RunHistoryProps['loadError']
+		return <RunHistory entries={entries} jobId={jobId} loadError={loadError} />
 	},
 }
 
@@ -2131,7 +2134,8 @@ export const ScheduleTimelineEntry: ComponentRegistryEntry = {
 	render: ({ node, ctx }: RegistryRenderProps) => {
 		const firings = coerceProp(resolveExpressionValue(node['firings'], ctx), 'ScheduleTimeline.firings', 'array', false) as import('../components/ScheduleTimeline.js').ScheduleTimelineProps['firings']
 		const onAfterRunEarly = coerceProp(resolveExpressionValue(node['onAfterRunEarly'], ctx), 'ScheduleTimeline.onAfterRunEarly', 'function', false) as import('../components/ScheduleTimeline.js').ScheduleTimelineProps['onAfterRunEarly']
-		return <ScheduleTimeline firings={firings} onAfterRunEarly={onAfterRunEarly} />
+		const loadError = coerceProp(resolveExpressionValue(node['loadError'], ctx), 'ScheduleTimeline.loadError', 'object', false) as import('../components/ScheduleTimeline.js').ScheduleTimelineProps['loadError']
+		return <ScheduleTimeline firings={firings} onAfterRunEarly={onAfterRunEarly} loadError={loadError} />
 	},
 }
 
@@ -2414,14 +2418,14 @@ SearchBarEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["debounceMs"
 SortableColumnEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["currentSort","label","onSort","sortKey"] : [];
 AuditEntryIconEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["entry","event"] : [];
 AuditEntryRowEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["entry"] : [];
-AuditListEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["entries"] : [];
+AuditListEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["entries","loadError"] : [];
 DaemonStatusEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["compact","refreshMs"] : [];
 DesignSwitcherEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["current","jobId"] : [];
 EnableToggleEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job","onToggle"] : [];
 FailureOverlayEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["refreshMs"] : [];
 JobCardEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["consecutiveFailures","job","nowMs","onClick","onSelect","onToggle","onTrigger","progress","runHistory","selected","uptimePercent"] : [];
 JobCardGridEntry.allowedChildren = {"filters":["filter","atomic","composite","layout"]};
-JobCardGridEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["filter","filters","items","onAddJob","onAfterBulk","onAfterTrigger","onBulkDelete","onBulkDisable","onBulkEnable","onBulkTrigger","onExport","onImport","onJobClick","onToggle","search","uptimeMap"] : [];
+JobCardGridEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["filter","filters","items","loadError","onAddJob","onAfterBulk","onAfterTrigger","onBulkDelete","onBulkDisable","onBulkEnable","onBulkTrigger","onExport","onImport","onJobClick","onToggle","search","uptimeMap"] : [];
 JobConfigDisplayEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job"] : [];
 JobFilterChipsEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["onChange","selected"] : [];
 JobFormEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["busy","initial","onCancel","onSubmit"] : [];
@@ -2436,11 +2440,11 @@ MutationFeedbackEntry.requiresContext = ["ToastContext"];
 NavStatsEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["refreshMs"] : [];
 NextFireCountdownEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job","nowMs"] : [];
 ResourceHistoryEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["jobId"] : [];
-RunHistoryEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["entries","jobId"] : [];
+RunHistoryEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["entries","jobId","loadError"] : [];
 RunTelemetryEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["jobId","run","running"] : [];
 RunningAlertDetailEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job","jobId","onAfterTrigger","onDelete","onDryRun","onEdit","onKill","onRestart","onViewLogs","progress","runHistory"] : [];
 RunningBannerDetailEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job","jobId","onAfterTrigger","onDelete","onDryRun","onEdit","onKill","onRestart","onViewLogs","progress","runHistory"] : [];
 RunningInlineDetailEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job","jobId","onAfterTrigger","onDelete","onDryRun","onEdit","onKill","onRestart","onViewLogs","progress","runHistory"] : [];
-ScheduleTimelineEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["firings","onAfterRunEarly"] : [];
+ScheduleTimelineEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["firings","loadError","onAfterRunEarly"] : [];
 TriggerBadgeEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["source"] : [];
 TriggerButtonEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["feedbackDurationMs","jobId","onTrigger","size"] : [];

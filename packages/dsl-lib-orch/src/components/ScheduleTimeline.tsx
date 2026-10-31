@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { describeMoment } from '../relative-time.js';
 import { postTriggerEarly } from '../trigger-job.js';
 import { getErrorMessage, type TriggerRefused } from '../types.js';
+import { CannotBeRead } from '../cannot-be-read.js';
+import type { SourceFailure } from '../source-failure.js';
 
 // @formatter:off
 const DATE_HDR_CLS = 'text-xs font-semibold text-muted uppercase tracking-wide pt-3 pb-1 border-b border-border';
@@ -27,6 +29,8 @@ export interface ScheduleTimelineProps {
    * never the 200 body that says the job was already running and nothing started.
    */
   onAfterRunEarly?: () => void;
+  /** Set by the page from `$ctx.$sourceErrors.<source>` when the firings failed to load: said instead of "No upcoming cron jobs". */
+  loadError?: SourceFailure;
 }
 
 type RunEarlyState =
@@ -65,7 +69,7 @@ const OS_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
  * @registryCategory composite
  * @registryTags schedule timeline cron firings
  */
-export function ScheduleTimeline({ firings = [], onAfterRunEarly }: ScheduleTimelineProps): React.ReactElement {
+export function ScheduleTimeline({ firings = [], onAfterRunEarly, loadError }: ScheduleTimelineProps): React.ReactElement {
   // key = `${jobId}:${ts}`
   const [btnState, setBtnState] = useState<Record<string, RunEarlyState>>({});
 
@@ -99,6 +103,9 @@ export function ScheduleTimeline({ firings = [], onAfterRunEarly }: ScheduleTime
     (e.next ?? []).map(ts => ({ ts, label: e.label, jobId: e.jobId }))
   ).sort((a, b) => a.ts.localeCompare(b.ts));
 
+  if (flat.length === 0 && loadError !== undefined) {
+    return <CannotBeRead failure={loadError} />;
+  }
   if (flat.length === 0) {
     return (
       <>

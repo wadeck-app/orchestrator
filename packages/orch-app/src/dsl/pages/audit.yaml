@@ -12,3 +12,5 @@ sections:
     items:
       - $type: AuditList
         entries: $sources.auditData
+        # Set when the entries could not be loaded: said instead of a spinner that never ends.
+        loadError: $ctx.$sourceErrors.auditData
