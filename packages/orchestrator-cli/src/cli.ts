@@ -1,6 +1,7 @@
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
+import { launcherBundleOverride, nodeDirOnPath, LAUNCHER_BUNDLE_SPEC } from './launcher-bundle.js';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
 import type { ProgressEstimate } from './progress/types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobProgressSetting } from './types.js';
@@ -2310,14 +2311,21 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Hand the launcher an absolute bundle path: its baked nodeScript is resolved relative to
-    // its own directory, which breaks as soon as npm nests the platform package instead of
-    // hoisting it next to the main package.
+    // Hand the launcher an absolute bundle path when it cannot find this one itself: its baked nodeScript is resolved relative
+    // to its own directory, which breaks as soon as npm nests the platform package instead of hoisting it next to the main
+    // package. When it can (under the directory of the node on PATH), nothing is fixed: a fixed path outlives `nvm use`
+    // and makes the launcher start a bundle the updater no longer updates (see launcher-bundle.ts).
+    const bundleOverride = launcherBundleOverride({ daemonPath, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
+    const { LAUNCHER_BUNDLE_OVERRIDE: _inherited, ...inheritedEnv } = process.env;
     const child = spawn(launcherPath, [configDir], {
       stdio: 'ignore',
       detached: true,
       windowsHide: true,
-      env: { ...process.env, LAUNCHER_BUNDLE_OVERRIDE: daemonPath, ORCH_CONFIG_DIR: configDir },
+      env: {
+        ...inheritedEnv,
+        ...(bundleOverride === undefined ? {} : { LAUNCHER_BUNDLE_OVERRIDE: bundleOverride }),
+        ORCH_CONFIG_DIR: configDir,
+      },
     });
     // Without this, a launcher that cannot be executed (wrong arch, missing exec bit,
     // corrupt binary) surfaces as an unhandled 'error' event and a raw ENOEXEC/EACCES stack

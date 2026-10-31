@@ -16,7 +16,7 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 
 **Problem:** The daemon restarted 822 times in a day (one every ~11 s, a tray icon each): the updater installed the new version into the active node's npm prefix, while the launcher started by `orch start` kept starting the bundle of the previous node.
 **Fix:** `orch stop` then `orch start` under the current node; `update-guard.ts` now suspends automatic updates when an update did not change the running version or restarts the daemon 3 times in 30 minutes.
-**Context:** `orch start` bakes `LAUNCHER_BUNDLE_OVERRIDE` (a versioned path) for the launcher's whole life; the macOS plist and Linux unit bake it at write time too. A login-started launcher has no bundle path and resolves `node` on PATH at each spawn, so it follows `nvm use`.
+**Context:** `orch start` used to bake `LAUNCHER_BUNDLE_OVERRIDE` (a versioned path) for the launcher's whole life. It now sets none when the launcher finds the same bundle under the directory of the node on PATH (`launcher-bundle.ts`; on nvm for Windows that directory is a junction following `nvm use`). Still fixed: a checkout, unix global prefixes (modules in `lib/`, which the launcher does not probe), the macOS plist and the Linux unit.
 
 ---
 
