@@ -235,8 +235,7 @@ function systemctlFailure(e: unknown, verb: string, state: string): string {
   if (/Failed to connect to (user scope )?bus|not been booted with systemd|XDG_RUNTIME_DIR|No medium found/i.test(raw)) {
     return `\`systemctl --user ${verb}\` found no systemd user session (${raw}). ${state} `
       + 'Run this from a login session (a desktop or ssh login that has a systemd user manager). For a headless server or '
-      + 'container, a daemon can only start without a login session if an administrator runs `loginctl enable-linger $USER` '
-      + '(orch does not run it: it needs privileges); then run `orch install` again.';
+      + 'container, the user must linger: run `sudo loginctl enable-linger $USER`, then run `orch install` again.';
   }
   return `\`systemctl --user ${verb}\` failed: ${raw}. ${state}`;
 }
@@ -287,7 +286,7 @@ function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFi
     return { ok: false, error: failed };
   }
   diag.push('daemon-reload=ok', 'enable=ok');
-  diag.push('it starts at your login; to start at boot with no login run `loginctl enable-linger $USER` (needs privileges, not run by orch)');
+  diag.push('it starts at your login; to start at boot with no login the user must linger (`loginctl enable-linger`, done by `orch install` itself)');
   return warnings.length > 0
     ? { ok: true, detail: diag.join(' | '), warnings }
     : { ok: true, detail: diag.join(' | ') };
@@ -314,6 +313,93 @@ function disableSystemd(deps: StartupDeps, exec: typeof execFileSync): StartupRe
   try { exec('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe', windowsHide: true }); }
   catch (e) { return { ok: false, error: systemctlFailure(e, 'daemon-reload', `${state} Start-at-login is off.`) }; }
   return { ok: true, detail: 'disable=ok | unit=removed | daemon-reload=ok' };
+}
+
+export interface LingerDeps {
+  platform?: NodeJS.Platform;
+  exec?: typeof execFileSync;
+  /** The user to enable lingering for (default: the account running orch, which is not $USER under sudo). */
+  user?: string;
+  /** Whether a person can type a password: sudo is only tried then, since it would wait on a prompt nobody sees. */
+  interactive?: boolean;
+}
+
+function lingerUser(deps: LingerDeps): string {
+  return deps.user ?? os.userInfo().username;
+}
+
+/** Whether the user lingers (`loginctl show-user`). Throws when loginctl cannot answer. */
+function isLingering(exec: typeof execFileSync, user: string): boolean {
+  const out = exec('loginctl', ['show-user', user, '--property=Linger', '--value'],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  return String(out).trim() === 'yes';
+}
+
+/**
+ * Linux: lets the user's systemd manager (and so the daemon) start at boot with no login. Tried as the user first (polkit often
+ * allows it), then through sudo with the terminal handed over so a password can be typed. Called by `orch install` only: the
+ * daemon refreshes the unit at every start and has no terminal. Never throws; a failure carries the exact command to run.
+ */
+export function ensureLinger(deps: LingerDeps = {}): StartupResult {
+  if ((deps.platform ?? process.platform) !== 'linux') {
+    return { ok: true, detail: 'lingering: not applicable on this platform' };
+  }
+  const exec = deps.exec ?? execFileSync;
+  const user = lingerUser(deps);
+  const byHand = `sudo loginctl enable-linger ${user}`;
+  try {
+    if (isLingering(exec, user)) {
+      return { ok: true, detail: 'lingering already enabled: starts at boot with no login' };
+    }
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ok: false, error: `loginctl was not found on PATH: starting at boot with no login needs systemd. Run \`${byHand}\` once it is installed.` };
+    }
+    // Unreadable is not a verdict: enabling below either works or says why not.
+  }
+  let plainFailure: string;
+  try {
+    exec('loginctl', ['enable-linger', user], { stdio: 'pipe', windowsHide: true });
+    return { ok: true, detail: 'lingering enabled: starts at boot with no login' };
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ok: false, error: `loginctl was not found on PATH: starting at boot with no login needs systemd. Run \`${byHand}\` once it is installed.` };
+    }
+    plainFailure = execDetail(e);
+  }
+  if (!(deps.interactive ?? false)) {
+    return { ok: false, error: `Lingering could not be enabled for ${user} (${plainFailure}) and there is no terminal to ask for a password: the daemon will start after a login only. Run \`${byHand}\`.` };
+  }
+  try {
+    // Inherited stdio: sudo prompts on the terminal.
+    exec('sudo', ['loginctl', 'enable-linger', user], { stdio: 'inherit', windowsHide: true });
+    return { ok: true, detail: 'lingering enabled through sudo: starts at boot with no login' };
+  } catch (e) {
+    return { ok: false, error: `Lingering could not be enabled for ${user}: as the user: ${plainFailure}; through sudo: ${execDetail(e)}. The daemon will start after a login only. Run \`${byHand}\`.` };
+  }
+}
+
+/**
+ * What the daemon says at its start on Linux when the start-at-boot setup is incomplete (null: nothing to say). Silence about a
+ * missing registration or lingering looks like success until the machine reboots.
+ */
+export function lingerAdvice(deps: LingerDeps & { registered: boolean }): string | null {
+  if ((deps.platform ?? process.platform) !== 'linux') {
+    return null;
+  }
+  if (!deps.registered) {
+    return 'start-at-login is not registered: this daemon will not start after a reboot. Run `orch install`.';
+  }
+  const exec = deps.exec ?? execFileSync;
+  const user = lingerUser(deps);
+  try {
+    if (isLingering(exec, user)) {
+      return null;
+    }
+  } catch (e) {
+    return `start-at-login is registered but lingering could not be read (${execDetail(e)}): whether the daemon starts at boot with no login is unknown. Check with \`loginctl show-user ${user} --property=Linger\`.`;
+  }
+  return `start-at-login is registered but ${user} does not linger: the daemon starts only after a login. Run \`orch install\` (it asks for sudo if needed), or \`sudo loginctl enable-linger ${user}\`.`;
 }
 
 export function enableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {

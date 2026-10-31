@@ -65,7 +65,8 @@ Fix: run that command in a terminal; a slow or blocking command in `~/.zshrc` / 
 - The unit carries `PATH` (login shell capture as on macOS, same fallbacks and warnings, default shell `/bin/sh`), `ORCH_CONFIG_DIR` and `LAUNCHER_BUNDLE_OVERRIDE`. A systemd user manager does not read `~/.bashrc` or `~/.profile`. Frozen at write time; rewritten at every daemon start.
 - Enabled means: the unit exists for this config dir and `default.target.wants/orchestrator.service` exists. Read from the filesystem, so it works without a session bus.
 - The unit (like the macOS LaunchAgent) is one per user. `orch uninstall` run for another config dir refuses, names the entry and removes nothing; run it with that config dir (`ORCH_CONFIG_DIR`) or delete the entry by hand.
-- The daemon starts at your first login. To start at boot with no login, run `loginctl enable-linger $USER` yourself (needs privileges, never run by orch).
+- Without lingering the daemon starts at your first login. `orch install` enables lingering (start at boot, no login): `loginctl enable-linger` as the user first, then `sudo loginctl enable-linger` with the terminal handed over for the password, only when stdin and stdout are a terminal. Without a terminal, or if sudo fails, it warns with the exact command and the unit stays registered. The daemon (no terminal) never runs sudo.
+- At every start the daemon logs a `WARN` when start-at-login is not registered, or is registered without lingering (or lingering cannot be read).
 
 Failures are reported, not skipped: no `systemctl` on PATH (systemd required), no reachable user session (headless server or container: needs lingering), or `enable` failed after the unit was written (both facts and the systemctl message are shown).
 

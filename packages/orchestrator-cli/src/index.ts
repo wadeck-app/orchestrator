@@ -26,7 +26,7 @@ import { ExecManager } from './exec-manager.js';
 import { loadDaemonConfig, loadOrchestratorHooks } from './daemonConfig.js';
 import { daemonLogRotation } from './log-rotation.js';
 import { registerOnStart } from './app-core-registration.js';
-import { refreshStartupEntry, reportStartupRefresh, shouldPruneStaleBinaries } from './startup.js';
+import { isStartupEnabled, lingerAdvice, refreshStartupEntry, reportStartupRefresh, shouldPruneStaleBinaries } from './startup.js';
 import { countActiveJobs } from './active-jobs.js';
 import { createUpdateScheduler } from './update-scheduling.js';
 import { guardUpdates, UPDATE_STARTS_FILE } from './update-guard.js';
@@ -427,6 +427,16 @@ async function main(): Promise<void> {
     } catch (e) {
       daemonLog.write(`start-at-login refresh crashed: ${getErrorMessage(e)}`);
       startupRefresh = { ok: false, error: getErrorMessage(e) };
+    }
+
+    // Linux: a missing registration or lingering looks like success until the machine reboots, so it is said at every start.
+    try {
+      const advice = lingerAdvice({ registered: isStartupEnabled(CONFIG_DIR) });
+      if (advice) {
+        daemonLog.write(`WARN ${advice}`);
+      }
+    } catch (e) {
+      daemonLog.write(`start-at-login check crashed: ${getErrorMessage(e)}`);
     }
 
     // Only prune once nothing still needs the old stamp -- see shouldPruneStaleBinaries.

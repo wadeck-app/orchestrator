@@ -995,12 +995,22 @@ To restart the job, run: orch restart-job ${jobArg}`);
     }
 
     case 'install': {
-      const { enableStartup } = await import('./startup.js');
+      const { enableStartup, ensureLinger } = await import('./startup.js');
       const result = enableStartup(configDir);
       if (result.ok) {
         console.log(`Orchestrator registered for startup. (${result.detail})`);
         for (const w of result.warnings ?? []) {
           console.error(`Warning: ${w}`);
+        }
+        // Linux only: without lingering the unit runs after a login, not at boot. Here and not in enableStartup, which the
+        // daemon calls at every start with no terminal to ask sudo's password on.
+        const linger = ensureLinger({ interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY) });
+        if (linger.ok) {
+          if (process.platform === 'linux') {
+            console.log(linger.detail);
+          }
+        } else {
+          console.error(`Warning: ${linger.error}`);
         }
       } else {
         console.error(`Failed to register startup: ${result.error}`);
