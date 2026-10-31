@@ -59,6 +59,8 @@ Fix: run that command in a terminal; a slow or blocking command in `~/.zshrc` / 
 
 ## Start at login on Linux (systemd user unit)
 
+Validated on a real Ubuntu x64 host (2026-10-31): `orch install`, then a reboot, and the daemon starts at boot. Not tested: arm64, other distributions, the sudo fallback for lingering.
+
 `orch install` writes `$XDG_CONFIG_HOME/systemd/user/orchestrator.service` (default `~/.config/systemd/user/`), then runs `systemctl --user daemon-reload` and `systemctl --user enable orchestrator.service`. Never `--now`: a running daemon is left alone. `orch uninstall` runs `disable`, removes the unit, and reloads.
 
 - `ExecStart` is the staged launcher plus the config dir, `Restart=no` (the launcher already restarts the daemon), `KillMode=process` (a stop ends the launcher and so the unit; the default would kill the job supervisors and the jobs with it), `WantedBy=default.target`. Spaces, `%` and `$` in paths are escaped.

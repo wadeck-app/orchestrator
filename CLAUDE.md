@@ -55,9 +55,10 @@ package.
 Linux packages carry the launcher and the supervisor but no tray (there is no Linux systray build: the daemon
 says so in its log and the dashboard is reached with `orch server start`). Start at login on Linux is a systemd
 user unit (`~/.config/systemd/user/orchestrator.service`, `orch install` / `orch uninstall`; see
-`docs/daemon-config.md`); verified by tests only, not on a real systemd host. The platforms are listed
+`docs/daemon-config.md`); start at boot on Ubuntu x64 was validated by the user on a real host (2026-10-31,
+`orch install` then reboot); arm64 and other distributions are covered by tests only. The platforms are listed
 once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts,
-`optionalDependencies` and `scripts/build-supervisor-binary.ts` agree with it. Not yet run on a real Linux host.
+`optionalDependencies` and `scripts/build-supervisor-binary.ts` agree with it.
 
 Never assume a fixed path between the two packages: npm hoists the platform package next to the
 main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the launcher,

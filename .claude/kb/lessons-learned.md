@@ -357,7 +357,7 @@ exit-code claim was dropped for lack of sources in this checkout.
 
 **Problem:** `platform-binary.ts` tables, `generate/copy/publish-platform-packages.sh`, `optionalDependencies` and `build-supervisor-binary.ts` each listed the platforms. Linux was absent everywhere, silently: without a launcher an npm install there could not start the daemon at all.
 **Fix:** `PLATFORM_TARGETS` in `platform-binary.ts` is the one table; `test/platform-targets.test.js` parses the scripts and `package.json` and fails until they agree with it.
-**Context:** Linux packages carry the launcher and the supervisor but no tray (no Linux systray build): `platformHasTray` decides, `nativeBinaryProblem` is the updater's rollback-gate check. Start at login is a registry entry (Windows), a LaunchAgent (macOS) or a systemd user unit (Linux, `startup.ts`; not yet run on a real systemd host).
+**Context:** Linux packages carry the launcher and the supervisor but no tray (no Linux systray build): `platformHasTray` decides, `nativeBinaryProblem` is the updater's rollback-gate check. Start at login is a registry entry (Windows), a LaunchAgent (macOS) or a systemd user unit (Linux, `startup.ts`; validated by the user on a real Ubuntu x64 host on 2026-10-31, `orch install` then reboot; other distributions and arm64 untested).
 
 ---
 

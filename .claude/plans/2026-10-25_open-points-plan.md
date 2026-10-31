@@ -21,7 +21,7 @@
 
 ## Still open
 
-1. **Real Linux host**: waits for the user's Linux server (to be installed later). Until then CI covers launcher/daemon e2e and the supervisor on ubuntu, not systemd, not arm64. WSL2 Ubuntu with systemd exists on this machine but has no Node; installing one was refused.
+1. **Real Linux host**: Ubuntu x64 validated by the user on 2026-10-31 (`orch install` enables lingering as the user, sudo only if refused; start at boot works). Still untested: arm64, other distributions, the sudo path (polkit allowed the user alone), `orch start` and the systemd unit after an `nvm use` (both keep a fixed bundle path on unix; a kit change would let the launcher probe `<prefix>/lib/node_modules`).
 2. **Windows console close**: decided, no change. The shipped launcher is a GUI executable with no console, so the case only exists in a development build with a console; the real stop is the HTTP `quit`, and the launcher warns when it cannot forward an interrupt. Revisit if a console launcher ships.
 3. **`orch exec` is never supervised**, by design (plain children of the daemon). `orch stop`, `restart` and `cli update` now warn about the running ones (`130c420`, from `exec-list`). Not done: `orch status` does not list them, so the "wait for them" way out has no command; the tray and dashboard quit confirmations were not checked.
 4. **Progress/ETA strategies learn from the head of a rotated run only**: the dropped segments are gone, so this is inherent, documented in `docs/daemon-config.md`. No change planned unless a learned strategy must work on runs above 250 MB.
