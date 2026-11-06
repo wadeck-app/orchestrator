@@ -23,6 +23,13 @@ orch cli update              # update orch itself -- never `npm install -g` by h
 the launcher before installing, so the native binary is not locked, and it leaves the CLI and the
 daemon on the same version. See `.claude/kb/lessons-learned.md`.
 
+**Restarting the daemon is routine, not a decision to ask about.** Each job runs under its own supervisor, so
+`orch restart`, `orch stop` and `orch cli update` leave running jobs running and followed again afterwards
+(`supervisedJobs`, docs/daemon-config.md). Run them when the work calls for it, then check `orch status` and the
+daemon log. The exceptions say so themselves, before acting: `orch exec` commands and jobs on a host with no supervisor
+die with the daemon, and each of those three commands names them first (run id, time running, command). Read that
+warning, and only then decide to wait or to go ahead.
+
 Config dir: `~/.config/orchestrator/`. Port file: `<configDir>/config.port`.
 
 `orch start` tails logs in an interactive TTY and returns immediately otherwise; `--no-follow`

@@ -12,6 +12,14 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 
 ---
 
+### Do not ask before restarting the daemon or running `orch cli update`
+
+**Problem:** An agent held back `orch cli update` "because it restarts the daemon and the tray" and asked for approval, although jobs run under their own supervisor, which exists precisely so the daemon can restart.
+**Fix:** Run it, then check `orch status` and the daemon log; the commands warn on their own about what dies (`orch exec` runs, jobs on a host with no supervisor).
+**Context:** CLAUDE.md states it; the mechanism is `supervisedJobs` in docs/daemon-config.md.
+
+---
+
 ### After `nvm use`, a long-lived launcher keeps starting the old node's bundle and the updater loops
 
 **Problem:** The daemon restarted 822 times in a day (one every ~11 s, a tray icon each): the updater installed the new version into the active node's npm prefix, while the launcher started by `orch start` kept starting the bundle of the previous node.
