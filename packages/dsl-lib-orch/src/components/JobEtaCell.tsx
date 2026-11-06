@@ -26,7 +26,8 @@ export function JobEtaCell({ progress, nowMs }: JobProgressCellProps): React.Rea
       title={low ? `${tooltip} - low confidence` : tooltip}
       className={`inline-block align-middle text-xs text-muted ${state === 'estimate' ? '' : 'max-w-[10.5rem] truncate'} ${low ? 'opacity-60' : ''}`}
     >
-      {detail}
+      {/* The fade alone reads as two colours for no reason; the card's non-filled row says it in words too. */}
+      {state === 'estimate' && low ? `${detail} - low confidence` : detail}
     </span>
   );
 }

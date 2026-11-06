@@ -110,6 +110,16 @@ describe('JobCardGrid list view progress', () => {
     }
   });
 
+  it('writes "low confidence" in the ETA cell: a fade alone looks like two colours for no reason', () => {
+    renderList([
+      { job: JOB('a', 'Alpha'), runHistory: RUNNING, progress: estimate(0.4, { confidence: 'low' }) },
+      { job: JOB('b', 'Beta'), runHistory: RUNNING, progress: estimate(0.4) },
+    ]);
+
+    expect(cell('Alpha', 'ETA').textContent).toBe(`ends ~${hhmm(ETA)} (in 10 min) - low confidence`);
+    expect(cell('Beta', 'ETA').textContent).toBe(`ends ~${hhmm(ETA)} (in 10 min)`);
+  });
+
   it('shows the reason, muted with a tooltip, in the ETA cell and a dash in the Progress cell when there is no estimate', () => {
     const reason = 'auto: history: needs 3 usable runs, has 1';
     renderList([{ job: JOB('a', 'Alpha'), runHistory: RUNNING, progress: estimate(null, { reason }) }]);

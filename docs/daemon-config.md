@@ -462,7 +462,7 @@ The audit trail names the field (`changes: ["progress"]`), not its options.
 | Daemon RPC | `get-progress` `{ jobIds?: string[] }`: one estimate per job with an open run; other jobs are absent. Unknown id or malformed payload: error |
 | HTTP | `GET /api/jobs` and `GET /api/jobs/:id` carry `progress`; `GET /api/jobs/:jobId/progress` (also published by the module) answers one estimate, `null` when the job is not running |
 | CLI | `orch status` prints `<job>: 42% ~14:32 (low confidence) "message excerpt"`, the overdue sentence, or `no estimate - <reason>` |
-| UI | `JobProgress`, on the running banner of the job page and on the running job card |
+| UI | `JobProgress`, on the running banner of the job page and on the running job card; the list view has a bar cell and an end-time cell. A `low` confidence estimate is faded (60 % opacity) in all of them, so two running jobs can differ in colour; the list's end-time cell also says `- low confidence` in words |
 
 ### How `history` estimates
 
