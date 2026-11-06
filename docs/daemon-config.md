@@ -451,7 +451,7 @@ A job that prints this on stdout or stderr gets an end time extrapolated from it
 | Before the first line | The reason says `no "##orch-progress <0-100>" line in the log of this run yet`. `auto` takes `declared` only once a valid line exists (until then another strategy answers, `history` for a job with past runs); with `--progress declared` there is no estimate until then. |
 | File instead | `options.file`: JSON `{ "progress": 0..100, "message"?: "..." }`, at most 64 KB, written after the run started. |
 
-The whole reason, message included, is in `orch status --json` (`progress.<job>.reason`) and in the dashboard tooltip; the human line of `orch status` shows the percent and the end time.
+The whole reason, message included, is in `orch status --json` (`progress.<job>.reason`) and in the dashboard tooltip. The human line of `orch status` shows the percent, the end time and, when the job sent a message, an excerpt of it in quotes: control characters and line breaks become spaces, the cut is made on a character boundary with `...` so the line fits the terminal (80 columns when the width is unknown), and the message is left out when fewer than 8 characters of it would fit. The percent, the time and the confidence mark never give way to it.
 
 ### Where it shows
 
@@ -461,7 +461,7 @@ The audit trail names the field (`changes: ["progress"]`), not its options.
 |-------|-------------|
 | Daemon RPC | `get-progress` `{ jobIds?: string[] }`: one estimate per job with an open run; other jobs are absent. Unknown id or malformed payload: error |
 | HTTP | `GET /api/jobs` and `GET /api/jobs/:id` carry `progress`; `GET /api/jobs/:jobId/progress` (also published by the module) answers one estimate, `null` when the job is not running |
-| CLI | `orch status` prints `<job>: 42% ~14:32 (low confidence)`, the overdue sentence, or `no estimate - <reason>` |
+| CLI | `orch status` prints `<job>: 42% ~14:32 (low confidence) "message excerpt"`, the overdue sentence, or `no estimate - <reason>` |
 | UI | `JobProgress`, on the running banner of the job page and on the running job card |
 
 ### How `history` estimates

@@ -94,22 +94,60 @@ function describeDaemonInfo(info: DaemonInfo): string[] {
   return lines;
 }
 
+/** Fewest characters of a job's message worth showing: below that the excerpt says nothing and the message is left out. */
+const MIN_MESSAGE_EXCERPT = 8;
+
+/**
+ * The job's last message (##orch-progress <0-100> <message>) as an excerpt of at most `room` UTF-16 units, or null when
+ * there is no message or no room for a useful part of it. The message is written by the job: control characters (an escape
+ * sequence could recolor the terminal or move the cursor) and line breaks become single spaces, and the cut is made on a
+ * character boundary. A full-width character takes two terminal cells for one unit; that is not measured.
+ */
+function messageExcerpt(message: unknown, room: number): string | null {
+  if (typeof message !== 'string' || room < MIN_MESSAGE_EXCERPT) {
+    return null;
+  }
+  // eslint-disable-next-line no-control-regex
+  const text = message.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/ +/g, ' ').trim();
+  if (text === '') {
+    return null;
+  }
+  if (text.length <= room) {
+    return text;
+  }
+  let cut = '';
+  for (const ch of text) {
+    if (cut.length + ch.length > room - 3) {
+      break;
+    }
+    cut += ch;
+  }
+  return `${cut.trimEnd()}...`;
+}
+
 /**
  * The lines `orch status` prints for running jobs: "42% ~14:32" (the ~ marks a time that is an estimate), the
- * overdue sentence, or the reason there is no estimate. Local time, like the rest of the CLI output.
+ * overdue sentence, or the reason there is no estimate. Local time, like the rest of the CLI output. When the job reports
+ * a message, an excerpt follows in quotes, sized so that no line is wider than `columns`; the percent, the time and the
+ * confidence mark never give way to it.
  */
-export function describeProgress(progress: Record<string, ProgressEstimate>): string[] {
+export function describeProgress(progress: Record<string, ProgressEstimate>, columns = 80): string[] {
   return Object.entries(progress).map(([id, e]) => {
     if (e.progress === null) {
       return `  ${id}: no estimate - ${e.reason}`;
     }
     const pct = `${Math.round(e.progress * 100)}%`;
+    let text: string;
     if (e.etaAt === null) {
-      return `  ${id}: ${pct} ${e.reason}`;
+      text = `  ${id}: ${pct} ${e.reason}`;
+    } else {
+      const eta = new Date(e.etaAt);
+      const hhmm = `${String(eta.getHours()).padStart(2, '0')}:${String(eta.getMinutes()).padStart(2, '0')}`;
+      text = `  ${id}: ${pct} ~${hhmm}${e.confidence === 'low' ? ' (low confidence)' : ''}`;
     }
-    const eta = new Date(e.etaAt);
-    const hhmm = `${String(eta.getHours()).padStart(2, '0')}:${String(eta.getMinutes()).padStart(2, '0')}`;
-    return `  ${id}: ${pct} ~${hhmm}${e.confidence === 'low' ? ' (low confidence)' : ''}`;
+    // One space before the opening quote, two quotes.
+    const excerpt = messageExcerpt(e.detail?.['message'], columns - text.length - 3);
+    return excerpt === null ? text : `${text} "${excerpt}"`;
   });
 }
 
@@ -903,7 +941,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
         }
         if (progress && Object.keys(progress).length > 0) {
           console.log('progress  :');
-          for (const line of describeProgress(progress)) {
+          for (const line of describeProgress(progress, process.stdout.columns || 80)) {
             console.log(line);
           }
         }
