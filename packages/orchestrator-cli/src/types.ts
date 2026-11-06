@@ -466,6 +466,8 @@ export interface CliDeps {
   send: (command: string, payload?: unknown, options?: SendOptions) => Promise<unknown>;
   startDaemon: () => void;
   configDir: string;
+  /** Called with the command before it runs: checks the start-at-login entry (startup-check.ts). Only the real entry point sets it. */
+  startupCheck?: (command: string | undefined) => void;
   /** The platform the daemon runs on (default: this process's); decides which way out a missing supervisor has. Tests set it. */
   platform?: string;
   /** `orch cli update` seams: the version checked for the dev-build refusal, the updater bundle to look for, and what runs it. Tests set them. */

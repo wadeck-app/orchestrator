@@ -315,6 +315,152 @@ function disableSystemd(deps: StartupDeps, exec: typeof execFileSync): StartupRe
   return { ok: true, detail: 'disable=ok | unit=removed | daemon-reload=ok' };
 }
 
+// ---- Is the registered entry still usable, and is it this install's? ----------------------------------
+
+export interface StartupEntryReport {
+  /** absent: nothing registered for this config dir. broken: it names a path that is gone. drift: it works but names another install. */
+  state: 'absent' | 'ok' | 'broken' | 'drift';
+  problems: string[];
+}
+
+export interface InspectDeps extends StartupDeps {
+  isFile?: (p: string) => boolean;
+  realpath?: (p: string) => string;
+  /** The directory of the node this process runs (default: dirname(process.execPath)). */
+  nodeBinDir?: string;
+}
+
+const defaultIsFile = (p: string): boolean => {
+  try { return fs.statSync(p).isFile(); } catch { return false; }
+};
+
+function xmlUnescape(s: string): string {
+  return s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+}
+
+/** Reverses systemdQuote for the text between the quotes. */
+function systemdUnquote(s: string, exec: boolean): string {
+  const v = s.replace(/\\(.)/g, '$1').replace(/%%/g, '%');
+  return exec ? v.replace(/\$\$/g, '$') : v;
+}
+
+interface EntryFields {
+  launcher: string | null;
+  bundle: string | null;
+  /** The directories of the PATH the daemon will get (null: the entry carries none, the launcher uses the login's). */
+  pathDirs: string[] | null;
+}
+
+function readSystemdFields(text: string): EntryFields {
+  const env = new Map<string, string>();
+  for (const m of text.matchAll(/^Environment="((?:[^"\\]|\\.)*)"$/gm)) {
+    const decoded = systemdUnquote(m[1] ?? '', false);
+    const eq = decoded.indexOf('=');
+    if (eq > 0) { env.set(decoded.slice(0, eq), decoded.slice(eq + 1)); }
+  }
+  const exec = /^ExecStart="((?:[^"\\]|\\.)*)"/m.exec(text);
+  const p = env.get('PATH');
+  return {
+    launcher: exec ? systemdUnquote(exec[1] ?? '', true) : null,
+    bundle:   env.get('LAUNCHER_BUNDLE_OVERRIDE') ?? null,
+    pathDirs: p === undefined ? null : p.split(':').filter(d => d !== ''),
+  };
+}
+
+function readPlistFields(text: string): EntryFields {
+  const after = (key: string): string | null => {
+    const m = new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(text);
+    return m ? xmlUnescape(m[1] ?? '') : null;
+  };
+  const args = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(text);
+  const p = after('PATH');
+  return {
+    launcher: args ? xmlUnescape(args[1] ?? '') : null,
+    bundle:   after('LAUNCHER_BUNDLE_OVERRIDE'),
+    pathDirs: p === null ? null : p.split(':').filter(d => d !== ''),
+  };
+}
+
+/**
+ * Reads the registered entry back and says whether it still resolves at login (it names no path that is gone) and whether it
+ * is this install's. `broken` is what a node or npm prefix change leaves behind: the daemon would not start at the next login,
+ * with the reason only in a launcher log. `drift` is an entry that works but starts another install than the one running
+ * this command (a cron job or an agent under another node); it is reported, never rewritten, since two such callers would
+ * rewrite it back and forth. Never throws.
+ */
+export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): StartupEntryReport {
+  const platform = deps.platform ?? process.platform;
+  const isFile   = deps.isFile ?? defaultIsFile;
+  const realpath = deps.realpath ?? ((p: string) => fs.realpathSync(p));
+  const same = (a: string, b: string): boolean => {
+    try { return realpath(a) === realpath(b); } catch { return a === b; }
+  };
+  if (!isStartupEnabled(configDir, deps)) {
+    return { state: 'absent', problems: [] };
+  }
+  let fields: EntryFields;
+  try {
+    if (platform === 'linux') {
+      fields = readSystemdFields(fs.readFileSync(deps.unitPath ?? defaultUnitPath(), 'utf8'));
+    } else if (platform === 'darwin') {
+      fields = readPlistFields(fs.readFileSync(deps.plistPath ?? macPlistPath(), 'utf8'));
+    } else if (platform === 'win32') {
+      const exec = deps.exec ?? execFileSync;
+      const out  = String(exec('reg', ['query', REG_KEY, '/v', buildRegValueName(configDir)],
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }));
+      const m = /REG_SZ\s+"((?:[^"]|"")*)"/.exec(out);
+      fields = { launcher: m ? (m[1] ?? '').replace(/""/g, '"') : null, bundle: null, pathDirs: null };
+    } else {
+      return { state: 'absent', problems: [] };
+    }
+  } catch (e) {
+    return { state: 'broken', problems: [`the registered start-at-login entry cannot be read (${getErrorMessage(e)})`] };
+  }
+
+  const problems: string[] = [];
+  if (fields.launcher === null) {
+    problems.push('the registered entry names no launcher');
+  } else if (!isFile(fields.launcher)) {
+    problems.push(`the launcher ${fields.launcher} is gone`);
+  }
+  if (fields.bundle !== null && !isFile(fields.bundle)) {
+    problems.push(`the daemon bundle ${fields.bundle} is gone`);
+  }
+  // The entry's paths are the target platform's, whatever host reads them.
+  const nodeExe  = platform === 'win32' ? path.win32.join : path.posix.join;
+  const nodeName = platform === 'win32' ? 'node.exe' : 'node';
+  const nodeDir  = fields.pathDirs?.find(d => isFile(nodeExe(d, nodeName))) ?? null;
+  if (fields.pathDirs !== null && nodeDir === null) {
+    problems.push(`no node in the PATH of the entry (${fields.pathDirs.join(':')})`);
+  }
+  if (problems.length > 0) {
+    return { state: 'broken', problems };
+  }
+
+  const drift: string[] = [];
+  const currentBundle = deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
+  if (fields.bundle !== null && currentBundle && !same(fields.bundle, currentBundle)) {
+    drift.push(`the entry starts the daemon bundle ${fields.bundle}, this orch runs from ${currentBundle}`);
+  }
+  const currentNodeDir = deps.nodeBinDir ?? path.dirname(process.execPath);
+  if (nodeDir !== null && !same(nodeDir, currentNodeDir)) {
+    drift.push(`the entry starts the daemon under the node in ${nodeDir}, this orch runs under the node in ${currentNodeDir}`);
+  }
+  return drift.length > 0 ? { state: 'drift', problems: drift } : { state: 'ok', problems: [] };
+}
+
+/**
+ * Re-registers the entry when (and only when) it is broken, with this install's paths. Returns the report, and the outcome of
+ * the rewrite when there was one. A drift is left alone on purpose, see inspectStartupEntry.
+ */
+export function repairStartupEntry(configDir: string, deps: InspectDeps = {}): { report: StartupEntryReport; repair: StartupResult | null } {
+  const report = inspectStartupEntry(configDir, deps);
+  if (report.state !== 'broken') {
+    return { report, repair: null };
+  }
+  return { report, repair: enableStartup(configDir, deps) };
+}
+
 export interface LingerDeps {
   platform?: NodeJS.Platform;
   exec?: typeof execFileSync;
@@ -565,9 +711,9 @@ export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boo
       // `reg query /v` exits non-zero when the value is absent, so reaching here means the
       // entry exists. Do NOT match on process.execPath: in launcher mode the recorded
       // command is the Go launcher, not node, which made this always report "disabled".
-      const out = execFileSync('reg', ['query', REG_KEY, '/v', valueName],
+      const out = (deps.exec ?? execFileSync)('reg', ['query', REG_KEY, '/v', valueName],
         { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-      return out.includes(valueName);
+      return String(out).includes(valueName);
     } catch { return false; }
   }
   if ((deps.platform ?? process.platform) === 'linux') {

@@ -2,6 +2,7 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import { launcherBundleOverride, nodeDirOnPath, LAUNCHER_BUNDLE_SPEC } from './launcher-bundle.js';
+import { runStartupCheck } from './startup-check.js';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
 import type { ProgressEstimate } from './progress/types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobProgressSetting } from './types.js';
@@ -825,6 +826,11 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   // Strip global flags before command dispatch
   const cleanArgv = argv.filter(a => a !== '--json');
   const [cmd, ...rest] = cleanArgv;
+
+  // Callers are people, cron jobs and agents under any node: each one is a chance to see that the start-at-login entry names a
+  // path that is gone (after a node or npm prefix change) and to register it again (startup-check.ts). Only the real entry point
+  // passes it: a test that calls runCli must not read the registry or the unit of the machine it runs on.
+  deps.startupCheck?.(cmd);
 
   switch (cmd) {
 
@@ -2430,7 +2436,10 @@ List available jobs:
 `);
   }
 
-  await runCli(process.argv.slice(2), { send, startDaemon, configDir });
+  await runCli(process.argv.slice(2), {
+    send, startDaemon, configDir,
+    startupCheck: (command) => runStartupCheck({ configDir, command, releaseBuild: isReleaseVersion(version), now: Date.now() }),
+  });
 }
 
 if (require.main === module) {

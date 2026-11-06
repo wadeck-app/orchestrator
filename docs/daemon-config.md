@@ -57,6 +57,21 @@ start-at-login warning: could not read the PATH of your login shell (<reason>). 
 
 Fix: run that command in a terminal; a slow or blocking command in `~/.zshrc` / `~/.zprofile` (or one that prompts) is the usual cause. Output printed by rc files is harmless (the PATH is read between unique markers). Windows start-at-login uses the registry and is unaffected.
 
+## Start-at-login entry check
+
+The entry (registry value, LaunchAgent, systemd unit) names a launcher, and on macOS and Linux a daemon bundle and a `PATH` with `node`. A node or npm prefix change (nvm, a removed version) can leave it naming a path that is gone: the daemon then does not start at the next login, with the reason only in a launcher log.
+
+Every `orch` command (people, cron jobs, agents) reads the entry back, at most once an hour (`<configDir>/startup-check.stamp`), and always for `orch status`:
+
+| State | What `orch` does |
+|---|---|
+| ok | nothing |
+| broken (a named path is gone) | registers it again with this install's paths and says so on stderr; if that fails, or on a development build, a warning on every command names the paths and says `orch install` |
+| drift (it works but starts another install than the one running this command) | `orch status` warns with both paths; never rewritten, since callers under different nodes would rewrite it back and forth |
+| not registered | `orch status` warns: `orch install` |
+
+The daemon rewrites the entry from its own paths at every start, and logs a `WARN` when it is not registered (Linux: or lacks lingering).
+
 ## Start at login on Linux (systemd user unit)
 
 Validated on a real Ubuntu x64 host (2026-10-31): `orch install`, then a reboot, and the daemon starts at boot. Not tested: arm64, other distributions, the sudo fallback for lingering.
