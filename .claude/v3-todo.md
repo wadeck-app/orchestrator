@@ -1,6 +1,6 @@
 # Orchestrator v3 — Task Tracker
 
-Last updated: 2026-09-05
+Last updated: 2026-11-07. Open: RT-01.
 
 ## Legend
 - [ ] Not started
@@ -12,13 +12,13 @@ Last updated: 2026-09-05
 
 ## Core Architecture
 
-- [x] **EVENT-01** — Event queue integration (push job events to queue daemon on port 47910)
+- [x] **EVENT-01** — Event queue integration (push job events to the queue daemon)
   - Emit: job.started, job.completed, job.failed, job.recovered
   - Integrate with existing queue at C:/Workspace_Tooling/queue
-  - _Plan: .claude/plans/2026-09-05_event-queue-integration.md_
+  - Done (6501da6); published through `@wadeck-app/queue-sdk`, catalog in `src/event-catalog.ts`.
 
 - [x] **NOTIF-01** — Webhook/email notifications via queue subscribers
-  - Config: per-job or global webhook URL, SMTP settings
+  - No webhook or SMTP setting exists in this repo: orch only publishes the events. Queue-side delivery was not checked.
   - Depends on: EVENT-01
 
 - [x] **NOTIF-02** — Consecutive-failure alert threshold
@@ -57,7 +57,7 @@ Last updated: 2026-09-05
 
 - [x] **SCHED-02** — Job dependencies (B runs after A succeeds)
   - Note: if dependency graphs get complex → "flow" use case (out of scope)
-  - See docs/guiding-principles.md
+  - See `.claude/out-of-scope.md` and `.claude/guiding-principles.md`
 
 ## UX & Dashboard
 
@@ -65,7 +65,7 @@ Last updated: 2026-09-05
   - Examples: every 5min, every hour, daily midnight, weekdays 9am, first of month
 
 - [x] **UX-02** — Tags / labels with colors per job
-  - 6-color semantic palette, deterministic hash, filter by tag coming next
+  - 6-color semantic palette, deterministic hash
 
 - [x] **UX-03** — Bulk actions (enable/disable/trigger/delete multiple jobs)
 
@@ -76,8 +76,8 @@ Last updated: 2026-09-05
   - Search input + match count + yellow highlight in LogViewer
 
 - [x] **UX-06** — Dark mode
-  - Full color system inversion, agent-browser validation required
-  - _Plan: .claude/plans/2026-09-05_dark-mode.md_
+  - Full color system inversion
+  - Done: toggle in `NavBar.tsx` (`dsl-lib-orch`), base tokens in dsl-ui `theme.css`.
 
 ## Developer Experience
 
@@ -98,7 +98,7 @@ Last updated: 2026-09-05
   - POST /api/exec, GET /api/exec/:runId, DELETE /api/exec/:runId
   - In-memory run store with 1h TTL, logs captured, queue events emitted
 
-- [!] **DX-05** -- Config-as-code YAML watch -- REJECTED by user
+- [!] **DX-05** — Config-as-code YAML watch — REJECTED
   - Watch a YAML file for job definitions, auto-sync to registry
 
 ## Real-time
@@ -107,7 +107,7 @@ Last updated: 2026-09-05
   - Abstract transport layer: SSE, WebSocket, long-poll
   - Reference: C:/Workspace_Other/poc-node and C:/Workspace_Tooling/agent-fleet
   - Full integration test suite required
-  - _Plan: .claude/plans/2026-09-05_realtime-transport.md_
+  - Status 2026-11-07: not started; the dashboard uses SSE (logs, heartbeat) only
 
 ## Docs
 
@@ -116,24 +116,11 @@ Last updated: 2026-09-05
 
 ---
 
-## Completed (v3 — 2026-09-05)
-- [x] **EVENT-01** — Job lifecycle events pushed to queue daemon (commit 6501da6)
-- [x] **MON-01** — Success streak counter on job cards (commit 4961a23)
-- [x] **UX-01** — Job templates with 5 common cron examples (commit 4961a23)
-- [x] **UX-02** — Tags/labels with 6-color semantic palette (commit 4961a23)
-- [x] **UX-04** — Global stats bar, toggleable (commit 4961a23)
-- [x] **UX-05** — Log search with highlight (commit 4961a23)
-- [x] **DX-01** — Per-job environment variables (commit 4961a23)
-- [x] **DX-04** — `orch run <id>` CLI command (commit 4961a23)
-- [x] **SCHED-01** — OS timezone shown in Schedule page (commit 4961a23)
-- [x] **DOC-01** — Guiding principles + out-of-scope docs
-- [x] **DOC-02** — Spec _index.md updated with v3 decisions
-
 ## Completed (v2)
 - [x] Job list with last run, duration, mini pass/fail dots
 - [x] Audit log with Lucide icons
 - [x] Schedule timeline (next 24h)
-- [x] Import/export jobs
+- [x] Import/export jobs (HTTP API only, no UI; see `out-of-scope.md`)
 - [x] Advanced form fields (liveness, onExitCode, timeout)
 - [x] Linear-inspired navbar
 - [x] Failure toast notifications with Acknowledge

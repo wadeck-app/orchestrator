@@ -9,29 +9,32 @@ A local job scheduler daemon with systray integration, CLI, and a web dashboard.
 ```
 orchestrator/
   packages/
-    orchestrator-cli/    daemon, CLI, scheduler, tray manager, dashboard process manager
-    orch-core/           route logic + daemon proxy shared by orch-server and the app-core module
-    orch-server/         Fastify HTTP server — REST API + static SPA serving
-    dsl-lib-orch/        React domain components (JobCard, LogViewer, JobForm, etc.) + DSL registry entries for the app-core module
-    orch-app/            Vite SPA (pages, routes, heartbeat)
+    orchestrator-cli/        daemon, CLI, scheduler, tray manager, dashboard process manager, per-job supervisor
+    orch-core/               route logic + daemon proxy shared by orch-server and the app-core module
+    orch-server/             Fastify HTTP server — REST API + static SPA serving (child process of the daemon)
+    app-module-orchestrator/ app-core module: registerRoute adapter over orch-core + DSL pages
+    dsl-lib-orch/            React domain components (JobCard, LogViewer, JobForm, etc.) + DSL registry entries
+    orch-app/                Vite SPA served by orch-server
 ```
 
-## Current state (as of 2026-08-31)
+## Current state (as of 2026-11-07)
 
-- `orchestrator-cli` is the established package: daemon, cron scheduler, tray, self-check, CLI commands.
-- Web dashboard is in progress per plan at `.claude/plans/2026-08-31_orch-web-dashboard.md`. `orch-server` has `idle-timer.ts`, `port.ts`, `daemon-proxy.ts` implemented; routes are partially implemented. `orch-app` has `useHeartbeat` and `registry.ts`.
+- Daemon: cron, startup, one-shot and manual jobs; each job runs under its own supervisor by default, so jobs survive a daemon restart or update. Progress/ETA, resource limits, restart policy, liveness and secrets exist.
+- Distribution: JS package plus platform packages for win32-x64, darwin-arm64, darwin-x64, linux-x64, linux-arm64 (Linux has no tray).
+- Dashboard: job CRUD, trigger, kill, enable/disable, log tail, run history, schedule timeline, audit, dry-run, progress/ETA, dark mode. Served by `orch-server` and also published as an app-core module.
 
 ## Intended direction
 
-- **v1 dashboard**: Full CRUD for jobs, trigger, enable/disable, live log tail, run history (last 20 entries) — covering all day-to-day terminal actions.
-- **v2 dashboard**: Duration sparklines, Gantt view, overlap detection, import/export, dry-run preview, advanced job fields (`liveness`, `onExitCode`, `missedFiring`).
-- **Daemon**: Continues to own job execution; dashboard is additive, never a dependency.
+- **Dashboard**: stays additive; the daemon never depends on it. What is still excluded is in `out-of-scope.md` (duration sparklines, Gantt of past runs, overlap detection, import/export UI, sandboxed dry-run preview).
+- **Real-time**: SSE only. A WebSocket transport is planned and not started.
 - **Auth**: Local-only assumption (127.0.0.1) is permanent for the local tool. Multi-user/auth would require a scope change.
 
 ## Key runtime contracts
 
-- Daemon port: 47910 (fixed, from `@wadeck-app/singleton-daemon-kit` convention)
+- Daemon port: base 47900 (`singleton-daemon-kit`); the live port is in `<configDir>/config.port`.
+- Events: published to the queue daemon through `@wadeck-app/queue-sdk`, which owns the queue's address and token.
 - orch-server base port: 47950 (increments on `EADDRINUSE`)
 - Daemon ↔ orch-server: HTTP RPC via daemon SDK, never direct imports
-- Idle shutdown signal: `{ "type": "idle-exit" }` written to orch-server stdout (newline-delimited JSON)
+- Idle shutdown signal: `{ "type": "idle-exit" }` written to orch-server stdout (newline-delimited JSON). The app-core module has no idle exit.
 - Dashboard port file: `<configDir>/config.dashboard` (JSON: `{ port, pid, startedAt }`)
+- App-core module: registered under `/api/modules/orchestrator`, enabled by the `appCore` key (`docs/daemon-config.md`).

@@ -2,7 +2,9 @@
 
 Replace SSE polling with an abstracted transport that gracefully degrades.
 
-**Prerequisite: EVENT-01 must be complete first.**
+> **Status: not started.** The dashboard uses SSE only (log stream, heartbeat).
+
+**Prerequisite: EVENT-01 is complete** (`6501da6`; events go through `@wadeck-app/queue-sdk`, catalog in `packages/orchestrator-cli/src/event-catalog.ts`).
 
 ## Protocol priority
 1. WebSocket — bidirectional, lowest latency

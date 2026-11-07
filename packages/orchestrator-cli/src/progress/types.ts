@@ -1,7 +1,7 @@
 import type { Job, RuntimeEntry } from '../types.js';
 
 /*
- * The strategy interface (plan: .claude/plans/2026-10-18_job-progress-and-eta.md, section 4).
+ * The strategy interface (documented in docs/daemon-config.md, "Progress and ETA").
  *
  * Strategies are built in and declarative: this is an internal interface, NOT a plugin API. No external code is
  * loaded; a user configures a strategy with patterns and JSON only (see the threat model entry "progress").

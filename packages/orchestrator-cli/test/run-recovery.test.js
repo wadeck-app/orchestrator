@@ -2,8 +2,8 @@
 
 // A job that ended while the daemon was down. The supervisor recorded how it ended in the run folder; when the
 // daemon comes back it must give that run the same history, log, events and consequences as if it had seen the
-// end itself (policy C, .claude/plans/2026-10-18_update-with-jobs-running.md): everything is recorded and
-// announced, flagged late, and what ACTS (retry, dependents, their hooks) only happens if the end is recent.
+// end itself: everything is recorded and announced, flagged late, and what ACTS (retry, dependents, their hooks)
+// only happens if the end is recent.
 const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
@@ -211,7 +211,7 @@ describe('a run that timed out or hit its limit while the daemon was down (case 
   });
 });
 
-describe('what a recovered end sets in motion (policy C)', () => {
+describe('what a recovered end sets in motion (late end)', () => {
   test('a recent failure is retried and its hook told: the end is within the window', async () => {
     const env = makeEnv([cronJob({ retryOnExitCodes: [7], retryDelays: [60] })]);
     leaveRun(env, { endedMinutesAgo: 10, status: { exitCode: 7 } });

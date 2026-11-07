@@ -80,13 +80,13 @@ Add entries with `/kb`. See `~/.claude/skills/kb/SKILL.md` for format.
 
 **Problem:** A hand-rolled `npm install -g` leaves the CLI and the daemon on different versions when it half-applies, and skips the deferral that holds an update back while a job is running.
 **Fix:** Run `orch cli update`.
-**Context:** It restarts the daemon onto the new version for you (`config.restart` sentinel + `POST /quit`, `src/updater/entry.ts:151`) and defers while jobs are running unless `UPDATER_FORCE=1`. It does **not** protect against the Windows EBUSY below: `execNpm` runs the same `npm install -g <pkg>@<version>` with no extra flags, and the install happens *before* anything is stopped. An earlier version of this entry claimed the updater frees the file lock first -- it does not, and that claim was an inference made without reading the order of operations.
+**Context:** It restarts the daemon onto the new version for you (`config.restart` sentinel + `POST /quit`, `src/updater/entry.ts`) and defers while jobs are running unless `UPDATER_FORCE=1`. It does **not** protect against the Windows EBUSY below: `execNpm` runs the same `npm install -g <pkg>@<version>` with no extra flags, and the install happens *before* anything is stopped. An earlier version of this entry claimed the updater frees the file lock first -- it does not, and that claim was an inference made without reading the order of operations.
 
 ---
 
 ### Windows: `orch cli update` fails with EBUSY because the launcher-based update path is no longer used
 
-**Problem:** Updating on Windows dies with `EBUSY ... orchestrator-cli-win32-x64/orchestrator.exe`, because `shared-updater`'s `without-daemon` strategy runs `npm install -g` in-process (`dist/strategies/without-daemon.js:71`) while `orchestrator.exe` (the resident Go launcher) and the `orchestrator-tray.exe` processes still hold files in the very directory npm has to replace; the `POST /quit` that would free them only happens afterwards (`:110`) and deliberately keeps the launcher alive.
+**Problem:** Updating on Windows dies with `EBUSY ... orchestrator-cli-win32-x64/orchestrator.exe`, because `shared-updater`'s `without-daemon` strategy runs `npm install -g` in-process (`dist/strategies/without-daemon.js`) while `orchestrator.exe` (the resident Go launcher) and the `orchestrator-tray.exe` processes still hold files in the very directory npm has to replace; the `POST /quit` that would free them only happens afterwards and deliberately keeps the launcher alive.
 **Fix:** Fixed in 45156bd by never executing a native binary from node_modules: the launcher and the tray are copied to `<configDir>/bin/<platform-package-version>/` and run from there, so nothing holds a file npm has to move. Publication, the exact-version pin and `require.resolve` are unchanged -- only the run location moved. `refreshStartupEntry` rewrites the login entry to the staged path on its own at daemon start.
 **Context:** The Windows-safe path already exists and is configured but is never triggered. `launcher.go:245-262` → `:385` calls `spawnUpdateAndExit`, whose own comment is "Exiting releases the file lock on the running .exe so npm can overwrite it", and `ci/launcher.config.json` sets `updateCmd`. Nothing in `packages/orchestrator-cli/src` writes `config.update` (zero occurrences) -- only `config.restart`. It is a regression: `update-log.txt` still holds `Sentinel written — launcher will install ...` from 2026-08-30 and that string exists nowhere in the source today. Invisible on macOS/Linux, which have no mandatory file locking. Note the generated VBS runs `oShell.Run cmd, 0, False` and restarts nothing, so the sentinel path leaves the daemon down after installing.
 
@@ -289,11 +289,11 @@ exit-code claim was dropped for lack of sources in this checkout.
 
 ---
 
-### Use the `poll-ci` skill after every push -- hand-rolled sleep loops are a drift, not a shortcut
+### Wait for CI with `queue wait ci`, not a hand-rolled sleep loop
 
 **Problem:** After the first push the skill was abandoned in favour of a `for i in $(seq 1 16); do sleep 25; ...` loop, for four consecutive pushes, and the user had to interrupt twice to stop it.
-**Fix:** Invoke `/poll-ci <owner>/<repo> <sha>` after every push. No exceptions, including when a local script gives a more compact answer.
-**Context:** The rule is already in `guiding-principles.md:47`. The pull towards the hand-rolled loop was that a custom timings script produced one tidy line per poll -- optimising for the agent's convenience over an explicit instruction. Compact output is not a reason to replace a skill; if a skill's output is too verbose, say so rather than silently dropping it.
+**Fix:** Run `queue wait ci <sha>` after every push whose outcome matters (the `poll-event` skill). No exceptions, including when a local script gives a more compact answer.
+**Context:** The pull towards the hand-rolled loop was that a custom timings script produced one tidy line per poll -- optimising for the agent's convenience over an explicit instruction. Compact output is not a reason to replace a skill; if a skill's output is too verbose, say so rather than silently dropping it.
 
 ---
 
@@ -390,3 +390,27 @@ exit-code claim was dropped for lack of sources in this checkout.
 **Problem:** After bumping an exact pin, `npm ls` and `node_modules/.package-lock.json` named the new version of `singleton-daemon-kit` but the folder had the old files (no `CrashRestart`, dates of the previous install).
 **Fix:** `npm uninstall <pkg> -w <workspace>` then `npm install <pkg>@<version> --save-exact -w <workspace>`. Deleting the folder by hand is blocked by the node_modules guardrail, rightly.
 **Context:** Check the content (`grep` for a symbol of the new version), not the version string. Unpack the published tarball into an empty folder to know what the package really holds.
+
+---
+
+### `tsc --noEmit` then `npm run bundle` ships stale code
+
+**Problem:** After a type-check with `--noEmit`, `npm run bundle` bundled whatever `dist/` already held, so a verified-looking daemon change was not in the bundle.
+**Fix:** Use `scripts/deploy-dev.mjs` at the repo root (it builds every package, then bundles), or run a real build before the bundle.
+**Context:** `tsc --noEmit` writes nothing. `deploy-dev --global` exits 2 by design: only `orch cli update` moves the global install.
+
+---
+
+### `FieldWrapper` only wires the label if the child declares `id` and `aria-*`
+
+**Problem:** `FieldWrapper` clones `{id, aria-*}` onto its first child; a child that does not declare those props gets nothing, so three date fields shipped with a visible label and no accessible name.
+**Fix:** dsl-ui `cfb7d01`. Any new field component must declare the props. Name a DSL-settable accessible label `ariaLabel`: the entries generator skips `aria-*` props, so the DOM spelling cannot be set from YAML.
+**Context:** Read the code before trusting a suppression comment: the log run selector's said the terminal palette was incompatible with the design system, but the classes were semantic tokens inside a `ThemeScope`.
+
+---
+
+### The resource monitor's skip guard was disarmed by its own escape hatch
+
+**Problem:** `.finally` cleared `samplingSince` unconditionally and an overtaken walk cleared its successor's marker, so "a sample is skipped while the previous one is still in flight" failed on Windows only, after 10 green runs.
+**Fix:** `c591b40`: a per-walk id decides who may clear the marker.
+**Context:** It was a real bug, not host noise. Do not write a CI failure off as a flake without forcing the condition locally.

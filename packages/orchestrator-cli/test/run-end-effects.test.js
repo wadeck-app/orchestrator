@@ -1,10 +1,7 @@
 'use strict';
 
-// Everything the scheduler does when a run ends, pinned down before that code moves.
-//
-// The end of a run used to live in one 100-line close handler. It is being split so the same effects can run
-// for a job that ended while the daemon was down (see .claude/plans/2026-10-18_update-with-jobs-running.md),
-// and a split of code this old is only safe against tests that say what it does today.
+// Everything the scheduler does when a run ends. The same effects run for a job that ended while the daemon was down,
+// so they are pinned down here against the behaviour the code really has.
 //
 // Two tests below describe behaviour the handler was MEANT to have and never had; they are marked.
 const { test, describe, afterEach } = require('node:test');

@@ -77,17 +77,17 @@ the package specifier in `ci/launcher.config.json`. That is what makes start-at-
 | Doc | Description |
 |---|---|
 | `.claude/guiding-principles.md` | Daemon stability rules, spec-first discipline, TDD, binary test requirement + session lessons |
-| `.claude/out-of-scope.md` | What this project explicitly does not cover (dashboard v2 items, auth, remote access) |
-| `.claude/product-vision.md` | v1/v2 roadmap, runtime contracts (ports, idle signal) |
-| `.claude/threat-model.md` | STRIDE analysis (T-01->T-03) + stale port, duplicate instance risks |
-| `docs/daemon-config.md` | `config.yml` keys: autoUpdate, catchUpInitialDelaySeconds, catchUpStaggerSeconds |
+| `.claude/out-of-scope.md` | What this project explicitly does not cover (what is still excluded from the dashboard, auth, remote access, daemon control) |
+| `.claude/product-vision.md` | Purpose, package structure, current state, runtime contracts (ports, idle signal) |
+| `.claude/threat-model.md` | STRIDE analysis (T-01->T-05: path traversal, accepted localhost/CSRF risks, progress regex safety, command-running endpoints) + stale port, duplicate instance risks |
+| `docs/supervised-jobs.md` | How supervised jobs work: run folder contract, adoption at daemon start, runs that ended while the daemon was down |
+| `docs/daemon-config.md` | `config.yml` keys (autoUpdate, supervisedJobs, catch-up, retention, log rotation, ...), job settings, progress/ETA, start at login |
+| `.claude/plans/` | Open plans only: a finished plan is deleted, and nothing in the code or the docs may refer to a plan. `2026-10-25_open-points-plan.md` is the list of open points |
 
 ## Knowledge base
 
 `.claude/kb/lessons-learned.md` is the single lessons file for this project - read it before
 debugging, and add entries with the `kb` skill (`/kb`).
 
-There used to be a second, flat `.claude/lessons-learned.md` written by the w-learning session-end
-hook, plus its `.claude/lessons-recommendations.md`. Both were merged into the kb file and are now
-gitignored: the hook still recreates them locally on every session end, so treat anything it writes
-as scratch. A lesson only counts once it is in the kb file.
+`.claude/lessons-learned.md` and `.claude/lessons-recommendations.md` are gitignored scratch written by
+the session-end hook: a lesson only counts once it is in the kb file.

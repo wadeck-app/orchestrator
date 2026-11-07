@@ -1660,7 +1660,7 @@ export class Scheduler extends EventEmitter {
    * Gives every run the supervisors left behind its due, at daemon start and before anything fires.
    *
    * A run whose supervisor recorded an end gets that end handled as if the daemon had seen it, flagged late
-   * (policy C in .claude/plans/2026-10-18_update-with-jobs-running.md): it is always recorded and announced,
+   * (see `lateActionWindowMinutes` in docs/daemon-config.md): it is always recorded and announced,
    * and only acts (retry, dependents) if it ended within the window. A run still going is followed again: same
    * history entry, same log, kill, timeout and peaks, as if the daemon had never been away.
    */
