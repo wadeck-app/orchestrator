@@ -53,6 +53,18 @@ describe('JobProgress states', () => {
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
   });
 
+  it("writes the daemon's one-sentence summary and keeps the full reason in the title", () => {
+    const reason = 'auto: declared: no line yet; history: needs 3 usable runs, has 1';
+    const summary = 'No estimate yet: appears after 2 more successful runs';
+    const { container } = render(
+      <JobProgress progress={estimate({ progress: null, etaAt: null, confidence: 'none', reason, detail: { summary } })} nowMs={SERVER_NOW} />,
+    );
+
+    const root = container.querySelector('[data-progress-state="none"]')!;
+    expect(root.textContent).toBe(summary);
+    expect(root.getAttribute('title')).toBe(reason);
+  });
+
   // A reason is not a measurement: muted and in italics, in both layouts, so "long-running" reads as a state, not as data.
   it.each([[false], [true]])('writes the reason in italics (fill: %s)', (fill) => {
     const { container } = render(

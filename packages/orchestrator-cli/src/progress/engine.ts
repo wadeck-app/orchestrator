@@ -56,6 +56,7 @@ export function selectAuto(
   file?: ProgressFile,
 ): ProgressEstimate {
   const skipped: string[] = [];
+  let summary: string | undefined;
   const before = file?.chosen(ctx.run.startedAt);
   for (const strategy of candidates) {
     const estimate = runStrategy(strategy, file ? { ...ctx, store: file.storeFor(strategy) } : ctx, log);
@@ -75,9 +76,24 @@ export function selectAuto(
       };
     }
     skipped.push(`${strategy.id}: ${estimate.reason}`);
+    summary ??= waitingForRunsSummary(strategy.id, estimate);
   }
   const first = candidates[0];
-  return noEstimate(first && candidates.length === 1 ? first.id : null, `auto: ${skipped.join('; ')}`, ctx.now());
+  const none = noEstimate(first && candidates.length === 1 ? first.id : null, `auto: ${skipped.join('; ')}`, ctx.now());
+  return summary === undefined ? none : { ...none, detail: { summary } };
+}
+
+/**
+ * One short sentence for a client with little room (the full reason stays in `reason`): the usual case of a job that
+ * has not run enough times for the history strategy yet.
+ */
+function waitingForRunsSummary(strategyId: string, estimate: ProgressEstimate): string | undefined {
+  const { usableRuns, runsNeeded } = estimate.detail ?? {};
+  if (strategyId !== 'history' || typeof usableRuns !== 'number' || typeof runsNeeded !== 'number' || usableRuns >= runsNeeded) {
+    return undefined;
+  }
+  const missing = runsNeeded - usableRuns;
+  return `No estimate yet: appears after ${missing} more successful run${missing === 1 ? '' : 's'}, or when the job prints "##orch-progress <0-100>"`;
 }
 
 export interface EstimateProgressInput {

@@ -554,6 +554,23 @@ describe('--version', () => {
       assert.ok(output[0].length > 0, 'version string must be non-empty');
     } finally { console.log = origLog; }
   });
+
+  for (const flag of ['-v', '-V']) {
+    test(`${flag} prints the same version as --version`, async () => {
+      const capture = async (args) => {
+        const output = [];
+        const origLog = console.log;
+        console.log = (...a) => output.push(a.join(' '));
+        try {
+          const { calls } = await run(args);
+          assert.equal(calls.length, 0, `${args[0]} must not call send`);
+        } finally { console.log = origLog; }
+        return output;
+      };
+      const expected = await capture(['--version']);
+      assert.deepEqual(await capture([flag]), expected);
+    });
+  }
 });
 
 describe('--help', () => {

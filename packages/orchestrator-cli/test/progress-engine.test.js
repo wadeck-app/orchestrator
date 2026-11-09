@@ -92,6 +92,20 @@ describe('selectAuto', () => {
     strategyId: id, progress: p, etaAt: null, confidence: 'low', confidenceScore: 0.5, reason: id, serverNow: stamp, detail: { overdue: true },
   }));
 
+  test('a history strategy short of runs gives a one-sentence summary next to the full reason', () => {
+    const history = stub('history', () => ({
+      strategyId: 'history', progress: null, etaAt: null, confidence: 'none', confidenceScore: 0, reason: 'long explanation', serverNow: stamp,
+      detail: { usableRuns: 1, runsNeeded: 3 },
+    }));
+    const e = selectAuto([none('declared'), history], { now });
+    assert.match(e.reason, /declared has nothing; history: long explanation/);
+    assert.equal(e.detail.summary, 'No estimate yet: appears after 2 more successful runs, or when the job prints "##orch-progress <0-100>"');
+  });
+
+  test('no summary when no strategy is just waiting for runs', () => {
+    assert.equal(selectAuto([none('one')], { now }).detail, undefined);
+  });
+
   test('with no eligible candidate the result lists every skip reason', () => {
     const e = selectAuto([none('one'), none('two')], { now });
     assert.equal(e.progress, null);

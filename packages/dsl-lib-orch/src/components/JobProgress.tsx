@@ -103,7 +103,13 @@ export function useProgressNow(progress: ProgressEstimate | null | undefined, no
   return nowMs ?? Date.now() + (skew.current === null || Number.isNaN(skew.current.ms) ? 0 : skew.current.ms);
 }
 
-/** What an estimate says at a given "now": the shared reading behind the card's row and the list view's two cells. */
+/** What to write when there is no percentage: the daemon's one-sentence `detail.summary` if it sent one, else the reason. */
+export function noEstimateText(progress: ProgressEstimate): string {
+  const summary = progress.detail?.summary;
+  return typeof summary === 'string' && summary !== '' ? summary : progress.reason;
+}
+
+/** What an estimate says at a given "now":the shared reading behind the card's row and the list view's two cells. */
 export interface ProgressView {
   /** `none`: no percentage (the reason says why). `overdue`: a percentage but no end time. */
   state: 'none' | 'estimate' | 'overdue';
@@ -124,7 +130,7 @@ export function viewProgress(progress: ProgressEstimate, now: number): ProgressV
   const tooltip = `${progress.reason}${progress.strategyId ? ` [strategy: ${progress.strategyId}]` : ''}`;
   const low = progress.confidence === 'low';
   if (progress.progress === null) {
-    return { state: 'none', pct: 0, detail: progress.reason, low, tooltip };
+    return { state: 'none', pct: 0, detail: noEstimateText(progress), low, tooltip };
   }
   if (progress.etaAt === null) {
     return { state: 'overdue', pct: Math.round(progress.progress * 100), detail: progress.reason, low, tooltip };
@@ -163,10 +169,12 @@ export function JobProgress({ progress, nowMs, fill = false }: JobProgressProps)
   const { state, pct, detail, low, tooltip } = viewProgress(progress, now);
 
   if (state === 'none') {
-    // The reason is the whole content, so a tooltip would only say it twice.
+    // The reason can be several sentences (one per strategy): the daemon's short summary when it has one, one truncated
+    // line in every layout, the whole reason in the title.
+    const text = noEstimateText(progress);
     return fill
-      ? <span data-progress-state="none" title={progress.reason} className="block w-full min-w-0 truncate text-xs italic text-muted">{progress.reason}</span>
-      : <span data-progress-state="none" className="text-xs italic text-muted">{progress.reason}</span>;
+      ? <span data-progress-state="none" title={progress.reason} className="block w-full min-w-0 truncate text-xs italic text-muted">{text}</span>
+      : <span data-progress-state="none" title={progress.reason} className="inline-block min-w-0 max-w-[40rem] truncate align-middle text-xs italic text-muted">{text}</span>;
   }
 
   const fullDetail = `${detail}${low ? ' - low confidence' : ''}`;

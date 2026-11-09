@@ -283,7 +283,7 @@ Logs:
 
 Global flags:
   --json                       Force JSON output
-  --version                    Print version and exit
+  --version, -v, -V            Print version and exit
   --pid                        Print daemon pid/port and exit
   --help                       Show this help
 

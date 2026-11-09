@@ -89,7 +89,7 @@ export const historyStrategy: ProgressStrategy = {
       const missing = HISTORY_MIN_RUNS - durations.length;
       return none(ctx,
         `needs ${HISTORY_MIN_RUNS} usable runs, has ${durations.length} (progress appears after ${missing} more run(s) that end with exit code 0)`,
-        { usableRuns: durations.length });
+        { usableRuns: durations.length, runsNeeded: HISTORY_MIN_RUNS });
     }
 
     const sorted = [...durations].sort((a, b) => a - b);

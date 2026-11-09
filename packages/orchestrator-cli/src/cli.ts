@@ -830,7 +830,8 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
 
   // --- Global flags that don't require a running daemon ---
 
-  if (has(argv, '--version')) {
+  // -v / -V only as the first argument: later on they could be the value of another flag.
+  if (has(argv, '--version') || argv[0] === '-v' || argv[0] === '-V') {
     console.log(version);
     return;
   }
