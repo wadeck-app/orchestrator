@@ -6,6 +6,7 @@
 const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 
 const { LineWorker } = require('../src/process-table');
 const { isAlive } = require('../src/process-tree');
@@ -97,6 +98,24 @@ describe('the long-lived worker', () => {
     await w.query();
     await w.dispose();
     assert.equal(await gone(spawned[0]), true);
+  });
+
+  // CI (Windows, no WMIC) caught this: the worker's pipes kept the daemon alive after it had detached from its jobs, so the
+  // launcher waited on a daemon that never exited and an update never completed.
+  test('an idle worker never keeps the process that started it alive', async () => {
+    const probe = path.join(__dirname, 'helpers', 'line-worker-exit-probe.js');
+    const child = spawn(process.execPath, [probe], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    const exited = await new Promise((resolve) => {
+      const timer = setTimeout(() => { resolve(false); }, 15_000);
+      child.once('exit', () => { clearTimeout(timer); resolve(true); });
+    });
+    if (!exited) {
+      child.kill();
+    }
+    assert.match(stdout, /ANSWERED 2/, 'the probe never got its answer');
+    assert.equal(exited, true, 'the process is still running 15 s after its last question: the worker holds it alive');
   });
 
   test('a command that is missing says so', async () => {

@@ -537,6 +537,7 @@ Every sample reads the process table. On Windows that is one query for the whole
 | `powershell` | No WMIC | one PowerShell for the daemon's life, ended after 60 s without a question; one `conhost.exe` with it |
 | `pidusage` | Linux, macOS | `/proc`, or one `ps` |
 
+- `ORCH_PROCESS_TABLE=powershell` in the daemon's environment forces the PowerShell backend on a machine that has WMIC (diagnosis, tests).
 - A table that is slow to read is read less often: the next query waits at least as long as the last one took.
 - `orch status` shows the backend, the query count and the last duration, and says SLOW above 5 s. The daemon log says at start when it uses PowerShell.
 - Lower the cost of one job: `orch edit <id> --sample-interval 30`. A longer interval delays a kill by up to that interval and makes a sub-interval spike invisible.

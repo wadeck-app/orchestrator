@@ -24,6 +24,17 @@ async function checkBackend(reader) {
 }
 
 describe('the process table, for real', () => {
+  test('ORCH_PROCESS_TABLE=powershell makes a machine with WMIC read through PowerShell', { skip }, () => {
+    const before = process.env.ORCH_PROCESS_TABLE;
+    process.env.ORCH_PROCESS_TABLE = 'powershell';
+    try {
+      assert.equal(wmicInstalled(), false);
+      assert.equal(createWindowsReader().backend(), 'powershell');
+    } finally {
+      if (before === undefined) { delete process.env.ORCH_PROCESS_TABLE; } else { process.env.ORCH_PROCESS_TABLE = before; }
+    }
+  });
+
   test('PowerShell backend', { skip, timeout: 90_000 }, async () => {
     await checkBackend(createWindowsReader({ hasWmic: () => false }));
   });

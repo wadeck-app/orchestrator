@@ -246,6 +246,12 @@ export class LineWorker {
     // A write to a worker that has just died is reported by the question that was waiting, not as an unhandled error.
     child.stdin?.on('error', () => undefined);
     child.stderr?.on('data', () => undefined);
+    // Between two questions nothing here may keep the daemon alive (a detached daemon must exit by itself): the child and its pipes
+    // are not counted by the event loop. A question in progress is: its timeout timer is.
+    child.unref();
+    for (const pipe of [child.stdin, child.stdout, child.stderr]) {
+      (pipe as unknown as { unref?: () => void } | null)?.unref?.();
+    }
     this._child = child;
     return child;
   }
@@ -350,8 +356,14 @@ const QUERY_TIMEOUT_MS = 60_000;
 /** The PowerShell worker is ended after this long without a question (the sampling asks every few seconds while a job runs). */
 const WORKER_IDLE_MS = 60_000;
 
-/** wmic is in System32\wbem until Windows 11 24H2 removed it. */
+/**
+ * wmic is in System32\wbem until Windows 11 24H2 removed it. ORCH_PROCESS_TABLE=powershell pretends it is not there: how a
+ * machine that has WMIC checks what one without it does (the tests, a diagnosis).
+ */
 export function wmicInstalled(): boolean {
+  if (process.env['ORCH_PROCESS_TABLE'] === 'powershell') {
+    return false;
+  }
   return fs.existsSync(path.join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'wbem', 'WMIC.exe'));
 }
 
