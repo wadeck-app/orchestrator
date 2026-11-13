@@ -11,7 +11,8 @@ import { jobEnvironment } from './job-env.js';
 import { stripAnsi }      from './ansi.js';
 import { OutputLines }     from './output-lines.js';
 import { atomicWriteJson, ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
-import { killTree, killTreeSync } from './process-tree.js';
+import { isAlive, killTree, killTreeSync } from './process-tree.js';
+import { systemProcessTable } from './process-table.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
@@ -32,7 +33,7 @@ import { DeadlineQueue, type DeadlineKind } from './deadlines.js';
 import { windowStateAt, msUntilStart, msUntilEnd, type WindowState } from './active-window.js';
 import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
-import { resolveResourceLimits, RESOURCE_LIMIT_DEFAULTS, type EffectiveResourceLimits } from './resource-limits.js';
+import { resolveResourceLimits, sampleIntervalMsOf, RESOURCE_LIMIT_DEFAULTS, type EffectiveResourceLimits } from './resource-limits.js';
 import { appendResourceHistory, type ResourceHistoryRecord } from './resource-history.js';
 import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
@@ -204,7 +205,8 @@ interface SchedulerOptions {
   /** Same as killTree, for the places that cannot wait (the job timeout, a resource-limit breach). */
   killTreeSync?:          (pid: number) => void;
   /**
-   * How often the resource monitor samples. Lowered in tests.
+   * How often the resource monitor samples, for every job. Lowered in tests; production leaves it unset, so a job
+   * is sampled at its own resourceLimits.sampleSeconds (default 5 s).
    *
    * Needed alongside sampleUsage to test the overlap guard at all: overlap only happens when a
    * sample outlasts the interval, and at the production 2s a test would have to stall a fake
@@ -334,6 +336,12 @@ interface TreeSample { cpu: number; memory: number; elapsed: number; ppid: numbe
 
 interface TreeDeps {
   tree:  (pid: number) => Promise<number[]>;
+  /**
+   * The whole tree in one call (what production uses): a pid that is not running is absent from the answer.
+   * One call because each call can be a process start (PowerShell on Windows without WMIC, `ps` on macOS).
+   */
+  usageMany: (pids: number[]) => Promise<Record<number, TreeSample | undefined>>;
+  /** One process per call, capped by MAX_CONCURRENT_USAGE_CALLS; kept as the seam of the tests that predate usageMany. Wins over usageMany. */
   usage: (pid: number) => Promise<TreeSample>;
 }
 
@@ -368,6 +376,40 @@ async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item:
   return results;
 }
 
+/** Every pid of the tree measured, as { pid, sample } with the ones that are not running left out. */
+async function measureAll(
+  rootPid: number, pids: number[], deps: Partial<TreeDeps> | undefined,
+): Promise<Array<{ pid: number; sample: TreeSample } | null>> {
+  if (deps?.usage !== undefined) {
+    const usage = deps.usage;
+    return mapWithLimit(pids, MAX_CONCURRENT_USAGE_CALLS, async (pid) => {
+      try {
+        return { pid, sample: await usage(pid) };
+      } catch {
+        return null;
+      }
+    });
+  }
+  const native = systemProcessTable();
+  const usageMany = deps?.usageMany ?? (native ? (list: number[]) => native.table.usageMany(list) : (list: number[]) => pidusage(list));
+  let answer: Record<number, TreeSample | undefined>;
+  try {
+    answer = await usageMany(pids);
+  } catch (err) {
+    // Some platforms refuse a list in which no process is alive: with the root gone that is the job having exited.
+    // With the root alive it is a real failure (a measurement that timed out, a tool that is missing), which the
+    // caller logs instead of the monitor going quietly blind.
+    if (!isAlive(rootPid)) {
+      return [];
+    }
+    throw err;
+  }
+  return pids.flatMap((pid) => {
+    const sample = answer[pid];
+    return sample === undefined ? [] : [{ pid, sample }];
+  });
+}
+
 /**
  * Sums CPU and RAM over a process and all its descendants.
  *
@@ -379,8 +421,9 @@ async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item:
  * for why the tree walk offers them at all.
  */
 export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps>): Promise<TreeUsage | null> {
-  const tree  = deps?.tree  ?? ((pid: number) => pidtree(pid, { root: true }));
-  const usage = deps?.usage ?? ((pid: number) => pidusage(pid));
+  // Windows: one shared, serialised query of the whole process table (process-table.ts); elsewhere pidtree and pidusage.
+  const native = systemProcessTable();
+  const tree = deps?.tree ?? (native ? (pid: number) => native.table.tree(pid) : (pid: number) => pidtree(pid, { root: true }));
 
   let pids: number[];
   try {
@@ -390,13 +433,7 @@ export async function sampleProcessTree(rootPid: number, deps?: Partial<TreeDeps
     pids = [rootPid];
   }
 
-  const samples = await mapWithLimit(pids, MAX_CONCURRENT_USAGE_CALLS, async (pid) => {
-    try {
-      return { pid, sample: await usage(pid) };
-    } catch {
-      return null;
-    }
-  });
+  const samples = await measureAll(rootPid, pids, deps);
 
   // Without the root there is nothing to attribute usage to: the job has exited.
   const root = samples.find(s => s !== null && s.pid === rootPid);
@@ -519,7 +556,8 @@ export class Scheduler extends EventEmitter {
   private readonly _processName:     (pid: number) => Promise<string | undefined>;
   private readonly _killTree:        (pid: number) => Promise<void>;
   private readonly _killTreeSync:    (pid: number) => void;
-  private readonly _sampleIntervalMs: number;
+  /** Set only by tests: replaces every job's sample interval. Otherwise each job has its own (resourceLimits.sampleSeconds, default 5 s). */
+  private readonly _sampleIntervalOverrideMs: number | undefined;
   private readonly _sustainSamples: number | undefined;
   private readonly _jobsNoColor: boolean;
   private readonly _logRotation: ResolvedLogRotation;
@@ -585,7 +623,7 @@ export class Scheduler extends EventEmitter {
     this._processName           = options.processName           ?? lookupProcessName;
     this._killTree              = options.killTree              ?? killTree;
     this._killTreeSync          = options.killTreeSync          ?? killTreeSync;
-    this._sampleIntervalMs      = options.sampleIntervalMs      ?? 2000;
+    this._sampleIntervalOverrideMs = options.sampleIntervalMs;
     this._sustainSamples        = options.sustainSamples;
     this._jobsNoColor           = options.jobsNoColor           ?? true;
     this._logRotation           = options.logRotation           ?? DEFAULT_RUN_LOG_ROTATION;
@@ -2519,7 +2557,7 @@ export class Scheduler extends EventEmitter {
     child: ChildProcess, ctx: MonitorContext, siblings: Set<ChildProcess>, waitForExit: boolean, resume?: ResumeState,
   ): { pid: number | null } | Promise<{ exitCode: number | null }> {
     const { job, trigger, startedAt, pid, jobLogger, previousRunFailed } = ctx;
-    // Resource monitoring: sample CPU/RAM every 2s, enforce auto-budget thresholds
+    // Resource monitoring: sample CPU/RAM every sampleSeconds (default 5 s), enforce auto-budget thresholds
     let peakCpuPct = resume?.peakCpuPct ?? 0;
     let peakRamMb  = resume?.peakRamMb  ?? 0;
     let softAlertSent = false;
@@ -2528,8 +2566,9 @@ export class Scheduler extends EventEmitter {
     // resourceLimits.sustainSeconds (default 30 s), see resource-limits.ts.
     let hardBreaches = 0;
     let warnedThisBreach = false;
+    const sampleIntervalMs = this._sampleIntervalOverrideMs ?? sampleIntervalMsOf(job.resourceLimits);
     const baseline = this._state.getResourceBaseline(job.id);
-    const resolved = resolveResourceLimits(job.resourceLimits, baseline, this._sampleIntervalMs);
+    const resolved = resolveResourceLimits(job.resourceLimits, baseline, sampleIntervalMs);
     const limits   = this._sustainSamples === undefined ? resolved : { ...resolved, sustainSamples: this._sustainSamples };
     const softThreshold = limits.soft;
     const hardThreshold = limits.hard;
@@ -2605,7 +2644,7 @@ export class Scheduler extends EventEmitter {
        * So the skip is bounded. Past this, a new walk starts anyway; overlap is the lesser evil, and
        * the kill path is separately guarded against firing twice.
        */
-      const samplingStallMs = this._sampleIntervalMs * 3;
+      const samplingStallMs = sampleIntervalMs * 3;
       /*
        * Identifies the walk that currently owns `samplingSince`.
        *
@@ -2721,7 +2760,7 @@ export class Scheduler extends EventEmitter {
           jobLogger.write(`[resource-monitor] Failed to get metrics: ${getErrorMessage(err)}`);
         });
       };
-      resourceTimer = this._time.every(this._sampleIntervalMs, sample);
+      resourceTimer = this._time.every(sampleIntervalMs, sample);
       // Sample at once so sub-2s jobs are not left with an empty history. pidusage needs
       // two samples of a pid to derive a CPU percentage, so this first one also primes it.
       sample();

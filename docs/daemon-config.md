@@ -350,6 +350,7 @@ Reply:
 | `config` | `supervisedJobs`, `lateActionWindowMinutes`, `autoUpdate`, `appCore`, `catchUpInitialDelaySeconds`, `catchUpStaggerSeconds` as read at start |
 | `supervisor` | `requested` (`supervisedJobs`), `active` (the executable was found), `note` when requested but not active: the daemon-start warning, with the platform and the fix |
 | `runs` | `running` now, how many of them `supervised`, and `followedAgain` (runs this daemon found going and adopted since it started) |
+| `monitoring` | How the resource monitor reads the process table (`wmic`, `powershell`, or `pidusage` off Windows), with `queries`, `failures`, `lastQueryMs`, `lastError`. Absent from an older daemon. See "Resource monitor" |
 | `scheduler` | `armed` of `desired` timers, and `problems` `[{ jobId, problem }]`. Desired: enabled, not a spent `once`, not `startup`, not `manual`, not past its active period. Same data as `list-timers` |
 
 No job command, environment, `cwd` or secret is in the reply. `/api/health` takes its `uptime` (seconds) from `uptimeSeconds`; it is `null` when the daemon cannot answer `get-daemon-info`, and the rest of the health reply is unaffected.
@@ -481,9 +482,9 @@ The 3x anomaly check (`job.anomaly`) is a separate rule: it averages every finis
 
 ## Resource monitor
 
-While a job runs, the daemon samples the CPU and RAM of its whole process tree every 2 seconds. From
+While a job runs, the daemon samples the CPU and RAM of its whole process tree every 5 seconds (`sampleSeconds`). From
 the job's third successful run on it holds the run to 3 times that baseline (the hard budget) and kills
-it once it stays over for 30 seconds (15 consecutive samples). Warning budget (soft): 1.5 times the
+it once it stays over for 30 seconds (6 consecutive samples). Warning budget (soft): 1.5 times the
 baseline. All of this is tunable per job, see "Per-job limits". Everything it sees is in the job's own
 log (`orch logs --job <id>`):
 
@@ -509,7 +510,8 @@ tolerant than before (2x / 1.2x / 3 samples = 6 s).
 | `enforce` | What a sustained breach does | `kill`, `warn`, `off` | `kill` |
 | `hardFactor` | Hard budget, times the baseline | number > 1 and <= 100 | 3 |
 | `softFactor` | Warning budget, times the baseline | number > 1 and < `hardFactor` | 1.5 |
-| `sustainSeconds` | How long the hard budget must stay exceeded; samples needed = `ceil(sustainSeconds / 2)` | integer 2-3600 | 30 |
+| `sustainSeconds` | How long the hard budget must stay exceeded; samples needed = `ceil(sustainSeconds / sampleSeconds)` | integer 2-3600 | 30 |
+| `sampleSeconds` | How often the run is measured; a longer interval costs less, see "Cost of the monitoring" | integer 2-300 | 5 |
 | `maxCpuPct` | Absolute CPU ceiling, replaces the factor-derived hard CPU budget | number > 0 | none |
 | `maxRamMb` | Absolute RAM ceiling, replaces the factor-derived hard RAM budget | number > 0 | none |
 
@@ -521,9 +523,23 @@ tolerant than before (2x / 1.2x / 3 samples = 6 s).
 
 | Where | How |
 |-------|-----|
-| CLI | `orch add/edit <id> --resource-enforce kill|warn|off --hard-factor 4 --soft-factor 2 --sustain 60 --max-cpu 150 --max-ram 2048`; an edit changes only the keys given |
+| CLI | `orch add/edit <id> --resource-enforce kill|warn|off --hard-factor 4 --soft-factor 2 --sustain 60 --sample-interval 10 --max-cpu 150 --max-ram 2048`; an edit changes only the keys given |
 | Clear | `orch edit <id> --unset resourceLimits` (all) or `--unset resourceLimits.<key>` (one) |
 | Inspect | `orch show <id>` (JSON field `resourceLimits`); also in `get-job`, `list-jobs`, export/import, `edit-job` (`updates.resourceLimits` replaces the whole object) |
+
+### Cost of the monitoring
+
+Every sample reads the process table. On Windows that is one query for the whole machine, shared by all running jobs and never two at once; a query that does not answer within 60 s is ended with its children.
+
+| Backend | When | Cost |
+|---------|------|------|
+| `wmic` | `WMIC.exe` exists (before Windows 11 24H2) | one `wmic` process per query |
+| `powershell` | No WMIC | one PowerShell for the daemon's life, ended after 60 s without a question; one `conhost.exe` with it |
+| `pidusage` | Linux, macOS | `/proc`, or one `ps` |
+
+- A table that is slow to read is read less often: the next query waits at least as long as the last one took.
+- `orch status` shows the backend, the query count and the last duration, and says SLOW above 5 s. The daemon log says at start when it uses PowerShell.
+- Lower the cost of one job: `orch edit <id> --sample-interval 30`. A longer interval delays a kill by up to that interval and makes a sub-interval spike invisible.
 
 ### What the baseline is made of
 
@@ -549,7 +565,7 @@ to write it is reported once in the job's log and never affects the run.
 | `kind` | When | Fields besides `t`, `run`, `pid` |
 |--------|------|----------------------------------|
 | `start` | The run begins | `soft`, `hard`: the `{ cpuPct, ramMb }` thresholds it is held to, or `null` (a side of `hard` is `null` when only the other has a ceiling); `enforce`; `sustainSamples` |
-| `sample` | Every 2 s | `cpuPct`, `ramMb`, `walked`, `counted`, and the 5 biggest `processes` (`pid`, `ppid`, `ramMb`, `cpuPct`) |
+| `sample` | Every `sampleSeconds` (5 s) | `cpuPct`, `ramMb`, `walked`, `counted`, and the 5 biggest `processes` (`pid`, `ppid`, `ramMb`, `cpuPct`) |
 | `resource-kill` | The monitor decides to kill | `consecutiveSamples`, `cpuPct`, `ramMb` |
 | `end` | The run closes | `exitCode`, `durationMs`, `reason` (`timeout`, `manual-kill`, `resource-limit`, absent for an ordinary finish) |
 

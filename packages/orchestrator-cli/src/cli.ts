@@ -81,6 +81,9 @@ function describeDaemonInfo(info: DaemonInfo): string[] {
       lines.push(`  ${p.jobId}: ${p.problem}`);
     }
   }
+  if (info.monitoring !== undefined) {
+    lines.push(...describeMonitoring(info.monitoring));
+  }
   if (info.pendingRestarts === undefined) {
     lines.push('restarts  : unknown (this daemon is older than the CLI and does not report them); run: orch restart (or orch cli update)');
   } else if (info.pendingRestarts.length > 0) {
@@ -90,6 +93,26 @@ function describeDaemonInfo(info: DaemonInfo): string[] {
       const hms = [at.getHours(), at.getMinutes(), at.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
       lines.push(`  ${r.jobId}: restarts at ${hms} (attempt ${r.attempt})`);
     }
+  }
+  return lines;
+}
+
+/** A query slower than this is worth a warning: with a 5 s sample interval it is already the monitor's whole budget. */
+const SLOW_QUERY_MS = 5000;
+
+/** The monitoring line of `orch status`: how the process table is read, what it cost, and what lowers the cost. */
+function describeMonitoring(m: NonNullable<DaemonInfo['monitoring']>): string[] {
+  const how = m.backend === 'powershell'
+    ? 'PowerShell (WMIC is not installed on this machine: Windows 11 24H2 removed it)'
+    : m.backend === 'wmic' ? 'wmic' : 'pidusage';
+  const last = m.lastQueryMs === null ? 'none yet' : `last ${m.lastQueryMs} ms`;
+  const failed = m.failures > 0 ? `, ${m.failures} failed` : '';
+  const lines = [`monitoring: ${how}, ${m.queries} queries${failed}, ${last}`];
+  if (m.lastQueryMs !== null && m.lastQueryMs > SLOW_QUERY_MS) {
+    lines.push(`  SLOW: a query takes ${Math.round(m.lastQueryMs / 1000)} s, so measurements arrive late. A longer interval costs less: orch edit <id> --sample-interval 30`);
+  }
+  if (m.failures > 0 && m.lastError !== null) {
+    lines.push(`  last error: ${m.lastError}`);
   }
   return lines;
 }
@@ -244,6 +267,7 @@ export const JOB_FIELD_FLAGS: FieldFlag[] = [
   { flag: '--hard-factor',          field: 'hardFactor',         kind: 'resource'    },
   { flag: '--soft-factor',          field: 'softFactor',         kind: 'resource'    },
   { flag: '--sustain',              field: 'sustainSeconds',     kind: 'resource'    },
+  { flag: '--sample-interval',      field: 'sampleSeconds',      kind: 'resource'    },
   { flag: '--max-cpu',              field: 'maxCpuPct',          kind: 'resource'    },
   { flag: '--max-ram',              field: 'maxRamMb',           kind: 'resource'    },
 ];

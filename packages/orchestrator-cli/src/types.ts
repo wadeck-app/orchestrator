@@ -55,6 +55,8 @@ export interface ResourceLimits {
   softFactor?: number;
   /** How long the hard budget must stay exceeded before it counts. Integer 2..3600. Default 30. */
   sustainSeconds?: number;
+  /** How often a run is sampled, in seconds. Integer 2..300. Default 5. Every sample walks the process table (a process start on Windows). */
+  sampleSeconds?: number;
   /** Absolute CPU ceiling in percent (> 0). Replaces the factor-derived hard CPU threshold; needs no baseline. */
   maxCpuPct?: number;
   /** Absolute RAM ceiling in MB (> 0). Replaces the factor-derived hard RAM threshold; needs no baseline. */
@@ -402,6 +404,8 @@ export interface DaemonInfo {
   scheduler: { armed: number; desired: number; problems: Array<{ jobId: string; problem: string }> };
   /** Restarts (restartOnExit) waiting for their delay, soonest first. Absent from a daemon older than this field. */
   pendingRestarts?: Array<{ jobId: string; dueAt: string; attempt: number }>;
+  /** How the process table behind the resource monitor is read, and what that has cost. Absent from a daemon older than the CLI. */
+  monitoring?: { backend: 'wmic' | 'powershell' | 'pidusage'; queries: number; failures: number; lastQueryMs: number | null; lastError: string | null };
 }
 
 /** RPC command map for the orchestrator daemon (used with singleton-daemon-kit). */

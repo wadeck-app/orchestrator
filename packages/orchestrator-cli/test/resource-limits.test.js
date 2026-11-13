@@ -46,8 +46,8 @@ after(() => {
 });
 
 describe('the defaults', () => {
-  test('are 3x / 1.5x / 30 s / kill', () => {
-    assert.deepEqual(RESOURCE_LIMIT_DEFAULTS, { enforce: 'kill', hardFactor: 3, softFactor: 1.5, sustainSeconds: 30 });
+  test('are 3x / 1.5x / 30 s / sampled every 5 s / kill', () => {
+    assert.deepEqual(RESOURCE_LIMIT_DEFAULTS, { enforce: 'kill', hardFactor: 3, softFactor: 1.5, sustainSeconds: 30, sampleSeconds: 5 });
   });
 });
 
@@ -55,7 +55,7 @@ describe('validation: every refusal names the field, the value and the range', (
   const bad = [
     ['not an object', 'high', /resourceLimits.*object.*"high"/s],
     ['an array', [1], /resourceLimits.*object/s],
-    ['an unknown key', { hardFactr: 3 }, /resourceLimits\.hardFactr.*unknown.*enforce, hardFactor, softFactor, sustainSeconds, maxCpuPct, maxRamMb/is],
+    ['an unknown key', { hardFactr: 3 }, /resourceLimits\.hardFactr.*unknown.*enforce, hardFactor, softFactor, sustainSeconds, sampleSeconds, maxCpuPct, maxRamMb/is],
     ['enforce outside the list', { enforce: 'kil' }, /resourceLimits\.enforce.*kill, warn, off.*"kil"/s],
     ['hardFactor 1', { hardFactor: 1 }, /resourceLimits\.hardFactor.*greater than 1.*100.*\b1\b/s],
     ['hardFactor above 100', { hardFactor: 101 }, /resourceLimits\.hardFactor.*100.*101/s],
@@ -262,5 +262,35 @@ describe('stored, edited, unset', () => {
     const edited = logged.find(l => l.event === 'job.edited');
     assert.deepEqual(edited.data.changes, ['resourceLimits']);
     assert.ok(!JSON.stringify(edited).includes('777'));
+  });
+});
+
+// How often a run is sampled is the cost of the monitor: every sample walks the process table, and on a
+// machine without WMIC that is a PowerShell start. 5 s by default; a job that needs finer (or coarser) says so.
+describe('sampleSeconds', () => {
+  test('the default is 5 seconds', () => {
+    assert.equal(RESOURCE_LIMIT_DEFAULTS.sampleSeconds, 5);
+  });
+
+  test('a whole number of seconds from 2 to 300 is accepted', () => {
+    for (const s of [2, 5, 60, 300]) {
+      assert.equal(resourceLimitsError({ sampleSeconds: s }), null, `sampleSeconds ${s}`);
+    }
+  });
+
+  test('anything else is refused with the field, the value and the range', () => {
+    for (const s of [1, 301, 2.5, '5', NaN, null]) {
+      assert.match(resourceLimitsError({ sampleSeconds: s }) ?? '', /resourceLimits\.sampleSeconds.*2.*300/s, `sampleSeconds ${String(s)}`);
+    }
+  });
+
+  test('is a known key, listed in the unknown-key refusal', () => {
+    assert.match(resourceLimitsError({ nope: 1 }), /sampleSeconds/);
+  });
+
+  test('sustainSeconds is counted in samples of the interval given', () => {
+    assert.equal(resolveResourceLimits({ sustainSeconds: 30 }, null, 5000).sustainSamples, 6);
+    assert.equal(resolveResourceLimits({ sustainSeconds: 30 }, null, 2000).sustainSamples, 15);
+    assert.equal(resolveResourceLimits({ sustainSeconds: 2 }, null, 5000).sustainSamples, 1);
   });
 });

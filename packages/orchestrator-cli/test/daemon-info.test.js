@@ -147,6 +147,19 @@ describe('get-daemon-info', () => {
     assert.deepEqual(summarizeTimers([]), { armed: 0, desired: 0, problems: [] });
   });
 
+  test('says how the process table is read: wmic or powershell on Windows, pidusage elsewhere, with the counters', () => {
+    const { commands } = makeEnv({});
+
+    const { monitoring } = commands['get-daemon-info']();
+
+    assert.match(monitoring.backend, process.platform === 'win32' ? /^(wmic|powershell)$/ : /^pidusage$/);
+    for (const key of ['queries', 'failures']) {
+      assert.equal(typeof monitoring[key], 'number', key);
+    }
+    assert.ok(monitoring.lastQueryMs === null || typeof monitoring.lastQueryMs === 'number');
+    assert.ok(monitoring.lastError === null || typeof monitoring.lastError === 'string');
+  });
+
   test('carries nothing a job holds: no environment, secret, or command line', () => {
     const { commands, registry } = makeEnv({ timers: [timer('leaky')] });
     registry.add({

@@ -188,7 +188,7 @@ describe('resource peaks are persisted while the job runs', () => {
     // Asserted against the source: the hook runs inside createDaemon, which a unit test cannot
     // drive without starting a real daemon and its tray.
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
-    const hook = src.slice(src.indexOf('onShutdown:'), src.indexOf('onShutdown:') + 800);
+    const hook = src.slice(src.indexOf('onShutdown:'), src.indexOf('onShutdown:') + 1200);
     assert.match(hook, /state\.shutdown\(\)/,
       'the shutdown hook no longer flushes state; pending records will be dropped on stop');
   });

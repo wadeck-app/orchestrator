@@ -70,6 +70,39 @@ const INFO = {
 describe('orch status: the daemon details', () => {
   const up = (info) => recorder({ version: { pid: 4242, port: 47900, uptime: 12, version: '1.2.3' }, 'get-daemon-info': info });
 
+  // Every sample of a running job reads the process table. On a Windows without WMIC that is a PowerShell, which on a
+  // loaded machine took 30-40 s: the cost of the monitoring has to be visible, not found by counting processes.
+  describe('monitoring', () => {
+    const monitoring = (extra) => ({ backend: 'wmic', queries: 12, failures: 0, lastQueryMs: 150, lastError: null, ...extra });
+
+    test('says how the process table is read and how long the last query took', async () => {
+      const { out } = await run(['status'], up({ ...INFO, monitoring: monitoring({}) }).send, { tty: true });
+      assert.match(out, /monitoring: wmic.*12 queries.*last 150 ms/);
+    });
+
+    test('PowerShell says why: no WMIC on this machine, one PowerShell per query', async () => {
+      const { out } = await run(['status'], up({ ...INFO, monitoring: monitoring({ backend: 'powershell' }) }).send, { tty: true });
+      assert.match(out, /monitoring: PowerShell.*WMIC.*not installed/);
+    });
+
+    test('a slow query is called slow, with the setting that lowers the cost', async () => {
+      const { out } = await run(['status'], up({ ...INFO, monitoring: monitoring({ backend: 'powershell', lastQueryMs: 35_000 }) }).send, { tty: true });
+      assert.match(out, /SLOW.*35 s/);
+      assert.match(out, /sampleSeconds|--sample-interval/);
+    });
+
+    test('failures show the last error', async () => {
+      const { out } = await run(['status'], up({ ...INFO, monitoring: monitoring({ failures: 2, lastError: 'the process table query (wmic) ended with exit code 1: denied' }) }).send, { tty: true });
+      assert.match(out, /2 failed/);
+      assert.ok(out.includes('ended with exit code 1: denied'), out);
+    });
+
+    test('a daemon that does not report it adds no line', async () => {
+      const { out } = await run(['status'], up(INFO).send, { tty: true });
+      assert.ok(!/monitoring/.test(out), out);
+    });
+  });
+
   test('says the version, the run counts and that jobs run under a supervisor', async () => {
     const { send } = up(INFO);
 

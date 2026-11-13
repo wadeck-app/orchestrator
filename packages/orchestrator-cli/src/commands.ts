@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OrchestratorCommands, Job, RuntimeEntry } from './types.js';
 import type { Registry } from './registry.js';
+import { monitoringInfo } from './process-table.js';
 import type { State }    from './state.js';
 import type { Scheduler } from './scheduler.js';
 import type { TrayManager } from './tray-manager.js';
@@ -434,6 +435,7 @@ export function makeCommands(
         runs:       scheduler.runCounts(),
         scheduler:  summarizeTimers(scheduler.inspectTimers()),
         pendingRestarts: scheduler.pendingRestarts(),
+        monitoring: monitoringInfo(),
       };
     },
 

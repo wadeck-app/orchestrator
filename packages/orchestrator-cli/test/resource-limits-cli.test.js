@@ -43,9 +43,9 @@ describe('add', () => {
   test('every flag lands in resourceLimits with its type', async () => {
     const { add } = await run([...ADD,
       '--resource-enforce', 'warn', '--hard-factor', '4', '--soft-factor', '2',
-      '--sustain', '60', '--max-cpu', '150', '--max-ram', '2048.5']);
+      '--sustain', '60', '--max-cpu', '150', '--max-ram', '2048.5', '--sample-interval', '10']);
     assert.deepEqual(add.resourceLimits, {
-      enforce: 'warn', hardFactor: 4, softFactor: 2, sustainSeconds: 60, maxCpuPct: 150, maxRamMb: 2048.5,
+      enforce: 'warn', hardFactor: 4, softFactor: 2, sustainSeconds: 60, maxCpuPct: 150, maxRamMb: 2048.5, sampleSeconds: 10,
     });
   });
 
@@ -69,6 +69,8 @@ describe('refusals happen before the daemon is contacted and say what to type', 
     [['--soft-factor', '5'], /softFactor.*below.*hardFactor/s, /--soft-factor/],
     [['--sustain', '1'], /resourceLimits\.sustainSeconds.*2.*3600/s, /--sustain/],
     [['--sustain', '2.5'], /resourceLimits\.sustainSeconds.*whole/s, /--sustain/],
+    [['--sample-interval', '1'], /resourceLimits.sampleSeconds.*2.*300/s, /--sample-interval/],
+    [['--sample-interval', '2.5'], /resourceLimits.sampleSeconds.*whole/s, /--sample-interval/],
     [['--max-cpu', '0'], /resourceLimits\.maxCpuPct.*greater than 0/s, /--max-cpu/],
     [['--max-ram', '-3'], /resourceLimits\.maxRamMb.*greater than 0/s, /--max-ram/],
   ];
@@ -82,7 +84,7 @@ describe('refusals happen before the daemon is contacted and say what to type', 
     });
   }
 
-  for (const flagName of ['--resource-enforce', '--hard-factor', '--soft-factor', '--sustain', '--max-cpu', '--max-ram']) {
+  for (const flagName of ['--resource-enforce', '--hard-factor', '--soft-factor', '--sustain', '--sample-interval', '--max-cpu', '--max-ram']) {
     test(`${flagName} without a value is an error, not a silent skip`, async () => {
       const { calls, exitCode, stderr } = await run([...ADD, flagName]);
       assert.notEqual(exitCode, 0);
@@ -145,7 +147,7 @@ describe('edit', () => {
   test('--unset resourceLimits.<unknown> lists the keys', async () => {
     const { exitCode, stderr } = await run(['edit', 'j1', '--unset', 'resourceLimits.nope'], { current });
     assert.notEqual(exitCode, 0);
-    assert.match(stderr, /resourceLimits\.nope.*enforce, hardFactor, softFactor, sustainSeconds, maxCpuPct, maxRamMb/s);
+    assert.match(stderr, /resourceLimits\.nope.*enforce, hardFactor, softFactor, sustainSeconds, sampleSeconds, maxCpuPct, maxRamMb/s);
   });
 
   test('setting and unsetting the same thing is refused, naming the flag', async () => {
@@ -169,7 +171,7 @@ describe('help', () => {
       console.log = orig;
     }
     const text = lines.join('\n');
-    for (const needle of ['--resource-enforce', '--hard-factor', '--soft-factor', '--sustain', '--max-cpu', '--max-ram', 'resourceLimits', 'orch show']) {
+    for (const needle of ['--resource-enforce', '--hard-factor', '--soft-factor', '--sustain', '--sample-interval', '--max-cpu', '--max-ram', 'resourceLimits', 'orch show']) {
       assert.ok(text.includes(needle), `help does not mention ${needle}`);
     }
     assert.match(text, /default: 3/);

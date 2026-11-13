@@ -6,13 +6,17 @@ export const RESOURCE_LIMIT_DEFAULTS = {
   hardFactor:     3,
   softFactor:     1.5,
   sustainSeconds: 30,
+  /** How often a run is sampled: every sample walks the process table, which is a process start on Windows. */
+  sampleSeconds:  5,
 };
 
 export const HARD_FACTOR_MAX = 100;
 export const SUSTAIN_SECONDS_MIN = 2;
 export const SUSTAIN_SECONDS_MAX = 3600;
+export const SAMPLE_SECONDS_MIN = 2;
+export const SAMPLE_SECONDS_MAX = 300;
 
-export const RESOURCE_LIMIT_KEYS = ['enforce', 'hardFactor', 'softFactor', 'sustainSeconds', 'maxCpuPct', 'maxRamMb'] as const;
+export const RESOURCE_LIMIT_KEYS = ['enforce', 'hardFactor', 'softFactor', 'sustainSeconds', 'sampleSeconds', 'maxCpuPct', 'maxRamMb'] as const;
 
 const show = (v: unknown): string => (typeof v === 'number' && !Number.isFinite(v) ? String(v) : JSON.stringify(v) ?? String(v));
 
@@ -58,6 +62,15 @@ export function resourceLimitsError(value: unknown): string | null {
     }
     if (s < SUSTAIN_SECONDS_MIN || s > SUSTAIN_SECONDS_MAX) {
       return `Job resourceLimits.sustainSeconds must be from ${SUSTAIN_SECONDS_MIN} to ${SUSTAIN_SECONDS_MAX} seconds (got: ${s}).`;
+    }
+  }
+  if (v.sampleSeconds !== undefined) {
+    const s = v.sampleSeconds;
+    if (!isNumber(s) || !Number.isInteger(s)) {
+      return `Job resourceLimits.sampleSeconds must be a whole number of seconds from ${SAMPLE_SECONDS_MIN} to ${SAMPLE_SECONDS_MAX} (got: ${show(s)}).`;
+    }
+    if (s < SAMPLE_SECONDS_MIN || s > SAMPLE_SECONDS_MAX) {
+      return `Job resourceLimits.sampleSeconds must be from ${SAMPLE_SECONDS_MIN} to ${SAMPLE_SECONDS_MAX} seconds (got: ${s}).`;
     }
   }
   if (v.maxCpuPct !== undefined && (!isNumber(v.maxCpuPct) || v.maxCpuPct <= 0)) {
@@ -108,4 +121,9 @@ export function resolveResourceLimits(
     soft: baseline ? { cpuPct: baseline.cpuPct * softFactor, ramMb: baseline.ramMb * softFactor } : null,
     hard: hardCpu === null && hardRam === null ? null : { cpuPct: hardCpu, ramMb: hardRam },
   };
+}
+
+/** How often this job's runs are sampled, in ms: its own `sampleSeconds`, else the default. */
+export function sampleIntervalMsOf(limits: ResourceLimits | undefined): number {
+  return (limits?.sampleSeconds ?? RESOURCE_LIMIT_DEFAULTS.sampleSeconds) * 1000;
 }

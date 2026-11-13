@@ -204,6 +204,8 @@ a flag that is not listed here is refused, not ignored):
                                  1, below --hard-factor)
     --sustain <seconds>          How long the hard budget must stay exceeded (default: 30; whole
                                  number 2-3600)
+    --sample-interval <seconds>  How often a run is measured (default: 5; whole number 2-300);
+                                 longer costs less: each measurement reads the process table
     --max-cpu <pct>              Absolute CPU ceiling, replaces the hard CPU budget; needs no
                                  baseline
     --max-ram <mb>               Absolute RAM ceiling, replaces the hard RAM budget; needs no

@@ -33,6 +33,7 @@ import { guardUpdates, UPDATE_STARTS_FILE } from './update-guard.js';
 import { updateNotice } from './update-notice.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import { bridgeStdio } from './stdio-bridge.js';
+import { disposeSystemProcessTable, monitoringInfo, monitoringNotice } from './process-table.js';
 import { guardStdio, makeFatalHandler, writeCrashMarker, readCrashMarker, clearCrashMarker, CRASH_MARKER_FILE } from './crash-guard.js';
 
 import type { OrchestratorCommands } from './types.js';
@@ -377,6 +378,7 @@ async function main(): Promise<void> {
           scheduler.detachRuns();
           void scheduler.stop();
           void trayManager.stop();
+          void disposeSystemProcessTable();
           void dashboardManager?.stop();
           execManager.stopSync();
           // State batches writes on a 500ms timer and shutdown() is its only synchronous flush.
@@ -397,6 +399,10 @@ async function main(): Promise<void> {
     // A startup job's job.started can come before it.
     events.publish('daemon.started', { pid: process.pid, version });
     daemonLog.write('daemon ready (serving, scheduler started)');
+    const notice = monitoringNotice(monitoringInfo().backend);
+    if (notice !== null) {
+      console.log(notice);
+    }
     console.log(`[orchestrator] daemon ready (pid ${process.pid})`);
 
     // Forward tray log entries to the daemon log so 'orch logs' shows tray actions

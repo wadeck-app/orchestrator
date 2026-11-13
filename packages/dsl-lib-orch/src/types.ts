@@ -335,6 +335,8 @@ export interface ResourceLimits {
   softFactor?: number;
   /** How long a breach must last, whole seconds, 2 to 3600. */
   sustainSeconds?: number;
+  /** How often a run is measured, in seconds (integer 2..300, default 5). */
+  sampleSeconds?: number;
   /** Absolute CPU ceiling in percent, instead of a baseline-derived one. Greater than 0. */
   maxCpuPct?: number;
   /** Absolute RAM ceiling in MB, instead of a baseline-derived one. Greater than 0. */
