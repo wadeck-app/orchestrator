@@ -174,7 +174,7 @@ export function JobProgress({ progress, nowMs, fill = false }: JobProgressProps)
     const text = noEstimateText(progress);
     return fill
       ? <span data-progress-state="none" title={progress.reason} className="block w-full min-w-0 truncate text-xs italic text-muted">{text}</span>
-      : <span data-progress-state="none" title={progress.reason} className="inline-block min-w-0 max-w-[40rem] truncate align-middle text-xs italic text-muted">{text}</span>;
+      : <span data-progress-state="none" title={progress.reason} className="inline-block min-w-0 max-w-[min(40rem,100%)] truncate align-middle text-xs italic text-muted">{text}</span>;
   }
 
   const fullDetail = `${detail}${low ? ' - low confidence' : ''}`;

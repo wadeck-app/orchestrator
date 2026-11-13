@@ -141,6 +141,53 @@ describe('the process table', () => {
     assert.equal(reads, 1);
   });
 
+  // A process that starts after the snapshot is not in it. Without a fresh look the monitor saw a job's first sample as "the job
+  // is gone", and the daemon at start found none of the supervisors that had just been started.
+  test('a pid missing from a snapshot read before the question is looked up in a fresh one', async () => {
+    const { table, advance, reads } = tableOver([[row(10, 1, 0, 0)], [row(10, 1, 0, 0), row(11, 10, 0, 0)]], { ttlMs: 60_000 });
+    await table.usageMany([10]);
+    advance(100);
+    const usage = await table.usageMany([10, 11]);
+    assert.deepEqual(Object.keys(usage), ['10', '11']);
+    assert.equal(reads(), 2);
+  });
+
+  test('a pid missing from the snapshot this very question caused is not looked up again', async () => {
+    const { table, reads } = tableOver([[row(10, 1, 0, 0)]]);
+    assert.deepEqual(Object.keys(await table.usageMany([10, 99])), ['10']);
+    assert.equal(reads(), 1);
+  });
+
+  test('tree of a root that started since the snapshot reads a fresh one', async () => {
+    const { table, advance, reads } = tableOver([[row(10, 1, 0, 0)], [row(10, 1, 0, 0), row(11, 1, 0, 0), row(12, 11, 0, 0)]], { ttlMs: 60_000 });
+    await table.tree(10);
+    advance(100);
+    assert.deepEqual((await table.tree(11)).sort((a, b) => a - b), [11, 12]);
+    assert.equal(reads(), 2);
+  });
+
+  test('a read already running when the question is asked does not answer it: it may predate the process', async () => {
+    let clock = T0;
+    let reads = 0;
+    let release;
+    const table = new ProcessTable({
+      read: async () => {
+        reads++;
+        if (reads === 1) { await new Promise((r) => { release = r; }); return [row(10, 1, 0, 0)]; }
+        return [row(10, 1, 0, 0), row(11, 10, 0, 0)];
+      },
+      now: () => clock,
+      ttlMs: 0,
+    });
+    const first = table.usageMany([10]);
+    clock += 50;
+    const second = table.usageMany([11]);
+    release();
+    await first;
+    assert.deepEqual(Object.keys(await second), ['11']);
+    assert.equal(reads, 2);
+  });
+
   // The second machine's queries took 30-40 s: started every sample they piled up and slowed the whole PC. A table
   // that is slow to read is read less often: never more than half of the time is spent waiting for a query.
   test('a slow read pushes the next one back by as long as it took', async () => {

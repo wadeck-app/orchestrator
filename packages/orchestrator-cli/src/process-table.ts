@@ -406,6 +406,8 @@ export function createWindowsReader(
 }
 
 interface Snapshot {
+  /** When the read that produced it began: a process that started later is not in it. */
+  readStartedAt: number;
   takenAt: number;
   byPid: Map<number, ProcRow>;
   children: Map<number, number[]>;
@@ -437,6 +439,7 @@ export class ProcessTable {
   private readonly _ttlMs: number;
   private _current: Snapshot | null = null;
   private _inFlight: Promise<Snapshot> | null = null;
+  private _inFlightStartedAt = 0;
   private readonly _stats: TableStats = { reads: 0, failures: 0, lastReadMs: null, lastError: null };
 
   constructor(options: ProcessTableOptions) {
@@ -451,7 +454,7 @@ export class ProcessTable {
 
   /** The pid and every descendant of it; just the pid when it is not in the table. */
   async tree(rootPid: number): Promise<number[]> {
-    const snapshot = await this._snapshot();
+    const snapshot = await this._snapshotHaving([rootPid]);
     const out = [rootPid];
     const seen = new Set(out);
     for (let i = 0; i < out.length; i++) {
@@ -467,7 +470,7 @@ export class ProcessTable {
 
   /** What pidusage answers for these pids; a pid that is not running is absent. */
   async usageMany(pids: number[]): Promise<Record<number, ProcUsage | undefined>> {
-    const snapshot = await this._snapshot();
+    const snapshot = await this._snapshotHaving(pids);
     const out: Record<number, ProcUsage | undefined> = {};
     for (const pid of pids) {
       const row = snapshot.byPid.get(pid);
@@ -484,6 +487,36 @@ export class ProcessTable {
     return out;
   }
 
+  /**
+   * A snapshot that has every one of these pids, or the freshest there is. One that is missing a pid and was read before this
+   * question was asked may only predate that process (a job that has just started, a supervisor found again at daemon start),
+   * so it is read again, once: a snapshot whose read began after the question is as fresh as it gets.
+   */
+  private async _snapshotHaving(pids: number[]): Promise<Snapshot> {
+    const askedAt = this._now();
+    const snapshot = await this._snapshot();
+    if (snapshot.readStartedAt >= askedAt || pids.every((pid) => snapshot.byPid.has(pid))) {
+      return snapshot;
+    }
+    return this._snapshotReadFrom(askedAt);
+  }
+
+  /** A snapshot whose read began at or after `since`: waits for a read that is already running if it began too early, then reads. */
+  private async _snapshotReadFrom(since: number): Promise<Snapshot> {
+    for (;;) {
+      if (this._current !== null && this._current.readStartedAt >= since) {
+        return this._current;
+      }
+      if (this._inFlight === null) {
+        return this._startRead();
+      }
+      if (this._inFlightStartedAt >= since) {
+        return this._inFlight;
+      }
+      await this._inFlight.catch(() => undefined);
+    }
+  }
+
   private _snapshot(): Promise<Snapshot> {
     // A table that is slow to read is read less often: at most half of the time goes to waiting for a query.
     const ttlMs = Math.max(this._ttlMs, this._stats.lastReadMs ?? 0);
@@ -493,7 +526,12 @@ export class ProcessTable {
     if (this._inFlight !== null) {
       return this._inFlight;
     }
+    return this._startRead();
+  }
+
+  private _startRead(): Promise<Snapshot> {
     const startedAt = this._now();
+    this._inFlightStartedAt = startedAt;
     this._stats.reads++;
     const query = this._read().then((rows) => {
       const byPid = new Map<number, ProcRow>();
@@ -507,7 +545,7 @@ export class ProcessTable {
           siblings.push(r.pid);
         }
       }
-      const snapshot: Snapshot = { takenAt: this._now(), byPid, children, previous: this._current };
+      const snapshot: Snapshot = { readStartedAt: startedAt, takenAt: this._now(), byPid, children, previous: this._current };
       // Only one generation back is ever read: do not chain the whole history.
       if (this._current !== null) {
         this._current.previous = null;

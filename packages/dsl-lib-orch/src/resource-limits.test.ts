@@ -40,6 +40,14 @@ describe('validateResourceLimitFields', () => {
     expect(validateResourceLimitFields({ sustainSeconds }).sustainSeconds).toMatch(/whole number of seconds from 2 to 3600/i);
   });
 
+  it.each([2, 5, 300])('accepts sampleSeconds %s', (sampleSeconds) => {
+    expect(validateResourceLimitFields({ sampleSeconds })).toEqual({});
+  });
+
+  it.each([1, 301, 2.5, 0, Number.NaN])('refuses sampleSeconds %s', (sampleSeconds) => {
+    expect(validateResourceLimitFields({ sampleSeconds }).sampleSeconds).toMatch(/whole number of seconds from 2 to 300/i);
+  });
+
   it.each([0, -1])('refuses a non-positive CPU or RAM ceiling (%s)', (v) => {
     expect(validateResourceLimitFields({ maxCpuPct: v }).maxCpuPct).toMatch(/max cpu.*greater than 0/i);
     expect(validateResourceLimitFields({ maxRamMb: v }).maxRamMb).toMatch(/max ram.*greater than 0/i);
@@ -62,6 +70,7 @@ describe('hasCustomLimits', () => {
     expect(hasCustomLimits({ enforce: 'off' })).toBe(true);
     expect(hasCustomLimits({ hardFactor: 5 })).toBe(true);
     expect(hasCustomLimits({ maxRamMb: 512 })).toBe(true);
+    expect(hasCustomLimits({ sampleSeconds: 10 })).toBe(true);
   });
 });
 
@@ -81,18 +90,20 @@ describe('limitsBadgeLabel and describeResourceLimits', () => {
       'Hard factor: 5',
       'Soft factor: 1.5',
       'Sustained for: 30 s',
+      'Sampled every: 5 s',
       'Max RAM: 512 MB',
     ]);
+    expect(describeResourceLimits({ sampleSeconds: 20 })).toContain('Sampled every: 20 s');
   });
 
   it('has the documented defaults', () => {
-    expect(RESOURCE_DEFAULTS).toEqual({ enforce: 'kill', hardFactor: 3, softFactor: 1.5, sustainSeconds: 30 });
+    expect(RESOURCE_DEFAULTS).toEqual({ enforce: 'kill', hardFactor: 3, softFactor: 1.5, sustainSeconds: 30, sampleSeconds: 5 });
   });
 });
 
 describe('inputsFromLimits and limitsFromInputs', () => {
   it('round-trips the limits of a job', () => {
-    const limits = { enforce: 'warn', hardFactor: 4.5, sustainSeconds: 60, maxRamMb: 512 } as const;
+    const limits = { enforce: 'warn', hardFactor: 4.5, sustainSeconds: 60, sampleSeconds: 10, maxRamMb: 512 } as const;
     expect(limitsFromInputs(inputsFromLimits(limits))).toEqual(limits);
   });
 

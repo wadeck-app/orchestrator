@@ -63,6 +63,8 @@ describe('JobProgress states', () => {
     const root = container.querySelector('[data-progress-state="none"]')!;
     expect(root.textContent).toBe(summary);
     expect(root.getAttribute('title')).toBe(reason);
+    // Never wider than its container, so a toolbar cuts it with an ellipsis instead of letting it run off the edge.
+    expect(root.getAttribute('class')).toContain('max-w-[min(40rem,100%)]');
   });
 
   // A reason is not a measurement: muted and in italics, in both layouts, so "long-running" reads as a state, not as data.

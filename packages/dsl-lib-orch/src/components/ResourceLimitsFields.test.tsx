@@ -17,6 +17,7 @@ const FIELDS = [
   ['hardFactor', /^Hard factor/],
   ['softFactor', /^Soft factor/],
   ['sustainSeconds', /^Sustain time/],
+  ['sampleSeconds', /^Sample every/],
   ['maxCpuPct', /^Max CPU/],
   ['maxRamMb', /^Max RAM/],
 ] as const;
@@ -102,7 +103,7 @@ describe('ResourceLimitsFields enforcement', () => {
 
 describe('ResourceLimitsFields changes', () => {
   it('reports a typed value together with every other input untouched', () => {
-    const inputs: ResourceLimitInputs = { enforce: 'warn', hardFactor: '4', softFactor: '', sustainSeconds: '60', maxCpuPct: '', maxRamMb: '' };
+    const inputs: ResourceLimitInputs = { enforce: 'warn', hardFactor: '4', softFactor: '', sustainSeconds: '60', sampleSeconds: '', maxCpuPct: '', maxRamMb: '' };
     const onChange = show(inputs);
 
     fireEvent.change(screen.getByLabelText(/^Max RAM/), { target: { value: '512' } });

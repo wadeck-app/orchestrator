@@ -6,7 +6,8 @@ export const RESOURCE_DEFAULTS = {
   hardFactor: 3,
   softFactor: 1.5,
   sustainSeconds: 30,
-} as const satisfies Required<Pick<ResourceLimits, 'enforce' | 'hardFactor' | 'softFactor' | 'sustainSeconds'>>;
+  sampleSeconds: 5,
+} as const satisfies Required<Pick<ResourceLimits, 'enforce' | 'hardFactor' | 'softFactor' | 'sustainSeconds' | 'sampleSeconds'>>;
 
 export const ENFORCE_LABELS: Record<ResourceEnforce, string> = {
   kill: 'Kill',
@@ -35,12 +36,12 @@ const isNumber = (n: unknown): n is number => typeof n === 'number' && Number.is
 
 /**
  * Mirrors the daemon's validation (hardFactor > 1 and <= 100; softFactor > 1 and below the hard factor, which is
- * the default 3 when not given; sustainSeconds an integer 2..3600; maxCpuPct and maxRamMb > 0), so the field that is
+ * the default 3 when not given; sustainSeconds an integer 2..3600; sampleSeconds an integer 2..300; maxCpuPct and maxRamMb > 0), so the field that is
  * wrong is named before the request. The daemon stays the authority: its refusal is shown as well.
  */
 export function validateResourceLimitFields(fields: ResourceLimitFields): ResourceLimitErrors {
   const errors: ResourceLimitErrors = {};
-  const { hardFactor, softFactor, sustainSeconds, maxCpuPct, maxRamMb } = fields;
+  const { hardFactor, softFactor, sustainSeconds, sampleSeconds, maxCpuPct, maxRamMb } = fields;
   if (hardFactor !== undefined && !(isNumber(hardFactor) && hardFactor > 1 && hardFactor <= 100)) {
     errors.hardFactor = 'The hard factor must be a number greater than 1 and at most 100.';
   }
@@ -63,6 +64,9 @@ export function validateResourceLimitFields(fields: ResourceLimitFields): Resour
   if (sustainSeconds !== undefined && !(isNumber(sustainSeconds) && Number.isInteger(sustainSeconds) && sustainSeconds >= 2 && sustainSeconds <= 3600)) {
     errors.sustainSeconds = 'The sustain time must be a whole number of seconds from 2 to 3600.';
   }
+  if (sampleSeconds !== undefined && !(isNumber(sampleSeconds) && Number.isInteger(sampleSeconds) && sampleSeconds >= 2 && sampleSeconds <= 300)) {
+    errors.sampleSeconds = 'The sampling interval must be a whole number of seconds from 2 to 300.';
+  }
   if (maxCpuPct !== undefined && !(isNumber(maxCpuPct) && maxCpuPct > 0)) {
     errors.maxCpuPct = 'The max CPU must be a number greater than 0 (a percentage of one core).';
   }
@@ -79,7 +83,7 @@ export function hasCustomLimits(limits: ResourceLimits | undefined): boolean {
   }
   return (limits.enforce !== undefined && limits.enforce !== RESOURCE_DEFAULTS.enforce)
     || limits.hardFactor !== undefined || limits.softFactor !== undefined || limits.sustainSeconds !== undefined
-    || limits.maxCpuPct !== undefined || limits.maxRamMb !== undefined;
+    || limits.sampleSeconds !== undefined || limits.maxCpuPct !== undefined || limits.maxRamMb !== undefined;
 }
 
 /** The short badge text; only meaningful when hasCustomLimits is true. */
@@ -102,6 +106,7 @@ export function describeResourceLimits(limits: ResourceLimits): string[] {
     `Hard factor: ${limits.hardFactor ?? RESOURCE_DEFAULTS.hardFactor}`,
     `Soft factor: ${limits.softFactor ?? RESOURCE_DEFAULTS.softFactor}`,
     `Sustained for: ${limits.sustainSeconds ?? RESOURCE_DEFAULTS.sustainSeconds} s`,
+    `Sampled every: ${limits.sampleSeconds ?? RESOURCE_DEFAULTS.sampleSeconds} s`,
   ];
   if (limits.maxCpuPct !== undefined) {
     lines.push(`Max CPU: ${limits.maxCpuPct}%`);
@@ -118,6 +123,7 @@ export interface ResourceLimitInputs {
   hardFactor: string;
   softFactor: string;
   sustainSeconds: string;
+  sampleSeconds: string;
   maxCpuPct: string;
   maxRamMb: string;
 }
@@ -129,6 +135,7 @@ export function inputsFromLimits(limits: ResourceLimits | undefined): ResourceLi
     hardFactor: text(limits?.hardFactor),
     softFactor: text(limits?.softFactor),
     sustainSeconds: text(limits?.sustainSeconds),
+    sampleSeconds: text(limits?.sampleSeconds),
     maxCpuPct: text(limits?.maxCpuPct),
     maxRamMb: text(limits?.maxRamMb),
   };
@@ -144,7 +151,7 @@ export function limitsFromInputs(inputs: ResourceLimitInputs): ResourceLimits {
   if (inputs.enforce !== RESOURCE_DEFAULTS.enforce) {
     limits.enforce = inputs.enforce;
   }
-  for (const key of ['hardFactor', 'softFactor', 'sustainSeconds', 'maxCpuPct', 'maxRamMb'] as const) {
+  for (const key of ['hardFactor', 'softFactor', 'sustainSeconds', 'sampleSeconds', 'maxCpuPct', 'maxRamMb'] as const) {
     if (inputs[key].trim() !== '') {
       limits[key] = Number(inputs[key]);
     }

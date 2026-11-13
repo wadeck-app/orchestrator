@@ -507,4 +507,10 @@ describe('progress of the running job on every job page variant', () => {
     const text = fs.readFileSync(path.join(PAGES_DIR, file), 'utf8');
     expect(text).toMatch(/progress:\s*\$sources\.jobData\.progress/);
   });
+
+  it('job-logs.yaml passes the polled progress to the LogViewer and re-reads the job while the log is open', () => {
+    const text = fs.readFileSync(path.join(PAGES_DIR, 'job-logs.yaml'), 'utf8');
+    expect(text).toMatch(/\$type:\s*LogViewer[\s\S]*progress:\s*\$sources\.jobData\.progress/);
+    expect(text).toMatch(/jobData:[\s\S]*poll:\s*\d+s/);
+  });
 });

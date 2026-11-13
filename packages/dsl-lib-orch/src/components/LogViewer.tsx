@@ -159,7 +159,7 @@ export interface LogViewerProps {
   apiBase?: string;
   /** Grow to the host's height instead of stopping at the 75vh fallback cap. */
   fill?: boolean;
-  /** The job's `progress` (GET /api/jobs/{id}), shown at the end of the toolbar. The module's log page passes it; the standalone app's does not. */
+  /** The job's `progress` (GET /api/jobs/{id}), shown at the end of the toolbar. Both log pages (the module's and the standalone app's) pass it. */
   progress?: ProgressEstimate | null;
 }
 
@@ -406,7 +406,7 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progres
             ? matchCount !== null ? `${matchCount} / ${lines.length} lines` : `${lines.length} lines`
             : 'Connecting...'}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Button group for the destructive action and the status/view controls. All three are
               ChipButton, not a mix of ChipButton and ButtonAction: ButtonAction owns its own
               padding and height by design (dsl-ui's `size` is a fixed geometry, never a custom
@@ -519,7 +519,10 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progres
             size="sm"
           />
           {/* Nothing is drawn without an estimate, so a page that passes none keeps its toolbar as it was. */}
-          <JobProgress progress={progress} />
+          {/* The room left in the toolbar: the estimate's text is cut with an ellipsis there instead of running off the edge. */}
+          <div className="min-w-0 flex-1">
+            <JobProgress progress={progress} />
+          </div>
         </div>
       </div>
       <pre ref={containerRef} onScroll={handleScroll} className={LOG_BODY_CLS}>

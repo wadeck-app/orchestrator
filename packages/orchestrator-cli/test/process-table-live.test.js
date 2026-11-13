@@ -6,7 +6,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { ProcessTable, createWindowsReader, wmicInstalled } = require('../src/process-table');
+const { ProcessTable, createWindowsReader, wmicInstalled, monitoringInfo } = require('../src/process-table');
 
 const onWindows = process.platform === 'win32';
 const skip = onWindows ? false : 'the process table is read by pidtree/pidusage on this platform (process-table.ts is Windows only)';
@@ -42,4 +42,29 @@ describe('the process table, for real', () => {
   test('wmic backend (when the machine has it)', { skip: skip || (wmicInstalled() ? false : 'WMIC.exe is not installed on this machine (Windows 11 24H2+)'), timeout: 90_000 }, async () => {
     await checkBackend(createWindowsReader({ hasWmic: () => true }));
   });
+});
+
+// Finding the supervised runs again at daemon start asked pidusage, which on a Windows without WMIC is a PowerShell with no time
+// limit. It now reads the same shared table as the monitoring.
+describe('when a process started, for real', () => {
+  const { processStartsOf, processStartOf } = require('../src/supervised-run');
+  const expected = Date.now() - process.uptime() * 1000;
+
+  for (const backend of ['default', 'powershell']) {
+    test(`processStartsOf finds this process, and no other that is not running (${backend})`, { skip, timeout: 90_000 }, async () => {
+      const before = process.env.ORCH_PROCESS_TABLE;
+      if (backend === 'powershell') { process.env.ORCH_PROCESS_TABLE = 'powershell'; }
+      try {
+        const queriesBefore = monitoringInfo().queries;
+        const starts = await processStartsOf([process.pid, 2_147_000_000]);
+        assert.ok(monitoringInfo().queries > queriesBefore || backend === 'powershell', 'it did not read the shared process table');
+        assert.deepEqual([...starts.keys()], [process.pid]);
+        assert.ok(Math.abs(starts.get(process.pid) - expected) < 5_000, `started ${starts.get(process.pid)}, expected about ${expected}`);
+        assert.ok(Math.abs((await processStartOf(process.pid)) - expected) < 5_000);
+        assert.equal(await processStartOf(2_147_000_000), null);
+      } finally {
+        if (before === undefined) { delete process.env.ORCH_PROCESS_TABLE; } else { process.env.ORCH_PROCESS_TABLE = before; }
+      }
+    });
+  }
 });

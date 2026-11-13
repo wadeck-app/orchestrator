@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runLogPath } from './logger.js';
 import type { ResolvedLogRotation } from './log-rotation.js';
 import pidusage from 'pidusage';
+import { systemProcessTable } from './process-table.js';
 import { atomicWriteJson, getErrorMessage, readJsonFile } from './fsUtil.js';
 import type { TriggerSource } from './types.js';
 
@@ -328,13 +329,22 @@ export function ownedByAnotherLiveDaemon(runDir: string): boolean {
   }
 }
 
+/**
+ * What the OS says of these pids; a pid that is not running is absent. Windows reads the daemon's shared process table
+ * (one query, ended if it hangs, see process-table.ts) rather than a pidusage that may start a PowerShell without a time limit.
+ */
+async function usagesOf(pids: number[]): Promise<Record<number, { timestamp: number; elapsed: number } | undefined>> {
+  const native = systemProcessTable();
+  return native ? native.table.usageMany(pids) : pidusage(pids);
+}
+
 /** When a process started, in ms since the epoch, or null if it is not running. Injectable for tests. */
 export type ProcessStartFn = (pid: number) => Promise<number | null>;
 
 export const processStartOf: ProcessStartFn = async (pid) => {
   try {
-    const usage = await pidusage(pid);
-    return usage.timestamp - usage.elapsed;
+    const usage = (await usagesOf([pid]))[pid];
+    return usage === undefined ? null : usage.timestamp - usage.elapsed;
   } catch {
     return null;
   }
@@ -353,7 +363,7 @@ export const processStartsOf: ProcessStartsFn = async (pids) => {
     return starts;
   }
   try {
-    const usages = await pidusage(pids);
+    const usages = await usagesOf(pids);
     for (const pid of pids) {
       const usage = usages[pid];
       if (usage !== undefined) {

@@ -14,7 +14,7 @@ const INPUT_CLS = 'block w-32 rounded border border-border bg-surface text-conte
 const SELECT_CLS = 'block w-48 rounded border border-border bg-surface text-content px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
 
 interface NumberFieldSpec {
-  key: 'hardFactor' | 'softFactor' | 'sustainSeconds' | 'maxCpuPct' | 'maxRamMb';
+  key: 'hardFactor' | 'softFactor' | 'sustainSeconds' | 'sampleSeconds' | 'maxCpuPct' | 'maxRamMb';
   label: string;
   hint: string;
   placeholder?: string;
@@ -25,7 +25,8 @@ const NUMBER_FIELDS: NumberFieldSpec[] = [
   { key: 'hardFactor',     label: 'Hard factor',            hint: "A run is ended (or only reported, in warn mode) when it stays above the job's baseline times this. Greater than 1, at most 100.", placeholder: String(RESOURCE_DEFAULTS.hardFactor) },
   { key: 'softFactor',     label: 'Soft factor',            hint: 'Above the baseline times this the run is only flagged. Greater than 1 and below the hard factor.',                              placeholder: String(RESOURCE_DEFAULTS.softFactor) },
   { key: 'sustainSeconds', label: 'Sustain time (seconds)', hint: 'How long a run must stay over the hard limit before the monitor acts. Whole seconds, 2 to 3600.',                              placeholder: String(RESOURCE_DEFAULTS.sustainSeconds) },
-  { key: 'maxCpuPct',      label: 'Max CPU (%)',            hint: 'An absolute CPU ceiling, instead of one derived from the baseline. Greater than 0. Empty means derived.' },
+  { key: 'sampleSeconds',  label: 'Sample every (s)',       hint: "How often the monitor measures a run's CPU and RAM. Whole seconds, 2 to 300.",                                                 placeholder: String(RESOURCE_DEFAULTS.sampleSeconds) },
+  { key: 'maxCpuPct',      label: 'Max CPU (%)',           hint: 'An absolute CPU ceiling, instead of one derived from the baseline. Greater than 0. Empty means derived.' },
   { key: 'maxRamMb',       label: 'Max RAM (MB)',           hint: 'An absolute RAM ceiling, instead of one derived from the baseline. Greater than 0. Empty means derived.' },
 ];
 // @formatter:on
