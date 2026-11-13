@@ -30,10 +30,10 @@ What we are protecting:
 ## STRIDE Analysis
 
 ### Spoofing
-Mitigated by the startup token + session cookie flow. The token is generated fresh at each spawn and passed only via the CLI arg and the initial browser URL. A second process cannot obtain the token without reading daemon memory or intercepting the URL.
+Not addressed: the browser-facing API has no authentication (Decision #13, T-02). A startup token and session cookie were designed and never built; do not cite them as a control. Only the orch-server to daemon link carries a bearer (`health_token`), which does not protect the API from other local processes.
 
 ### Tampering
-Write endpoints (POST, PUT, DELETE /api/jobs) require a valid session cookie (`HttpOnly; SameSite=Strict`). The cookie cannot be set by a cross-origin page. Job payloads are validated server-side by the daemon's existing `validateJob` before write.
+Write endpoints (POST, PUT, DELETE /api/jobs) are open to any local process (T-02) and to a page that passes the CORS check (T-03; `@fastify/cors` with an origin allowlist is best-effort). Job payloads are validated server-side by the daemon's existing `validateJob` before write.
 
 ### Repudiation
 Not addressed in v1. The daemon's existing log rotation provides a post-hoc record of job executions. Dashboard-initiated actions are indistinguishable from CLI-initiated actions in the current log format -- acceptable for a single-user local tool.
@@ -45,7 +45,7 @@ Log endpoint validates `:jobId` as `/^[a-z0-9-]+$/i` before constructing the fil
 Not a primary concern for a single-user local tool. orch-server binds only to 127.0.0.1, limiting exposure to the local machine. No rate limiting in v1.
 
 ### Elevation of Privilege
-orch-server does not expose daemon control commands (quit, restart). It only proxies job CRUD and trigger commands via the daemon RPC. The session cookie requirement prevents unauthenticated access from other local processes. orch-server runs under the same OS user as the daemon, so no privilege escalation is possible beyond what the daemon already allows.
+orch-server does not expose daemon control commands (quit, restart). It only proxies job CRUD and trigger commands via the daemon RPC. Nothing prevents other local processes from calling the API (T-02). orch-server runs under the same OS user as the daemon, so no privilege escalation is possible beyond what the daemon already allows.
 
 ## Mitigations
 
