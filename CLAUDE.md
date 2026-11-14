@@ -19,9 +19,10 @@ orch logs [--follow]         # daemon log
 orch cli update              # update orch itself -- never `npm install -g` by hand
 ```
 
-`orch cli update` is the only supported way to move to a new version: it stops the daemon through
-the launcher before installing, so the native binary is not locked, and it leaves the CLI and the
-daemon on the same version. See `.claude/kb/lessons-learned.md`.
+`orch cli update` is the only supported way to move to a new version: it installs first, then restarts
+the daemon (`config.restart` sentinel + `POST /quit`), so the CLI and the daemon end on the same version. Nothing is
+stopped before the install: the launcher, the tray and the supervisor run from `<configDir>/bin/` (staged copies,
+`src/platform-binary.ts`), so npm never has to replace a running executable. See `.claude/kb/lessons-learned.md`.
 
 **Restarting the daemon is routine, not a decision to ask about.** Each job runs under its own supervisor, so
 `orch restart`, `orch stop` and `orch cli update` leave running jobs running and followed again afterwards
@@ -63,7 +64,9 @@ Linux packages carry the launcher and the supervisor but no tray (there is no Li
 says so in its log and the dashboard is reached with `orch server start`). Start at login on Linux is a systemd
 user unit (`~/.config/systemd/user/orchestrator.service`, `orch install` / `orch uninstall`; see
 `docs/daemon-config.md`); start at boot on Ubuntu x64 was validated by the user on a real host (2026-10-31,
-`orch install` then reboot); arm64 and other distributions are covered by tests only. The platforms are listed
+`orch install` then reboot); arm64 and other distributions are covered by tests only. Validated by the user on real
+hosts (stated 2026-11-13): Linux, macOS and Windows 10 and 11, all with the CLI, the daemon and start at login.
+Only the Linux boot test carries a recorded date and procedure above. The platforms are listed
 once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts,
 `optionalDependencies` and `scripts/build-supervisor-binary.ts` agree with it.
 
