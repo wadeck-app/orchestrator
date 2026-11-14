@@ -20,7 +20,7 @@ orchestrator/
 ## Current state (as of 2026-11-07)
 
 - Daemon: cron, startup, one-shot and manual jobs; each job runs under its own supervisor by default, so jobs survive a daemon restart or update. Progress/ETA, resource limits, restart policy, liveness and secrets exist.
-- Distribution: JS package plus platform packages for win32-x64, darwin-arm64, darwin-x64, linux-x64 (Linux has no tray; Linux on ARM is not shipped).
+- Distribution: JS package plus platform packages for win32-x64, darwin-arm64, linux-x64 (Linux has no tray; Linux on ARM and Intel Macs are not supported).
 - Dashboard: job CRUD, trigger, kill, enable/disable, log tail, run history, schedule timeline, audit, dry-run, progress/ETA, dark mode. Served by `orch-server` and also published as an app-core module.
 
 ## Intended direction

@@ -17,14 +17,14 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const KEYS = Object.keys(PLATFORM_TARGETS).sort();
 
 describe('PLATFORM_TARGETS', () => {
-  // Linux on ARM is not shipped: it was built but never run on a real host or in CI, so it was a promise nothing backed.
-  test('covers Windows, macOS and Linux x64, each with the architectures we build and run', () => {
-    assert.deepEqual(KEYS, ['darwin-arm64', 'darwin-x64', 'linux-x64', 'win32-x64']);
+  // Linux on ARM was never run on a real host or in CI, and Intel Macs are not supported: neither is shipped.
+  test('covers Windows, Apple Silicon and Linux x64', () => {
+    assert.deepEqual(KEYS, ['darwin-arm64', 'linux-x64', 'win32-x64']);
   });
 
-  test('linux-arm64 is shipped nowhere: no package, no binary copied, nothing published', () => {
+  test('linux-arm64 and darwin-x64 (Intel Mac) are shipped nowhere: no package, no binary copied, nothing published', () => {
     for (const file of [['package.json'], ['ci', 'scripts', 'copy-binaries.sh'], ['ci', 'scripts', 'generate-platform-packages.sh'], ['ci', 'scripts', 'publish-platform-packages.sh'], ['scripts', 'build-supervisor-binary.ts']]) {
-      assert.doesNotMatch(read(...file), /linux[-_]arm64/, file.join('/'));
+      assert.doesNotMatch(read(...file), /linux[-_]arm64|darwin[-_]x64|darwin_amd64|tray-amd64|supervisor-amd64/, file.join('/'));
     }
   });
 
@@ -38,7 +38,7 @@ describe('PLATFORM_TARGETS', () => {
   });
 
   test('only Windows and macOS have a tray: there is no Linux systray build', () => {
-    assert.deepEqual(KEYS.filter((k) => PLATFORM_TARGETS[k].trayDev !== null), ['darwin-arm64', 'darwin-x64', 'win32-x64']);
+    assert.deepEqual(KEYS.filter((k) => PLATFORM_TARGETS[k].trayDev !== null), ['darwin-arm64', 'win32-x64']);
     assert.equal(platformHasTray('linux'), false);
     assert.equal(platformHasTray('win32'), true);
     assert.equal(platformHasTray('darwin'), true);
@@ -125,6 +125,7 @@ describe('unsupportedPlatformMessage', () => {
   test('names the platform, says it is not supported, lists what is, and does not suggest a reinstall that cannot help', () => {
     const m = unsupportedPlatformMessage('linux', 'arm64');
     assert.match(m, /linux-arm64 is not a supported platform/);
+    assert.match(unsupportedPlatformMessage('darwin', 'x64'), /darwin-x64 is not a supported platform/);
     for (const key of KEYS) {
       assert.ok(m.includes(key), `${key} is not listed`);
     }

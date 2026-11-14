@@ -32,5 +32,4 @@ EOF
 
 generate_platform "orchestrator-cli-win32-x64"    "win32"  "x64"   "orchestrator.exe"  "orchestrator-tray.exe" "orchestrator-supervisor.exe"
 generate_platform "orchestrator-cli-darwin-arm64" "darwin" "arm64" "orchestrator"       "orchestrator-tray" "orchestrator-supervisor"
-generate_platform "orchestrator-cli-darwin-x64"   "darwin" "x64"   "orchestrator"       "orchestrator-tray" "orchestrator-supervisor"
 generate_platform "orchestrator-cli-linux-x64"    "linux"  "x64"   "orchestrator"       ""                  "orchestrator-supervisor"

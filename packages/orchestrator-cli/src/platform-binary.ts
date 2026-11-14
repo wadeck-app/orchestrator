@@ -33,10 +33,6 @@ export const PLATFORM_TARGETS: Readonly<Record<string, PlatformTarget>> = {
     pkg: '@wadeck-app/orchestrator-cli-darwin-arm64',
     launcherDev: 'orchestrator_darwin_arm64_release', trayDev: 'orchestrator-tray-arm64', supervisorDev: 'orchestrator-supervisor-arm64',
   },
-  'darwin-x64': {
-    pkg: '@wadeck-app/orchestrator-cli-darwin-x64',
-    launcherDev: 'orchestrator_darwin_amd64_release', trayDev: 'orchestrator-tray-amd64', supervisorDev: 'orchestrator-supervisor-amd64',
-  },
   'linux-x64': {
     pkg: '@wadeck-app/orchestrator-cli-linux-x64',
     launcherDev: 'orchestrator_linux_amd64_release', trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-amd64',

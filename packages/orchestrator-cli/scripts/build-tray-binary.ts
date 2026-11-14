@@ -12,7 +12,6 @@ fs.mkdirSync(distDir, { recursive: true });
 const targets = [
   { GOOS: 'windows', GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-tray.exe') },
   { GOOS: 'darwin',  GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-tray-arm64') },
-  { GOOS: 'darwin',  GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-tray-amd64') },
 ];
 
 for (const { GOOS, GOARCH, out } of targets) {

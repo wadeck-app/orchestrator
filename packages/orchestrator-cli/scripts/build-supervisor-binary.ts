@@ -13,7 +13,6 @@ fs.mkdirSync(distDir, { recursive: true });
 const targets = [
   { GOOS: 'windows', GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor.exe') },
   { GOOS: 'darwin',  GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-supervisor-arm64') },
-  { GOOS: 'darwin',  GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor-amd64') },
   { GOOS: 'linux',   GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor-linux-amd64') },
 ];
 

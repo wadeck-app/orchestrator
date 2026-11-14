@@ -31,20 +31,17 @@ MAIN_PKG="packages/orchestrator-cli"
 BIN_HASH=$(cat \
   "$LAUNCHER_DIST/orchestrator_windows_release.exe" \
   "$LAUNCHER_DIST/orchestrator_darwin_arm64_release" \
-  "$LAUNCHER_DIST/orchestrator_darwin_amd64_release" \
   "$LAUNCHER_DIST/orchestrator_linux_amd64_release" \
   "$TRAY_DIST/orchestrator-tray.exe" \
   "$TRAY_DIST/orchestrator-tray-arm64" \
-  "$TRAY_DIST/orchestrator-tray-amd64" \
   "$SUPERVISOR_DIST/orchestrator-supervisor.exe" \
   "$SUPERVISOR_DIST/orchestrator-supervisor-arm64" \
-  "$SUPERVISOR_DIST/orchestrator-supervisor-amd64" \
   "$SUPERVISOR_DIST/orchestrator-supervisor-linux-amd64" \
   | sha256sum | cut -c1-12)
 
 echo "native binary hash: $BIN_HASH"
 
-for p in win32-x64 darwin-arm64 darwin-x64 linux-x64; do
+for p in win32-x64 darwin-arm64 linux-x64; do
   PKG="@wadeck-app/orchestrator-cli-$p"
   DIR="packages/orchestrator-cli-$p"
 

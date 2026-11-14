@@ -4,6 +4,16 @@ File: `<configDir>/config.yml` (default `~/.config/orchestrator/config.yml`).
 
 Read once at daemon startup. Changes take effect after `orch restart`.
 
+## Supported platforms
+
+| Platform | Launcher, supervisor | Tray | Start at login |
+|---|---|---|---|
+| Windows x64 (10, 11) | yes | yes | registry entry |
+| macOS Apple Silicon (arm64) | yes | yes | LaunchAgent |
+| Linux x64 | yes | no (`orch server start`) | systemd user unit |
+
+Not supported: Intel Macs (darwin-x64) and Linux on ARM (linux-arm64). No package is published for them; `orch start` and the daemon log say `<platform> is not a supported platform` and list the ones above. The list lives in `PLATFORM_TARGETS` (`src/platform-binary.ts`).
+
 ## Keys
 
 | Key | Type | Default | Description |
