@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "files": ["dist-module"],
+  "files": [
+    "dist-module"
+  ],
   "exports": {
     "./moduleConfig": "./src/commons/moduleConfig.ts",
     "./routes": "./src/backend/routes.ts"
@@ -24,8 +26,8 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/react": "^19.0.0",
-    "@wadeck-app/app-core-cli": ">=2026.10.22-075-f7ea6949",
-    "@wadeck-app/app-core-sdk": ">=2026.10.22-075-f7ea6949",
+    "@wadeck-app/app-core-cli": "^2026.11.7-171-cb12178d",
+    "@wadeck-app/app-core-sdk": "^2026.11.7-171-cb12178d",
     "fastify": "^5.0.0",
     "typescript": "*",
     "vitest": "*"
