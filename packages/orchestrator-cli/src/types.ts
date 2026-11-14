@@ -470,6 +470,8 @@ export interface CliDeps {
   send: (command: string, payload?: unknown, options?: SendOptions) => Promise<unknown>;
   startDaemon: () => void;
   configDir: string;
+  /** Where the one-line success answers of `add` and `edit` go (default: stdout). `ensure` runs those two and says its own outcome instead. */
+  say?: (line: string) => void;
   /** Called with the command before it runs: checks the start-at-login entry (startup-check.ts). Only the real entry point sets it. */
   startupCheck?: (command: string | undefined) => void;
   /** The platform the daemon runs on (default: this process's); decides which way out a missing supervisor has. Tests set it. */

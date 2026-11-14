@@ -14,7 +14,9 @@ const {
   isStartupEnabled,
 } = require('../src/startup');
 
-const FAKE_DIR = 'C:\\Users\\Test\\.config\\orchestrator';
+// Under the OS temp dir (which `npm test` points at a root it removes at exit): on a host that has the launcher the builders
+// stage the native binary into this folder, and a made-up C:\Users\Test could not be created (EPERM) on a developer machine.
+const FAKE_DIR = require('node:path').join(require('node:os').tmpdir(), 'orch-startup-fake', '.config', 'orchestrator');
 const INDEX_JS = path.join(__dirname, '..', 'src', 'index.js');
 
 describe('buildRegValueName', () => {

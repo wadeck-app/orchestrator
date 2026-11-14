@@ -99,9 +99,18 @@ Job mutation:
                                restartOnExit, logRotation, progress, resourceLimits
                                (resourceLimits.<key> clears one key)
                                Example: orch edit my-job --unset cwd
-  orch remove <id>             Remove a job and the data derived from its runs (telemetry, resource
+  orch ensure <cron|startup|manual> <id> --command <cmd> [options] [--restart-if-changed] [--json]
+                               Makes the job exist with the options given, for a CLI that registers
+                               its own job (install, update): prints added, updated or unchanged
+                               (exit 0 each time). Only the options given are compared and changed;
+                               what you edited by hand and did not pass stays. The type of an
+                               existing job is never changed. --restart-if-changed restarts the job
+                               when its command changed (a moved executable)
+  orch remove <id> [--if-exists]
+                               Remove a job and the data derived from its runs (telemetry, resource
                                history, finished run folders). Its logs stay until age pruning.
                                Files a running instance still writes are reported, not deleted.
+                               --if-exists: a missing job is not an error (prints absent or removed)
   orch enable <id>             Enable a job
   orch disable <id>            Disable a job
 

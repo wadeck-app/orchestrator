@@ -1,6 +1,7 @@
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { launcherBundleOverride, nodeDirOnPath, LAUNCHER_BUNDLE_SPEC } from './launcher-bundle.js';
 import { runStartupCheck } from './startup-check.js';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
@@ -794,6 +795,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
   const send        = deps.send        ?? (() => { throw new Error('no send'); });
   const startDaemon = deps.startDaemon ?? (() => {});
   const configDir   = deps.configDir   ?? DEFAULT_CONFIG_DIR;
+  const say         = deps.say         ?? ((line: string): void => { console.log(line); });
 
   /**
    * Before a command that ends the daemon: says which running jobs die with it when no supervisor guards them
@@ -1453,14 +1455,76 @@ Examples:
       }
 
       await send('add-job', body);
-      console.log(`Job "${id}" added.`);
+      say(`Job "${id}" added.`);
+      break;
+    }
+
+    case 'ensure': {
+      const [type, id, ...ensureRest] = rest;
+      if (!type || !id || type.startsWith('-') || id.startsWith('-') || type === 'once') {
+        errorExit(`Usage: orch ensure <cron|startup|manual> <id> --command "..." [job flags as in orch add] [--restart-if-changed] [--json]
+
+Makes the job exist with the flags given: added when missing, updated when a given flag differs from the job,
+unchanged otherwise. Flags not given are left as they are. Safe to run again and again.
+
+Example: orch ensure startup machine --command "\\"C:\\\\Program Files\\\\machine\\\\machine.exe\\" daemon" --restart-on-exit --timeout 0 --restart-if-changed`, 4);
+      }
+      const restartIfChanged = has(ensureRest, '--restart-if-changed');
+      const jobFlags = ensureRest.filter(a => a !== '--restart-if-changed' && a !== '--json');
+      const existing = await send('get-job', { id }) as Record<string, unknown> | null | undefined;
+      // The inner add/edit are the real ones, so ensure takes every flag they take and validates them the same way.
+      const inner: Partial<CliDeps> = { send, startDaemon, configDir, platform: deps.platform, say: () => { /* ensure says its own outcome */ } };
+      let outcome: 'added' | 'updated' | 'unchanged' = 'added';
+      let changed: string[] = [];
+      let restarted: boolean | undefined;
+      if (existing === null || existing === undefined) {
+        await runCli(['add', type, id, ...jobFlags], inner);
+      } else {
+        if (existing['type'] !== type) {
+          errorExit(`Job "${id}" exists as a "${String(existing['type'])}" job, and ensure was asked for "${type}". `
+            + `ensure never changes a job's type: remove it first (orch remove ${id}) or ask for "${String(existing['type'])}".`, 4);
+        }
+        let edited = false;
+        // Only the fields that differ from the job are sent: an edit that changes nothing is not made.
+        const compare: CliDeps['send'] = async (cmd, payload, options) => {
+          if (cmd !== 'edit-job') {
+            return send(cmd, payload, options);
+          }
+          const { updates = {}, unset = [] } = payload as { updates?: Record<string, unknown>; unset?: string[] };
+          const delta = Object.fromEntries(Object.entries(updates).filter(([k, v]) => !isDeepStrictEqual(existing[k], v)));
+          const unsetNow = unset.filter(k => existing[k] !== undefined);
+          changed = [...Object.keys(delta), ...unsetNow];
+          if (changed.length === 0) {
+            return existing;
+          }
+          edited = true;
+          return send(cmd, { id, updates: delta, ...(unsetNow.length > 0 ? { unset: unsetNow } : {}) }, options);
+        };
+        await runCli(['edit', id, ...jobFlags], { ...inner, send: compare });
+        outcome = edited ? 'updated' : 'unchanged';
+        if (edited && restartIfChanged && changed.includes('command')) {
+          const r = await send('restart-job', { id }) as { started?: boolean; reason?: string };
+          restarted = r.started === true;
+          if (!restarted) {
+            errorExit(`Job "${id}" was updated but not restarted: ${r.reason ?? 'the daemon gave no reason'}. Start it with: orch restart-job ${id}`, 1);
+          }
+        }
+      }
+      say(forceJson
+        ? JSON.stringify({ id, result: outcome, changed, ...(restarted === undefined ? {} : { restarted }) })
+        : `${outcome} ${id}${changed.length > 0 ? ` (${changed.join(', ')})` : ''}${restarted === true ? ', restarted' : ''}`);
       break;
     }
 
     case 'remove': {
-      const [id] = rest;
+      const [id, ...removeRest] = rest;
+      // Absent is a normal answer for an uninstall that may run twice.
+      if (has(removeRest, '--if-exists') && !(await send('get-job', { id }))) {
+        say(`absent ${id}`);
+        break;
+      }
       const reply = await send('remove-job', { id }) as { leftovers?: Array<{ path: string; reason: string }> } | undefined;
-      console.log(`Job "${id}" removed.`);
+      say(has(removeRest, '--if-exists') ? `removed ${id}` : `Job "${id}" removed.`);
       // The job is gone; some of its derived data could not be deleted (a locked file), so say which and why.
       if (reply?.leftovers && reply.leftovers.length > 0) {
         const lines = reply.leftovers.map((l) => `  ${l.path || '(job id)'}: ${l.reason}`);
@@ -1640,7 +1704,7 @@ Fields that can be unset: ${Object.keys(UNSETTABLE_FIELDS).join(', ')}`, 4);
       }
 
       await send('edit-job', { id, updates, ...(unset.length ? { unset } : {}) });
-      console.log(`Job "${id}" updated.`);
+      say(`Job "${id}" updated.`);
       break;
     }
 

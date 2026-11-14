@@ -293,6 +293,24 @@ For a server that must come back after ANY exit: `orch add startup web --command
 - `orch edit <id> --restart-delay 5` changes only the given keys; `--unset restartOnExit` turns the policy off.
 - Events: `job.restart_scheduled` and `job.restart_abandoned`; the restarted run is `job.started` with `trigger: "restart"`. `orch timers` shows a pending restart as a `restart` timer. `orch status` lists them under `restarts` (job, time, attempt); `--json`: `info.pendingRestarts: [{ jobId, dueAt, attempt }]`, `get-daemon-info` likewise. A daemon older than the CLI makes `orch status` say `restarts: unknown`.
 
+## Registering a job from a CLI -- `orch ensure`
+
+`orch ensure <cron|startup|manual> <id> --command "..." [job flags]` is `add` or `edit`, whichever applies, and safe to run any number of times (an install command, an update hook). It prints one line and exits 0 for all three:
+
+| Output | Meaning |
+|---|---|
+| `added <id>` | The job did not exist |
+| `updated <id> (<fields>)` | A flag given differs from the job; only those fields are written |
+| `unchanged <id>` | Every flag given already holds; nothing is written |
+
+- Takes every flag of `orch add` (same validation, same unknown-flag refusal); `once` is refused. Flags not given are never compared: a description or limit edited by hand stays.
+- The type of an existing job is never changed (exit 4, names `orch remove <id>`).
+- `--restart-if-changed`: restarts the job when its `command` changed (a moved executable). A running instance keeps its old command until then. A restart that does not start is exit 1.
+- `--json`: `{ "id", "result", "changed", "restarted"? }`. Exit codes as the rest of the CLI: 1 error, 2 daemon could not be started, 4 usage.
+- `--command` is a shell string (`cmd.exe` on Windows, `sh` elsewhere) and is compared exactly: quote a path with spaces yourself.
+- `orch remove <id> --if-exists` is the uninstall: `removed <id>` or `absent <id>`, exit 0 for both.
+- A job that must not start a second copy of a singleton: `--liveness-strategy portFile --liveness-port-file <path>`; the start (startup, schedule, trigger, `restart-job`) is skipped while the pid in the file is alive. A `restartOnExit` restart does not run the check.
+
 ## Rotating the log of a run -- `logRotation`
 
 A run has one log (`logs/jobs/<id>/<id>-<stamp>.log`). A server job (`--timeout 0`) used to grow it without bound; now the run continues in the next segment once the next line would take the current one over the limit.
