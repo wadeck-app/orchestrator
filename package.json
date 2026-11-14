@@ -13,10 +13,10 @@
     "dev:stop": "node scripts/dev-server.mjs --stop"
   },
   "dependencies": {
-    "@wadeck-app/dsl-renderer": ">=2026.10.26-296-546ff876",
-    "@wadeck-app/dsl-ui": ">=2026.10.26-296-546ff876"
+    "@wadeck-app/dsl-renderer": "latest",
+    "@wadeck-app/dsl-ui": "latest"
   },
   "devDependencies": {
-    "@wadeck-app/violations-rules": ">=2026.10.22-140-334ac87a"
+    "@wadeck-app/violations-rules": "latest"
   }
 }

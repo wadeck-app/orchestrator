@@ -7,8 +7,8 @@
 # If a published version already carries the current hash, it is reused as-is and no
 # publish happens, so the version sequence gets gaps that document binary changes.
 #
-# Why an EXACT pin rather than a range: with ">=0.0.0-0" any installed version satisfies
-# the range, so npm never touches the platform package and the daemon ends up running new
+# Why an EXACT pin rather than a range or a tag (the source package.json says "latest"): with a range or a tag any installed version satisfies
+# it, so npm never touches the platform package and the daemon ends up running new
 # JS against old binaries. With an exact pin, `npm install -g main@X` updates the platform
 # package in the same transaction iff the pin moved, and a rollback to an older main
 # restores the binaries that main was built against. `os`/`cpu` on the platform packages

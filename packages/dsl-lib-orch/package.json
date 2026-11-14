@@ -15,8 +15,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wadeck-app/dsl-renderer": ">=2026.10.26-296-546ff876",
-    "@wadeck-app/dsl-ui": ">=2026.10.26-296-546ff876",
+    "@wadeck-app/dsl-renderer": "latest",
+    "@wadeck-app/dsl-ui": "latest",
     "lucide-react": "^0.400.0"
   },
   "peerDependencies": {
@@ -34,8 +34,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.0.0",
-    "@wadeck-app/app-core-cli": ">=2026.10.22-075-f7ea6949",
-    "@wadeck-app/app-core-sdk": ">=2026.10.22-075-f7ea6949",
+    "@wadeck-app/app-core-cli": "latest",
+    "@wadeck-app/app-core-sdk": "latest",
     "@wadeck-app/app-module-orchestrator": "*",
     "autoprefixer": "^10.0.0",
     "jsdom": "*",
