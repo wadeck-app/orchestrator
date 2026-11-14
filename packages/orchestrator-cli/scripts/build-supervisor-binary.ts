@@ -15,7 +15,6 @@ const targets = [
   { GOOS: 'darwin',  GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-supervisor-arm64') },
   { GOOS: 'darwin',  GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor-amd64') },
   { GOOS: 'linux',   GOARCH: 'amd64', out: path.join(distDir, 'orchestrator-supervisor-linux-amd64') },
-  { GOOS: 'linux',   GOARCH: 'arm64', out: path.join(distDir, 'orchestrator-supervisor-linux-arm64') },
 ];
 
 for (const { GOOS, GOARCH, out } of targets) {

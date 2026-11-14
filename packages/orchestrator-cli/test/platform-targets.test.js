@@ -10,15 +10,22 @@ const assert = require('node:assert/strict');
 const fs   = require('node:fs');
 const path = require('node:path');
 
-const { PLATFORM_TARGETS, platformKeyOf, platformHasTray, nativeBinaryProblem, trayUnavailableMessage } = require('../src/platform-binary');
+const { PLATFORM_TARGETS, platformKeyOf, platformHasTray, nativeBinaryProblem, trayUnavailableMessage, unsupportedPlatformMessage } = require('../src/platform-binary');
 
 const ROOT = path.join(__dirname, '..');
 const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const KEYS = Object.keys(PLATFORM_TARGETS).sort();
 
 describe('PLATFORM_TARGETS', () => {
-  test('covers Windows, macOS and Linux, each with the architectures we build', () => {
-    assert.deepEqual(KEYS, ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']);
+  // Linux on ARM is not shipped: it was built but never run on a real host or in CI, so it was a promise nothing backed.
+  test('covers Windows, macOS and Linux x64, each with the architectures we build and run', () => {
+    assert.deepEqual(KEYS, ['darwin-arm64', 'darwin-x64', 'linux-x64', 'win32-x64']);
+  });
+
+  test('linux-arm64 is shipped nowhere: no package, no binary copied, nothing published', () => {
+    for (const file of [['package.json'], ['ci', 'scripts', 'copy-binaries.sh'], ['ci', 'scripts', 'generate-platform-packages.sh'], ['ci', 'scripts', 'publish-platform-packages.sh'], ['scripts', 'build-supervisor-binary.ts']]) {
+      assert.doesNotMatch(read(...file), /linux[-_]arm64/, file.join('/'));
+    }
   });
 
   test('every target names its package after its key, and has a launcher and a supervisor', () => {
@@ -39,6 +46,7 @@ describe('PLATFORM_TARGETS', () => {
 
   test('platformKeyOf folds every non-arm64 architecture into x64, as the package names do', () => {
     assert.equal(platformKeyOf('linux', 'arm64'), 'linux-arm64');
+    assert.equal(PLATFORM_TARGETS[platformKeyOf('linux', 'arm64')], undefined, 'and that key is not a target');
     assert.equal(platformKeyOf('linux', 'x64'), 'linux-x64');
     assert.equal(platformKeyOf('win32', 'x64'), 'win32-x64');
   });
@@ -110,6 +118,17 @@ describe('everything else agrees with PLATFORM_TARGETS', () => {
         assert.ok(script.includes(`$TRAY_DIST/${t.trayDev}`), `${key}: ${t.trayDev}`);
       }
     }
+  });
+});
+
+describe('unsupportedPlatformMessage', () => {
+  test('names the platform, says it is not supported, lists what is, and does not suggest a reinstall that cannot help', () => {
+    const m = unsupportedPlatformMessage('linux', 'arm64');
+    assert.match(m, /linux-arm64 is not a supported platform/);
+    for (const key of KEYS) {
+      assert.ok(m.includes(key), `${key} is not listed`);
+    }
+    assert.doesNotMatch(m, /npm install/);
   });
 });
 

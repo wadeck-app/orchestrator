@@ -54,7 +54,7 @@ The published `@wadeck-app/orchestrator-cli` ships **only** JS: `dist/orchestrat
 `server/`. No native binary.
 
 The Go launcher, the supervisor and (Windows, macOS) the tray live in
-`@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,darwin-x64,linux-x64,linux-arm64}`,
+`@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,darwin-x64,linux-x64}`,
 pulled in as `optionalDependencies` with an **exact** version pin, so `npm install -g` updates
 them in the same transaction and a rollback restores the matching pair. They are republished
 only when the binary hash changes, so their version has gaps and legitimately lags the main
@@ -64,7 +64,7 @@ Linux packages carry the launcher and the supervisor but no tray (there is no Li
 says so in its log and the dashboard is reached with `orch server start`). Start at login on Linux is a systemd
 user unit (`~/.config/systemd/user/orchestrator.service`, `orch install` / `orch uninstall`; see
 `docs/daemon-config.md`); start at boot on Ubuntu x64 was validated by the user on a real host (2026-10-31,
-`orch install` then reboot); arm64 and other distributions are covered by tests only. Validated by the user on real
+`orch install` then reboot); other distributions are covered by tests only. Linux on ARM (linux-arm64) is not shipped: it was never run on a real host or in CI, and a platform with no package says so in `orch start` and the daemon log. Validated by the user on real
 hosts (stated 2026-11-13): Linux, macOS and Windows 10 and 11, all with the CLI, the daemon and start at login.
 Only the Linux boot test carries a recorded date and procedure above. The platforms are listed
 once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts,

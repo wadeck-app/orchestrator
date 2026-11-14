@@ -37,10 +37,6 @@ export const PLATFORM_TARGETS: Readonly<Record<string, PlatformTarget>> = {
     pkg: '@wadeck-app/orchestrator-cli-darwin-x64',
     launcherDev: 'orchestrator_darwin_amd64_release', trayDev: 'orchestrator-tray-amd64', supervisorDev: 'orchestrator-supervisor-amd64',
   },
-  'linux-arm64': {
-    pkg: '@wadeck-app/orchestrator-cli-linux-arm64',
-    launcherDev: 'orchestrator_linux_arm64_release', trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-arm64',
-  },
   'linux-x64': {
     pkg: '@wadeck-app/orchestrator-cli-linux-x64',
     launcherDev: 'orchestrator_linux_amd64_release', trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-amd64',
@@ -50,6 +46,11 @@ export const PLATFORM_TARGETS: Readonly<Record<string, PlatformTarget>> = {
 /** The key of a platform and architecture: every architecture that is not arm64 counts as x64, as the package names do. */
 export function platformKeyOf(platform: string, arch: string): string {
   return `${platform}-${arch === 'arm64' ? 'arm64' : 'x64'}`;
+}
+
+/** What to tell someone on a platform with no native binaries: the platform, and what is supported. A reinstall cannot help. */
+export function unsupportedPlatformMessage(platform: string, arch: string): string {
+  return `${platformKeyOf(platform, arch)} is not a supported platform: orch ships native binaries for ${Object.keys(PLATFORM_TARGETS).join(', ')}.`;
 }
 
 /** True where a systray binary is built (Windows, macOS). Linux has none: its daemon is reached with `orch server start`. */

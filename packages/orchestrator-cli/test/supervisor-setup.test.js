@@ -37,6 +37,20 @@ describe('supervisorFor', () => {
     assert.match(lines[0], /orchestrator-supervisor/);
   });
 
+  test('on a platform orch does not ship for, says so and what is supported instead of suggesting a reinstall', () => {
+    const real = { platform: process.platform, arch: process.arch };
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+    Object.defineProperty(process, 'arch', { value: 'arm64' });
+    try {
+      const { lines } = setup({ locate: () => null });
+      assert.match(lines[0], /linux-arm64 is not a supported platform/);
+      assert.match(lines[0], /linux-x64/);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: real.platform });
+      Object.defineProperty(process, 'arch', { value: real.arch });
+    }
+  });
+
   test('warns, naming the platform and the fix, when it is on but no executable exists for this platform', () => {
     const { launcher, lines } = setup({ locate: () => null });
 

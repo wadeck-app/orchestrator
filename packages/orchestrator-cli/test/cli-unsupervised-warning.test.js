@@ -29,7 +29,7 @@ function runningConfigDir() {
   return dir;
 }
 
-const NOTE = 'supervisedJobs is on (the default), but there is no supervisor executable for linux-arm64.';
+const NOTE = 'supervisedJobs is on (the default), but there is no supervisor executable for freebsd-x64.';
 const INFO_UNAVAILABLE = { supervisor: { requested: true, active: false, note: NOTE } };
 const INFO_OFF = { supervisor: { requested: false, active: false } };
 const INFO_ACTIVE = { supervisor: { requested: true, active: true } };
@@ -93,7 +93,7 @@ for (const { name, argv, acts } of ACTIONS) {
       assert.match(err, /server, scraper/);
       assert.doesNotMatch(err, /guarded|done/, 'a supervised job survives and a finished one is not running');
       assert.match(err, /killed with the daemon/);
-      assert.match(err, /no supervisor executable for linux-arm64/, 'the daemon\'s own reason is repeated');
+      assert.match(err, /no supervisor executable for freebsd-x64/, 'the daemon\'s own reason is repeated');
       assert.doesNotMatch(err, /no supervisor in the npm install on Linux|source checkout/, 'Linux is a supported target, with a supervisor package');
       assert.match(err, /orch cli update/);
       assert.match(err, /wait for the jobs to finish/);

@@ -2360,7 +2360,7 @@ export async function main(): Promise<void> {
   const client = createDaemonClient({ configDir, commands });
 
   function startDaemon(): void {
-    const { launcherToRun, findDaemonEntry, platformPackage } =
+    const { launcherToRun, findDaemonEntry, platformPackage, unsupportedPlatformMessage } =
       require('./platform-binary.js') as typeof import('./platform-binary.js');
 
     const daemonPath = findDaemonEntry();
@@ -2382,11 +2382,14 @@ export async function main(): Promise<void> {
       console.error('Cannot start the daemon: the Go launcher binary was not found.');
       console.error('It supervises the daemon and auto-restarts it after an update, so there is');
       console.error('no degraded mode to fall back to.');
-      console.error(pkg
-        ? `  expected in ${pkg}, or in launcher-go/dist for a monorepo checkout`
-        : `  unsupported platform: ${process.platform}-${process.arch}`);
-      console.error('  installed:  npm install -g @wadeck-app/orchestrator-cli');
-      console.error('  checkout:   npm run build-launcher --workspace=packages/orchestrator-cli');
+      if (pkg) {
+        console.error(`  expected in ${pkg}, or in launcher-go/dist for a monorepo checkout`);
+        console.error('  installed:  npm install -g @wadeck-app/orchestrator-cli');
+        console.error('  checkout:   npm run build-launcher --workspace=packages/orchestrator-cli');
+      } else {
+        // A reinstall cannot help here: there is no package for this platform.
+        console.error(`  ${unsupportedPlatformMessage(process.platform, process.arch)}`);
+      }
       process.exit(1);
     }
 
