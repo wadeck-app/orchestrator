@@ -142,6 +142,19 @@ describe('inspectStartupEntry on Windows', () => {
     assert.equal(inspectStartupEntry('/cfg', registry('C:\\cfg\\launcher.exe', true)).state, 'ok');
   });
 
+  test('a launcher that cannot find the daemon bundle (no node_modules link in its folder) makes the entry broken, so it is repaired', () => {
+    const r = inspectStartupEntry('/cfg', {
+      ...registry('C:\\cfg\\bin\\1\\launcher.exe', true),
+      bundleLinkProblem: (launcher) => `${launcher} has no node_modules link`,
+    });
+    assert.equal(r.state, 'broken');
+    assert.ok(r.problems.some((p) => p.includes('no node_modules link')), JSON.stringify(r));
+  });
+
+  test('a launcher with nothing to be shown is ok', () => {
+    assert.equal(inspectStartupEntry('/cfg', { ...registry('C:\\cfg\\launcher.exe', true), bundleLinkProblem: () => null }).state, 'ok');
+  });
+
   test('a registered launcher that is gone is broken', () => {
     const r = inspectStartupEntry('/cfg', registry('C:\\cfg\\launcher.exe', false));
     assert.equal(r.state, 'broken');

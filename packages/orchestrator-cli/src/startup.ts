@@ -9,8 +9,10 @@ import {
   planMacPath, mergeMacPath, realShellRunner, realIsExecutableFile,
   type MacPathDeps,
 } from './login-shell-path.js';
+import { ensureBundleLink, planBundleLink } from './bundle-link.js';
+import { LAUNCHER_BUNDLE_SPEC, nodeDirOnPath } from './launcher-bundle.js';
 
-const REG_KEY            = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+const REG_KEY           = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
 const SYSTEMD_UNIT_NAME  = 'orchestrator.service';
 
@@ -328,6 +330,23 @@ export interface InspectDeps extends StartupDeps {
   realpath?: (p: string) => string;
   /** The directory of the node this process runs (default: dirname(process.execPath)). */
   nodeBinDir?: string;
+  /** Windows: what is wrong with the node_modules link of the staged launcher, or null (default: bundle-link.ts against this install). Tests set it. */
+  bundleLinkProblem?: (launcher: string) => string | null;
+}
+
+/** Windows: the staged launcher has to be shown the global node_modules when it cannot find the bundle itself (bundle-link.ts). */
+function defaultBundleLinkProblem(launcher: string): string | null {
+  const daemon = findDaemonEntry();
+  const plan = daemon === null ? null : planBundleLink({ daemonPath: daemon, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
+  if (plan === null) {
+    return null;
+  }
+  const link = path.join(path.dirname(launcher), 'node_modules');
+  try {
+    return fs.realpathSync(link) === fs.realpathSync(plan.modulesDir) ? null : `${link} leads to ${fs.realpathSync(link)}, not to ${plan.modulesDir}`;
+  } catch {
+    return `${link} is missing: the launcher cannot find the daemon bundle in ${plan.modulesDir}`;
+  }
 }
 
 const defaultIsFile = (p: string): boolean => {
@@ -425,6 +444,12 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
   }
   if (fields.bundle !== null && !isFile(fields.bundle)) {
     problems.push(`the daemon bundle ${fields.bundle} is gone`);
+  }
+  if (platform === 'win32' && fields.launcher !== null && isFile(fields.launcher)) {
+    const linkProblem = (deps.bundleLinkProblem ?? defaultBundleLinkProblem)(fields.launcher);
+    if (linkProblem !== null) {
+      problems.push(linkProblem);
+    }
   }
   // The entry's paths are the target platform's, whatever host reads them.
   const nodeExe  = platform === 'win32' ? path.win32.join : path.posix.join;
@@ -614,7 +639,28 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
     try {
       exec('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe', windowsHide: true });
     } catch (e) { return { ok: false, error: `reg.exe failed: ${(e as Error).message}` }; }
-    return { ok: true, detail: `registry key set: ${REG_KEY}\\${valueName}` };
+    const detail = `registry key set: ${REG_KEY}\\${valueName}`;
+    // The Run value cannot carry LAUNCHER_BUNDLE_OVERRIDE, so a launcher that cannot find the bundle by itself is shown where it is.
+    // Said, not swallowed: without it the entry is written and the next login starts nothing.
+    if (deps.windowsCommand === undefined) {
+      try {
+        const staged = launcherToRun(configDir);
+        const daemon = findDaemonEntry();
+        const plan = staged === null || daemon === null || !staged.startsWith(path.join(configDir, 'bin'))
+          ? null
+          : planBundleLink({ daemonPath: daemon, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
+        if (staged !== null && plan !== null) {
+          const outcome = ensureBundleLink(path.dirname(staged), plan);
+          return { ok: true, detail: `${detail} | bundle-link=${outcome} (${plan.modulesDir})` };
+        }
+      } catch (e) {
+        return {
+          ok: true, detail,
+          warnings: [`the launcher may not find the daemon bundle at login: ${getErrorMessage(e)}`],
+        };
+      }
+    }
+    return { ok: true, detail };
   }
 
   return { ok: false, error: `Unsupported platform: ${platform}` };

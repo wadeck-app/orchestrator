@@ -82,6 +82,10 @@ Every `orch` command (people, cron jobs, agents) reads the entry back, at most o
 
 The daemon rewrites the entry from its own paths at every start, and logs a `WARN` when it is not registered (Linux: or lacks lingering).
 
+### Windows with the global modules outside node's folder
+
+The launcher runs from `<configDir>/bin/<stamp>/`, finds the bundle in `<folder of node>/node_modules` or by walking up `node_modules` from its own folder, and a Windows Run value cannot carry `LAUNCHER_BUNDLE_OVERRIDE`. With the global modules elsewhere (`%APPDATA%\npm`, the default of the Windows installer) the launcher answered `cannot find the bundle` at login (reproduced with the real launcher). `orch install` and the daemon start now put a junction `node_modules` in the staged folder, pointing at the global modules folder; no link when node's own folder holds them (nvm, `C:\App\nodejs`). A staged folder without it is `broken` above, so the next `orch` command repairs it. A real folder named `node_modules` there is left alone and reported. Not tested: a full reboot login on a machine with `%APPDATA%\npm`.
+
 ## Start at login on Linux (systemd user unit)
 
 Validated on a real Ubuntu x64 host (2026-10-31): `orch install`, then a reboot, and the daemon starts at boot. Not tested: other distributions, the sudo fallback for lingering. Linux on ARM is not shipped.
