@@ -737,7 +737,7 @@ describe('orch cli self-check', () => {
       console.error = origErr;
       delete process.env['CLI_SELF_CHECK_QUIET'];
     }
-    assert.equal(logged.length, 0, 'quiet mode must produce no output');
+    assert.equal(logged.length, 0, `quiet mode must produce no output, got: ${JSON.stringify(logged)}`);
   });
 });
 
