@@ -69,7 +69,8 @@ async function boot(send: Send): Promise<Host> {
 describe('the published routes', () => {
   it('are exactly the allow-list: every allowed route is registered, nothing else', async () => {
     const { registered, app } = await boot(async () => []);
-    expect([...registered].sort()).toEqual([...ALLOWED_ROUTES].sort());
+    // GET /health is the module's own (the update test of app-core-cli), registered beside the orch-core routes.
+    expect([...registered].sort()).toEqual([...ALLOWED_ROUTES, 'GET /health'].sort());
     await app.close();
   });
 

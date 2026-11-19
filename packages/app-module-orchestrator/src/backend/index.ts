@@ -4,6 +4,7 @@ import { jobsRoutes } from '@wadeck-app/orch-core/routes/jobs';
 import { logsRoutes, type LogsTimers } from '@wadeck-app/orch-core/routes/logs';
 import { openRoute } from '@wadeck-app/orch-core/routes/open';
 import { createRouteAdapter } from './adapter.js';
+import { registerHealthRoute } from './health.js';
 import { getOrchConfigDir } from './configDir.js';
 import { ALLOWED_ROUTES } from './routes.js';
 
@@ -44,6 +45,8 @@ export function createBackend({ configDir, proxy }: BackendDeps): (ctx: BackendC
     await logsRoutes(app, { configDir, idleTimer: NO_IDLE_TIMER, timers: contextTimers(ctx) });
     await openRoute(app, { idleTimer: NO_IDLE_TIMER });
     assertAllRegistered();
+    // Not an orch-core route and not in ALLOWED_ROUTES: it is what app-core-cli asks of every module before an update.
+    registerHealthRoute(ctx, proxy);
   };
 }
 
