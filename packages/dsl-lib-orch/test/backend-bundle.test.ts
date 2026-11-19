@@ -45,11 +45,12 @@ beforeAll(() => {
 });
 
 describe('the packaged backend', () => {
-  it('loads with a function as its default export and registers exactly the allowed routes', () => {
+  it('loads with a function as its default export and registers exactly the allowed routes and its own /health', () => {
     const loaded = loadLikeAppCore(backendFile);
 
     expect(loaded.type, 'app-core needs the default export to be the setup function itself').toBe('function');
-    expect(loaded.routes.sort()).toEqual([...ALLOWED_ROUTES].sort());
+    // GET /health is the module's own (the update test of app-core-cli), registered beside the orch-core routes.
+    expect(loaded.routes.sort()).toEqual([...ALLOWED_ROUTES, 'GET /health'].sort());
   });
 
   it('is self-contained: it requires no package at runtime, since app-core cannot resolve the module\'s dependencies', () => {
