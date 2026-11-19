@@ -719,3 +719,4 @@ app-core: refused module "orchestrator" (HTTP 400): <app-core's reason>. Fix the
 - A development instance (`ORCH_DEV_INSTANCE=1`) never registers, so a checkout cannot replace the
   installed module in app-core.
 - `appCore: false` stops all of it.
+- `GET /api/modules/orchestrator/health` is what `app-core-cli` asks before it switches to a new version: `{ ok, checks }` with one check, "the daemon answers" (read-only, from memory). A stopped daemon is `ok: false` and only refuses an app-core update when the running app-core answers `ok: true` there; otherwise it is a warning.
