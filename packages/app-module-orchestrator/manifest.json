@@ -61,6 +61,7 @@
       "slot": "route",
       "label": "Job",
       "path": "/jobs/:id",
+      "tab": { "group": "job", "label": "Overview", "order": 10 },
       "view": { "type": "path", "value": "./src/dsl-views/job.yaml" }
     },
     {
@@ -75,6 +76,7 @@
       "slot": "route",
       "label": "Job logs",
       "path": "/jobs/:id/logs",
+      "tab": { "group": "job", "label": "Logs", "order": 20 },
       "view": { "type": "path", "value": "./src/dsl-views/job-logs.yaml" }
     }
   ]
