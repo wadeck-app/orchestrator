@@ -559,6 +559,89 @@ describe('LogViewer', () => {
       expect(screen.queryByRole('button', { name: /kill/i })).toBeNull();
     });
   });
+
+  // The log page offered only Kill: ending a run to start it again meant leaving the page.
+  describe('restart action', () => {
+    const calls: Array<{ url: string; method?: string }> = [];
+
+    function stubRunning(restartAnswer: unknown = { started: true, pid: 4242, wasRunning: true }): void {
+      calls.length = 0;
+      vi.stubGlobal('fetch', (url: string, init?: { method?: string }) => {
+        calls.push({ url, method: init?.method });
+        if (url.endsWith('/restart')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(restartAnswer) });
+        }
+        if (url.includes('/runs')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          job: {}, runHistory: [{ startedAt: '2026-09-19T10:00:00Z', exitCode: null, pid: 1 }],
+        }) });
+      });
+    }
+
+    it('renders Restart next to Kill with the same chip geometry while the job runs', async () => {
+      stubRunning();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      const restart = await screen.findByRole('button', { name: /restart/i });
+      expect(restart.className).toMatch(/\bborder\b/);
+      expect(restart.className).toMatch(/\bpx-2\.5\b/);
+      expect(screen.getByRole('button', { name: /kill/i })).toBeInTheDocument();
+    });
+
+    it('does not render Restart once the job is not running', async () => {
+      vi.stubGlobal('fetch', (url: string) => {
+        if (url.includes('/runs')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          job: {}, runHistory: [{ startedAt: '2026-09-19T10:00:00Z', finishedAt: '2026-09-19T10:00:05Z', exitCode: 0, pid: 1 }],
+        }) });
+      });
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      await waitFor(() => { expect(screen.getByText('Ended')).toBeInTheDocument(); });
+      expect(screen.queryByRole('button', { name: /restart/i })).toBeNull();
+    });
+
+    it('asks first, and posts nothing when the question is dismissed', async () => {
+      stubRunning();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      fireEvent.click(await screen.findByRole('button', { name: /restart/i }));
+
+      expect(await screen.findByText('Restart this job?')).toBeInTheDocument();
+      expect(calls.some(c => c.url.endsWith('/restart'))).toBe(false);
+    });
+
+    it('posts the restart once confirmed and says the new pid', async () => {
+      stubRunning();
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      fireEvent.click(await screen.findByRole('button', { name: /restart/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Yes, restart' }));
+
+      expect(await screen.findByText(/new pid 4242/)).toBeInTheDocument();
+      expect(calls.filter(c => c.url.endsWith('/api/jobs/j1/restart') && c.method === 'POST')).toHaveLength(1);
+    });
+
+    it('says why the job was not restarted instead of staying silent', async () => {
+      stubRunning({ started: false, wasRunning: true, reason: 'liveness check failed: port 80 is closed' });
+      vi.stubGlobal('EventSource', MockEventSource);
+      renderInRouter(<LogViewer jobId="j1" />);
+
+      fireEvent.click(await screen.findByRole('button', { name: /restart/i }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Yes, restart' }));
+
+      expect(await screen.findByText(/liveness check failed: port 80 is closed/)).toBeInTheDocument();
+      expect(screen.getByText('Not restarted')).toBeInTheDocument();
+    });
+  });
 });
 
 // The log page of the app-core module shows the progress and the estimated end of the run in its toolbar, the same

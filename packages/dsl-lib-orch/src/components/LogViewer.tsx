@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { X, ArrowDown, Pause, CircleOff, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
+import { X, RotateCw, ArrowDown, Pause, CircleOff, ChevronsLeftRight, ChevronsRightLeft, Maximize2, Minimize2 } from 'lucide-react';
 import { ChipButton, CompactSelect, SearchBar, ThemeScope } from '@wadeck-app/dsl-ui';
 // Aliased: `isJobRunning` is already this component's state value.
 import { getErrorMessage, isJobRunning as jobHasOpenRun, type ProgressEstimate, type RuntimeEntry } from '../types.js';
@@ -9,7 +9,7 @@ import { LOG_FILL_HEIGHT_CLASS } from './log-fill-height.js';
 import { useWidePane, widthClass } from './log-pane-width.js';
 import { useConfirm } from '../use-confirm.js';
 import { getApiBase } from '../runtime-config.js';
-import { readErrorSentence } from '../trigger-job.js';
+import { postRestart, readErrorSentence } from '../trigger-job.js';
 // The pane paints with its own palette: a colour sequence a job wrote (older run files still hold some) would show
 // up as "[90m[2m(client)[22m[39m" around the text.
 import { stripEscapeSequences } from '../strip-ansi.js';
@@ -200,6 +200,7 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progres
   // were reading different variables.
   const [autoScroll, setAutoScroll] = useState(true);
   const [killing, setKilling] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const { ask, notify, dialog } = useConfirm();
   const [widePane, toggleWidePane] = useWidePane();
   const containerRef = useRef<HTMLPreElement>(null);
@@ -338,6 +339,37 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progres
     }
   };
 
+  // Ends the running instance and starts the job again, the same daemon call as the job page's Restart. Asks first,
+  // like Kill: the run in progress is lost.
+  const handleRestartJob = (): void => {
+    ask({
+      title: 'Restart this job?',
+      message: `Restart "${jobId}"? The running instance is ended, then started again.`,
+      confirmLabel: 'Yes, restart',
+      confirmVariant: 'primary',
+      onConfirm: () => { void restartNow(); },
+    });
+  };
+
+  const restartNow = async (): Promise<void> => {
+    setRestarting(true);
+    try {
+      const result = await postRestart(jobId, apiBase);
+      if (result.started) {
+        notify({ title: 'Restarted', message: `"${jobId}" was restarted (new pid ${result.pid ?? 'unknown'}).` });
+      } else {
+        notify({
+          title: 'Not restarted',
+          message: `${result.wasRunning ? 'The running instance was ended but the job was not started again. ' : ''}${result.reason ?? 'The daemon gave no reason.'}`,
+        });
+      }
+    } catch (err) {
+      notify({ title: 'Restart failed', message: getErrorMessage(err) });
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   const handleAutoScrollToggle = (): void => {
     // The next value is computed once and used for both the state and the scroll. Branching on
     // `autoScroll` after calling the setter read the value from before the click, so resuming
@@ -414,6 +446,19 @@ export function LogViewer({ jobId, apiBase = getApiBase(), fill = false, progres
               the same row as the others. One component means one geometry, which is the point of
               going through the design system rather than hand-tuning each control to match. */}
           <div className="flex items-center gap-1.5">
+            {isJobRunning && (
+              <ChipButton
+                active={false}
+                aria-pressed={false}
+                shape="square"
+                onClick={() => { if (!restarting) { handleRestartJob(); } }}
+                title={restarting ? 'Restarting...' : `Restart job "${jobId}"`}
+                className={restarting ? 'gap-1 opacity-50 cursor-not-allowed' : 'gap-1'}
+              >
+                <RotateCw size={12} />
+                {restarting ? 'Restarting...' : 'Restart'}
+              </ChipButton>
+            )}
             {isJobRunning && (
               <ChipButton
                 active
