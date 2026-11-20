@@ -73,3 +73,44 @@ describe('orch remove', () => {
     assert.equal(await removeWith(undefined), '');
   });
 });
+
+// The removal's own advice is `orch kill <id>`: it has to work on an id that is no longer a job, or the run stays unreachable.
+describe('orch kill of an id that is no longer a job', () => {
+  async function killWith(handlers) {
+    const out = [];
+    const errs = [];
+    const origErr = console.error;
+    const origLog = console.log;
+    const origExit = process.exit;
+    console.error = (m) => { errs.push(String(m)); };
+    console.log = (m) => { out.push(String(m)); };
+    process.exit = (code) => { throw new Error(`exit ${code}`); };
+    let exit = null;
+    try {
+      await runCli(['kill', 'gone'], {
+        send: async (cmd) => handlers[cmd]?.(), startDaemon: () => {}, configDir: os.tmpdir(),
+      });
+    } catch (err) {
+      exit = err.message;
+    } finally {
+      console.error = origErr;
+      console.log = origLog;
+      process.exit = origExit;
+    }
+    return { out: out.join('\n'), err: errs.join('\n'), exit };
+  }
+
+  test('ends the run that is still going', async () => {
+    const r = await killWith({ 'get-job': () => null, 'kill-job': () => ({ killed: true, count: 1 }) });
+
+    assert.equal(r.exit, null);
+    assert.match(r.out, /Job "gone" killed/);
+  });
+
+  test('still says unknown when nothing was running under that id', async () => {
+    const r = await killWith({ 'get-job': () => null, 'kill-job': () => ({ killed: false }) });
+
+    assert.match(r.err, /Unknown job "gone"/);
+    assert.equal(r.exit, 'exit 1');
+  });
+});

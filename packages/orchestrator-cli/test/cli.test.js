@@ -973,10 +973,11 @@ describe('orch kill', () => {
     assert.equal(exitCode, 0);
   });
 
-  test('an unknown id fails without firing a kill', async () => {
-    const { calls, exitCode } = await runKill(['kill', 'typo'], { 'get-job': null });
-    assert.deepEqual(calls.map(c => c.command), ['get-job'],
-      'kill-job must not be sent for a job that does not exist');
+  // The id is still offered to kill-job: a removed job can have a run going (orch remove says so), and only the
+  // daemon knows. Nothing running under it is a typo, answered as unknown.
+  test('an unknown id with no run going fails as unknown', async () => {
+    const { calls, exitCode } = await runKill(['kill', 'typo'], { 'get-job': null, 'kill-job': { killed: false } });
+    assert.deepEqual(calls.map(c => c.command), ['get-job', 'kill-job']);
     assert.equal(exitCode, 1);
   });
 
@@ -1005,9 +1006,9 @@ describe('orch kill', () => {
     assert.deepEqual(killed.calls.map(c => c.command), ['get-job', 'kill-job']);
     assert.equal(killed.exitCode, 0);
 
-    const unknown = await runKill(['terminate', 'typo'], { 'get-job': null });
-    assert.deepEqual(unknown.calls.map(c => c.command), ['get-job'],
-      'the alias must not send kill-job for a job that does not exist');
+    const unknown = await runKill(['terminate', 'typo'], { 'get-job': null, 'kill-job': { killed: false } });
+    assert.deepEqual(unknown.calls.map(c => c.command), ['get-job', 'kill-job'],
+      'the alias resolves the id the same way: a typo is unknown, a removed job with a run going is killed');
     assert.equal(unknown.exitCode, 1);
   });
 });

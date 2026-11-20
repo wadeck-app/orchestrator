@@ -1794,11 +1794,13 @@ Use --wait to block until the command finishes.`);
       // running, so resolve the job first. Reporting "not running" for a typo would send the
       // user looking for a scheduling problem that does not exist.
       const job = await send('get-job', { id }) as { id: string } | null;
-      if (job === null) {
-        console.error(`Unknown job "${id}". List them with: orch list`);
+      const { killed, count, cancelledRestart } = await send('kill-job', { id }) as { killed: boolean; count?: number; cancelledRestart?: boolean };
+      // An id that is not a job may still have a run going: `orch remove` does not end it and tells to use this command.
+      // Only when nothing was running under it is it a typo.
+      if (job === null && !killed) {
+        console.error(`Unknown job "${id}" (and no run of that id is going). List them with: orch list`);
         process.exit(1);
       }
-      const { killed, count, cancelledRestart } = await send('kill-job', { id }) as { killed: boolean; count?: number; cancelledRestart?: boolean };
       // Not an error: asking for a stopped job to stop is idempotent. Said out loud, though,
       // so a script does not read silence as "killed". `count` is absent from an older daemon.
       const instances = count !== undefined && count > 1 ? ` (${count} instances)` : '';
