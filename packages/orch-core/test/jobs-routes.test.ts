@@ -348,6 +348,16 @@ describe('Jobs API Routes', () => {
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body)).toEqual({ leftovers });
     });
+
+    // The removal does not end a run that is going: the caller has to be told, or the run is left with nobody to stop it.
+    it('answers 200 with how many runs are still going', async () => {
+      mockProxy.send = async () => ({ stillRunning: 1 });
+
+      const res = await app.inject({ method: 'DELETE', url: '/api/jobs/job1' });
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({ stillRunning: 1 });
+    });
   });
 
   describe('POST /api/jobs/:id/trigger', () => {

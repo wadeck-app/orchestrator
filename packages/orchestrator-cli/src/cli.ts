@@ -1523,8 +1523,13 @@ Example: orch ensure startup machine --command "\\"C:\\\\Program Files\\\\machin
         say(`absent ${id}`);
         break;
       }
-      const reply = await send('remove-job', { id }) as { leftovers?: Array<{ path: string; reason: string }> } | undefined;
+      const reply = await send('remove-job', { id }) as { leftovers?: Array<{ path: string; reason: string }>; stillRunning?: number } | undefined;
       say(has(removeRest, '--if-exists') ? `removed ${id}` : `Job "${id}" removed.`);
+      // A removal does not end a run that is going: said, with the way to end it (the kill works on an id that is no longer a job).
+      if (reply?.stillRunning !== undefined && reply.stillRunning > 0) {
+        const n = reply.stillRunning;
+        console.error(`${n} run${n === 1 ? '' : 's'} of "${id}" ${n === 1 ? 'is' : 'are'} still going: the removal does not stop ${n === 1 ? 'it' : 'them'}. End ${n === 1 ? 'it' : 'them'} with: orch kill ${id}`);
+      }
       // The job is gone; some of its derived data could not be deleted (a locked file), so say which and why.
       if (reply?.leftovers && reply.leftovers.length > 0) {
         const lines = reply.leftovers.map((l) => `  ${l.path || '(job id)'}: ${l.reason}`);

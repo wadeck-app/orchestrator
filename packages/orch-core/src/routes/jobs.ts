@@ -200,9 +200,13 @@ export async function jobsRoutes(
       const { id } = req.params as { id: string };
       const result = await proxy.send('remove-job', { id });
       // Data of the job the daemon could not delete (a locked file): the job is gone, so not an error, but not silent either.
-      const leftovers = (result as { leftovers?: unknown } | null | undefined)?.leftovers;
-      if (Array.isArray(leftovers) && leftovers.length > 0) {
-        return reply.code(200).send({ leftovers });
+      const answer = result as { leftovers?: unknown; stillRunning?: unknown } | null | undefined;
+      const leftovers = answer?.leftovers;
+      // A run that is going is not stopped by the removal: said too, so the caller can end it (kill works on an id that is no longer a job).
+      const stillRunning = typeof answer?.stillRunning === 'number' && answer.stillRunning > 0 ? answer.stillRunning : undefined;
+      const hasLeftovers = Array.isArray(leftovers) && leftovers.length > 0;
+      if (hasLeftovers || stillRunning !== undefined) {
+        return reply.code(200).send({ ...(hasLeftovers ? { leftovers } : {}), ...(stillRunning !== undefined ? { stillRunning } : {}) });
       }
       return reply.code(204).send();
     });

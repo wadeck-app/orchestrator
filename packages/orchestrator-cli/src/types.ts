@@ -414,7 +414,7 @@ export type OrchestratorCommands = {
   'get-job':     (payload?: unknown) => Job | null;
   'add-job':     (payload?: unknown) => Job;
   /** Replies with `leftovers` (path + reason) only when some derived data of the job could not be deleted. */
-  'remove-job':  (payload?: unknown) => { leftovers: Array<{ path: string; reason: string }> } | void;
+  'remove-job':  (payload?: unknown) => { leftovers?: Array<{ path: string; reason: string }>; stillRunning?: number } | void;
   'enable-job':  (payload?: unknown) => void;
   'disable-job': (payload?: unknown) => void;
   'edit-job':    (payload?: unknown) => Job;

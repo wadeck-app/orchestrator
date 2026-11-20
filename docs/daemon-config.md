@@ -199,6 +199,7 @@ hides spent jobs (use `--past`); the dashboard has a "Past once" filter chip.
 | `tmp/<id>/` when empty | |
 
 - A job with a run in progress keeps its telemetry, resource history and history: the run is still writing them. They are listed as `leftovers`.
+- The removal does not end a run in progress. `orch remove` says how many runs are still going (stderr, with `orch kill <id>`), and `DELETE /api/jobs/:id` answers 200 with `stillRunning`. `orch kill <id>` still works on an id that is no longer a job.
 - A file that cannot be deleted (locked on Windows) never fails the removal. The daemon log has one line per path and the reply carries `leftovers: [{path, reason}]` (CLI: printed on stderr; REST: `200` instead of `204`). Delete those by hand.
 - Adding a job whose telemetry or resource history already exists (older version, crash) drops them first and logs one line.
 - The audit line `job.deleted` carries `cleaned: {telemetry, resourceHistory, runs}` (counts).

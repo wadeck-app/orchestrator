@@ -108,8 +108,13 @@ export function makeCommands(
       }
       reportLeftovers('removed', id, cleanup);
       audit?.log('job.deleted', { jobId: id, label: job?.label, type: job?.type, cleaned: cleanup.cleaned });
-      // Only said when something is left, so a caller that ignores the reply loses nothing.
-      return cleanup.leftovers.length > 0 ? { leftovers: cleanup.leftovers } : undefined;
+      // Only said when something is left, so a caller that ignores the reply loses nothing. A run that is still going is
+      // said too: the removal does not stop it, and nothing else would tell its owner that it is still there.
+      const reply = {
+        ...(cleanup.leftovers.length > 0 ? { leftovers: cleanup.leftovers } : {}),
+        ...(running ? { stillRunning: scheduler.runningCount(id) } : {}),
+      };
+      return Object.keys(reply).length > 0 ? reply : undefined;
     },
 
     'enable-job':  (p) => {
