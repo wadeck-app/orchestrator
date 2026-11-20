@@ -313,7 +313,7 @@ For a server that must come back after ANY exit: `orch add startup web --command
 - `--json`: `{ "id", "result", "changed", "restarted"? }`. Exit codes as the rest of the CLI: 1 error, 2 daemon could not be started, 4 usage.
 - `--command` is a shell string (`cmd.exe` on Windows, `sh` elsewhere) and is compared exactly: quote a path with spaces yourself.
 - `orch remove <id> --if-exists` is the uninstall: `removed <id>` or `absent <id>`, exit 0 for both.
-- A job that must not start a second copy of a singleton: `--liveness-strategy portFile --liveness-port-file <path>`; the start (startup, schedule, trigger, `restart-job`) is skipped while the pid in the file is alive. A `restartOnExit` restart does not run the check.
+- A job that must not start a second copy of a singleton: `--liveness-strategy portFile --liveness-port-file <path>`; the start (startup, schedule, catch-up, `restart-job`) is skipped while the pid in the file is alive. Two starts do not run the check: a manual `orch trigger` (someone asked, a second copy starts; seen on a real job) and a `restartOnExit` restart.
 
 ## Rotating the log of a run -- `logRotation`
 
