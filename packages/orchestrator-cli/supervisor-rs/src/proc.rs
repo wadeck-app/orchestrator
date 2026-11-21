@@ -1,5 +1,6 @@
 // Platform part: how the job is started, how its tree is ended, how its end is reported.
-// The Windows branch is the one compiled and tested here. The Unix branch (#[cfg(unix)]) is NOT compiled or tested.
+// Both branches are built and tested: the Windows one locally, the unix one (Linux, macOS) by CI (build, unit tests and
+// the differential against the Go supervisor). A change to the unix branch cannot be compiled on a Windows machine.
 
 use crate::run::Spec;
 use std::process::Command;
@@ -52,7 +53,6 @@ mod imp {
     use super::*;
     use std::os::unix::process::{CommandExt, ExitStatusExt};
     use std::process::ExitStatus;
-    use std::time::Duration;
 
     extern "C" {
         fn kill(pid: i32, sig: i32) -> i32;
@@ -76,28 +76,53 @@ mod imp {
 
     /// SIGTERM to the whole group, SIGKILL once the grace period has passed.
     pub fn end_tree(pid: u32, spec: &Spec) {
-        let grace = if spec.kill_grace_ms > 0 { spec.kill_grace_ms } else { crate::run::DEFAULT_KILL_GRACE_MS };
         unsafe {
             kill(-(pid as i32), SIGTERM);
         }
-        std::thread::sleep(Duration::from_millis(grace as u64));
+        // Go's time.Sleep returns at once for a duration that wrapped to zero or less.
+        if let Some(grace) = crate::run::kill_grace(spec.kill_grace_ms) {
+            std::thread::sleep(grace);
+        }
         unsafe {
             kill(-(pid as i32), SIGKILL);
         }
     }
 
-    /// Go's syscall.Signal.String() on Linux (the table of zerrors_linux_*.go; macOS names differ for some signals).
+    // @formatter:off
+    // The names of Go's syscall.Signal.String() are the `signals` table of the platform's zerrors file, copied as is.
+    // Index 0 is empty (Go has no entry for 0) and so is any number the table does not name: Go then prints "signal N".
+    // Shipped unix targets (PLATFORM_TARGETS): linux-x64 and darwin-arm64.
+
+    /// GOROOT/src/syscall/zerrors_linux_amd64.go, `var signals` (Go 1.26.5).
+    #[cfg(target_os = "linux")]
+    const SIGNALS: [&str; 32] = [
+        "", "hangup", "interrupt", "quit", "illegal instruction", "trace/breakpoint trap", "aborted", "bus error",
+        "floating point exception", "killed", "user defined signal 1", "segmentation fault", "user defined signal 2",
+        "broken pipe", "alarm clock", "terminated", "stack fault", "child exited", "continued", "stopped (signal)",
+        "stopped", "stopped (tty input)", "stopped (tty output)", "urgent I/O condition", "CPU time limit exceeded",
+        "file size limit exceeded", "virtual timer expired", "profiling timer expired", "window changed",
+        "I/O possible", "power failure", "bad system call",
+    ];
+
+    /// GOROOT/src/syscall/zerrors_darwin_arm64.go, `var signals` (Go 1.26.5).
+    #[cfg(target_os = "macos")]
+    const SIGNALS: [&str; 32] = [
+        "", "hangup", "interrupt", "quit", "illegal instruction", "trace/BPT trap", "abort trap", "EMT trap",
+        "floating point exception", "killed", "bus error", "segmentation fault", "bad system call", "broken pipe",
+        "alarm clock", "terminated", "urgent I/O condition", "suspended (signal)", "suspended", "continued",
+        "child exited", "stopped (tty input)", "stopped (tty output)", "I/O possible", "cputime limit exceeded",
+        "filesize limit exceeded", "virtual timer expired", "profiling timer expired", "window size changes",
+        "information request", "user defined signal 1", "user defined signal 2",
+    ];
+    // @formatter:on
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    compile_error!("no Go signal-name table for this unix: copy the `signals` array of GOROOT/src/syscall/zerrors_<os>_<arch>.go into proc.rs");
+
+    /// Go's Signal.String(): the table entry, or "signal N" for a number outside the table or without a name.
     fn signal_name(sig: i32) -> String {
-        const NAMES: [&str; 32] = [
-            "", "hangup", "interrupt", "quit", "illegal instruction", "trace/breakpoint trap", "aborted", "bus error",
-            "floating point exception", "killed", "user defined signal 1", "segmentation fault", "user defined signal 2",
-            "broken pipe", "alarm clock", "terminated", "stack fault", "child exited", "continued", "stopped (signal)",
-            "stopped", "stopped (tty input)", "stopped (tty output)", "urgent I/O condition", "CPU time limit exceeded",
-            "file size limit exceeded", "virtual timer expired", "profiling timer expired", "window changed",
-            "I/O possible", "power failure", "bad system call",
-        ];
-        match NAMES.get(sig as usize) {
-            Some(n) if sig > 0 => n.to_string(),
+        match usize::try_from(sig).ok().and_then(|i| SIGNALS.get(i)) {
+            Some(name) if !name.is_empty() => name.to_string(),
             _ => format!("signal {sig}"),
         }
     }
@@ -106,6 +131,58 @@ mod imp {
         match st.signal() {
             Some(sig) => (None, signal_name(sig)),
             None => (st.code().map(|c| c as i64), String::new()),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::signal_name;
+
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn names_follow_go_zerrors_linux_amd64() {
+            assert_eq!(signal_name(1), "hangup");
+            assert_eq!(signal_name(7), "bus error");
+            assert_eq!(signal_name(9), "killed");
+            assert_eq!(signal_name(10), "user defined signal 1");
+            assert_eq!(signal_name(12), "user defined signal 2");
+            assert_eq!(signal_name(15), "terminated");
+            assert_eq!(signal_name(16), "stack fault");
+            assert_eq!(signal_name(17), "child exited");
+            assert_eq!(signal_name(18), "continued");
+            assert_eq!(signal_name(19), "stopped (signal)");
+            assert_eq!(signal_name(20), "stopped");
+            assert_eq!(signal_name(29), "I/O possible");
+            assert_eq!(signal_name(30), "power failure");
+            assert_eq!(signal_name(31), "bad system call");
+        }
+
+        #[cfg(target_os = "macos")]
+        #[test]
+        fn names_follow_go_zerrors_darwin_arm64() {
+            assert_eq!(signal_name(1), "hangup");
+            assert_eq!(signal_name(7), "EMT trap");
+            assert_eq!(signal_name(9), "killed");
+            assert_eq!(signal_name(10), "bus error");
+            assert_eq!(signal_name(12), "bad system call");
+            assert_eq!(signal_name(15), "terminated");
+            assert_eq!(signal_name(16), "urgent I/O condition");
+            assert_eq!(signal_name(17), "suspended (signal)");
+            assert_eq!(signal_name(18), "suspended");
+            assert_eq!(signal_name(19), "continued");
+            assert_eq!(signal_name(20), "child exited");
+            assert_eq!(signal_name(29), "information request");
+            assert_eq!(signal_name(30), "user defined signal 1");
+            assert_eq!(signal_name(31), "user defined signal 2");
+        }
+
+        // Go: a number outside the table, or 0 / negative, prints "signal N".
+        #[test]
+        fn unnamed_numbers_fall_back_to_signal_n() {
+            assert_eq!(signal_name(0), "signal 0");
+            assert_eq!(signal_name(32), "signal 32");
+            assert_eq!(signal_name(64), "signal 64");
+            assert_eq!(signal_name(-1), "signal -1");
         }
     }
 }

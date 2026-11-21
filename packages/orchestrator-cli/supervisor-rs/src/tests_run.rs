@@ -475,3 +475,106 @@ fn accepts_the_context_block_and_ignores_unknown_fields() {
     assert_eq!(run(&dir.path().display().to_string()), 0);
     assert_eq!(read_status(dir.path()).str("state"), "exited");
 }
+
+// Go creates status.json, the heartbeat and every run log segment with 0o644 (os.WriteFile / os.OpenFile); std's default
+// is 0o666 & !umask, so 0o664 under the usual umask 002. umask is process-wide while the tests run on parallel threads:
+// this test is the only one that reads modes, and a umask of 0 only makes the other tests' files more permissive, so
+// they cannot fail from it. With umask 0, std's default would give 0o666: the assertion tells the two behaviours apart.
+#[cfg(unix)]
+#[test]
+fn creates_status_heartbeat_and_log_segments_with_mode_0644() {
+    use std::os::unix::fs::PermissionsExt;
+    extern "C" {
+        fn umask(mask: u32) -> u32;
+    }
+    struct RestoreUmask(u32);
+    impl Drop for RestoreUmask {
+        fn drop(&mut self) {
+            unsafe {
+                umask(self.0);
+            }
+        }
+    }
+    let _restore = RestoreUmask(unsafe { umask(0) });
+
+    let d = TempDir::new();
+    // 200 bytes per segment and a dozen lines: the run log has a second segment, created by the rotation.
+    let command = js_command(d.path(), r#"for (let i = 0; i < 12; i++) console.log("row " + i + " " + "p".repeat(40))"#);
+    let s = start_run(TestSpec { command, rotation: Some(LogRotation { max_bytes: 200, keep_segments: 50 }), ..Default::default() });
+    let (dir, code) = finish(s);
+    assert_eq!(code, 0);
+    let mode = |name: &str| fs::metadata(dir.path().join(name)).unwrap_or_else(|e| panic!("{name}: {e}")).permissions().mode() & 0o777;
+    assert_eq!(mode("status.json"), 0o644, "status.json (created as status.json.<pid>.tmp, then renamed)");
+    assert_eq!(mode("heartbeat"), 0o644, "heartbeat");
+    assert_eq!(mode("run.log"), 0o644, "run log, segment 1");
+    assert_eq!(mode("run.log.2"), 0o644, "run log, segment 2 (created by the rotation)");
+}
+
+// Go computes time.Duration(n) * time.Second in int64 nanoseconds, which wraps: these pin the same arithmetic.
+#[test]
+fn go_duration_wraps_like_go_int64_nanoseconds() {
+    use crate::run::go_duration;
+    assert_eq!(go_duration(2, 1_000_000_000), Some(Duration::from_secs(2)));
+    // 2^63 - 1 seconds * 1e9 wraps to -1e9 ns.
+    assert_eq!(go_duration(i64::MAX, 1_000_000_000), None);
+    // 2^55 seconds * 1e9 = 2^64 * 5^9 wraps to exactly 0.
+    assert_eq!(go_duration(1 << 55, 1_000_000_000), None);
+    // The largest product that still fits.
+    assert_eq!(go_duration(9_223_372_036, 1_000_000_000), Some(Duration::from_secs(9_223_372_036)));
+}
+
+#[test]
+fn a_timeout_that_wraps_in_go_is_a_deadline_already_past() {
+    use crate::run::deadline_of;
+    let t0 = Instant::now();
+    assert_eq!(deadline_of(t0, 0), None);
+    assert_eq!(deadline_of(t0, -5), None);
+    assert_eq!(deadline_of(t0, 3), Some(t0 + Duration::from_secs(3)));
+    // Go: the wrapped duration is negative (or zero), the deadline is before (or at) the start: the first poll ends the job.
+    assert_eq!(deadline_of(t0, i64::MAX), Some(t0));
+    assert_eq!(deadline_of(t0, 1 << 55), Some(t0));
+    // A huge product that does not wrap is a deadline centuries away: never reached, and no panic.
+    let far = deadline_of(t0, 9_223_372_036);
+    assert!(far.map_or(true, |d| d > t0 + Duration::from_secs(3600 * 24 * 365)));
+}
+
+#[test]
+fn a_huge_timeout_seconds_ends_the_job_at_once_as_go_does() {
+    let d = TempDir::new();
+    let s = start_run(TestSpec { command: js_command(d.path(), "setInterval(() => {}, 1000)"), timeout_seconds: i64::MAX, ..Default::default() });
+    let (dir, code) = finish(s);
+    assert_eq!(code, 0);
+    let st = read_status(dir.path());
+    assert!(st.bool("timedOut") && st.str("state") == "exited", "a wrapped (negative) timeout is already over: want timed out and exited");
+}
+
+#[test]
+fn kill_grace_follows_go_duration_arithmetic() {
+    use crate::run::kill_grace;
+    assert_eq!(kill_grace(0), Some(Duration::from_millis(300)));
+    assert_eq!(kill_grace(-4), Some(Duration::from_millis(300)));
+    assert_eq!(kill_grace(50), Some(Duration::from_millis(50)));
+    // i64::MAX ms * 1e6 wraps to -1e6 ns: Go's Sleep returns at once.
+    assert_eq!(kill_grace(i64::MAX), None);
+}
+
+// Go's time.Ticker drops the ticks missed during a stall and resumes on its original grid.
+#[test]
+fn next_tick_keeps_the_steady_rhythm_and_drops_missed_ticks() {
+    use crate::run::next_tick;
+    let t0 = Instant::now();
+    let p = Duration::from_millis(100);
+    // Steady state: handled a little after it was due (or exactly on time): the next one is due + period.
+    assert_eq!(next_tick(t0, p, t0), t0 + p);
+    assert_eq!(next_tick(t0, p, t0 + Duration::from_millis(30)), t0 + p);
+    assert_eq!(next_tick(t0, p, t0 + Duration::from_millis(99)), t0 + p);
+    // Just late by a whole period: the one in between is gone, the next lies on the grid.
+    assert_eq!(next_tick(t0, p, t0 + p), t0 + p * 2);
+    // A stall of 10.5 periods: no burst of 10 beats, the next beat is the next grid point after now.
+    assert_eq!(next_tick(t0, p, t0 + Duration::from_millis(1050)), t0 + Duration::from_millis(1100));
+    // Never in the past.
+    for late_ms in [0u64, 1, 99, 100, 101, 5_000, 3_600_000] {
+        let now = t0 + Duration::from_millis(late_ms);
+        assert!(next_tick(t0, p, now) > now);
+    }
+}

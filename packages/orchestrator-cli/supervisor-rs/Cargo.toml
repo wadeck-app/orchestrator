@@ -16,6 +16,9 @@ serde_json = ["dep:serde_json"]
 name = "orchestrator-supervisor"
 path = "src/main.rs"
 
+# FOR MEASUREMENT ONLY (scripts/measure*.mjs): never ship this profile. panic = "abort" kills the supervisor on any
+# panic without unwinding, leaving the run's status.json at "running" for ever. The shipping profile is `release`
+# (panic = unwind, the default).
 [profile.size]
 inherits = "release"
 opt-level = "z"

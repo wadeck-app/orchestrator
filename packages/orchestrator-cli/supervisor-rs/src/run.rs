@@ -71,11 +71,8 @@ impl Status {
         if self.child_pid != 0 {
             s.push_str(&format!(",\"childPid\":{}", self.child_pid));
         }
-        let strings = [("startedAt", &self.started_at)];
-        for (k, v) in strings {
-            if !v.is_empty() {
-                s.push_str(&format!(",\"{k}\":{}", quote(v)));
-            }
+        if !self.started_at.is_empty() {
+            s.push_str(&format!(",\"startedAt\":{}", quote(&self.started_at)));
         }
         if !self.finished_at.is_empty() {
             s.push_str(&format!(",\"finishedAt\":{}", quote(&self.finished_at)));
@@ -103,14 +100,77 @@ impl Status {
     }
 }
 
+/// Go's `time.Duration(n) * unit`: int64 nanoseconds, so a huge n wraps around instead of failing. None when the result is
+/// zero or negative (Go: a timer or a sleep of that length is already over; NewTicker panics, see `run`).
+pub fn go_duration(n: i64, unit_ns: i64) -> Option<Duration> {
+    let ns = n.wrapping_mul(unit_ns);
+    if ns > 0 {
+        Some(Duration::from_nanos(ns as u64))
+    } else {
+        None
+    }
+}
+
+/// How long the unix end_tree waits between SIGTERM and SIGKILL: Go's `time.Duration(orDefault(KillGraceMs, 300)) *
+/// time.Millisecond`, None when that wraps to zero or less (Go's time.Sleep then returns at once).
+#[cfg_attr(windows, allow(dead_code))]
+pub fn kill_grace(kill_grace_ms: i64) -> Option<Duration> {
+    go_duration(if kill_grace_ms > 0 { kill_grace_ms } else { DEFAULT_KILL_GRACE_MS }, 1_000_000)
+}
+
+/// The instant of the job's deadline for `timeout_seconds`, as Go computes it: `startedAt.Add(time.Duration(seconds) *
+/// time.Second)` where the product wraps in int64 nanoseconds. A product that wraps to zero or less is a deadline
+/// already past: the job is ended at the first control poll. None: no deadline (not positive, or beyond what an Instant
+/// can hold, where Go's wall clock holds up to 292 years: the same as never).
+pub fn deadline_of(started_at: Instant, timeout_seconds: i64) -> Option<Instant> {
+    if timeout_seconds <= 0 {
+        return None;
+    }
+    match go_duration(timeout_seconds, 1_000_000_000) {
+        Some(d) => started_at.checked_add(d),
+        None => Some(started_at),
+    }
+}
+
+/// `now + d`, kept inside what an Instant can hold (a year at most: only a heartbeat of absurd length is cut).
+fn instant_after(now: Instant, d: Duration) -> Instant {
+    now.checked_add(d).unwrap_or_else(|| now + Duration::from_secs(365 * 24 * 3600))
+}
+
+/// The next tick of a ticker whose tick `due` has just been handled at `now`. Go's time.Ticker drops the ticks a slow
+/// receiver missed (a laptop suspend, a stopped process) and goes on at the next point of its original grid: one beat after
+/// a stall, not one per missed period. In steady state (now before due + period) this is exactly due + period.
+pub fn next_tick(due: Instant, period: Duration, now: Instant) -> Instant {
+    let behind = now.saturating_duration_since(due).as_nanos();
+    let skipped = behind / period.as_nanos().max(1);
+    let periods = u32::try_from(skipped + 1).unwrap_or(u32::MAX);
+    match period.checked_mul(periods).and_then(|d| due.checked_add(d)) {
+        Some(t) => t,
+        None => instant_after(now, period),
+    }
+}
+
 fn stamp(t: Duration) -> String {
     rfc3339_nano(t)
+}
+
+/// os.WriteFile(path, data, 0o644): create or truncate for writing. On unix the mode is 0o644 whatever the umask lets
+/// through (std's default is 0o666, so 0o664 under umask 002); an existing file keeps its mode, as in Go.
+fn create_file(path: &Path) -> io::Result<fs::File> {
+    let mut o = fs::OpenOptions::new();
+    o.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o644);
+    }
+    o.open(path)
 }
 
 /// Replaces status.json in one rename, so a reader never sees half of it.
 pub fn write_status(run_dir: &Path, st: &Status) -> io::Result<()> {
     let tmp = run_dir.join(format!("status.json.{}.tmp", std::process::id()));
-    fs::write(&tmp, st.to_json())?;
+    create_file(&tmp)?.write_all(st.to_json().as_bytes())?;
     // A rename can fail for a moment on Windows while a reader or a virus scanner holds the target: the final
     // status carries the exit code, so it is worth a few tries before giving up.
     let target = run_dir.join("status.json");
@@ -219,7 +279,7 @@ pub fn read_spec(run_dir: &Path, run_dir_text: &str) -> Result<Spec, String> {
 
 /// Records one more beat: the counter is the evidence, the modification time is only a convenience.
 fn touch(path: &Path, beat: u64) {
-    if let Ok(mut f) = fs::File::create(path) {
+    if let Ok(mut f) = create_file(path) {
         if f.write_all(beat.to_string().as_bytes()).is_ok() {
             let _ = f.set_modified(std::time::SystemTime::now());
         }
@@ -371,20 +431,22 @@ pub fn run(run_dir_text: &str) -> i32 {
         let _ = tx.send(child.wait());
     });
 
-    let heartbeat = Duration::from_millis(if spec.heartbeat_ms > 0 { spec.heartbeat_ms } else { DEFAULT_HEARTBEAT_MS } as u64);
+    // Go: time.NewTicker panics when the period wrapped to zero or less (heartbeatMs near 2^63 / 1e6 and above), after
+    // status.json said "running" and with the job left alone. Not reproduced: say so and use the default.
+    let heartbeat_ms = if spec.heartbeat_ms > 0 { spec.heartbeat_ms } else { DEFAULT_HEARTBEAT_MS };
+    let heartbeat = go_duration(heartbeat_ms, 1_000_000).unwrap_or_else(|| {
+        eprintln!("orchestrator-supervisor: heartbeatMs {heartbeat_ms} is out of range (Go would panic here): using {DEFAULT_HEARTBEAT_MS} ms");
+        Duration::from_millis(DEFAULT_HEARTBEAT_MS as u64)
+    });
     let poll = heartbeat.min(Duration::from_millis(MAX_CONTROL_POLL_MS));
     let heartbeat_path = run_dir.join("heartbeat");
     let kill_path = run_dir.join("kill");
     let mut beats: u64 = 1;
     touch(&heartbeat_path, beats);
-    let mut next_beat = Instant::now() + heartbeat;
-    let mut next_poll = Instant::now() + poll;
+    let mut next_beat = instant_after(Instant::now(), heartbeat);
+    let mut next_poll = instant_after(Instant::now(), poll);
 
-    let deadline = if spec.timeout_seconds > 0 {
-        Some(started_at + Duration::from_secs(spec.timeout_seconds as u64))
-    } else {
-        None
-    };
+    let deadline = deadline_of(started_at, spec.timeout_seconds);
     let mut fin = running.clone();
     let exit_status = loop {
         let wait = next_beat.min(next_poll).saturating_duration_since(Instant::now());
@@ -399,10 +461,10 @@ pub fn run(run_dir_text: &str) -> i32 {
         if now >= next_beat {
             beats += 1;
             touch(&heartbeat_path, beats);
-            next_beat += heartbeat;
+            next_beat = next_tick(next_beat, heartbeat, now);
         }
         if now >= next_poll {
-            next_poll += poll;
+            next_poll = next_tick(next_poll, poll, now);
             if !fin.killed && file_exists(&kill_path) {
                 fin.killed = true;
                 fin.kill_reason = read_kill_reason(&kill_path);

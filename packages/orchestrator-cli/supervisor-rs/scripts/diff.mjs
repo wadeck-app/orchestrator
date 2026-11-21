@@ -106,6 +106,35 @@ setInterval(()=>{},1000)`)(dir);
   { name: "failed-bad-json", command: () => "x", rawSpec: () => "{not json" },
   { name: "failed-json-array", command: () => "x", rawSpec: () => "[1,2]" },
   { name: "failed-json-null", command: () => "x", rawSpec: () => "null" },
+  { name: "failed-empty-spec-file", command: () => "x", rawSpec: () => "" },
+  { name: "failed-trailing-data", command: () => "x", rawSpec: (d) => `{"command":"x","logPath":${JSON.stringify(path.join(d, "run.log"))}} trailing` },
+  // A valid surrogate pair escape (U+1F600) and a lone one (Go and Rust both decode it to U+FFFD), written as JSON escapes.
+  {
+    name: "command-surrogate-escapes",
+    command: () => "x",
+    rawSpec: (d) => `{"command":"echo A\ud83d\ude00B\ud800C","logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":50}`,
+  },
+  // Duplicate keys: the last one wins (here the first command would exit 9).
+  {
+    name: "duplicate-keys-last-wins",
+    command: js(`console.log("second wins")`),
+    rawSpec: (d, c) => `{"command":"exit 9","command":${JSON.stringify(c)},"logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":50,"heartbeatMs":50}`,
+  },
+  // Go: time.Duration(seconds) * time.Second wraps in int64 nanoseconds. 2^63-1 s wraps negative and 2^55 s wraps to
+  // exactly 0: in both the deadline is already past, so the first poll ends the job. 9223372036 s fits (292 years).
+  {
+    name: "timeout-wraps-negative",
+    command: js(`console.log("start"); setInterval(()=>{},1000)`),
+    rawSpec: (d, c) => `{"command":${JSON.stringify(c)},"logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":50,"timeoutSeconds":9223372036854775807}`,
+    expectSignal: true,
+  },
+  {
+    name: "timeout-wraps-to-zero",
+    command: js(`console.log("start"); setInterval(()=>{},1000)`),
+    rawSpec: (d, c) => `{"command":${JSON.stringify(c)},"logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":50,"timeoutSeconds":36028797018963968}`,
+    expectSignal: true,
+  },
+  { name: "timeout-huge-not-wrapping", command: js(`console.log("quick")`), spec: { timeoutSeconds: 9223372036 } },
   { name: "failed-wrong-type", command: () => "x", rawSpec: (d) => JSON.stringify({ command: 5, logPath: path.join(d, "run.log") }) },
   { name: "failed-wrong-type-int", command: () => "x", rawSpec: (d) => JSON.stringify({ command: "x", logPath: path.join(d, "run.log"), timeoutSeconds: "3" }) },
   { name: "failed-float-int", command: () => "x", rawSpec: (d) => `{"command":"x","logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":1.5}` },
@@ -226,6 +255,17 @@ function otherFiles(r) {
   return fs.readdirSync(r.dir).filter((n) => !n.startsWith("run.log")).map((n) => n.replace(/\d+/g, "<n>")).sort();
 }
 
+// Unix only: Go creates status.json, the heartbeat and every log segment with 0o644 (before the umask, equal for both
+// supervisors: they run with the umask of this process). Windows has no comparable mode bits.
+function fileModes(r) {
+  if (isWin) return "n/a on Windows";
+  const out = {};
+  for (const n of fs.readdirSync(r.dir).filter((n) => n === "status.json" || n === "heartbeat" || n.startsWith("run.log")).sort()) {
+    out[n] = (fs.statSync(path.join(r.dir, n)).mode & 0o777).toString(8);
+  }
+  return out;
+}
+
 function heartbeatShape(r) {
   try { const t = fs.readFileSync(path.join(r.dir, "heartbeat"), "utf8"); return /^\d+$/.test(t) ? "integer" : "other:" + JSON.stringify(t); } catch { return "absent"; }
 }
@@ -238,11 +278,11 @@ for (const sc of scenarios) {
   const go = await runOne(goExe, "go", sc);
   const rs = await runOne(rsExe, "rs", sc);
   const a = {
-    exit: go.code, status: normalizeStatus(go), log: normalizeLog(go, sc), files: otherFiles(go), hb: heartbeatShape(go),
+    exit: go.code, status: normalizeStatus(go), log: normalizeLog(go, sc), files: otherFiles(go), hb: heartbeatShape(go), modes: fileModes(go),
     stdout: go.out, stderr: normPath(go.err, go).replace(/\d{5,}/g, "<n>"),
   };
   const b = {
-    exit: rs.code, status: normalizeStatus(rs), log: normalizeLog(rs, sc), files: otherFiles(rs), hb: heartbeatShape(rs),
+    exit: rs.code, status: normalizeStatus(rs), log: normalizeLog(rs, sc), files: otherFiles(rs), hb: heartbeatShape(rs), modes: fileModes(rs),
     stdout: rs.out, stderr: normPath(rs.err, rs).replace(/\d{5,}/g, "<n>"),
   };
   if (sc.post) { a.post = await sc.post(go); b.post = await sc.post(rs); }

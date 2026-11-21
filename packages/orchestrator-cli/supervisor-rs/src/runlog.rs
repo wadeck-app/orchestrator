@@ -102,6 +102,12 @@ fn append_options() -> OpenOptions {
         use std::os::windows::fs::OpenOptionsExt;
         o.share_mode(3);
     }
+    // Go creates every segment with 0o644; std's default is 0o666 & !umask.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o644);
+    }
     o
 }
 
@@ -267,7 +273,8 @@ impl RunLog {
         self.seg = n;
         self.marker_bytes = 0;
         if created {
-            let dropped = n as i64 - self.rot.keep_segments;
+            // Go's int arithmetic wraps; so does this one rather than panic in a debug build.
+            let dropped = (n as i64).wrapping_sub(self.rot.keep_segments);
             if dropped >= 1 {
                 self.drop_segments_up_to(dropped as usize);
                 let marker = format!("[{ts}] {}\n", drop_marker_text(dropped, self.rot.keep_segments, self.rot.max_bytes));
