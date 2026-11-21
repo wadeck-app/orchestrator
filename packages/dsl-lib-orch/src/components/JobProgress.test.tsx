@@ -99,10 +99,10 @@ describe('JobProgress states', () => {
     expect(root.textContent).not.toContain('ends');
   });
 
-  it('says it ends any moment when the end time has passed before the next poll', () => {
+  it('says how long past the end time it is before the next poll', () => {
     const { container } = render(<JobProgress progress={estimate()} nowMs={SERVER_NOW + 10 * 60_000} />);
     const root = container.querySelector('[data-progress-state="estimate"]')!;
-    expect(root.textContent).toContain('any moment now');
+    expect(root.textContent).toContain('+4 min over');
     expect(root.textContent).not.toMatch(/in -/);
     expect(root.textContent).toContain('99%');
   });
@@ -149,7 +149,7 @@ describe('JobProgress ticking (nowMs omitted, fake clock)', () => {
     // past the end time, capped
     advance(10 * 60_000);
     expect(text(container)).toContain('99%');
-    expect(text(container)).toContain('any moment now');
+    expect(text(container)).toContain('+5 min over');
   });
 
   it('does not move before a full second has elapsed', () => {
@@ -242,11 +242,11 @@ describe('JobProgress ticking (nowMs omitted, fake clock)', () => {
   it('is at the cap when the end time is not after the daemon time', () => {
     const atNow = render(<JobProgress progress={estimate({ etaAt: new Date(SERVER_NOW).toISOString() })} nowMs={SERVER_NOW} />);
     expect(text(atNow.container)).toContain('99%');
-    expect(text(atNow.container)).toContain('any moment now');
+    expect(text(atNow.container)).toContain('due now');
 
     const before = render(<JobProgress progress={estimate({ etaAt: new Date(SERVER_NOW - 5000).toISOString() })} nowMs={SERVER_NOW} />);
     expect(text(before.container)).toContain('99%');
-    expect(text(before.container)).toContain('any moment now');
+    expect(text(before.container)).toContain('due now');
   });
 
   it('keeps an already-capped estimate at 99%, not above', () => {
@@ -332,8 +332,12 @@ describe('formatting', () => {
     expect(formatRemaining(30_000)).toBe('in <1 min');
     expect(formatRemaining(6 * 60_000)).toBe('in 6 min');
     expect(formatRemaining(125 * 60_000)).toBe('in 2 h 05 min');
-    expect(formatRemaining(0)).toBe('any moment now');
-    expect(formatRemaining(-5000)).toBe('any moment now');
+    expect(formatRemaining(0)).toBe('due now');
+    expect(formatRemaining(-5000)).toBe('due now');
+    expect(formatRemaining(-59_999)).toBe('due now');
+    expect(formatRemaining(-60_000)).toBe('+1 min over');
+    expect(formatRemaining(-(125 * 60_000))).toBe('+2 h 05 min over');
+    expect(formatRemaining(-(7 * 3_600_000))).toBe('+7 h over');
   });
 
   it('formats the end time as local HH:MM, with the date when it is not today', () => {

@@ -25,11 +25,12 @@ const TWO_DIGITS = (n: number): string => String(n).padStart(2, '0');
 
 /**
  * "in <1 min", "in 6 min", "in 2 h 05 min" up to six hours; then whole hours ("in 14 h", rounded up like the minutes) and, from a day,
- * days and hours ("in 1 d 2 h"). "any moment now" once the end time has passed (the next poll will say more).
+ * days and hours ("in 1 d 2 h"). Once the end time has passed, how long ago: "due now" within the first minute, then "+3 min over",
+ * "+1 h 05 min over" (the next poll replaces the estimate with the daemon's own reading).
  */
 export function formatRemaining(ms: number): string {
   if (ms <= 0) {
-    return 'any moment now';
+    return formatOverrun(-ms);
   }
   if (ms < 60_000) {
     return 'in <1 min';
@@ -47,6 +48,21 @@ export function formatRemaining(ms: number): string {
   }
   const days = Math.floor(hours / 24);
   return hours % 24 === 0 ? `in ${days} d` : `in ${days} d ${hours % 24} h`;
+}
+
+/** How long past the end time: "due now" under a minute, then whole minutes, "1 h 05 min" from an hour, hours from six. */
+function formatOverrun(ms: number): string {
+  if (ms < 60_000) {
+    return 'due now';
+  }
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) {
+    return `+${minutes} min over`;
+  }
+  if (minutes < 360) {
+    return `+${Math.floor(minutes / 60)} h ${TWO_DIGITS(minutes % 60)} min over`;
+  }
+  return `+${Math.floor(minutes / 60)} h over`;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

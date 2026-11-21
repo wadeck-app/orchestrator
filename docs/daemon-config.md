@@ -501,10 +501,11 @@ The audit trail names the field (`changes: ["progress"]`), not its options.
 ### How `history` estimates
 
 
-- Usual duration D: median of the last 10 usable runs. Usable: exit code 0, not skipped, not cancelled, not orphaned, no `endReason` (timeout, manual kill, resource limit), has `finishedAt`.
+- Usual durations: the last 10 usable runs. D, the duration the end time aims at, is their 75th percentile (nearest rank, never below the median): aiming at the median parked the bar at 99% for every run that outlasted it, about half of them. Usable: exit code 0, not skipped, not cancelled, not orphaned, no `endReason` (timeout, manual kill, resource limit), has `finishedAt`.
 - Fewer than 3 usable runs: no estimate, reason `needs 3 usable runs, has k`.
 - `progress` = elapsed / D, capped at 0.99. `etaAt` = start + D.
-- Past D: `progress` stays 0.99, `etaAt` is `null`, reason `longer than usual (usual: X)`.
+- Past D: `progress` stays 0.99, `etaAt` is `null`, reason `longer than usual by <overrun> (usual up to D)`; `detail.overrunMs` carries the overrun. Between two polls the UI counts the time past the end time itself (`due now`, then `+3 min over`).
+- `detail` carries `usualMs` (the median, used by the confidence score), `targetMs` (D) and `overdue`.
 - `confidenceScore` = 1 - MAD / median, clamped to 0..1. `confidence` is `low` under 5 usable runs or a score under 0.5, `medium` under 0.8, else `high`. Low-confidence estimates are shown, marked in the UI.
 - `timeoutSeconds: 0` (long-running): no estimate, reason `no completion expected (no timeout)`.
 - Several open runs of one job (`maxConcurrency` above 1): one estimate per job, from the oldest open run.

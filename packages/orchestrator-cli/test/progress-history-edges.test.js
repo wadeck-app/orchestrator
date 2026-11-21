@@ -33,7 +33,8 @@ describe('isUsableRun: one disqualifying flag at a time, each with a run that wo
 
       assert.equal(e.detail.usableRuns, 4);
       assert.equal(e.detail.usualMs, 900_000);
-      assert.equal(e.progress, 0.5);
+      assert.equal(e.detail.targetMs, 1_200_000);
+      assert.equal(e.progress, 0.375);
     });
 
     test(`${name}: isUsableRun says no`, () => {
@@ -55,12 +56,26 @@ describe('isUsableRun: one disqualifying flag at a time, each with a run that wo
     // started after the run under estimation (450 s ago), so the oldest open run is still that one
     const e = estimate([...BASE, noEnd], { runElapsedSec: 450 });
     assert.equal(e.detail.usableRuns, 4);
-    assert.equal(e.progress, 0.5);
+    assert.equal(e.progress, 0.375);
   });
 });
 
-describe('history strategy: the median', () => {
-  // durations 100 s, 200 s ... n * 100 s: the median is the mean of the two middle ones, (50n + 50) s
+describe('history strategy: the median and the 75th percentile', () => {
+  // durations 100 s, 200 s ... n * 100 s: the median is the mean of the two middle ones, (50n + 50) s; the target is the
+  // nearest-rank 75th percentile, the ceil(0.75 n)-th duration
+  for (const n of [4, 6, 8, 10]) {
+    test(`${n} runs: the end time aims at the 75th percentile, not at the median`, () => {
+      const history = Array.from({ length: n }, (_, k) => finished(60 * (k + 2), 100 * (k + 1)));
+      const targetSec = 100 * Math.ceil(0.75 * n);
+
+      const e = estimate(history, { runElapsedSec: targetSec / 2 });
+
+      assert.equal(e.detail.targetMs, targetSec * 1000);
+      assert.equal(e.progress, 0.5);
+      assert.equal(e.etaAt, new Date(T0 - (targetSec / 2) * 1000 + targetSec * 1000).toISOString());
+    });
+  }
+
   for (const n of [4, 6, 8, 10]) {
     test(`${n} runs: the two middle durations are averaged`, () => {
       const history = Array.from({ length: n }, (_, k) => finished(60 * (k + 2), 100 * (k + 1)));
@@ -69,7 +84,6 @@ describe('history strategy: the median', () => {
       const e = estimate(history, { runElapsedSec: usualMs / 2000 });
 
       assert.equal(e.detail.usualMs, usualMs);
-      assert.equal(e.progress, 0.5);
     });
   }
 

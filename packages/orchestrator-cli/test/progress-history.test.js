@@ -1,6 +1,6 @@
 'use strict';
 
-// The `history` strategy: progress = elapsed / D, D = median of the last 10 usable run durations.
+// The `history` strategy: progress = elapsed / D, D = 75th percentile (nearest rank) of the last 10 usable run durations.
 // Every "no estimate" must say why and what to do.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
@@ -108,8 +108,21 @@ describe('history strategy: past the usual duration', () => {
     assert.equal(e.progress, 0.99);
     assert.equal(e.etaAt, null);
     assert.equal(e.detail.overdue, true);
-    assert.match(e.reason, /longer than usual \(usual: 10 min\)/);
+    assert.match(e.reason, /longer than usual by 5 min \(usual up to 10 min\)/);
+    assert.equal(e.detail.overrunMs, 300_000);
     assert.notEqual(e.confidence, 'none');
+  });
+
+  // Half of the runs outlast the median: aiming at it parked the bar at 99 % for as long as those runs went on.
+  test('a run slower than the median but inside the 75th percentile is not "longer than usual" yet', () => {
+    const history = Array.from({ length: 8 }, (_, k) => finished(60 * (k + 2), 100 * (k + 1)));
+    const e = estimate(history, { runElapsedSec: 500 });
+
+    assert.equal(e.detail.usualMs, 450_000);
+    assert.equal(e.detail.targetMs, 600_000);
+    assert.equal(e.detail.overdue, false);
+    assert.ok(e.etaAt !== null);
+    assert.ok(e.progress < 0.99);
   });
 
   test('progress stays under 1 just before D, and the ETA is still given', () => {

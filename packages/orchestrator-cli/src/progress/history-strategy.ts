@@ -22,6 +22,18 @@ export function isUsableRun(e: RuntimeEntry): boolean {
   return e.exitCode === 0 && !e.skipped && !e.cancelledByUser && !e.orphaned && e.endReason === undefined && !!e.finishedAt;
 }
 
+/**
+ * The share of the usual durations the estimate waits for. The median would be passed by half of the runs (the bar parked at 99 %
+ * for as long as the run goes on), so the end time and the percentage aim at the 75th percentile: a run that ends on time ends a
+ * little before the estimate, and only about one run in four is "longer than usual".
+ */
+export const TARGET_PERCENTILE = 0.75;
+
+/** Nearest-rank percentile of an ascending list (p in 0..1): the smallest value that at least p of the list is below or equal to. */
+export function percentile(sorted: number[], p: number): number {
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))]!;
+}
+
 /** Median of an ascending list. */
 export function median(sorted: number[]): number {
   const mid = Math.floor(sorted.length / 2);
@@ -103,27 +115,31 @@ export const historyStrategy: ProgressStrategy = {
     const score = Math.min(1, Math.max(0, 1 - mad / usualMs));
     const confidence = levelOf(score, durations.length);
 
+    // What the end time and the percentage aim at; the median stays the "usual" of the confidence score.
+    const targetMs = Math.max(usualMs, percentile(sorted, TARGET_PERCENTILE));
+
     const startMs = Date.parse(run.startedAt);
     // A start in the future (clock change) counts as zero elapsed rather than a negative progress.
     const elapsedMs = Math.max(0, now - startMs);
     const detail: Record<string, unknown> = {
-      usualMs, usableRuns: durations.length, runStartedAt: run.startedAt, elapsedMs, overdue: elapsedMs >= usualMs,
+      usualMs, targetMs, usableRuns: durations.length, runStartedAt: run.startedAt, elapsedMs, overdue: elapsedMs >= targetMs,
+      ...(elapsedMs >= targetMs ? { overrunMs: elapsedMs - targetMs } : {}),
     };
     const base = {
       strategyId: 'history', confidence, confidenceScore: score, serverNow: ctx.now().toISOString(), detail,
     };
 
-    if (elapsedMs >= usualMs) {
+    if (elapsedMs >= targetMs) {
       return {
         ...base, progress: PROGRESS_CAP, etaAt: null,
-        reason: `longer than usual (usual: ${formatDuration(usualMs)})`,
+        reason: `longer than usual by ${formatDuration(elapsedMs - targetMs)} (usual up to ${formatDuration(targetMs)})`,
       };
     }
     return {
       ...base,
-      progress: Math.min(PROGRESS_CAP, elapsedMs / usualMs),
-      etaAt: new Date(startMs + usualMs).toISOString(),
-      reason: `median of the last ${durations.length} usable runs: ${formatDuration(usualMs)}`,
+      progress: Math.min(PROGRESS_CAP, elapsedMs / targetMs),
+      etaAt: new Date(startMs + targetMs).toISOString(),
+      reason: `75th percentile of the last ${durations.length} usable runs: ${formatDuration(targetMs)} (median ${formatDuration(usualMs)})`,
     };
   },
 };
