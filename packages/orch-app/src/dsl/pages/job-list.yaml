@@ -52,6 +52,12 @@ $brains:
     _event: $outputs.jobGrid.onAfterTrigger
     $reload: [jobs]
 
+  # A running job past its estimated end: the list would only notice the run ended at its next 30 s poll.
+  reloadWhenRunOverdue:
+    $brain: $brains.$ctx.reload
+    _event: $outputs.jobGrid.onRefreshWanted
+    $reload: [jobs]
+
   navigateToNewJob:
     $brain: $brains.$ctx.navigate
     route: /jobs/new
@@ -93,6 +99,7 @@ sections:
           onChange: [selected]
     $outputs:
       onAfterTrigger: [_]
+      onRefreshWanted: [_]
       onToggle: [id, action]
       onJobClick: [id]
       onAddJob: [_]

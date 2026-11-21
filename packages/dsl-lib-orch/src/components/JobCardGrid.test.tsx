@@ -438,3 +438,68 @@ describe('JobCardGrid search matches the description', () => {
     expect(screen.getByText('Beta')).toBeInTheDocument();
   });
 });
+
+/**
+ * Seen live: a 5 s job triggered from the page stayed on "Running 99% ends ~20:05 (due now)" for up to 25 s after it had ended,
+ * because the list only learns that a run is over from its next poll (30 s). Past its end time a running job's card asks the page
+ * to reload, every few seconds, until the run is over.
+ */
+describe('JobCardGrid: a run past its end time asks for a reload', () => {
+  const NOW = Date.parse('2026-11-21T20:00:00.000Z');
+  const RUNNING: RuntimeEntry[] = [{ startedAt: '2026-11-21T19:59:55.000Z', exitCode: null, pid: 7 }];
+  const estimate = (etaAt: string | null, progress: number | null = 0.9) => ({
+    strategyId: 'history', progress, etaAt, confidence: 'high' as const, confidenceScore: 0.9,
+    reason: 'x', serverNow: new Date(NOW).toISOString(),
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  function setup(runHistory: RuntimeEntry[], progress: ReturnType<typeof estimate> | null) {
+    vi.useFakeTimers({ now: NOW });
+    const onRefreshWanted = vi.fn();
+    wrap(<JobCardGrid items={[{ job: JOB('j1', 'Job A'), runHistory, progress }]} onRefreshWanted={onRefreshWanted} />);
+    return onRefreshWanted;
+  }
+
+  it('does not ask while the end time is still ahead', () => {
+    const onRefreshWanted = setup(RUNNING, estimate(new Date(NOW + 60_000).toISOString()));
+    vi.advanceTimersByTime(30_000);
+    expect(onRefreshWanted).not.toHaveBeenCalled();
+  });
+
+  it('asks every few seconds once the end time has passed', () => {
+    const onRefreshWanted = setup(RUNNING, estimate(new Date(NOW + 2_000).toISOString()));
+    vi.advanceTimersByTime(2_900);
+    expect(onRefreshWanted).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(100);
+    expect(onRefreshWanted).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(3_000);
+    expect(onRefreshWanted).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks while the run is longer than usual (no end time left)', () => {
+    const onRefreshWanted = setup(RUNNING, estimate(null, 0.99));
+    vi.advanceTimersByTime(3_000);
+    expect(onRefreshWanted).toHaveBeenCalledTimes(1);
+  });
+
+  it('never asks for a job that is not running', () => {
+    const onRefreshWanted = setup([{ startedAt: '2026-11-21T19:59:55.000Z', finishedAt: '2026-11-21T20:00:00.000Z', exitCode: 0, pid: 7 }], estimate(null, 0.99));
+    vi.advanceTimersByTime(30_000);
+    expect(onRefreshWanted).not.toHaveBeenCalled();
+  });
+
+  it('never asks for a long-running job, which has no estimate to wait for', () => {
+    const onRefreshWanted = setup(RUNNING, estimate(null, null));
+    vi.advanceTimersByTime(30_000);
+    expect(onRefreshWanted).not.toHaveBeenCalled();
+  });
+
+  it('slows down once the run is a minute past its end time', () => {
+    const onRefreshWanted = setup(RUNNING, estimate(new Date(NOW - 61_000).toISOString(), 0.99));
+    vi.advanceTimersByTime(9_000);
+    expect(onRefreshWanted).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(3_000);
+    expect(onRefreshWanted).toHaveBeenCalledTimes(1);
+  });
+});

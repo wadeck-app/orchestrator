@@ -1905,9 +1905,10 @@ export const JobCardGridEntry: ComponentRegistryEntry = {
 		const onBulkDelete = coerceProp(resolveExpressionValue(node['onBulkDelete'], ctx), 'JobCardGrid.onBulkDelete', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onBulkDelete']
 		const onAfterBulk = coerceProp(resolveExpressionValue(node['onAfterBulk'], ctx), 'JobCardGrid.onAfterBulk', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onAfterBulk']
 		const onAfterTrigger = coerceProp(resolveExpressionValue(node['onAfterTrigger'], ctx), 'JobCardGrid.onAfterTrigger', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onAfterTrigger']
+		const onRefreshWanted = coerceProp(resolveExpressionValue(node['onRefreshWanted'], ctx), 'JobCardGrid.onRefreshWanted', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onRefreshWanted']
 		const onExport = coerceProp(resolveExpressionValue(node['onExport'], ctx), 'JobCardGrid.onExport', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onExport']
 		const onImport = coerceProp(resolveExpressionValue(node['onImport'], ctx), 'JobCardGrid.onImport', 'function', false) as import('../components/JobCardGrid.js').JobCardGridProps['onImport']
-		return <JobCardGrid items={items} loadError={loadError} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onAfterTrigger={onAfterTrigger} onExport={onExport} onImport={onImport} />
+		return <JobCardGrid items={items} loadError={loadError} search={search} filter={filter} filters={filters ? renderChildren(filters, registry, ctx) : null} uptimeMap={uptimeMap} onToggle={onToggle} onJobClick={onJobClick} onAddJob={onAddJob} onBulkEnable={onBulkEnable} onBulkDisable={onBulkDisable} onBulkTrigger={onBulkTrigger} onBulkDelete={onBulkDelete} onAfterBulk={onAfterBulk} onAfterTrigger={onAfterTrigger} onRefreshWanted={onRefreshWanted} onExport={onExport} onImport={onImport} />
 	},
 }
 
@@ -2425,7 +2426,7 @@ EnableToggleEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job","on
 FailureOverlayEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["refreshMs"] : [];
 JobCardEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["consecutiveFailures","job","nowMs","onClick","onSelect","onToggle","onTrigger","progress","runHistory","selected","uptimePercent"] : [];
 JobCardGridEntry.allowedChildren = {"filters":["filter","atomic","composite","layout"]};
-JobCardGridEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["filter","filters","items","loadError","onAddJob","onAfterBulk","onAfterTrigger","onBulkDelete","onBulkDisable","onBulkEnable","onBulkTrigger","onExport","onImport","onJobClick","onToggle","search","uptimeMap"] : [];
+JobCardGridEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["filter","filters","items","loadError","onAddJob","onAfterBulk","onAfterTrigger","onBulkDelete","onBulkDisable","onBulkEnable","onBulkTrigger","onExport","onImport","onJobClick","onRefreshWanted","onToggle","search","uptimeMap"] : [];
 JobConfigDisplayEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["job"] : [];
 JobFilterChipsEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["onChange","selected"] : [];
 JobFormEntry.knownKeys = process.env.NODE_ENV !== 'production' ? ["busy","initial","onCancel","onSubmit"] : [];

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, LayoutList, FileText } from 'lucide-react';
 import { ButtonAction, ButtonLink, Checkbox, ColumnHelpers, DataTable, IconButton, Spinner, type TableColumn } from '@wadeck-app/dsl-ui';
@@ -144,19 +144,66 @@ export interface JobCardGridProps {
    * posts itself and uses this to ask the page to reload.
    */
   onAfterTrigger?: () => void;
+  /**
+   * Fired every few seconds while a running job's estimate says it should be over by now.
+   *
+   * The list only learns that a run ended from its next poll (30 s), so a 5 s job sat on "Running 99% (due now)" for up
+   * to 25 s after it had finished. The page answers by reloading its job source. Jobs with no estimate (no history yet,
+   * long-running servers) never fire it: there is no end time to wait for.
+   */
+  onRefreshWanted?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+}
+
+const REFRESH_TICK_MS = 3_000;
+const SLOW_AFTER_MS = 60_000;
+// One call every 4 ticks (12 s) once the run is a minute past its end time.
+const SLOW_EVERY_TICKS = 4;
+
+/** The smallest overrun (ms) among running jobs whose estimate says they should be over, or null when none waits on a run to end. */
+function overrunOf(items: JobCardGridProps['items'], now: number): number | null {
+  let least: number | null = null;
+  for (const item of items ?? []) {
+    const p = item.progress;
+    if (!p || p.progress == null || !isJobRunning(item.runHistory)) continue;
+    const over = p.etaAt ? now - Date.parse(p.etaAt) : (typeof p.detail?.overrunMs === 'number' ? p.detail.overrunMs : 0);
+    if (p.etaAt && !(over >= 0)) continue;
+    if (least === null || over < least) least = over;
+  }
+  return least;
+}
+
+function useRefreshPastEta(items: JobCardGridProps['items'], onRefreshWanted: (() => void) | undefined): void {
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const callbackRef = useRef(onRefreshWanted);
+  callbackRef.current = onRefreshWanted;
+  const enabled = onRefreshWanted !== undefined;
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let ticks = 0;
+    const id = setInterval(() => {
+      const over = overrunOf(itemsRef.current, Date.now());
+      if (over === null) { ticks = 0; return; }
+      ticks += 1;
+      if (over > SLOW_AFTER_MS && ticks % SLOW_EVERY_TICKS !== 0) return;
+      callbackRef.current?.();
+    }, REFRESH_TICK_MS);
+    return () => clearInterval(id);
+  }, [enabled]);
 }
 
 /**
  * @registryCategory composite
  * @registryTags job grid cards list
  */
-export function JobCardGrid({ items, loadError, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk, onAfterTrigger }: JobCardGridProps): React.ReactElement {
+export function JobCardGrid({ items, loadError, search = '', filter = 'all', filters, uptimeMap, onExport, onImport, onToggle, onJobClick, onAddJob, onBulkEnable, onBulkDisable, onBulkTrigger, onBulkDelete, onAfterBulk, onAfterTrigger, onRefreshWanted }: JobCardGridProps): React.ReactElement {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { ask, notify, dialog } = useConfirm();
+  useRefreshPastEta(items, onRefreshWanted);
 
   const toggleView = () => {
     const next = viewMode === 'grid' ? 'list' : 'grid';
