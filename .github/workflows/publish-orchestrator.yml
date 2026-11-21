@@ -15,6 +15,17 @@ on:
                 description: 'Breaking change? (true/false)'
                 required: false
                 default: 'false'
+            dist_tag_override:
+                description: 'npm dist tag to publish on, instead of the computed one (e.g. rust-next). Empty keeps the computed tag'
+                required: false
+                type: string
+                default: ''
+            supervisor_impl:
+                description: 'Per-job supervisor to ship. rust needs dist_tag_override (never latest)'
+                required: false
+                type: choice
+                options: [go, rust]
+                default: go
 
 permissions:
     contents: read
@@ -209,6 +220,44 @@ jobs:
                   echo "GO_SUPERVISOR=$pkg/supervisor-go/dist/$go_name" >> "$GITHUB_ENV"
                   echo "RS_SUPERVISOR=$pkg/supervisor-rs/target/release/$rs_name" >> "$GITHUB_ENV"
 
+            # The binary under the name the platform packages expect (the Go file name), so the publish job can point
+            # copy-binaries.sh at the downloaded folder through SUPERVISOR_DIST.
+            - name: Stage the Rust supervisor under its published name
+              run: |
+                  test -f "$RS_SUPERVISOR" || { echo "::error::Rust supervisor not found at $RS_SUPERVISOR"; exit 1; }
+                  mkdir -p packages/orchestrator-cli/supervisor-rs/dist
+                  cp "$RS_SUPERVISOR" "packages/orchestrator-cli/supervisor-rs/dist/$(basename "$GO_SUPERVISOR")"
+
+            # One artifact per OS leg (names must be unique in a run); the publish job merges them back.
+            - name: Upload the Rust supervisor
+              uses: actions/upload-artifact@v4
+              with:
+                  name: rust-supervisor-${{ runner.os }}
+                  path: packages/orchestrator-cli/supervisor-rs/dist/*
+                  if-no-files-found: error
+                  retention-days: 7
+
+            # The JS suites that drive the real supervisor binary, run through the real daemon code with the Rust build
+            # instead of the Go one (ORCH_SUPERVISOR_BINARY, src/platform-binary.ts). The full `Run tests` step below keeps
+            # the Go supervisor, which is still the default, so these files run twice on purpose: once per implementation.
+            # Same runner flags as `npm test`; the preload keeps the config dir in a temp folder.
+            - name: Supervised JS tests against the Rust supervisor
+              run: |
+                  test -f "$RS_SUPERVISOR" || { echo "::error::RS_SUPERVISOR does not point to a file: '$RS_SUPERVISOR'"; exit 1; }
+                  export ORCH_SUPERVISOR_BINARY="$RS_SUPERVISOR"
+                  node --test --test-timeout=120000 --require tsx/cjs --require ./test/helpers/isolate-config-dir.js \
+                      test/supervised-run.test.js \
+                      test/run-adoption.test.js \
+                      test/detach-exit.test.js \
+                      test/restart-job-supervised.test.js \
+                      test/run-log-rotation-supervised.test.js \
+                      test/supervised-scheduler.test.js \
+                      test/supervised-kill-file.test.js \
+                      test/run-recovery.test.js \
+                      test/no-colour.test.js
+              working-directory: packages/orchestrator-cli
+              timeout-minutes: 10
+
             # Same spec.json scenarios run through both supervisors: status.json, run log, files left behind, exit code
             # and stderr must be identical. Fails the job on any divergence (a legitimate unix difference has to be
             # normalised in the script, with a comment, not ignored here).
@@ -379,6 +428,24 @@ jobs:
                   version-input: ${{ github.event.inputs.version || '' }}
                   breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
+            # The tag every publish step uses: the manual override when given, else the computed one. Inputs are empty
+            # on push, so a push keeps the computed tag.
+            - name: Resolve the dist tag
+              run: echo "DIST_TAG=${DIST_TAG_OVERRIDE:-$COMPUTED_DIST_TAG}" >> "$GITHUB_ENV"
+              env:
+                  DIST_TAG_OVERRIDE: ${{ github.event_name == 'workflow_dispatch' && inputs.dist_tag_override || '' }}
+                  COMPUTED_DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+
+            # The Rust supervisor is an experiment: the auto-update follows `latest`, so it must not get there by accident.
+            - name: Guard a Rust supervisor build against the latest tag
+              if: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' }}
+              run: |
+                  if [ "$DIST_TAG" = "latest" ]; then
+                      echo "::error::A Rust-supervisor build must not be published on latest yet: pass dist_tag_override, e.g. rust-next. Remove this guard when the migration is decided."
+                      exit 1
+                  fi
+                  echo "Rust supervisor build, dist tag '$DIST_TAG'"
+
             # The dashboard as an app-core module: its components and stylesheet (dsl-lib), its backend
             # and its pages. The daemon registers the PACKAGED folder (dist-module) with app-core at every
             # start. `package` builds the stylesheet first (Tailwind), then runs app-core-cli, which checks
@@ -416,8 +483,27 @@ jobs:
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
+            # The Go supervisor stays the default. A manual run with supervisor_impl=rust takes the binaries that the
+            # three build-and-test legs built natively and uploaded (one per OS, same file names as the Go ones).
             - name: Build supervisor binary
+              if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust') }}
               run: npm run build-supervisor --workspace=packages/orchestrator-cli
+
+            - name: Download the Rust supervisor binaries
+              if: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' }}
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: rust-supervisor-*
+                  merge-multiple: true
+                  path: packages/orchestrator-cli/supervisor-rs/dist
+
+            # Fails when an artifact is missing, by name, instead of letting copy-binaries.sh stop on a bare `cp` error.
+            - name: Check the Rust supervisor binaries
+              if: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' }}
+              run: |
+                  for f in orchestrator-supervisor.exe orchestrator-supervisor-arm64 orchestrator-supervisor-linux-amd64; do
+                      test -f "packages/orchestrator-cli/supervisor-rs/dist/$f" || { echo "::error::Missing Rust supervisor artifact '$f' (expected from the build-and-test leg of its OS)"; exit 1; }
+                  done
 
             # Must run BEFORE the bundle step: esbuild inlines require('../package.json'),
             # so bundling first would freeze the version reported by the daemon and the CLI.
@@ -432,19 +518,24 @@ jobs:
             - name: Generate platform package directories
               run: bash packages/orchestrator-cli/ci/scripts/generate-platform-packages.sh
 
+            # SUPERVISOR_DIST makes copy-binaries.sh and publish-platform-packages.sh read the supervisor from the
+            # Rust artifacts instead of supervisor-go/dist. Empty (the scripts' default, Go) unless the Rust build is chosen.
             - name: Copy native binaries to platform packages
               run: bash packages/orchestrator-cli/ci/scripts/copy-binaries.sh
+              env:
+                  SUPERVISOR_DIST: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' && 'packages/orchestrator-cli/supervisor-rs/dist' || '' }}
 
             # Publishes a platform package only when its binaries changed, then pins the
             # exact resolved versions into the main package's optionalDependencies.
             - name: Publish platform packages (only if binaries changed) and pin them
               run: |
                   bash packages/orchestrator-cli/ci/scripts/publish-platform-packages.sh \
-                    "${{ steps.version.outputs.version }}" "${{ steps.version.outputs.dist_tag }}"
+                    "${{ steps.version.outputs.version }}" "$DIST_TAG"
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  SUPERVISOR_DIST: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' && 'packages/orchestrator-cli/supervisor-rs/dist' || '' }}
 
             - name: Publish
-              run: npm publish --workspace=packages/orchestrator-cli --tag ${{ steps.version.outputs.dist_tag }}
+              run: npm publish --workspace=packages/orchestrator-cli --tag "$DIST_TAG"
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

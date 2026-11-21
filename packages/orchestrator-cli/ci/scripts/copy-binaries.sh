@@ -12,7 +12,8 @@ set -euo pipefail
 
 LAUNCHER_DIST="packages/orchestrator-cli/launcher-go/dist"
 TRAY_DIST="packages/orchestrator-cli/tray-go/dist"
-SUPERVISOR_DIST="packages/orchestrator-cli/supervisor-go/dist"
+# Overridable so a Rust-supervisor build can be published from its own dist folder.
+SUPERVISOR_DIST="${SUPERVISOR_DIST:-packages/orchestrator-cli/supervisor-go/dist}"
 
 cp "$LAUNCHER_DIST/orchestrator_windows_release.exe"   packages/orchestrator-cli-win32-x64/orchestrator.exe
 cp "$LAUNCHER_DIST/orchestrator_darwin_arm64_release"  packages/orchestrator-cli-darwin-arm64/orchestrator

@@ -231,8 +231,35 @@ export function findTrayBinary(): string | null {
   return firstExisting([path.join(__dirname, '..', 'tray-go', 'dist', devName)]);
 }
 
-/** The per-job supervisor, started detached by the daemon for each job. */
+/** Environment variable that overrides the supervisor binary (test/CI only). */
+export const SUPERVISOR_BINARY_ENV = 'ORCH_SUPERVISOR_BINARY';
+
+/**
+ * The per-job supervisor, started detached by the daemon for each job.
+ *
+ * Test/CI only: when ORCH_SUPERVISOR_BINARY is set (non-empty) it wins over the platform package and the dev build, so
+ * the JS suites and a daemon started by them can run another supervisor build (e.g. the Rust one). It must name an
+ * existing file; otherwise this throws instead of falling back, because a silent fallback would make a test pass
+ * against the wrong binary. The override is never staged (see supervisorToRun).
+ */
 export function findSupervisorBinary(): string | null {
+  const override = process.env[SUPERVISOR_BINARY_ENV];
+  if (override !== undefined && override !== '') {
+    let isFile = false;
+    try {
+      isFile = fs.statSync(override).isFile();
+    } catch {
+      isFile = false;
+    }
+    if (!isFile) {
+      throw new Error(
+        `${SUPERVISOR_BINARY_ENV} is set to "${override}", which does not exist or is not a file. `
+        + `Point it at a built supervisor executable (e.g. supervisor-rs/target/release/orchestrator-supervisor) `
+        + `or unset the variable to use the packaged supervisor.`,
+      );
+    }
+    return override;
+  }
   const fromPkg = resolveInPlatformPackage(SUPERVISOR_IN_PLATFORM_PKG);
   if (fromPkg) {
     return fromPkg;
@@ -304,7 +331,12 @@ export function trayToRun(configDir: string): string | null {
  * on Windows and an update must be able to replace this one while jobs still run under it.
  */
 export function supervisorToRun(configDir: string): string | null {
-  return toRun(findSupervisorBinary(), configDir);
+  const resolved = findSupervisorBinary();
+  // An explicit override is executed where it is, whatever its path contains: staging is only for npm-managed files.
+  if (process.env[SUPERVISOR_BINARY_ENV]) {
+    return resolved;
+  }
+  return toRun(resolved, configDir);
 }
 
 /** Drops staged copies from every version but the one this install would use. */

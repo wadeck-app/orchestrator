@@ -12,6 +12,7 @@ const {
   findLauncherBinary,
   findTrayBinary,
   findSupervisorBinary,
+  supervisorToRun,
   PLATFORM_TARGETS,
   findDaemonEntry,
 } = require('../dist/platform-binary.js');
@@ -74,6 +75,47 @@ describe('findSupervisorBinary', () => {
     assert.ok(fs.existsSync(p), `resolved to a missing file: ${p}`);
     assert.ok([`orchestrator-supervisor${exe}`, target.supervisorDev].includes(path.basename(p)),
       `${path.basename(p)} is not a ${key} supervisor name`);
+  });
+});
+
+describe('findSupervisorBinary override (ORCH_SUPERVISOR_BINARY)', () => {
+  const VAR = 'ORCH_SUPERVISOR_BINARY';
+  const saved = process.env[VAR];
+  const restore = () => {
+    if (saved === undefined) { delete process.env[VAR]; } else { process.env[VAR] = saved; }
+  };
+
+  test('a set variable naming an existing file is returned as is', () => {
+    try {
+      process.env[VAR] = __filename;
+      assert.equal(findSupervisorBinary(), __filename);
+      assert.equal(supervisorToRun(path.join(__dirname, 'no-such-config-dir')), __filename,
+        'the override must reach the daemon staging path untouched');
+    } finally { restore(); }
+  });
+
+  test('a variable naming a missing file throws, naming the variable and the path', () => {
+    const missing = path.join(__dirname, 'no-such-supervisor.exe');
+    try {
+      process.env[VAR] = missing;
+      assert.throws(() => findSupervisorBinary(), (err) => err.message.includes(VAR) && err.message.includes(missing));
+    } finally { restore(); }
+  });
+
+  test('a variable naming a directory throws', () => {
+    try {
+      process.env[VAR] = __dirname;
+      assert.throws(() => findSupervisorBinary(), /ORCH_SUPERVISOR_BINARY/);
+    } finally { restore(); }
+  });
+
+  test('unset or empty leaves the normal resolution unchanged', () => {
+    try {
+      delete process.env[VAR];
+      const unset = findSupervisorBinary();
+      process.env[VAR] = '';
+      assert.equal(findSupervisorBinary(), unset);
+    } finally { restore(); }
   });
 });
 
