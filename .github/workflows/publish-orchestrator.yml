@@ -15,6 +15,10 @@ on:
                 description: 'Breaking change? (true/false)'
                 required: false
                 default: 'false'
+            # The publish channel (supervisor + dist tag) is chosen by these inputs OR, on a normal push to main, by trailer
+            # lines in the head commit message (see the 'Resolve the publish channel' step of the publish job):
+            #     Supervisor: rust
+            #     Publish-Tag: rust-next
             dist_tag_override:
                 description: 'npm dist tag to publish on, instead of the computed one (e.g. rust-next). Empty keeps the computed tag'
                 required: false
@@ -370,6 +374,25 @@ jobs:
               with:
                   fetch-depth: 0
 
+            # Which supervisor this publish ships and on which dist tag. Chosen by the workflow_dispatch inputs OR, on a push,
+            # by trailer lines of the head commit message, e.g. at the end of the message:
+            #     Supervisor: rust
+            #     Publish-Tag: rust-next
+            # No trailer keeps today's behaviour (Go supervisor, computed tag, latest). The message goes through an env
+            # var and is only read by the script, never interpolated into shell text. The two lines it prints land in
+            # GITHUB_ENV, so every later step reads env.SUPERVISOR_IMPL and env.DIST_TAG_OVERRIDE.
+            - name: Resolve the publish channel
+              # Captured first, not piped: a failing script must fail the step (a pipe would hide its exit code).
+              run: |
+                  channel="$(bash packages/orchestrator-cli/ci/scripts/resolve-publish-channel.sh)"
+                  echo "$channel" >> "$GITHUB_ENV"
+                  echo "$channel"
+              env:
+                  EVENT_NAME: ${{ github.event_name }}
+                  COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+                  INPUT_SUPERVISOR_IMPL: ${{ inputs.supervisor_impl }}
+                  INPUT_DIST_TAG: ${{ inputs.dist_tag_override }}
+
             - uses: actions/setup-node@v5
               with:
                   node-version: '24'
@@ -428,23 +451,29 @@ jobs:
                   version-input: ${{ github.event.inputs.version || '' }}
                   breaking-input: ${{ github.event.inputs.breaking || 'false' }}
 
-            # The tag every publish step uses: the manual override when given, else the computed one. Inputs are empty
-            # on push, so a push keeps the computed tag.
+            # The tag every publish step uses: the override chosen above (dispatch input or Publish-Tag trailer) when
+            # given, else the computed one.
             - name: Resolve the dist tag
               run: echo "DIST_TAG=${DIST_TAG_OVERRIDE:-$COMPUTED_DIST_TAG}" >> "$GITHUB_ENV"
               env:
-                  DIST_TAG_OVERRIDE: ${{ github.event_name == 'workflow_dispatch' && inputs.dist_tag_override || '' }}
+                  DIST_TAG_OVERRIDE: ${{ env.DIST_TAG_OVERRIDE }}
                   COMPUTED_DIST_TAG: ${{ steps.version.outputs.dist_tag }}
 
             # The Rust supervisor is an experiment: the auto-update follows `latest`, so it must not get there by accident.
+            # This also covers a `Supervisor: rust` commit trailer with no `Publish-Tag:`.
             - name: Guard a Rust supervisor build against the latest tag
-              if: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' }}
+              if: ${{ env.SUPERVISOR_IMPL == 'rust' }}
               run: |
                   if [ "$DIST_TAG" = "latest" ]; then
-                      echo "::error::A Rust-supervisor build must not be published on latest yet: pass dist_tag_override, e.g. rust-next. Remove this guard when the migration is decided."
+                      echo "::error::A Rust-supervisor build must not be published on latest yet: pass dist_tag_override (or a 'Publish-Tag: rust-next' commit trailer), e.g. rust-next. Remove this guard when the migration is decided."
                       exit 1
                   fi
                   echo "Rust supervisor build, dist tag '$DIST_TAG'"
+
+            - name: Announce a Rust-supervisor test build
+              if: ${{ env.SUPERVISOR_IMPL == 'rust' }}
+              run: |
+                  echo "Publishing a Rust-supervisor test build on tag '$DIST_TAG' (not latest): only installs that follow this tag get it, the auto-update on latest does not."
 
             # The dashboard as an app-core module: its components and stylesheet (dsl-lib), its backend
             # and its pages. The daemon registers the PACKAGED folder (dist-module) with app-core at every
@@ -483,14 +512,14 @@ jobs:
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
-            # The Go supervisor stays the default. A manual run with supervisor_impl=rust takes the binaries that the
+            # The Go supervisor stays the default. A run with supervisor_impl=rust (dispatch input or 'Supervisor: rust' commit trailer) takes the binaries that the
             # three build-and-test legs built natively and uploaded (one per OS, same file names as the Go ones).
             - name: Build supervisor binary
-              if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust') }}
+              if: ${{ env.SUPERVISOR_IMPL != 'rust' }}
               run: npm run build-supervisor --workspace=packages/orchestrator-cli
 
             - name: Download the Rust supervisor binaries
-              if: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' }}
+              if: ${{ env.SUPERVISOR_IMPL == 'rust' }}
               uses: actions/download-artifact@v4
               with:
                   pattern: rust-supervisor-*
@@ -499,7 +528,7 @@ jobs:
 
             # Fails when an artifact is missing, by name, instead of letting copy-binaries.sh stop on a bare `cp` error.
             - name: Check the Rust supervisor binaries
-              if: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' }}
+              if: ${{ env.SUPERVISOR_IMPL == 'rust' }}
               run: |
                   for f in orchestrator-supervisor.exe orchestrator-supervisor-arm64 orchestrator-supervisor-linux-amd64; do
                       test -f "packages/orchestrator-cli/supervisor-rs/dist/$f" || { echo "::error::Missing Rust supervisor artifact '$f' (expected from the build-and-test leg of its OS)"; exit 1; }
@@ -523,7 +552,7 @@ jobs:
             - name: Copy native binaries to platform packages
               run: bash packages/orchestrator-cli/ci/scripts/copy-binaries.sh
               env:
-                  SUPERVISOR_DIST: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' && 'packages/orchestrator-cli/supervisor-rs/dist' || '' }}
+                  SUPERVISOR_DIST: ${{ env.SUPERVISOR_IMPL == 'rust' && 'packages/orchestrator-cli/supervisor-rs/dist' || '' }}
 
             # Publishes a platform package only when its binaries changed, then pins the
             # exact resolved versions into the main package's optionalDependencies.
@@ -533,7 +562,7 @@ jobs:
                     "${{ steps.version.outputs.version }}" "$DIST_TAG"
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  SUPERVISOR_DIST: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_impl == 'rust' && 'packages/orchestrator-cli/supervisor-rs/dist' || '' }}
+                  SUPERVISOR_DIST: ${{ env.SUPERVISOR_IMPL == 'rust' && 'packages/orchestrator-cli/supervisor-rs/dist' || '' }}
 
             - name: Publish
               run: npm publish --workspace=packages/orchestrator-cli --tag "$DIST_TAG"
