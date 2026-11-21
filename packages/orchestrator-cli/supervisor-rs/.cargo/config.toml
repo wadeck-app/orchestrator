@@ -1,0 +1,9 @@
+# The publish plan reuses a platform package only when the hash of its binaries is unchanged, so the same source must
+# give the same bytes. On Windows (MSVC) the linker stamps every build with the link time and a random GUID: measured
+# on two clean builds from two differently named checkouts, 20 bytes differed (the PE TimeDateStamp, two debug-directory
+# timestamps and the 16-byte RSDS GUID), and nothing else. /Brepro derives both from the content instead, and the two
+# builds were then identical (scripts/repro-check.mjs prints the verdict).
+# Not set here: a RUSTFLAGS environment variable replaces this whole `rustflags` key, so a build that sets RUSTFLAGS
+# must pass /Brepro itself (scripts/repro-check.mjs does).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/Brepro"]

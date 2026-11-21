@@ -27,9 +27,11 @@ const out = [];
 const say = (s) => { console.log(s); out.push(s); };
 
 // Copies the sources only: target dirs are build output and would make the two builds start from different states.
+// .cargo carries the /Brepro link flag of the MSVC target: without it the "without remap" variant would not build the
+// way the pipeline does (a RUSTFLAGS variable, set by the other variants, replaces that config).
 function copySources(dest) {
   fs.mkdirSync(dest, { recursive: true });
-  for (const name of ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "src"]) {
+  for (const name of ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".cargo", "src"]) {
     const from = path.join(srcRoot, name);
     if (!fs.existsSync(from)) throw new Error(`${from} is missing: cannot build a copy without it`);
     fs.cpSync(from, path.join(dest, name), { recursive: true });
