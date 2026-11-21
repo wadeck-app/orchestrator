@@ -227,6 +227,19 @@ describe('the process table', () => {
     assert.equal(reads, 2, 'read again once, because the system says the pid is gone');
   });
 
+  // Hypothesis, not proven (Windows CI case 6 failed once more after the fix above): a read can list a process that has
+  // exited but whose handle another process still holds. A pid the system says is gone is never answered as running,
+  // fresh read or not.
+  test('a pid even a fresh read still lists, but the system says is gone, is not answered as running', async () => {
+    const table = new ProcessTable({
+      read: async () => [row(10, 1, 0, 0)],
+      now: () => T0,
+      ttlMs: 60_000,
+      isAlive: () => false,
+    });
+    assert.equal((await table.usageMany([10]))[10], undefined);
+  });
+
   test('a snapshot whose pids are all alive still answers every question within its age', async () => {
     let reads = 0;
     const table = new ProcessTable({

@@ -492,7 +492,8 @@ export class ProcessTable {
     const out: Record<number, ProcUsage | undefined> = {};
     for (const pid of pids) {
       const row = snapshot.byPid.get(pid);
-      if (row !== undefined) {
+      // A row the system itself no longer has is not a running process, however fresh the read that listed it.
+      if (row !== undefined && (this._isAlive === undefined || this._isAlive(pid))) {
         out[pid] = {
           cpu: cpuPercent(row, snapshot),
           memory: row.rssBytes,
