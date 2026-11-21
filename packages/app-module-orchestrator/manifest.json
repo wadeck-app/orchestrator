@@ -30,9 +30,16 @@
     },
     {
       "kind": "page",
+      "slot": "route",
+      "label": "Orchestrator",
+      "path": "/",
+      "view": { "type": "path", "value": "./src/dsl-views/jobs.yaml" }
+    },
+    {
+      "kind": "page",
       "slot": "nav",
       "label": "Jobs",
-      "path": "/",
+      "path": "/jobs",
       "view": { "type": "path", "value": "./src/dsl-views/jobs.yaml" }
     },
     {
