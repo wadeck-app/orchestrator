@@ -7,7 +7,8 @@
 //   - unix status.json carries a `signal` field when the job ended on a signal: the scenarios that end the job
 //     (timeout, kill file) must report one, on both supervisors (checked below, not only compared);
 //   - unix scenario `group-kill`: the job's grandchild must be gone too (process group kill; taskkill /T on Windows).
-// Nothing else is normalised: an OS error text that differs between Go and Rust on unix is reported as a divergence.
+// Nothing else is normalised (apart from `ignoreLogContent`, for the two scenarios whose job is killed at the first poll:
+// what it printed before is a race): an OS error text that differs between Go and Rust on unix is reported as a divergence.
 //
 // usage: node scripts/diff.mjs <go-supervisor> <rust-supervisor> [scenarioNameFilter]
 // exit code: 0 all scenarios identical, 1 at least one diverges, 4 usage / missing binary.
@@ -127,12 +128,17 @@ setInterval(()=>{},1000)`)(dir);
     command: js(`console.log("start"); setInterval(()=>{},1000)`),
     rawSpec: (d, c) => `{"command":${JSON.stringify(c)},"logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":50,"timeoutSeconds":9223372036854775807}`,
     expectSignal: true,
+    // The job is killed at the first poll: whether node got to print "start" before that is a race, not a divergence
+    // (CI run 44937027065, macOS: go killed it first, rs let "start" through; the other OS legs matched).
+    ignoreLogContent: true,
   },
   {
     name: "timeout-wraps-to-zero",
     command: js(`console.log("start"); setInterval(()=>{},1000)`),
     rawSpec: (d, c) => `{"command":${JSON.stringify(c)},"logPath":${JSON.stringify(path.join(d, "run.log"))},"heartbeatMs":50,"timeoutSeconds":36028797018963968}`,
     expectSignal: true,
+    // Same race as timeout-wraps-negative.
+    ignoreLogContent: true,
   },
   { name: "timeout-huge-not-wrapping", command: js(`console.log("quick")`), spec: { timeoutSeconds: 9223372036 } },
   { name: "failed-wrong-type", command: () => "x", rawSpec: (d) => JSON.stringify({ command: 5, logPath: path.join(d, "run.log") }) },
@@ -246,6 +252,8 @@ function normalizeLog(r, sc) {
     // Keep the bytes visible: latin1 maps each byte to one char, JSON.stringify shows control chars.
     let lines = text.toString("latin1").replace(/^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\] /gm, "[TS] ").split("\n");
     if (sc.sortLog) lines = lines.sort();
+    // The file must exist, what the racy job managed to print before its kill is not compared (see the scenarios).
+    if (sc.ignoreLogContent) lines = ["<content not compared>"];
     res[f] = lines;
   }
   return res;
