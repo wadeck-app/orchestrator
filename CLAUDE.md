@@ -75,6 +75,24 @@ main one or nests it underneath, and both happen. `src/platform-binary.ts` resol
 the tray and the daemon entry via `require.resolve`; the Go launcher resolves its own bundle from
 the package specifier in `ci/launcher.config.json`. That is what makes start-at-login work.
 
+## TEMPORARY: Rust supervisor migration (remove this section when done)
+
+`packages/orchestrator-cli/supervisor-rs` (Rust) matches `supervisor-go` (tests, 40 differential scenarios, 103 daemon tests against it on the 3 OS, update and rollback tried on Windows). `latest` still ships the Go supervisor. The Rust one ships only on the `rust-next` dist tag, chosen by two trailer lines in the head commit message of a push to main:
+
+```
+Supervisor: rust
+Publish-Tag: rust-next
+```
+
+The user's machine follows `rust-next` (`channel: rust-next`, `autoUpdate: false` in `config.yml`). If the trial shows nothing wrong, migrate:
+
+1. Make Rust the default in `publish-orchestrator.yml`: drop the Go supervisor build, the `rust-next` guard, the trailer step (`resolve-publish-channel.sh` and its test) and the dispatch inputs `supervisor_impl` and `dist_tag_override`.
+2. Delete `supervisor-go`, its build script and tests; update `PLATFORM_TARGETS`, `copy-binaries.sh`, `publish-platform-packages.sh` and the docs that name the Go supervisor.
+3. Restore the user's `config.yml` (`autoUpdate: true`, no `channel`) and publish on `latest`.
+4. Then study replacing the Go launcher with a Node watchdog (not started; the tray stays Go).
+
+Never publish a Rust build on `latest` before step 1: the guard refuses it.
+
 ## Agent reference docs
 
 | Doc | Description |
