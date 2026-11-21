@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ModuleRouteHandler } from '@wadeck-app/app-core-sdk';
+import type { ModuleRouteHandler, RouteOptions } from '@wadeck-app/app-core-sdk';
 import { createRouteAdapter } from './adapter.js';
 
 /*
@@ -12,7 +12,7 @@ import { createRouteAdapter } from './adapter.js';
 const handler = (() => undefined) as never;
 
 function fakeCtx() {
-  return { registerRoute: vi.fn<(method: string, subPath: string, h: ModuleRouteHandler) => void>() };
+  return { registerRoute: vi.fn<(method: string, subPath: string, h: ModuleRouteHandler, options?: RouteOptions) => void>() };
 }
 
 describe('createRouteAdapter', () => {
@@ -29,6 +29,22 @@ describe('createRouteAdapter', () => {
       'GET /api/jobs', 'POST /api/jobs/:id/kill', 'PUT /api/jobs/:id', 'DELETE /api/jobs/:id',
     ]);
     expect(ctx.registerRoute.mock.calls[0]?.[2]).toBe(handler);
+  });
+
+  // A route that only the user in the browser may trigger (app-core asks for the PIN). Everything else is passed on as before.
+  it('registers a sensitive route with the sensitive effect and every other route without options', () => {
+    const ctx = fakeCtx();
+    const { app } = createRouteAdapter(ctx, ['GET /api/jobs', 'POST /api/jobs'], ['POST /api/jobs']);
+
+    app.get('/api/jobs', handler);
+    app.post('/api/jobs', handler);
+
+    expect(ctx.registerRoute).toHaveBeenNthCalledWith(1, 'GET', '/api/jobs', handler);
+    expect(ctx.registerRoute).toHaveBeenNthCalledWith(2, 'POST', '/api/jobs', handler, { effect: 'sensitive' });
+  });
+
+  it('refuses a sensitive route that is not allowed: it would be marked on a route that is never published', () => {
+    expect(() => createRouteAdapter(fakeCtx(), ['GET /api/jobs'], ['POST /api/jobs'])).toThrow(/POST \/api\/jobs.*not in the allow-list/);
   });
 
   it('refuses a route registered twice instead of passing both to the host', () => {

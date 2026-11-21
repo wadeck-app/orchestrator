@@ -6,7 +6,7 @@ import { openRoute } from '@wadeck-app/orch-core/routes/open';
 import { createRouteAdapter } from './adapter.js';
 import { registerHealthRoute } from './health.js';
 import { getOrchConfigDir } from './configDir.js';
-import { ALLOWED_ROUTES } from './routes.js';
+import { ALLOWED_ROUTES, SENSITIVE_ROUTES } from './routes.js';
 
 export interface BackendDeps {
   configDir: string;
@@ -40,7 +40,7 @@ function contextTimers(ctx: BackendContext): LogsTimers {
  */
 export function createBackend({ configDir, proxy }: BackendDeps): (ctx: BackendContext) => Promise<void> {
   return async (ctx) => {
-    const { app, assertAllRegistered } = createRouteAdapter(ctx, ALLOWED_ROUTES);
+    const { app, assertAllRegistered } = createRouteAdapter(ctx, ALLOWED_ROUTES, SENSITIVE_ROUTES);
     await jobsRoutes(app, { proxy, idleTimer: NO_IDLE_TIMER });
     await logsRoutes(app, { configDir, idleTimer: NO_IDLE_TIMER, timers: contextTimers(ctx) });
     await openRoute(app, { idleTimer: NO_IDLE_TIMER });

@@ -3,9 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModuleContext, ModuleRouteHandler } from '@wadeck-app/app-core-sdk';
+import type { ModuleContext, ModuleRouteHandler, RouteOptions } from '@wadeck-app/app-core-sdk';
 import { DaemonUnavailableError } from '@wadeck-app/orch-core/daemon-proxy';
-import { ALLOWED_ROUTES } from './routes.js';
+import { ALLOWED_ROUTES, SENSITIVE_ROUTES } from './routes.js';
 import backend, { createBackend } from './index.js';
 
 /*
@@ -21,6 +21,8 @@ interface Host {
   /** Stands in for the module context; cast where it is handed over, since the SDK's timer handle type varies by version. */
   ctx: unknown;
   registered: string[];
+  /** The effect each route was registered with, when it had one (`METHOD /path` -> effect). */
+  effects: Map<string, string>;
   /** Intervals started through the context, and the handles it was asked to clear. */
   timers: { started: number[]; cleared: unknown[]; whenStarted: Promise<void>; whenCleared: Promise<void> };
 }
@@ -28,6 +30,7 @@ interface Host {
 function makeHost(): Host {
   const app = Fastify();
   const registered: string[] = [];
+  const effects = new Map<string, string>();
   // Promises, not polling: the test awaits the moment the route asks the context for a timer, and the moment it gives it back.
   let markStarted: () => void = () => undefined;
   let markCleared: () => void = () => undefined;
@@ -47,12 +50,13 @@ function makeHost(): Host {
       timers.cleared.push(handle);
       markCleared();
     },
-    registerRoute(method: string, subPath: string, handler: ModuleRouteHandler): void {
+    registerRoute(method: string, subPath: string, handler: ModuleRouteHandler, options?: RouteOptions): void {
       registered.push(`${method} ${subPath}`);
+      if (options?.effect) { effects.set(`${method} ${subPath}`, options.effect); }
       app.route({ method: method as 'GET', url: subPath, handler: handler as never });
     },
   };
-  return { app, ctx, registered, timers };
+  return { app, ctx, registered, effects, timers };
 }
 
 let tmpDir: string;
@@ -71,6 +75,14 @@ describe('the published routes', () => {
     const { registered, app } = await boot(async () => []);
     // GET /health is the module's own (the update test of app-core-cli), registered beside the orch-core routes.
     expect([...registered].sort()).toEqual([...ALLOWED_ROUTES, 'GET /health'].sort());
+    await app.close();
+  });
+
+  // A stray curl must not be able to write a command that then runs on a schedule, nor delete a job's history.
+  it('mark exactly the job create, edit and delete routes as sensitive, and no other', async () => {
+    const { effects, app } = await boot(async () => []);
+    expect([...effects.entries()].sort()).toEqual(SENSITIVE_ROUTES.map(key => [key, 'sensitive']).sort());
+    expect(SENSITIVE_ROUTES).toEqual(['POST /api/jobs', 'PUT /api/jobs/:id', 'DELETE /api/jobs/:id']);
     await app.close();
   });
 

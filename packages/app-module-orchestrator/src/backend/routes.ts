@@ -39,3 +39,18 @@ export const ALLOWED_ROUTES: readonly RouteKey[] = [
   'GET /api/logs/:jobId/stream',
   'GET /api/open',
 ];
+
+/**
+ * The routes only the user in the browser may trigger: app-core answers 401 elevation-required (403 pin-not-set without a
+ * PIN) to a request with no valid access token, and the shell asks for the PIN and repeats it.
+ *
+ * Chosen with the user (2026-11-21, "level 1 only"): the routes that write a command that then runs on its own schedule
+ * (create, edit) and the one that deletes a job's history for good. Left out on purpose: trigger, trigger-early, restart and
+ * dry-run (they run a command that is already stored), kill, enable, disable, failures/ack, and GET /api/open (a PIN at each
+ * link click in a log, and it only opens documents and folders).
+ */
+export const SENSITIVE_ROUTES: readonly RouteKey[] = [
+  'POST /api/jobs',
+  'PUT /api/jobs/:id',
+  'DELETE /api/jobs/:id',
+];

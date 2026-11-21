@@ -34,8 +34,19 @@ export interface RouteAdapter {
 export function createRouteAdapter(
   ctx: Pick<ModuleContext, 'registerRoute'>,
   allowed: readonly RouteKey[],
+  /** Routes registered with the `sensitive` effect: app-core asks the user for the PIN before it serves them. */
+  sensitive: readonly RouteKey[] = [],
 ): RouteAdapter {
   const allowedSet = new Set<string>(allowed);
+  const sensitiveSet = new Set<string>(sensitive);
+  // Marked but never published would be a protection that silently protects nothing (a typo, a renamed route).
+  const unpublished = sensitive.filter(key => !allowedSet.has(key));
+  if (unpublished.length > 0) {
+    throw new Error(
+      `app-module-orchestrator: sensitive route(s) ${unpublished.join(', ')} are not in the allow-list, so they are never published and the mark protects nothing. ` +
+      'Fix the key in SENSITIVE_ROUTES (routes.ts), or add the route to ALLOWED_ROUTES.',
+    );
+  }
   const registered = new Set<string>();
   const skipped: string[] = [];
 
@@ -54,7 +65,11 @@ export function createRouteAdapter(
         throw new Error(`app-module-orchestrator: "${key}" was registered twice by orch-core's route files. Remove the duplicate; a module cannot tell which handler should win.`);
       }
       registered.add(key);
-      ctx.registerRoute(verb.toUpperCase(), path, handler);
+      if (sensitiveSet.has(key)) {
+        ctx.registerRoute(verb.toUpperCase(), path, handler, { effect: 'sensitive' });
+      } else {
+        ctx.registerRoute(verb.toUpperCase(), path, handler);
+      }
     };
   }
 
