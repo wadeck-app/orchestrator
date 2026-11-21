@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+const packageDir = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface Point {
   kind: string;
