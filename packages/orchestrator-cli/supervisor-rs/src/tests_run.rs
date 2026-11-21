@@ -353,10 +353,19 @@ fn heartbeat_carries_a_counter_that_keeps_growing() {
 #[test]
 fn records_the_kill_reason_even_when_the_job_died_before_the_next_look() {
     let d = TempDir::new();
-    // A heartbeat this slow makes the supervisor look for `kill` only every 250 ms, and the job ends sooner.
-    let s = start_run(TestSpec { command: js_command(d.path(), "setTimeout(() => {}, 100)"), heartbeat_ms: 5000, ..Default::default() });
+    // A heartbeat this slow makes the supervisor look for `kill` only every 250 ms, and the job ends sooner: it ends
+    // within 10 ms of the `stop` file. (The Go test uses a 100 ms job, which leaves a "running" status of about
+    // 100 ms plus node's start-up to be seen: when the cargo test threads run in parallel on a loaded macOS runner,
+    // the test thread missed it and timed out, CI run 44919114424. This job stays running until the test lets it go.)
+    let stop = d.path().join("stop");
+    let source = format!(
+        "const stop = {}; const t = setInterval(() => {{ if (require('fs').existsSync(stop)) clearInterval(t); }}, 10);",
+        quote(&stop.display().to_string())
+    );
+    let s = start_run(TestSpec { command: js_command(d.path(), &source), heartbeat_ms: 5000, ..Default::default() });
     wait_for("the job to run", || status_has_running(s.path()));
     fs::write(s.path().join("kill"), "manual").unwrap();
+    fs::write(&stop, "").unwrap();
     let (dir, _) = finish(s);
     let st = read_status(dir.path());
     assert!(st.bool("killed") && st.str("killReason") == "manual", "a kill requested while the job was ending must still be recorded");
