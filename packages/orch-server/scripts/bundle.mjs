@@ -24,7 +24,7 @@ await build({
   bundle: true,
   platform: 'node',
   format: 'esm',
-  target: 'node22',
+  target: 'node24',
   sourcemap: true,
   external: ['fastify', '@fastify/static', '@fastify/cors'],
   logLevel: 'warning',

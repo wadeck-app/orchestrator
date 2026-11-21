@@ -8,7 +8,7 @@ Cross-platform job orchestrator daemon and CLI - schedules cron, startup, and on
 npm install -g @wadeck-app/orchestrator-cli
 ```
 
-Requires Node >= 22.
+Requires Node >= 24.
 
 ## Quick start
 
