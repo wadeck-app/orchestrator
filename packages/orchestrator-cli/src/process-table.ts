@@ -406,7 +406,7 @@ export function createWindowsReader(
 }
 
 /** Whether the system has this pid: a pid that answers "not allowed" exists, only is not ours to signal. */
-function pidExists(pid: number): boolean {
+export function pidExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

@@ -12,7 +12,7 @@ import { stripAnsi }      from './ansi.js';
 import { OutputLines }     from './output-lines.js';
 import { atomicWriteJson, ensureTmpDir, getErrorMessage, readJsonFile }  from './fsUtil.js';
 import { isAlive, killTree, killTreeSync } from './process-tree.js';
-import { systemProcessTable } from './process-table.js';
+import { pidExists, systemProcessTable } from './process-table.js';
 import { EventPublisher } from './event-publisher.js';
 import { SecretsManager } from './secrets.js';
 import { getLastFiring, getNextFirings } from './cronNext.js';
@@ -35,7 +35,7 @@ import { lookupProcessName } from './process-name.js';
 import { JobTelemetry } from './job-telemetry.js';
 import { resolveResourceLimits, sampleIntervalMsOf, RESOURCE_LIMIT_DEFAULTS, type EffectiveResourceLimits } from './resource-limits.js';
 import { appendResourceHistory, type ResourceHistoryRecord } from './resource-history.js';
-import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type SupervisedRequest } from './supervised-run.js';
+import { SupervisedChild, claimRun, isOurSupervisor, ownedByAnotherLiveDaemon, processStartsOf, type ProcessStartFn, type ProcessStartsFn, type RunOwner, type SupervisedRequest } from './supervised-run.js';
 import { EffectLedger, type EffectGroup } from './effect-ledger.js';
 import { RESTART_STATE_FILE, parseRestartStates, planRestart, resolveRestartPolicy, restartConflictError, restartOnExitError, type RestartState } from './restart-policy.js';
 
@@ -1406,11 +1406,7 @@ export class Scheduler extends EventEmitter {
       );
     }
     if (this._hasFollowedRun(id)) {
-      return refused(
-        `a run of "${id}" is followed by another daemon, which this daemon cannot end, so no second copy was started. `
-        + 'Stop the other daemon (orch stop on its config dir), then run the restart again.',
-        'adopted',
-      );
+      return refused(this._followedRefusal(id), 'adopted');
     }
     if (await this._liveness(job)) {
       return refused(
@@ -1660,6 +1656,10 @@ export class Scheduler extends EventEmitter {
     this._liveLogger.get(job.id)?.write(
       '[job:skipped] reason=adopted -- still running from before the restart, not started a second time',
     );
+    // The job's own log only exists while a run is attached to it: a run that is "followed" with no live instance left this
+    // firing with no trace at all. The daemon log says it, with what follows the run.
+    try { process.stderr.write(`[scheduler] the start of "${job.id}" was skipped (reason=adopted): ${this._followedRefusal(job.id)}
+`); } catch { /* EPIPE */ }
     this._announceSkip(job, 'adopted');
   }
 
@@ -1875,6 +1875,30 @@ export class Scheduler extends EventEmitter {
     void this._monitor(child, ctx, siblings, false, { peakCpuPct: entry?.peakCpuPct ?? 0, peakRamMb: entry?.peakRamMb ?? 0 });
     // After the monitoring has attached its listeners: a run that ended meanwhile is closed by the first read.
     child.watch(250);
+  }
+
+  /**
+   * The sentence of the refusal to start a job whose run is followed: which run, who follows it and what the system says of
+   * that follower, so whoever reads it knows what to look at instead of "another daemon" with nothing to inspect.
+   */
+  private _followedRefusal(jobId: string): string {
+    const here = [...this._followed].filter(key => key.startsWith(`${jobId}|`));
+    if (here.length > 0) {
+      return `the run of "${jobId}" started ${here[0]!.slice(jobId.length + 1)} is followed by this daemon (it found the run going at its start and has not seen it end), but no live instance is attached to it, so no second copy was started. `
+        + 'The record is rebuilt from the run folders at start: run orch restart, then the restart again. If it comes back, keep <configDir>/runs/' + jobId + '/ and report it.';
+    }
+    const elsewhere = [...this._followedElsewhere].filter(([key]) => key.startsWith(`${jobId}|`));
+    const lines = elsewhere.map(([key, runDir]) => {
+      const owner = readJsonFile<RunOwner>(path.join(runDir, 'owner.json'));
+      const startedAt = key.slice(jobId.length + 1);
+      if (owner === null) {
+        return `the run started ${startedAt} (${runDir}) has no readable owner.json`;
+      }
+      const state = pidExists(owner.pid) ? 'alive on this machine' : 'gone (the claim is released within seconds)';
+      return `the run started ${startedAt} names daemon pid ${owner.pid} as its follower (${path.join(runDir, 'owner.json')}); that pid is ${state}`;
+    });
+    return `a run of "${jobId}" is followed by another daemon, which this daemon cannot end, so no second copy was started: ${lines.join('; ')}. `
+      + 'Stop the other daemon (orch stop on its config dir), then run the restart again.';
   }
 
   /** Whether a run of the job was found going and is followed again, so a startup firing must not start another. */

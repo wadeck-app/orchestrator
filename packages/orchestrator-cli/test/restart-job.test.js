@@ -199,6 +199,35 @@ describe('restart-job refuses what it cannot do, in words', () => {
     assert.equal(env.children.length, 0);
   });
 
+  // Seen on a Linux host: the refusal named "another daemon" with nothing to inspect. It now says which run, who follows it,
+  // and what the system says of the follower, so the person reading it knows what to look at.
+  test('the refusal names the run, the owner pid that follows it and whether the system still has that pid', async () => {
+    const env = makeEnv();
+    const runDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-follow-'));
+    fs.writeFileSync(path.join(runDir, 'owner.json'), JSON.stringify({ pid: 2147483000, startedAt: '2026-10-19T06:00:00.000Z' }));
+    env.sched._followedElsewhere.set('srv|2026-10-19T07:00:00.000Z', runDir);
+
+    const reply = await env.commands['restart-job']({ id: 'srv' });
+
+    assert.match(reply.reason, /2026-10-19T07:00:00.000Z/);
+    assert.match(reply.reason, /pid 2147483000/);
+    assert.match(reply.reason, /owner.json/);
+    assert.match(reply.reason, /gone/, 'a pid the system does not have is said, it is released within seconds');
+    fs.rmSync(runDir, { recursive: true, force: true });
+  });
+
+  test('a run this very daemon follows but has no live instance for says so and names the way out', async () => {
+    const env = makeEnv();
+    env.sched._followed.add('srv|2026-10-19T07:00:00.000Z');
+
+    const reply = await env.commands['restart-job']({ id: 'srv' });
+
+    assert.equal(reply.skipped, 'adopted');
+    assert.match(reply.reason, /this daemon/);
+    assert.match(reply.reason, /orch restart/);
+    assert.doesNotMatch(reply.reason, /another daemon/);
+  });
+
   test('an instance that does not end in time is never replaced by a second copy', async () => {
     const env = makeEnv({ dieAfterMs: Infinity, schedulerExtra: { restartGraceMs: 150 } });
     await env.commands['trigger-job']({ id: 'srv' });

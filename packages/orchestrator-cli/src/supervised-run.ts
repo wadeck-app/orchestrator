@@ -4,7 +4,7 @@ import path from 'node:path';
 import { runLogPath } from './logger.js';
 import type { ResolvedLogRotation } from './log-rotation.js';
 import pidusage from 'pidusage';
-import { systemProcessTable } from './process-table.js';
+import { pidExists, systemProcessTable } from './process-table.js';
 import { PLATFORM_TARGETS, platformKeyOf, unsupportedPlatformMessage } from './platform-binary.js';
 import { atomicWriteJson, getErrorMessage, readJsonFile } from './fsUtil.js';
 import type { TriggerSource } from './types.js';
@@ -322,12 +322,7 @@ export function ownedByAnotherLiveDaemon(runDir: string): boolean {
   if (owner === null || owner.pid === process.pid) {
     return false;
   }
-  try {
-    process.kill(owner.pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === 'EPERM';
-  }
+  return pidExists(owner.pid);
 }
 
 /**
