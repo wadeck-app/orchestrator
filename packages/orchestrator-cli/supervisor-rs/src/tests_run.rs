@@ -4,7 +4,7 @@
 
 use crate::ansi::strip_ansi;
 use crate::json::{self, quote, Value};
-use crate::run::{kill_reason, run, Spec};
+use crate::run::{kill_reason, run};
 use crate::runlog::LogRotation;
 use std::fs;
 use std::path::{Path, PathBuf};

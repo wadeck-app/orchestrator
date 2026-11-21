@@ -2,16 +2,33 @@
 // (schema, key order, formats, values with pids/timestamps normalised), the run log segments, the other files left in
 // the run folder, the supervisor's own exit code and stderr are compared.
 //
-// usage: node scripts/diff.mjs <go.exe> <rust.exe> [scenarioNameFilter]
+// Runs on Windows, Linux and macOS. The platform differences are all marked with `isWin` / `unixOnly` / `expectSignal`:
+//   - the job is run by cmd.exe /d /s /c on Windows and by /bin/sh -c elsewhere (the shell-quoting scenario has one syntax each);
+//   - unix status.json carries a `signal` field when the job ended on a signal: the scenarios that end the job
+//     (timeout, kill file) must report one, on both supervisors (checked below, not only compared);
+//   - unix scenario `group-kill`: the job's grandchild must be gone too (process group kill; taskkill /T on Windows).
+// Nothing else is normalised: an OS error text that differs between Go and Rust on unix is reported as a divergence.
+//
+// usage: node scripts/diff.mjs <go-supervisor> <rust-supervisor> [scenarioNameFilter]
+// exit code: 0 all scenarios identical, 1 at least one diverges, 4 usage / missing binary.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const [goExe, rsExe, filter] = process.argv.slice(2);
-if (!goExe || !rsExe) {
-  console.error("usage: node diff.mjs <go.exe> <rust.exe> [filter]");
+const isWin = process.platform === "win32";
+const [goArg, rsArg, filter] = process.argv.slice(2);
+if (!goArg || !rsArg) {
+  console.error("usage: node diff.mjs <go-supervisor> <rust-supervisor> [filter]");
   process.exit(4);
+}
+const goExe = path.resolve(goArg);
+const rsExe = path.resolve(rsArg);
+for (const [label, exe] of [["Go", goExe], ["Rust", rsExe]]) {
+  if (!fs.existsSync(exe)) {
+    console.error(`${label} supervisor binary not found: ${exe}. Build it first and pass its path.`);
+    process.exit(4);
+  }
 }
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "supdiff-"));
 const RFC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?Z$/;
@@ -26,26 +43,62 @@ const js = (src) => (dir) => {
 // Each scenario: command(dir) -> string, extra spec fields (fn of dir), optional env, optional act(runDir) while it runs,
 // optional rawSpec(runDir) to write something else than a JSON spec, optional noSpec.
 const scenarios = [
-  { name: "normal-exit-0", command: js(`console.log("hello"); console.error("oops"); process.exit(0)`) },
+  // sortLog: stdout/stderr interleaving is a race, see shell-quoting.
+  { name: "normal-exit-0", sortLog: true, command: js(`console.log("hello"); console.error("oops"); process.exit(0)`) },
   { name: "nonzero-exit-7", command: js(`console.log("x"); process.exit(7)`) },
   { name: "exit-255", command: js(`process.exit(255)`) },
   { name: "exit-minus-1", command: js(`process.exit(-1)`) },
-  { name: "timeout", command: js(`console.log("start"); setInterval(()=>{},1000)`), spec: { timeoutSeconds: 1 } },
+  { name: "timeout", command: js(`console.log("start"); setInterval(()=>{},1000)`), spec: { timeoutSeconds: 1 }, expectSignal: true },
   {
     name: "kill-with-reason",
     command: js(`console.log("start"); setInterval(()=>{},1000)`),
     act: async (d) => { await waitRunning(d); fs.writeFileSync(path.join(d, "kill"), "manual\n"); },
+    expectSignal: true,
   },
   {
     name: "kill-empty-file",
     command: js(`setInterval(()=>{},1000)`),
     act: async (d) => { await waitRunning(d); fs.writeFileSync(path.join(d, "kill"), ""); },
+    expectSignal: true,
   },
   {
     name: "kill-and-timeout-both",
     command: js(`setInterval(()=>{},1000)`),
     spec: { timeoutSeconds: 1 },
     act: async (d) => { await waitRunning(d); fs.writeFileSync(path.join(d, "kill"), "resource-limit"); },
+    expectSignal: true,
+  },
+  // The job starts a grandchild (same process group) and both wait; the kill file must end the whole group.
+  // After the supervisor exited, the grandchild's pid (written by the job) must not answer to signal 0.
+  {
+    name: "group-kill",
+    unixOnly: true,
+    command: (dir) => {
+      const grandchild = path.join(dir, "grandchild.js");
+      fs.writeFileSync(grandchild, `setInterval(()=>{},1000)`);
+      return js(`const { spawn } = require("node:child_process"); const fs = require("node:fs"); const path = require("node:path");
+const g = spawn(process.execPath, [${JSON.stringify(grandchild)}], { stdio: "ignore" });
+fs.writeFileSync(path.join(__dirname, "grandchild.pid"), String(g.pid));
+setInterval(()=>{},1000)`)(dir);
+    },
+    act: async (d, jobDir) => {
+      await waitRunning(d);
+      const pidFile = path.join(jobDir, "grandchild.pid");
+      for (let i = 0; i < 500 && !fs.existsSync(pidFile); i++) await sleep(20);
+      if (!fs.existsSync(pidFile)) throw new Error("the job never wrote " + pidFile);
+      fs.writeFileSync(path.join(d, "kill"), "group-test");
+    },
+    expectSignal: true,
+    // Poll up to ~3 s: an orphan killed by SIGKILL is reaped by init a moment later.
+    post: async (r) => {
+      const pid = Number(fs.readFileSync(path.join(r.jobDir, "grandchild.pid"), "utf8"));
+      for (let i = 0; i < 150; i++) {
+        try { process.kill(pid, 0); } catch { return "grandchild gone"; }
+        await sleep(20);
+      }
+      try { process.kill(pid, "SIGKILL"); } catch {}
+      return "grandchild STILL ALIVE after the supervisor ended";
+    },
   },
   { name: "failed-bad-cwd", command: js(`process.exit(0)`), spec: (d) => ({ cwd: path.join(d, "nope") }) },
   { name: "bad-command-not-found", command: () => "this-command-does-not-exist-xyz --flag" },
@@ -98,7 +151,10 @@ process.stdout.write("partial no newline");`),
   { name: "env-passthrough", env: { SUP_DIFF_VAR: "value with spaces & <special>" }, command: js(`console.log("VAR=" + process.env.SUP_DIFF_VAR)`) },
   { name: "stdin-is-closed", command: js(`process.stdin.on("data", d => console.log("got data")); process.stdin.on("end", () => console.log("stdin ended")); process.stdin.resume();`) },
   { name: "cwd-is-applied", command: js(`console.log("CWD=" + process.cwd())`), spec: (d) => ({ cwd: os.tmpdir() }) },
-  { name: "shell-quoting", command: () => `echo hello "a & b" ^& c && echo second 1>&2` },
+  // cmd.exe escapes with ^, sh with \ : the same three words and the same redirection on each shell.
+  // stdout and stderr are two pipes read by two threads in each supervisor: the order of two lines written one on each
+  // is a race in Go as well as in Rust (seen once on Windows, go: stderr first), hence sortLog on the scenarios that use both.
+  { name: "shell-quoting", sortLog: true, command: () => (isWin ? `echo hello "a & b" ^& c && echo second 1>&2` : `echo hello "a & b" \\& c && echo second 1>&2`) },
   { name: "partial-heartbeat-default", command: js(`setTimeout(()=>{}, 300)`), spec: { heartbeatMs: 0 } },
 ];
 
@@ -132,7 +188,7 @@ function runOne(exe, label, sc) {
     p.stderr.on("data", (d) => (err += d));
     const watchdog = setTimeout(() => p.kill(), 60000);
     p.on("exit", (code) => { clearTimeout(watchdog); resolve({ dir, jobDir, code, out, err, ms: Date.now() - t0 }); });
-    if (sc.act) sc.act(dir).catch((e) => console.error("act failed", e.message));
+    if (sc.act) sc.act(dir, jobDir).catch((e) => console.error("act failed", e.message));
   });
 }
 
@@ -178,6 +234,7 @@ let diffs = 0;
 const rows = [];
 for (const sc of scenarios) {
   if (filter && !sc.name.includes(filter)) continue;
+  if (sc.unixOnly && isWin) continue;
   const go = await runOne(goExe, "go", sc);
   const rs = await runOne(rsExe, "rs", sc);
   const a = {
@@ -188,14 +245,25 @@ for (const sc of scenarios) {
     exit: rs.code, status: normalizeStatus(rs), log: normalizeLog(rs, sc), files: otherFiles(rs), hb: heartbeatShape(rs),
     stdout: rs.out, stderr: normPath(rs.err, rs).replace(/\d{5,}/g, "<n>"),
   };
+  if (sc.post) { a.post = await sc.post(go); b.post = await sc.post(rs); }
   const parts = [];
   for (const k of Object.keys(a)) {
     const sa = JSON.stringify(a[k], null, 1), sb = JSON.stringify(b[k], null, 1);
     if (sa !== sb) parts.push(`  [${k}]\n    go: ${JSON.stringify(a[k])}\n    rs: ${JSON.stringify(b[k])}`);
   }
+  // Equal is not enough: both could silently miss the signal. On unix a job ended by SIGTERM (or SIGKILL after the
+  // grace period) must say so in status.json (Go: syscall.Signal.String(), "terminated" / "killed" on Linux and macOS).
+  // Windows has no signal field.
+  if (sc.expectSignal && !isWin) {
+    for (const [who, n] of [["go", a], ["rs", b]]) {
+      const sig = n.status.obj?.signal;
+      if (sig !== "terminated" && sig !== "killed") parts.push(`  [signal]\n    ${who}: expected "terminated" or "killed" in status.json, got ${JSON.stringify(sig)}`);
+    }
+  }
+  if (sc.post) for (const [who, n] of [["go", a], ["rs", b]]) if (n.post !== "grandchild gone") parts.push(`  [post]\n    ${who}: ${n.post}`);
   if (parts.length) { diffs++; rows.push(`DIFF ${sc.name} (go ${go.ms}ms, rs ${rs.ms}ms)\n${parts.join("\n")}`); }
   else rows.push(`same ${sc.name} (go ${go.ms}ms, rs ${rs.ms}ms; exit ${go.code}, state ${a.status.obj?.state})`);
 }
 console.log(rows.join("\n"));
-console.log(`\n${diffs} scenario(s) with differences. Work dir: ${root}`);
+console.log(`\n${diffs} scenario(s) with differences (${rows.length} run on ${process.platform}). Work dir: ${root}`);
 process.exit(diffs ? 1 : 0);

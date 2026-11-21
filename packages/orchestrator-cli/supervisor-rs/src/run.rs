@@ -20,6 +20,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 pub const DEFAULT_HEARTBEAT_MS: i64 = 2000;
+// Only the unix branch waits this long between SIGTERM and SIGKILL (proc.rs); Windows ends the tree with taskkill /F.
+#[cfg_attr(windows, allow(dead_code))]
 pub const DEFAULT_KILL_GRACE_MS: i64 = 300;
 const MAX_CONTROL_POLL_MS: u64 = 250;
 const KILL_READ_ATTEMPTS: u32 = 100;

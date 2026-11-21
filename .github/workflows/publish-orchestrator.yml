@@ -189,6 +189,49 @@ jobs:
               run: cargo test --release --locked
               working-directory: packages/orchestrator-cli/supervisor-rs
 
+            # The binary the three checks below run, built the way a release would be (locked, release profile).
+            - name: Build Rust supervisor (release)
+              run: cargo build --release --locked
+              working-directory: packages/orchestrator-cli/supervisor-rs
+
+            # Where each supervisor is on this runner. The Go names come from scripts/build-supervisor-binary.ts
+            # (windows-amd64 -> .exe, darwin-arm64 -> -arm64, linux-amd64 -> -linux-amd64): macos-latest is Apple Silicon
+            # and ubuntu-latest x64, as in PLATFORM_TARGETS. An unexpected runner fails here, by name, not later.
+            - name: Locate supervisor binaries
+              run: |
+                  case "$RUNNER_OS" in
+                      Windows) go_name=orchestrator-supervisor.exe; rs_name=orchestrator-supervisor.exe ;;
+                      macOS)   go_name=orchestrator-supervisor-arm64; rs_name=orchestrator-supervisor ;;
+                      Linux)   go_name=orchestrator-supervisor-linux-amd64; rs_name=orchestrator-supervisor ;;
+                      *) echo "::error::Unknown runner OS '$RUNNER_OS': add its supervisor binary names to this step"; exit 1 ;;
+                  esac
+                  pkg="$GITHUB_WORKSPACE/packages/orchestrator-cli"
+                  echo "GO_SUPERVISOR=$pkg/supervisor-go/dist/$go_name" >> "$GITHUB_ENV"
+                  echo "RS_SUPERVISOR=$pkg/supervisor-rs/target/release/$rs_name" >> "$GITHUB_ENV"
+
+            # Same spec.json scenarios run through both supervisors: status.json, run log, files left behind, exit code
+            # and stderr must be identical. Fails the job on any divergence (a legitimate unix difference has to be
+            # normalised in the script, with a comment, not ignored here).
+            - name: 'Rust vs Go supervisor: differential'
+              run: node scripts/diff.mjs "$GO_SUPERVISOR" "$RS_SUPERVISOR"
+              working-directory: packages/orchestrator-cli/supervisor-rs
+
+            # One sample of each supervisor's memory, to read in the log: never a gate. Linux prints Private and Pss
+            # from smaps_rollup, macOS the rss (and `footprint` when the runner has it). Not comparable with the
+            # Windows Private Working Set of scripts/measure.mjs.
+            - name: 'Rust vs Go supervisor: memory (informational)'
+              if: runner.os != 'Windows'
+              run: node scripts/measure-unix.mjs "$GO_SUPERVISOR" "$RS_SUPERVISOR"
+              working-directory: packages/orchestrator-cli/supervisor-rs
+
+            # Builds the Rust supervisor twice from two checkouts of different names and compares the bytes, with and
+            # without --remap-path-prefix. The publish plan reuses a platform package only when the binary is
+            # identical, so this tells whether Rust could take part. Informational: the verdict is in the log.
+            - name: Rust reproducibility (informational)
+              continue-on-error: true
+              run: node scripts/repro-check.mjs
+              working-directory: packages/orchestrator-cli/supervisor-rs
+
             # Evidence, not a fix. A macOS leg has repeatedly died in `Run tests` with
             # `spawn <node> EAGAIN` (the process table was full when the test runner tried to start a
             # test file), on a different push each time and never on ubuntu or windows. Who held the

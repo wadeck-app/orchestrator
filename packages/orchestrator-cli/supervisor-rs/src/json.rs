@@ -3,10 +3,14 @@
 
 pub enum Value {
     Null,
+    // The payload of Bool and Arr is the parsed value itself (kept so the tree is complete), but the supervisor
+    // only reads their kind() to build Go-style type errors; only the tests read the payload.
+    #[cfg_attr(not(test), allow(dead_code))]
     Bool(bool),
     /// The number as written.
     Num(String),
     Str(String),
+    #[allow(dead_code)]
     Arr(Vec<Value>),
     Obj(Vec<(String, Value)>),
 }

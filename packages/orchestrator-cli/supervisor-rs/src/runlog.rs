@@ -137,6 +137,8 @@ impl RunLog {
         Ok(RunLog { first: first.to_path_buf(), rot, now, file: Some(file), seg, marker_bytes: 0, reported: false })
     }
 
+    // Only the rotation tests close a log; the supervisor itself ends the process when the run ends.
+    #[cfg(test)]
     pub fn close(&mut self) {
         self.file = None;
     }
@@ -160,6 +162,8 @@ impl RunLog {
         Some((ts, entry))
     }
 
+    // Only the rotation tests call write directly; the supervisor writes through copy_lines (entry_of, then write_entry).
+    #[cfg(test)]
     pub fn write(&mut self, prefix: &str, line: &[u8]) {
         if let Some((ts, entry)) = Self::entry_of(self.now, prefix, line) {
             self.write_entry(&ts, &entry);
