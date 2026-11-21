@@ -100,6 +100,7 @@ export function applyRegistryOverrides(registry: ComponentRegistry): void {
       }
       const extra = {
         onAfterTrigger: () => pub(id, 'onAfterTrigger', undefined),
+        onRefreshWanted: () => pub(id, 'onRefreshWanted', undefined),
         onToggle: (jobId: string, enabled: boolean) => pub(id, 'onToggle', { id: jobId, action: enabled ? 'enable' : 'disable' }),
         onJobClick: (jobId: string) => pub(id, 'onJobClick', jobId),
         onAddJob: () => pub(id, 'onAddJob', undefined),

@@ -92,6 +92,19 @@ describe('applyRegistryOverrides injects only declared $outputs', () => {
     expect(published).toEqual([{ id: 'jobGrid', event: 'onAfterTrigger', payload: undefined }]);
   });
 
+  // The grid asks for a reload through a prop, and the shell never builds a prop from `$outputs` on its own: the override
+  // has to publish it, or a page that declares the output wires nothing.
+  it('JobCardGrid: a declared onRefreshWanted is injected and publishes', () => {
+    const { props, published } = renderWith('JobCardGrid', {
+      $type: 'JobCardGrid',
+      $id: 'jobGrid',
+      $outputs: { onRefreshWanted: ['_'] },
+    });
+
+    (props['onRefreshWanted'] as () => void)();
+    expect(published).toEqual([{ id: 'jobGrid', event: 'onRefreshWanted', payload: undefined }]);
+  });
+
   it('the running-job detail variants publish onAfterTrigger and no longer onTrigger', () => {
     for (const name of ['RunningBannerDetail', 'RunningAlertDetail', 'RunningInlineDetail']) {
       const { props, published } = renderWith(name, {
