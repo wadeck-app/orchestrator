@@ -428,3 +428,9 @@ Started a copy of the real launcher with a temp config dir to test bundle lookup
 
 ## A route added to the module backend breaks a test in another package (2026-11-19)
 `GET /health` was added to app-module-orchestrator and only that package's tests were run: dsl-lib-orch/test/backend-bundle.test.ts compares the PACKAGED backend's routes with ALLOWED_ROUTES and failed on all three CI legs (two pushes). Before pushing a change to the module backend, run dsl-lib-orch's tests too (`vitest run test/backend-bundle.test.ts` there), or grep ALLOWED_ROUTES for every reader.
+
+### `queue wait ci | tail` hides the exit code
+
+**Problem:** A background `queue wait ci ... | tail -3` reported "exit code 0" while the wait had failed with exit 3 ("no run seen"), so the notification said nothing about a run that was still in progress.
+**Fix:** Run `queue wait ci` without a pipe (redirect to a file if the output is long), and cross-check the run with GitHub MCP `actions_list` (`list_workflow_runs`, then `list_workflow_jobs` with the run id) before saying CI is green.
+**Context:** A pipeline answers with the exit code of its last command. The relay delivers no `workflow_run` event for `wadeck-app/orchestrator`, so exit 3 is expected here and the API is the real check (runs 532-534 were confirmed green that way).
