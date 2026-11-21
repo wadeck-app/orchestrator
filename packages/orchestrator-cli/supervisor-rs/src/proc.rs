@@ -68,10 +68,10 @@ mod imp {
         cmd
     }
 
-    /// Go's message for a failed start is the os error alone for a missing cwd ("chdir ...") or "fork/exec /bin/sh: ..."
-    /// otherwise; not verified here (no Unix host): left empty, so only the OS message is reported.
+    /// Go reports a failed start as "fork/exec /bin/sh: <os error>". Seen in the CI differential (Linux and macOS, a
+    /// missing cwd): `fork/exec /bin/sh: no such file or directory`.
     pub fn start_error_prefix() -> String {
-        String::new()
+        "fork/exec /bin/sh: ".to_string()
     }
 
     /// SIGTERM to the whole group, SIGKILL once the grace period has passed.

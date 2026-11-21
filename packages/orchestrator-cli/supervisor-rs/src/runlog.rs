@@ -108,9 +108,43 @@ fn append_options() -> OpenOptions {
 /// Go's error text for a failed open: "open <path>: <os message>" (the os message without Rust's " (os error N)").
 pub fn os_msg(e: &io::Error) -> String {
     let s = e.to_string();
-    match s.rfind(" (os error ") {
+    let msg = match s.rfind(" (os error ") {
         Some(i) if s.ends_with(')') => s[..i].to_string(),
         _ => s,
+    };
+    // Go's syscall error tables on Linux and macOS are the system's messages with a lower-case first letter ("no such
+    // file or directory"); Rust prints strerror as is ("No such file or directory"). Seen for ENOENT in the CI
+    // differential on both OSes; other errnos are assumed to follow the same rule (not checked one by one). Windows
+    // messages are the same text in both languages.
+    #[cfg(unix)]
+    {
+        lower_first(&msg)
+    }
+    #[cfg(not(unix))]
+    {
+        msg
+    }
+}
+
+#[cfg_attr(not(unix), allow(dead_code))]
+fn lower_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod lower_first_tests {
+    use super::lower_first;
+
+    #[test]
+    fn lowers_only_the_first_letter() {
+        assert_eq!(lower_first("No such file or directory"), "no such file or directory");
+        assert_eq!(lower_first("Input/output error"), "input/output error");
+        assert_eq!(lower_first("already lower"), "already lower");
+        assert_eq!(lower_first(""), "");
     }
 }
 
