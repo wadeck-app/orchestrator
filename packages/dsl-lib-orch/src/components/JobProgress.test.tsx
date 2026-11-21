@@ -99,6 +99,32 @@ describe('JobProgress states', () => {
     expect(root.textContent).not.toContain('ends');
   });
 
+  // Seen live: the card truncates the reason ("auto: history (longer than u..."), so the overrun, the one thing worth reading, was cut off.
+  describe('past the usual duration', () => {
+    const overdue = (over: Partial<ProgressEstimate> = {}): ProgressEstimate => estimate({
+      progress: 0.99, etaAt: null, reason: 'auto: history (longer than usual by 8 s (usual up to 4 s)); skipped declared: no line yet',
+      detail: { overrunMs: 8000, targetMs: 4000 }, ...over,
+    });
+
+    it('leads with the overrun, counted on from the poll, and the usual duration', () => {
+      const { container } = render(<JobProgress progress={overdue()} nowMs={SERVER_NOW + 30_000} />);
+      const root = container.querySelector('[data-progress-state="overdue"]')!;
+      expect(root.textContent).toContain('+38 s over');
+      expect(root.textContent).toContain('usual up to 4 s');
+      expect(root.textContent).not.toContain('skipped declared');
+    });
+
+    it('counts minutes once past a minute', () => {
+      const { container } = render(<JobProgress progress={overdue({ detail: { overrunMs: 125_000, targetMs: 600_000 } })} nowMs={SERVER_NOW} />);
+      expect(container.querySelector('[data-progress-state="overdue"]')!.textContent).toContain('+2 min over (usual up to 10 min)');
+    });
+
+    it('falls back to the reason of the daemon when it sent no overrun', () => {
+      const { container } = render(<JobProgress progress={overdue({ detail: undefined, reason: 'longer than usual (usual: 10 min)' })} nowMs={SERVER_NOW} />);
+      expect(container.querySelector('[data-progress-state="overdue"]')!.textContent).toContain('longer than usual (usual: 10 min)');
+    });
+  });
+
   it('says how long past the end time it is before the next poll', () => {
     const { container } = render(<JobProgress progress={estimate()} nowMs={SERVER_NOW + 10 * 60_000} />);
     const root = container.querySelector('[data-progress-state="estimate"]')!;

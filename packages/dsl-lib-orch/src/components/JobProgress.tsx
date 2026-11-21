@@ -65,6 +65,33 @@ function formatOverrun(ms: number): string {
   return `+${Math.floor(minutes / 60)} h over`;
 }
 
+/** "4 s", "10 min", "1 h 05 min": a duration the daemon measured, for "usual up to ...". */
+function formatSpan(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds} s`;
+  }
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${TWO_DIGITS(minutes % 60)} min`;
+}
+
+/**
+ * What a run that is past its usual duration says: how long past, counted on from the poll, then the usual duration. Led by the
+ * overrun because a card truncates the daemon's reason to one line and the strategy's name came first. Null when the daemon sent
+ * no overrun (an older daemon, another strategy): the reason is then the text.
+ */
+function overdueText(progress: ProgressEstimate, now: number): string | null {
+  const overrun = progress.detail?.overrunMs;
+  const target = progress.detail?.targetMs;
+  if (typeof overrun !== 'number' || typeof target !== 'number') {
+    return null;
+  }
+  const sincePoll = Math.max(0, now - Date.parse(progress.serverNow));
+  const total = overrun + (Number.isNaN(sincePoll) ? 0 : sincePoll);
+  const span = total < 60_000 ? `${Math.floor(total / 1000)} s` : `${Math.floor(total / 60_000)} min`;
+  return `+${span} over (usual up to ${formatSpan(target)})`;
+}
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const startOfDay = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -104,7 +131,8 @@ export function useProgressNow(progress: ProgressEstimate | null | undefined, no
   const [, setTick] = useState(0);
   const skew = useRef<{ serverNow: string; ms: number } | null>(null);
 
-  const ticks = progress != null && progress.etaAt !== null && nowMs === undefined;
+  // An end time to count down to, or an overrun to count on: both change every second.
+  const ticks = progress != null && nowMs === undefined && (progress.etaAt !== null || typeof progress.detail?.overrunMs === 'number');
   useEffect(() => {
     if (!ticks) {
       return;
@@ -149,7 +177,7 @@ export function viewProgress(progress: ProgressEstimate, now: number): ProgressV
     return { state: 'none', pct: 0, detail: noEstimateText(progress), low, tooltip };
   }
   if (progress.etaAt === null) {
-    return { state: 'overdue', pct: Math.round(progress.progress * 100), detail: progress.reason, low, tooltip };
+    return { state: 'overdue', pct: Math.round(progress.progress * 100), detail: overdueText(progress, now) ?? progress.reason, low, tooltip };
   }
   const serverNow = Date.parse(progress.serverNow);
   const eta = Date.parse(progress.etaAt);
