@@ -405,6 +405,16 @@ export function createWindowsReader(
   };
 }
 
+/** Whether the system has this pid: a pid that answers "not allowed" exists, only is not ours to signal. */
+function pidExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 interface Snapshot {
   /** When the read that produced it began: a process that started later is not in it. */
   readStartedAt: number;
@@ -431,12 +441,19 @@ export interface ProcessTableOptions {
    * less than the time the last query took.
    */
   ttlMs: number;
+  /**
+   * Whether the system still has this pid, asked of the pids a cached snapshot lists: one that died after the snapshot was
+   * read must not be answered from it. A supervisor killed a moment after a read otherwise looked alive for the age of the
+   * snapshot (a slow read stretches it), and its run was followed again. Left out, the snapshot is trusted.
+   */
+  isAlive?: (pid: number) => boolean;
 }
 
 export class ProcessTable {
   private readonly _read: () => Promise<ProcRow[]>;
   private readonly _now: () => number;
   private readonly _ttlMs: number;
+  private readonly _isAlive: ((pid: number) => boolean) | undefined;
   private _current: Snapshot | null = null;
   private _inFlight: Promise<Snapshot> | null = null;
   private _inFlightStartedAt = 0;
@@ -446,6 +463,7 @@ export class ProcessTable {
     this._read = options.read;
     this._now = options.now;
     this._ttlMs = options.ttlMs;
+    this._isAlive = options.isAlive;
   }
 
   stats(): TableStats {
@@ -495,7 +513,11 @@ export class ProcessTable {
   private async _snapshotHaving(pids: number[]): Promise<Snapshot> {
     const askedAt = this._now();
     const snapshot = await this._snapshot();
-    if (snapshot.readStartedAt >= askedAt || pids.every((pid) => snapshot.byPid.has(pid))) {
+    if (snapshot.readStartedAt >= askedAt) {
+      return snapshot;
+    }
+    // Listed and still there: the snapshot answers. Listed and gone since (a pid the system no longer has): read again.
+    if (pids.every((pid) => snapshot.byPid.has(pid) && (this._isAlive === undefined || this._isAlive(pid)))) {
       return snapshot;
     }
     return this._snapshotReadFrom(askedAt);
@@ -588,7 +610,7 @@ export function systemProcessTable(onFallback?: (message: string) => void): { ta
   }
   if (shared === null) {
     const reader = createWindowsReader({ onFallback });
-    shared = { table: new ProcessTable({ read: reader.read, now: Date.now, ttlMs: 1000 }), reader };
+    shared = { table: new ProcessTable({ read: reader.read, now: Date.now, ttlMs: 1000, isAlive: pidExists }), reader };
   }
   return shared;
 }

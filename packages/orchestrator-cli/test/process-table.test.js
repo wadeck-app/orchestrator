@@ -207,6 +207,39 @@ describe('the process table', () => {
     assert.equal(reads, 2);
   });
 
+  // Found on Windows CI: a supervisor killed a moment after a snapshot was still in that snapshot, so the run of the dead
+  // supervisor was followed again (case 6 of run-adoption.test.js failed on two pushes in a row).
+  test('a pid the snapshot lists but the system says is gone is not answered from that snapshot', async () => {
+    let clock = T0;
+    let reads = 0;
+    const alive = new Set([10]);
+    const table = new ProcessTable({
+      read: async () => { reads++; return alive.has(10) ? [row(10, 1, 0, 0)] : []; },
+      now: () => clock,
+      ttlMs: 60_000,
+      isAlive: (pid) => alive.has(pid),
+    });
+    assert.equal((await table.usageMany([10]))[10] !== undefined, true);
+    alive.delete(10);
+    clock += 1000;
+
+    assert.equal((await table.usageMany([10]))[10], undefined);
+    assert.equal(reads, 2, 'read again once, because the system says the pid is gone');
+  });
+
+  test('a snapshot whose pids are all alive still answers every question within its age', async () => {
+    let reads = 0;
+    const table = new ProcessTable({
+      read: async () => { reads++; return [row(10, 1, 0, 0)]; },
+      now: () => T0,
+      ttlMs: 60_000,
+      isAlive: () => true,
+    });
+    await table.usageMany([10]);
+    await table.usageMany([10]);
+    assert.equal(reads, 1);
+  });
+
   test('a failed read is not cached: the next question reads again, and the failure is counted', async () => {
     let calls = 0;
     const table = new ProcessTable({
