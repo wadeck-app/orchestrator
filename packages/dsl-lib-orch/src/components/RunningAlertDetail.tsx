@@ -10,6 +10,7 @@ import { JobToggle } from './JobToggle.js';
 import { ButtonAction, ButtonCancel, ButtonLink } from '@wadeck-app/dsl-ui';
 import { TYPE_BADGE_BASE, TYPE_COLORS } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { deleteJob } from '../job-delete.js';
 import { formatElapsed } from '../relative-time.js';
 import { appPath, getApiBase } from '../runtime-config.js';
 
@@ -120,7 +121,8 @@ export function RunningAlertDetail({ job, jobId, runHistory, progress, onAfterTr
   const handleDelete = () => {
     if (onDelete) { onDelete(); return; }
     if (!confirmDelete) { setConfirmDelete(true); return; }
-    void fetch(`${getApiBase()}/api/jobs/${jobId}`, { method: 'DELETE' }).then(() => { window.location.href = appPath('/'); });
+    // Only a deletion that happened leaves the page: a refused PIN or a refused route is said, not followed by a page that no longer has its job.
+    void deleteJob(jobId).then(() => { window.location.href = appPath('/'); }, (err: unknown) => { setError(getErrorMessage(err)); });
   };
 
   // After every hook: the page mounts this before its data arrives, and a return ahead of the hooks

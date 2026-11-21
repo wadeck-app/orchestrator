@@ -115,6 +115,52 @@ describe('JobCardGrid bulk actions', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/jobs/j1', { method: 'DELETE' });
   });
 
+  // Inside app-core the delete is a sensitive route: a bare fetch gets 401 with no PIN dialog, the shell's fetcher asks.
+  describe('inside the app-core shell', () => {
+    afterEach(() => { Reflect.deleteProperty(globalThis, '__APP_CORE_SHELL__'); });
+
+    it('asks for the PIN once, then deletes through the shell fetcher and not through fetch', async () => {
+      const elevate = vi.fn().mockResolvedValue(undefined);
+      const fetcher = vi.fn().mockResolvedValue(undefined);
+      Reflect.set(globalThis, '__APP_CORE_SHELL__', { elevate, fetcher });
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+      const onAfterBulk = vi.fn();
+      const user = await selectFirstJob({ onAfterBulk });
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      await user.click(confirmDelete());
+
+      await waitFor(() => { expect(onAfterBulk).toHaveBeenCalled(); });
+      expect(elevate).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledWith('DELETE /api/jobs/j1', undefined, undefined, undefined);
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/jobs/j1', { method: 'DELETE' });
+    });
+
+    it('deletes nothing and says so when the PIN is refused', async () => {
+      const fetcher = vi.fn();
+      Reflect.set(globalThis, '__APP_CORE_SHELL__', { elevate: vi.fn().mockRejectedValue(new Error('PIN cancelled')), fetcher });
+      const user = await selectFirstJob({});
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      await user.click(confirmDelete());
+
+      expect(await screen.findByText('Nothing was deleted')).toBeInTheDocument();
+      expect(screen.getByText(/PIN cancelled/)).toBeInTheDocument();
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it('names the jobs that could not be deleted instead of reporting a clean batch', async () => {
+      Reflect.set(globalThis, '__APP_CORE_SHELL__', { elevate: vi.fn().mockResolvedValue(undefined), fetcher: vi.fn().mockRejectedValue(new Error('daemon is down')) });
+      const user = await selectFirstJob({});
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      await user.click(confirmDelete());
+
+      expect(await screen.findByText('1 of 1 not deleted')).toBeInTheDocument();
+      expect(screen.getByText(/"j1": daemon is down/)).toBeInTheDocument();
+    });
+  });
+
   it('reports back after a self-owned enable so the caller can reload', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     const onAfterBulk = vi.fn();

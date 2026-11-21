@@ -11,6 +11,7 @@ import { JobEtaCell } from './JobEtaCell.js';
 import { JobProgressBarCell } from './JobProgressBarCell.js';
 import { relativeTime } from './JobCard.js';
 import { useConfirm } from '../use-confirm.js';
+import { deleteJob, elevateForJobWrites } from '../job-delete.js';
 import { CannotBeRead } from '../cannot-be-read.js';
 import type { SourceFailure } from '../source-failure.js';
 import { appPath, getApiBase } from '../runtime-config.js';
@@ -261,11 +262,25 @@ export function JobCardGrid({ items, loadError, search = '', filter = 'all', fil
       confirmLabel: 'Delete',
       onConfirm: () => {
         if (onBulkDelete) { onBulkDelete(ids); setSelected(new Set()); return; }
-        void Promise.allSettled(ids.map(id => fetch(`${getApiBase()}/api/jobs/${id}`, { method: 'DELETE' })))
-          .then(() => { setSelected(new Set()); onAfterBulk?.(); });
+        // The PIN once for the whole batch (inside app-core), then the deletions; the ones that failed are named, not dropped.
+        void (async () => {
+          try {
+            await elevateForJobWrites();
+          } catch (err) {
+            notify({ title: 'Nothing was deleted', message: getErrorMessage(err) });
+            return;
+          }
+          const results = await Promise.allSettled(ids.map(id => deleteJob(id)));
+          const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [`"${ids[i]}": ${getErrorMessage(r.reason)}`] : []));
+          if (failed.length > 0) {
+            notify({ title: `${failed.length} of ${ids.length} not deleted`, message: failed.join(', ') });
+          }
+          setSelected(new Set());
+          onAfterBulk?.();
+        })();
       },
     });
-  }, [selected, onBulkDelete, onAfterBulk, ask]);
+  }, [selected, onBulkDelete, onAfterBulk, ask, notify]);
 
   // dsl-ui's Spinner rather than a hand-rolled div, for the accessible name the raw one lacked.
   if (!items && loadError !== undefined) {
