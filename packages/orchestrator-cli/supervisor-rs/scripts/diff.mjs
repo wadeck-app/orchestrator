@@ -55,6 +55,9 @@ const scenarios = [
     command: js(`console.log("start"); setInterval(()=>{},1000)`),
     act: async (d) => { await waitRunning(d); fs.writeFileSync(path.join(d, "kill"), "manual\n"); },
     expectSignal: true,
+    // The kill lands within one heartbeat of "running": whether node printed "start" first is a race (CI run
+    // 44943458859, macOS: go killed it first, rs let "start" through). The kill reason and the status are compared.
+    ignoreLogContent: true,
   },
   {
     name: "kill-empty-file",
