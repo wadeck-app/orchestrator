@@ -1,0 +1,25 @@
+[package]
+name = "orchestrator-supervisor-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+# std-only by default. The optional `serde_json` feature swaps ONLY the spec.json parser, to measure what
+# the crate costs (binary size, RAM) against the hand-written parser in src/json.rs.
+[dependencies]
+serde_json = { version = "=1.0.145", default-features = false, features = ["std"], optional = true }
+
+[features]
+serde_json = ["dep:serde_json"]
+
+[[bin]]
+name = "orchestrator-supervisor"
+path = "src/main.rs"
+
+[profile.size]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

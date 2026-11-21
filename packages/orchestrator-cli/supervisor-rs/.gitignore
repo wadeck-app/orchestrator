@@ -1,0 +1,2 @@
+# cargo build output (target/, and target-serde/ when the optional serde_json feature is measured)
+target*/

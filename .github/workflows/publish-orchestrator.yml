@@ -176,6 +176,19 @@ jobs:
               run: go test ./...
               working-directory: packages/orchestrator-cli/supervisor-go
 
+            # The Rust port of the supervisor (supervisor-rs), tested next to the Go one on each OS. Its unix branch
+            # (process group, SIGTERM then SIGKILL) was written on Windows and has never been compiled or run before
+            # this step, so a red ubuntu or macOS leg here is the expected way to find out what is wrong. It is not
+            # built into the platform packages and nothing ships from it yet.
+            # The version matches supervisor-rs/rust-toolchain.toml. Release profile, not `size`. std only, so there
+            # is no crate to download and no cache to key.
+            - name: Install Rust toolchain
+              run: rustup toolchain install 1.100.0 --profile minimal --no-self-update
+
+            - name: Run Rust supervisor tests
+              run: cargo test --release --locked
+              working-directory: packages/orchestrator-cli/supervisor-rs
+
             # Evidence, not a fix. A macOS leg has repeatedly died in `Run tests` with
             # `spawn <node> EAGAIN` (the process table was full when the test runner tried to start a
             # test file), on a different push each time and never on ubuntu or windows. Who held the

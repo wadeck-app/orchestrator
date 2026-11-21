@@ -1,0 +1,6 @@
+# Pinned like Go (1.26.8 in the workflow): a new compiler can change the bytes of the binary, and the
+# publish plan reuses a platform package only when those bytes are identical. Keep in sync with the
+# `rustup toolchain install` line in .github/workflows/publish-orchestrator.yml.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
