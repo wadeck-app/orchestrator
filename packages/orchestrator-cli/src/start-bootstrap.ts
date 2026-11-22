@@ -192,7 +192,8 @@ export function buildStartVbs(args: readonly string[], configDir: string): strin
     '  If reason = "" Then reason = "error 0x" & Hex(Err.Number)',
     '  Err.Clear',
     '  Set oFso = CreateObject("Scripting.FileSystemObject")',
-    `  logDir = ${vbsString(path.join(configDir, 'logs'))}`,
+    // A VBS only ever runs on Windows: the path is a Windows path whatever platform builds the text.
+    `  logDir = ${vbsString(path.win32.join(configDir, 'logs'))}`,
     '  If Not oFso.FolderExists(logDir) Then oFso.CreateFolder logDir',
     '  d = Now',
     '  Set oLog = oFso.OpenTextFile(logDir & "\\" & Year(d) & "-" & Right("0" & Month(d), 2) & "-" & Right("0" & Day(d), 2) & "-launcher.log", 8, True)',

@@ -127,7 +127,8 @@ async function assertRunsWatchdog(s, child, { dist }) {
   assert.equal(wd.pid, child.pid, 'the process the entry started IS the watchdog: one resident node, no second process');
   assert.equal(Number(fs.readFileSync(path.join(s.configDir, 'config.launcher-pid'), 'utf8')), child.pid);
   assert.deepEqual(wd.argv, [s.configDir], 'the watchdog gets the config dir and nothing else (not the hint)');
-  assert.equal(wd.execPath, nodeCopy);
+  // process.execPath is the real path: a temp dir under a symlink (macOS /var -> /private/var) is not spelled the same way.
+  assert.equal(fs.realpathSync(wd.execPath), fs.realpathSync(nodeCopy));
   assert.equal(fs.realpathSync(wd.dirname), fs.realpathSync(dist));
   assert.ok(alive(child.pid));
   assert.match(s.log(), /\[ INFO\] \[launcher\] start at login: running .*orchestrator-watchdog\.cjs \(found via /);
@@ -140,10 +141,15 @@ describe('bootstrap e2e: the process the login starts becomes the watchdog', () 
   test('modules next to node (Windows installer, nvm-windows): found, in-process, argv is [configDir]', async () => {
     const s = scenario();
     const dist = installIn(path.join(path.dirname(nodeCopy), 'node_modules'));
-    const child = startLogin(s, { env: loginEnv() });
-    await assertRunsWatchdog(s, child, { dist });
-    assert.match(s.log(), /found via node_modules next to/);
-    fs.rmSync(path.join(path.dirname(nodeCopy), 'node_modules'), { recursive: true, force: true });
+    try {
+      const child = startLogin(s, { env: loginEnv() });
+      await assertRunsWatchdog(s, child, { dist });
+      assert.match(s.log(), /found via node_modules next to/);
+    } finally {
+      // Even when an assertion fails: the install next to the shared node must never be visible to the tests that follow
+      // ("nothing installed" would otherwise run this fake watchdog).
+      fs.rmSync(path.join(path.dirname(nodeCopy), 'node_modules'), { recursive: true, force: true });
+    }
   });
 
   test('global prefix OUTSIDE node\'s folder (npm prefix of the environment) is found', async () => {

@@ -363,8 +363,10 @@ describe('enableStartup, Windows: the Run value starts the hidden script, which 
 // ---------------------------------------------------------------------------------------------------------------------------
 const HOME = '/home/tester';
 // A directory that holds a file named node: what an entry's PATH check looks for on a POSIX target, whatever host runs the test.
-// Forward slashes: the POSIX entry's paths are read back with POSIX rules, also on a Windows host.
-const NODE_BIN = (() => { const d = tmp('orch-fakenode-'); fs.writeFileSync(path.join(d, 'node'), ''); return d.split(path.sep).join('/'); })();
+// It is a purely POSIX path (no drive letter: a POSIX PATH is split on ':', so "C:/..." would be cut in two, and "/x" resolves
+// against the drive of the working directory, which is not the temp drive on a CI runner), and `isFile` is injected to see it.
+const NODE_BIN = '/opt/orch-fakenode';
+const fakeNodeIsFile = (f) => f === `${NODE_BIN}/node` || (() => { try { return fs.statSync(f).isFile(); } catch { return false; } })();
 const shell = { runShell: () => ({ status: 0, stdout: '__ORCH_PATH_START__/home/tester/.local/bin:/usr/bin__ORCH_PATH_END__', stderr: '' }), shellEnv: '/bin/bash', isExecutableFile: () => true, home: HOME, nodeBinDir: NODE_BIN, env: { HOME } };
 
 function linuxSetup(over = {}) {
@@ -380,7 +382,7 @@ function linuxSetup(over = {}) {
     if (args[1] === 'disable') { fs.rmSync(wants, { force: true }); }
     return '';
   };
-  const deps = { platform: 'linux', unitPath, exec, linuxPath: shell, watchdogEntry: install.watchdog, nodePath: `${NODE_BIN}/node`, nodeBinDir: NODE_BIN, ...over };
+  const deps = { platform: 'linux', unitPath, exec, linuxPath: shell, watchdogEntry: install.watchdog, nodePath: `${NODE_BIN}/node`, nodeBinDir: NODE_BIN, isFile: fakeNodeIsFile, ...over };
   return { install, configDir, unitPath, wants, calls, deps };
 }
 
@@ -584,7 +586,7 @@ describe('OLD ENTRY, NEW PACKAGE: an entry for the Go launcher is outdated and r
     const launcher = path.join(dir, 'orchestrator-launcher');
     fs.writeFileSync(launcher, '');
     fs.writeFileSync(plistPath, buildMacPlist([launcher, configDir], configDir, [NODE_BIN], { bundle: install.daemon }));
-    const deps = { platform: 'darwin', plistPath, exec: () => '', macPath: shell, watchdogEntry: install.watchdog, nodePath: `${NODE_BIN}/node`, nodeBinDir: NODE_BIN };
+    const deps = { platform: 'darwin', plistPath, exec: () => '', macPath: shell, watchdogEntry: install.watchdog, nodePath: `${NODE_BIN}/node`, nodeBinDir: NODE_BIN, isFile: fakeNodeIsFile };
     const report = inspectStartupEntry(configDir, deps);
     assert.equal(report.state, 'outdated', JSON.stringify(report));
     assert.equal(repairStartupEntry(configDir, deps).repair.ok, true);
