@@ -101,6 +101,16 @@ describe('everything else agrees with PLATFORM_TARGETS', () => {
     }
   });
 
+  // The published supervisor is the Rust one (the publish job downloads the artifacts of the build-and-test legs
+  // into supervisor-rs/dist). supervisor-go is only built in CI for the differential.
+  test('both publish scripts read the supervisor from the Rust dist folder, with no override', () => {
+    for (const name of ['copy-binaries.sh', 'publish-platform-packages.sh']) {
+      const script = read('ci', 'scripts', name);
+      assert.match(script, /^SUPERVISOR_DIST="packages\/orchestrator-cli\/supervisor-rs\/dist"$/m, name);
+      assert.ok(!script.includes('supervisor-go'), `${name} must not read the Go supervisor`);
+    }
+  });
+
   test('the supervisor builder produces each supervisor name', () => {
     const script = read('scripts', 'build-supervisor-binary.ts');
     for (const key of KEYS) {

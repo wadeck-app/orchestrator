@@ -1,6 +1,6 @@
 # Supervised jobs
 
-Each job runs under its own small supervisor process (`packages/orchestrator-cli/supervisor-go`), started detached from the daemon. A daemon restart, `orch stop` or `orch cli update` therefore leaves running jobs running, and the next daemon follows them again. Setting: `supervisedJobs` in `docs/daemon-config.md`.
+Each job runs under its own small supervisor process (`packages/orchestrator-cli/supervisor-rs`, Rust), started detached from the daemon. A daemon restart, `orch stop` or `orch cli update` therefore leaves running jobs running, and the next daemon follows them again. Setting: `supervisedJobs` in `docs/daemon-config.md`.
 
 ## Run folder
 

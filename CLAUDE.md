@@ -53,7 +53,7 @@ The published `@wadeck-app/orchestrator-cli` ships **only** JS: `dist/orchestrat
 (daemon), `dist/orchestrator-cli.cjs` (CLI), `dist/orchestrator-updater.cjs`, plus `bin/` and
 `server/`. No native binary.
 
-The Go launcher, the supervisor and (Windows, macOS) the tray live in
+The launcher (Go), the supervisor (Rust) and (Windows, macOS) the tray (Go) live in
 `@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,linux-x64}`,
 pulled in as `optionalDependencies` with an **exact** version pin, so `npm install -g` updates
 them in the same transaction and a rollback restores the matching pair. They are republished
@@ -77,21 +77,14 @@ the package specifier in `ci/launcher.config.json`. That is what makes start-at-
 
 ## TEMPORARY: Rust supervisor migration (remove this section when done)
 
-`packages/orchestrator-cli/supervisor-rs` (Rust) matches `supervisor-go` (tests, 40 differential scenarios, 103 daemon tests against it on the 3 OS, update and rollback tried on Windows). `latest` still ships the Go supervisor. The Rust one ships only on the `rust-next` dist tag, chosen by two trailer lines in the head commit message of a push to main:
+The Rust supervisor (`packages/orchestrator-cli/supervisor-rs`) ships on `latest` since 2026-11-22. The publish workflow has no channel, trailer or dispatch-input mechanism any more: the publish job always takes the binaries built by the three build-and-test legs (artifacts `rust-supervisor-<OS>`), and `copy-binaries.sh` and `publish-platform-packages.sh` read `supervisor-rs/dist`.
 
-```
-Supervisor: rust
-Publish-Tag: rust-next
-```
+`supervisor-go` is kept only for the CI differential (Go vs Rust scenarios) until the user's macOS and Linux tests are done. Remaining steps:
 
-The user's machine follows `rust-next` (`channel: rust-next`, `autoUpdate: false` in `config.yml`). If the trial shows nothing wrong, migrate:
-
-1. Make Rust the default in `publish-orchestrator.yml`: drop the Go supervisor build, the `rust-next` guard, the trailer step (`resolve-publish-channel.sh` and its test) and the dispatch inputs `supervisor_impl` and `dist_tag_override`.
-2. Delete `supervisor-go`, its build script and tests; update `PLATFORM_TARGETS`, `copy-binaries.sh`, `publish-platform-packages.sh` and the docs that name the Go supervisor.
-3. Restore the user's `config.yml` (`autoUpdate: true`, no `channel`) and publish on `latest`.
-4. Then study replacing the Go launcher with a Node watchdog (not started; the tray stays Go).
-
-Never publish a Rust build on `latest` before step 1: the guard refuses it.
+1. Delete `supervisor-go`, its build script (`scripts/build-supervisor-binary.ts`, `build-supervisor`), its tests, the Go supervisor CI steps, the differential and measure/repro scripts that need it, and the `PLATFORM_TARGETS` and ci script references (the `*Dev` names and the source-checkout fallback in `src/platform-binary.ts`); update the docs that name the Go supervisor.
+2. Restore the user's `config.yml` (`autoUpdate: true`, no `channel`) on the user's machine and verify the auto-update follows `latest`.
+3. Phase C of the watchdog: remove the Go launcher from the platform packages, the junction/staging code, `LAUNCHER_BUNDLE_OVERRIDE` and the `--launcher` fallback (the tray stays Go).
+4. Remove this section.
 
 ## Agent reference docs
 

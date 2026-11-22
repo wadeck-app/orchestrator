@@ -25,8 +25,8 @@ DIST_TAG="${2:?missing dist tag}"
 
 LAUNCHER_DIST="packages/orchestrator-cli/launcher-go/dist"
 TRAY_DIST="packages/orchestrator-cli/tray-go/dist"
-# Overridable so a Rust-supervisor build can be published from its own dist folder.
-SUPERVISOR_DIST="${SUPERVISOR_DIST:-packages/orchestrator-cli/supervisor-go/dist}"
+# The Rust supervisor, built natively by each build-and-test leg and downloaded by the publish job.
+SUPERVISOR_DIST="packages/orchestrator-cli/supervisor-rs/dist"
 MAIN_PKG="packages/orchestrator-cli"
 
 BIN_HASH=$(cat \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copies Go launcher and tray binaries into the platform packages.
+# Copies the Go launcher and tray and the Rust supervisor binaries into the platform packages.
 #
 # The main package deliberately ships NO native binary: the daemon resolves the tray
 # through require.resolve('<platformPkg>/orchestrator-tray*'), and the Go launcher finds
@@ -12,8 +12,8 @@ set -euo pipefail
 
 LAUNCHER_DIST="packages/orchestrator-cli/launcher-go/dist"
 TRAY_DIST="packages/orchestrator-cli/tray-go/dist"
-# Overridable so a Rust-supervisor build can be published from its own dist folder.
-SUPERVISOR_DIST="${SUPERVISOR_DIST:-packages/orchestrator-cli/supervisor-go/dist}"
+# The Rust supervisor, built natively by each build-and-test leg and downloaded by the publish job.
+SUPERVISOR_DIST="packages/orchestrator-cli/supervisor-rs/dist"
 
 cp "$LAUNCHER_DIST/orchestrator_windows_release.exe"   packages/orchestrator-cli-win32-x64/orchestrator.exe
 cp "$LAUNCHER_DIST/orchestrator_darwin_arm64_release"  packages/orchestrator-cli-darwin-arm64/orchestrator
