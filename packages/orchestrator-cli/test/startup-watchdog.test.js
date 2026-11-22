@@ -585,7 +585,8 @@ describe('OLD ENTRY, NEW PACKAGE: an entry for the Go launcher is outdated and r
     fs.writeFileSync(launcher, '');
     fs.writeFileSync(plistPath, buildMacPlist([launcher, configDir], configDir, [NODE_BIN], { bundle: install.daemon }));
     const deps = { platform: 'darwin', plistPath, exec: () => '', macPath: shell, watchdogEntry: install.watchdog, nodePath: `${NODE_BIN}/node`, nodeBinDir: NODE_BIN };
-    assert.equal(inspectStartupEntry(configDir, deps).state, 'outdated');
+    const report = inspectStartupEntry(configDir, deps);
+    assert.equal(report.state, 'outdated', JSON.stringify(report));
     assert.equal(repairStartupEntry(configDir, deps).repair.ok, true);
     assert.deepEqual(inspectStartupEntry(configDir, deps), { state: 'ok', problems: [] });
   });
