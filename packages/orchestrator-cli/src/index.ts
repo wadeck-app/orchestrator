@@ -33,6 +33,7 @@ import { guardUpdates, UPDATE_STARTS_FILE } from './update-guard.js';
 import { updateNotice } from './update-notice.js';
 import { HookDispatcher } from '@wadeck-app/shared-cli/HookDispatcher';
 import { bridgeStdio } from './stdio-bridge.js';
+import { startWatchdogWatch, stopWhenWatchdogGone } from './watchdog/pid-watch.js';
 import { disposeSystemProcessTable, monitoringInfo, monitoringNotice } from './process-table.js';
 import { guardStdio, makeFatalHandler, writeCrashMarker, readCrashMarker, clearCrashMarker, CRASH_MARKER_FILE } from './crash-guard.js';
 
@@ -399,6 +400,16 @@ async function main(): Promise<void> {
     // A startup job's job.started can come before it.
     events.publish('daemon.started', { pid: process.pid, version });
     daemonLog.write('daemon ready (serving, scheduler started)');
+    // Under the Node watchdog on Windows (ORCH_WATCHDOG_PID): stop, as SIGTERM does, when the watchdog is gone. No-op otherwise.
+    startWatchdogWatch({
+      env: process.env,
+      log: (line) => daemonLog.write(line),
+      onGone: stopWhenWatchdogGone({
+        stop: () => daemon.stop('signal'),
+        exit: (code) => process.exit(code),
+        log: (line) => daemonLog.write(line),
+      }),
+    });
     const notice = monitoringNotice(monitoringInfo().backend);
     if (notice !== null) {
       console.log(notice);

@@ -12,6 +12,7 @@
     "dist/orchestrator.cjs",
     "dist/orchestrator-cli.cjs",
     "dist/orchestrator-updater.cjs",
+    "dist/orchestrator-watchdog.cjs",
     "server/",
     "app-module/",
     "package.json"

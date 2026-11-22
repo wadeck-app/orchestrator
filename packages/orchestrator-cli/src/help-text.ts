@@ -26,6 +26,9 @@ Daemon lifecycle:
                                (Ctrl+C stops the tail, the daemon keeps running)
                                --no-follow  Return as soon as the daemon is up, without tailing
                                --follow,-f  Tail even when stdout is piped
+                               --watchdog   EXPERIMENTAL: supervise the daemon with the Node watchdog
+                                            instead of the Go launcher (also ORCH_WATCHDOG=1);
+                                            start at login is unchanged. See docs/watchdog.md
   orch stop [--kill-jobs]      Stop the daemon. Where a supervisor exists (Windows, macOS,
                                Linux) jobs under it keep running and are
                                followed again at the next start; the jobs named in the answer do.

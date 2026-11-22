@@ -7,6 +7,7 @@
  *   dist/orchestrator.cjs         (daemon entry point)
  *   dist/orchestrator-cli.cjs     (CLI entry point)
  *   dist/orchestrator-updater.cjs (updater)
+ *   dist/orchestrator-watchdog.cjs (experimental Node watchdog)
  *
  * Usage:  npx tsx scripts/bundle.ts
  * Env:    BUNDLE_VERSION  override version baked into bundles
@@ -85,9 +86,24 @@ await Promise.all([
     banner,
     logLevel: 'warning',
   }),
+
+  // Node watchdog (experimental, `orch start --watchdog`): plain `node dist/orchestrator-watchdog.cjs <configDir>`, no
+  // dependency outside the bundle. It does not read the package version.
+  build({
+    entryPoints: [path.join(root, 'dist/watchdog/main.js')],
+    bundle: true,
+    platform: 'node',
+    target: 'node24',
+    format: 'cjs',
+    outfile: path.join(root, 'dist/orchestrator-watchdog.cjs'),
+    external: [],
+    supported: { 'top-level-await': false },
+    logLevel: 'warning',
+  }),
 ]);
 
 console.log('Bundle written to dist/orchestrator.cjs (daemon)');
+console.log('Bundle written to dist/orchestrator-watchdog.cjs (experimental Node watchdog)');
 console.log('Bundle written to dist/orchestrator-cli.cjs (CLI)');
 console.log(`Bundle written to dist/orchestrator-updater.cjs (version: ${version})`);
 

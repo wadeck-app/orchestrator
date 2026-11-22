@@ -42,6 +42,10 @@ Integers must be whole and non-negative. `0` is valid and means "keep none", exc
 - Any other value leaves the tray on (and is logged as ignored).
 - `npm test` sets it for the whole run (`test/helpers/isolate-config-dir.js`): a daemon a test kills by force leaves a ghost icon in the Windows taskbar.
 
+## Environment: `ORCH_WATCHDOG` (experimental)
+
+`orch start --watchdog` or `ORCH_WATCHDOG=1` supervises the daemon with a Node watchdog instead of the Go launcher. Opt-in; start at login is unchanged. See `docs/watchdog.md`.
+
 ## Where jobs get their PATH (macOS)
 
 A job inherits the daemon's `PATH`, and a job's own `env: { PATH }` **replaces** it (it is not appended). The daemon's PATH depends on how it started:

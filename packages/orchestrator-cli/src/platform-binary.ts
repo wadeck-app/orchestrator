@@ -380,3 +380,12 @@ export function findDaemonEntry(): string | null {
   }
   return bundle;
 }
+
+/**
+ * The Node watchdog bundle (experimental, `orch start --watchdog`) sitting next to this module, or null. Only the bundle exists
+ * as an entry: it resolves the daemon bundle as its own sibling, which the tsc output layout does not offer.
+ */
+export function findWatchdogEntry(): string | null {
+  const bundle = path.join(__dirname, 'orchestrator-watchdog.cjs');
+  return fs.existsSync(bundle) ? bundle : null;
+}
