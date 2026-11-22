@@ -1,6 +1,6 @@
 'use strict';
 
-// The helpers behind the Node watchdog entry point (src/watchdog/runtime.ts) and the opt-in start of `orch start --watchdog`
+// The helpers behind the Node watchdog entry point (src/watchdog/runtime.ts) and the default start of `orch start` (watchdog, or the Go launcher with --launcher)
 // (src/watchdog/launch.ts, platform-binary.ts findWatchdogEntry). Nothing here starts a daemon.
 const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -11,7 +11,7 @@ const path = require('node:path');
 const {
   configDirFromArgs, defaultConfigDir, resolveDaemonBundle, daemonEnv, daemonStdio, formatLogLine, createLogger, StopController,
 } = require('../src/watchdog/runtime');
-const { wantsWatchdog, watchdogSpawnSpec } = require('../src/watchdog/launch');
+const { resolveStartMode, launcherFromEnv, watchdogSpawnSpec } = require('../src/watchdog/launch');
 const { findWatchdogEntry } = require('../src/platform-binary');
 
 const dirs = [];
@@ -219,19 +219,46 @@ describe('StopController', () => {
   });
 });
 
-describe('orch start --watchdog (opt-in)', () => {
-  test('the flag or ORCH_WATCHDOG=1 opt in; nothing else does', () => {
-    assert.equal(wantsWatchdog(false, {}), false);
-    assert.equal(wantsWatchdog(false, { ORCH_WATCHDOG: '' }), false);
-    assert.equal(wantsWatchdog(false, { ORCH_WATCHDOG: '0' }), false);
-    assert.equal(wantsWatchdog(true, {}), true);
-    assert.equal(wantsWatchdog(false, { ORCH_WATCHDOG: '1' }), true);
+describe('orch start: the watchdog is the default, the Go launcher an explicit fallback', () => {
+  const mode = (over = {}) => resolveStartMode({ launcherFlag: false, watchdogFlag: false, env: {}, ...over });
+
+  test('nothing asked: the watchdog, no note', () => {
+    assert.deepEqual(mode(), { launcher: false, notes: [] });
+    assert.deepEqual(mode({ env: { ORCH_LAUNCHER: '' } }), { launcher: false, notes: [] });
   });
 
-  test('any other value of ORCH_WATCHDOG fails loudly instead of choosing a launcher by guess', () => {
-    for (const bad of ['true', 'yes', '2', 'on']) {
-      assert.throws(() => wantsWatchdog(false, { ORCH_WATCHDOG: bad }), (e) => e.message.includes('ORCH_WATCHDOG') && e.message.includes(bad));
+  test('--launcher or ORCH_LAUNCHER=go picks the Go launcher; nothing else does', () => {
+    assert.equal(mode({ launcherFlag: true }).launcher, true);
+    assert.equal(mode({ env: { ORCH_LAUNCHER: 'go' } }).launcher, true);
+    assert.equal(launcherFromEnv({}), false);
+  });
+
+  test('any other value of ORCH_LAUNCHER fails loudly instead of choosing a launcher by guess', () => {
+    for (const bad of ['1', 'true', 'GO', 'node', 'watchdog']) {
+      assert.throws(() => mode({ env: { ORCH_LAUNCHER: bad } }), (e) => e.message.includes('ORCH_LAUNCHER') && e.message.includes(bad) && e.message.includes('=go'));
     }
+  });
+
+  test('--watchdog and ORCH_WATCHDOG (first release) are ignored with a one-line note each', () => {
+    const flag = mode({ watchdogFlag: true });
+    assert.equal(flag.launcher, false);
+    assert.equal(flag.notes.length, 1);
+    assert.match(flag.notes[0], /--watchdog is deprecated and ignored.*--launcher/);
+    for (const value of ['1', '0', 'yes']) {
+      const env = mode({ env: { ORCH_WATCHDOG: value } });
+      assert.equal(env.launcher, false);
+      assert.equal(env.notes.length, 1);
+      assert.match(env.notes[0], /ORCH_WATCHDOG is deprecated and ignored.*ORCH_LAUNCHER=go/);
+    }
+    assert.equal(mode({ env: { ORCH_WATCHDOG: '' } }).notes.length, 0);
+  });
+
+  test('asking for the watchdog and the launcher together is an error that names both', () => {
+    assert.throws(() => mode({ watchdogFlag: true, launcherFlag: true }), /--watchdog and --launcher contradict/);
+    assert.throws(() => mode({ watchdogFlag: true, env: { ORCH_LAUNCHER: 'go' } }), /--watchdog and ORCH_LAUNCHER=go contradict/);
+    assert.throws(() => mode({ launcherFlag: true, env: { ORCH_WATCHDOG: '1' } }), /ORCH_WATCHDOG=1 and --launcher contradict/);
+    // ORCH_WATCHDOG=0 never asked for a watchdog: with --launcher it is only a note.
+    assert.deepEqual(mode({ launcherFlag: true, env: { ORCH_WATCHDOG: '0' } }).launcher, true);
   });
 
   test('the spawn is detached, hidden, with no stdio, on this node and the config dir; inherited overrides are stripped', () => {

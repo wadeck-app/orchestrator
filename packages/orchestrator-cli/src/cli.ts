@@ -4,7 +4,7 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { launcherBundleOverride, nodeDirOnPath, LAUNCHER_BUNDLE_SPEC } from './launcher-bundle.js';
 import { runStartupCheck } from './startup-check.js';
-import { wantsWatchdog, watchdogSpawnSpec, WATCHDOG_FLAG } from './watchdog/launch.js';
+import { resolveStartMode, watchdogSpawnSpec, WATCHDOG_FLAG, LAUNCHER_FLAG } from './watchdog/launch.js';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
 import type { ProgressEstimate } from './progress/types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobProgressSetting } from './types.js';
@@ -984,7 +984,7 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'start': {
-      startDaemon({ watchdog: has(rest, WATCHDOG_FLAG) });
+      startDaemon({ watchdog: has(rest, WATCHDOG_FLAG), launcher: has(rest, LAUNCHER_FLAG) });
 
       // Readiness is confirmed on BOTH paths. Exiting 0 straight after spawning reported
       // success to scripts even when the launcher failed to bring the daemon up, so
@@ -2431,7 +2431,7 @@ export async function main(): Promise<void> {
 
   const client = createDaemonClient({ configDir, commands });
 
-  function startDaemon(opts: { watchdog?: boolean } = {}): void {
+  function startDaemon(opts: { watchdog?: boolean; launcher?: boolean } = {}): void {
     const { launcherToRun, findDaemonEntry, findWatchdogEntry, platformPackage, unsupportedPlatformMessage } =
       require('./platform-binary.js') as typeof import('./platform-binary.js');
 
@@ -2442,36 +2442,39 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // EXPERIMENTAL, opt-in: the Node watchdog instead of the Go launcher (docs/watchdog.md). Same detached, hidden start.
-    let useWatchdog = false;
+    // The Node watchdog is the default (docs/watchdog.md); the Go launcher only on request (--launcher, ORCH_LAUNCHER=go).
+    let mode: ReturnType<typeof resolveStartMode>;
     try {
-      useWatchdog = wantsWatchdog(opts.watchdog === true, process.env);
+      mode = resolveStartMode({ launcherFlag: opts.launcher === true, watchdogFlag: opts.watchdog === true, env: process.env });
     } catch (e) {
       console.error(getErrorMessage(e));
       process.exit(1);
     }
-    if (useWatchdog) {
+    for (const note of mode.notes) {
+      console.error(note);
+    }
+    if (!mode.launcher) {
       const watchdogPath = findWatchdogEntry();
       if (!watchdogPath) {
-        console.error(`Cannot start with the watchdog: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}.`);
+        console.error(`Cannot start the daemon: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}.`);
         console.error('Installed: re-install with: npm install -g @wadeck-app/orchestrator-cli');
         console.error('Checkout:  npm run bundle --workspace=packages/orchestrator-cli');
-        console.error('Or start with the Go launcher: unset ORCH_WATCHDOG and leave out --watchdog.');
+        console.error('Or start with the Go launcher (fallback): orch start --launcher');
         process.exit(1);
       }
       const spec = watchdogSpawnSpec({ execPath: process.execPath, watchdogPath, configDir, env: process.env });
       const watchdog = spawn(spec.command, spec.args, spec.options);
       watchdog.on('error', (err) => {
         console.error(`Failed to execute the Node watchdog (${spec.command} ${watchdogPath}): ${getErrorMessage(err)}`);
-        console.error('Start with the Go launcher instead (leave out --watchdog and unset ORCH_WATCHDOG), or re-install with: npm install -g @wadeck-app/orchestrator-cli');
+        console.error('Start with the Go launcher instead: orch start --launcher. Or re-install with: npm install -g @wadeck-app/orchestrator-cli');
         process.exit(1);
       });
       watchdog.unref();
-      console.log('Orchestrator starting (experimental Node watchdog)...');
+      console.log('Orchestrator starting...');
       return;
     }
 
-    // The Go launcher is required, with no degraded mode behind it. It supervises the daemon,
+    // The Go launcher (explicit fallback, removed in a later release) is required once chosen, with no degraded mode behind it. It supervises the daemon,
     // which is what makes auto-restart after an update work, and on Windows it is also the
     // only thing that detaches cleanly: the shell tracks every descendant of an MSYS2/Git Bash
     // spawn() in its process group, so it waits for them even with detached+unref().  // violations-suppress: cli/no-spawn-without-windows-hide prose, not a call

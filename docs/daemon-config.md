@@ -42,9 +42,9 @@ Integers must be whole and non-negative. `0` is valid and means "keep none", exc
 - Any other value leaves the tray on (and is logged as ignored).
 - `npm test` sets it for the whole run (`test/helpers/isolate-config-dir.js`): a daemon a test kills by force leaves a ghost icon in the Windows taskbar.
 
-## Environment: `ORCH_WATCHDOG` (experimental)
+## Environment: `ORCH_LAUNCHER`
 
-`orch start --watchdog` or `ORCH_WATCHDOG=1` supervises the daemon with a Node watchdog instead of the Go launcher. Opt-in; start at login is unchanged. See `docs/watchdog.md`.
+The daemon runs under the Node watchdog by default (`orch start`, start at login). `orch start --launcher` or `ORCH_LAUNCHER=go` runs the Go launcher instead (fallback for one release); any other value is an error. `--watchdog` and `ORCH_WATCHDOG` are deprecated no-ops. See `docs/watchdog.md`.
 
 ## Where jobs get their PATH (macOS)
 
@@ -52,7 +52,7 @@ A job inherits the daemon's `PATH`, and a job's own `env: { PATH }` **replaces**
 
 | Started by | PATH |
 |---|---|
-| `orch start` / `orch restart` (the CLI spawns the Go launcher directly, launchd is not involved) | The PATH of the shell that ran the command |
+| `orch start` / `orch restart` (the CLI spawns the watchdog directly, launchd is not involved) | The PATH of the shell that ran the command |
 | launchd at login (`~/Library/LaunchAgents/com.wadeck.orchestrator.plist`) | `EnvironmentVariables.PATH` of the plist |
 
 launchd never reads `~/.zshrc`, so a tool found only through it (`~/.local/bin/claude`) failed with `command not found` (exit 127) in a login-started daemon. On macOS the plist now carries the PATH of your login shell:
@@ -73,7 +73,7 @@ Fix: run that command in a terminal; a slow or blocking command in `~/.zshrc` / 
 
 ## Start-at-login entry check
 
-The entry (registry value, LaunchAgent, systemd unit) names a launcher, and on macOS and Linux a daemon bundle and a `PATH` with `node`. A node or npm prefix change (nvm, a removed version) can leave it naming a path that is gone: the daemon then does not start at the next login, with the reason only in a launcher log.
+The entry (registry value, LaunchAgent, systemd unit) names node and the bootstrap `<configDir>/orchestrator-start.cjs` (Windows: a hidden `orchestrator-start.vbs`; the Go launcher for an install without the watchdog), and on macOS and Linux a `PATH` with `node`. A node or npm prefix change (nvm, a removed version) can leave it naming a path that is gone: the daemon then does not start at the next login, with the reason only in a launcher log.
 
 Every `orch` command (people, cron jobs, agents) reads the entry back, at most once an hour (`<configDir>/startup-check.stamp`), and always for `orch status`:
 
@@ -81,6 +81,7 @@ Every `orch` command (people, cron jobs, agents) reads the entry back, at most o
 |---|---|
 | ok | nothing |
 | broken (a named path is gone) | registers it again with this install's paths and says so on stderr; if that fails, or on a development build, a warning on every command names the paths and says `orch install` |
+| outdated (it still starts the Go launcher and this install has the watchdog) | registers it again like `broken`, with a `Notice` on stderr |
 | drift (it works but starts another install than the one running this command) | `orch status` warns with both paths; never rewritten, since callers under different nodes would rewrite it back and forth |
 | not registered | `orch status` warns: `orch install` |
 
@@ -88,7 +89,8 @@ The daemon rewrites the entry from its own paths at every start, and logs a `WAR
 
 ### Windows with the global modules outside node's folder
 
-The launcher runs from `<configDir>/bin/<stamp>/`, finds the bundle in `<folder of node>/node_modules` or by walking up `node_modules` from its own folder, and a Windows Run value cannot carry `LAUNCHER_BUNDLE_OVERRIDE`. With the global modules elsewhere (`%APPDATA%\npm`, the default of the Windows installer) the launcher answered `cannot find the bundle` at login (reproduced with the real launcher). `orch install` and the daemon start now put a junction `node_modules` in the staged folder, pointing at the global modules folder; no link when node's own folder holds them (nvm, `C:\App\nodejs`). A staged folder without it is `broken` above, so the next `orch` command repairs it. A real folder named `node_modules` there is left alone and reported. Not tested: a full reboot login on a machine with `%APPDATA%\npm`.
+Go fallback only (the watchdog entry has none of this: its bootstrap searches `%APPDATA%
+pm` itself, docs/watchdog.md). The launcher runs from `<configDir>/bin/<stamp>/`, finds the bundle in `<folder of node>/node_modules` or by walking up `node_modules` from its own folder, and a Windows Run value cannot carry `LAUNCHER_BUNDLE_OVERRIDE`. With the global modules elsewhere (`%APPDATA%\npm`, the default of the Windows installer) the launcher answered `cannot find the bundle` at login (reproduced with the real launcher). `orch install` and the daemon start now put a junction `node_modules` in the staged folder, pointing at the global modules folder; no link when node's own folder holds them (nvm, `C:\App\nodejs`). A staged folder without it is `broken` above, so the next `orch` command repairs it. A real folder named `node_modules` there is left alone and reported. Not tested: a full reboot login on a machine with `%APPDATA%\npm`.
 
 ## Start at login on Linux (systemd user unit)
 
@@ -96,7 +98,7 @@ Validated on a real Ubuntu x64 host (2026-10-31): `orch install`, then a reboot,
 
 `orch install` writes `$XDG_CONFIG_HOME/systemd/user/orchestrator.service` (default `~/.config/systemd/user/`), then runs `systemctl --user daemon-reload` and `systemctl --user enable orchestrator.service`. Never `--now`: a running daemon is left alone. `orch uninstall` runs `disable`, removes the unit, and reloads.
 
-- `ExecStart` is the staged launcher plus the config dir, `Restart=no` (the launcher already restarts the daemon), `KillMode=process` (a stop ends the launcher and so the unit; the default would kill the job supervisors and the jobs with it), `WantedBy=default.target`. Spaces, `%` and `$` in paths are escaped.
+- `ExecStart` is node, the bootstrap, the config dir and the install hint (the staged Go launcher plus the config dir for an install without the watchdog), `Restart=no` (the watchdog already restarts the daemon), `KillMode=process` (a stop ends the watchdog and so the unit; the default would kill the job supervisors and the jobs with it), `WantedBy=default.target`. Spaces, `%` and `$` in paths are escaped.
 - The unit carries `PATH` (login shell capture as on macOS, same fallbacks and warnings, default shell `/bin/sh`), `ORCH_CONFIG_DIR` and `LAUNCHER_BUNDLE_OVERRIDE`. A systemd user manager does not read `~/.bashrc` or `~/.profile`. Frozen at write time; rewritten at every daemon start.
 - Enabled means: the unit exists for this config dir and `default.target.wants/orchestrator.service` exists. Read from the filesystem, so it works without a session bus.
 - The unit (like the macOS LaunchAgent) is one per user. `orch uninstall` run for another config dir refuses, names the entry and removes nothing; run it with that config dir (`ORCH_CONFIG_DIR`) or delete the entry by hand.

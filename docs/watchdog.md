@@ -1,17 +1,18 @@
-# Node watchdog (experimental)
+# Node watchdog
 
-A pure-Node parent of the daemon with the contract of the Go launcher. Phase A: opt-in only. The Go launcher stays the default, and start at login (Run key, LaunchAgent, systemd unit) still names it.
+The default parent of the daemon (phase B; it replaces the Go launcher, which stays reachable for one release as an explicit fallback). Same contract as the launcher. `orch start` and start at login both run it.
 
 ## Start
 
 | Way | Effect |
 |---|---|
-| `orch start --watchdog` | Starts `node dist/orchestrator-watchdog.cjs <configDir>` instead of the launcher |
-| `ORCH_WATCHDOG=1` | Same, for every start of the CLI (including the auto-start). `0` or unset: Go launcher. Any other value is an error |
+| `orch start` | Starts `node dist/orchestrator-watchdog.cjs <configDir>` |
+| `orch start --launcher`, `ORCH_LAUNCHER=go` | Fallback: the Go launcher. Any other `ORCH_LAUNCHER` value is an error |
+| `--watchdog`, `ORCH_WATCHDOG` | Deprecated (the first release's opt-in): ignored with a one-line note on stderr. With `--launcher` / `ORCH_LAUNCHER=go` they contradict: error |
 
 Stop the running daemon first (`orch stop`): two parents of one config dir fight over the daemon.
 
-The start is detached, hidden, stdio ignored, like the launcher's. The watchdog runs on the node that ran `orch` (`process.execPath`, no PATH lookup) and finds the daemon at `dist/orchestrator.cjs` next to itself, again at every (re)start. `LAUNCHER_BUNDLE_OVERRIDE` is honoured when set (a non-file is an error); `orch start --watchdog` strips an inherited one.
+The start is detached, hidden, stdio ignored, like the launcher's. The watchdog runs on the node that ran `orch` (`process.execPath`, no PATH lookup) and finds the daemon at `dist/orchestrator.cjs` next to itself, again at every (re)start. `LAUNCHER_BUNDLE_OVERRIDE` is honoured when set (a non-file is an error); `orch start` strips an inherited one. A package without `dist/orchestrator-watchdog.cjs` (a checkout that was not bundled): `orch start` fails and names `--launcher`.
 
 A watchdog started before `nvm use` or a node switch keeps its node and its package until `orch stop` + `orch start`.
 
@@ -58,4 +59,43 @@ A malformed value is an ERROR in the log and exit 1. Never set them outside test
 
 ## Code
 
-`src/watchdog/`: `policy.ts` (window, back-off, env parsing), `watchdog.ts` (loop, sentinel, marker; every effect injected), `runtime.ts` (log, spawn, signals, files), `main.ts` (entry), `launch.ts` (`orch start --watchdog`), `pid-watch.ts` (daemon side). Bundled to `dist/orchestrator-watchdog.cjs` by `scripts/bundle.ts`.
+`src/watchdog/`: `policy.ts` (window, back-off, env parsing), `watchdog.ts` (loop, sentinel, marker; every effect injected), `runtime.ts` (log, spawn, signals, files), `main.ts` (entry), `launch.ts` (`orch start` mode, spawn spec), `pid-watch.ts` (daemon side). Bundled to `dist/orchestrator-watchdog.cjs` by `scripts/bundle.ts`. Start at login: `src/start-bootstrap.ts` (bootstrap text, VBS, Run value), `src/startup.ts` (entries, inspection), `src/startup-check.ts`.
+
+## Start at login
+
+Registered by `orch install`, rewritten at every daemon start. It names node and a tiny stable bootstrap in the config dir, never the watchdog's own path (an `nvm use`, a node upgrade or a moved npm prefix would leave a path that is gone).
+
+| File in `<configDir>` | Content |
+|---|---|
+| `orchestrator-start.cjs` | Static plain CJS, versioned by its first line, rewritten when its text differs |
+| `orchestrator-start.vbs` | Windows only. UTF-16 with BOM (a non-ASCII path survives). Starts the bootstrap with window style 0, no shell, no wait; a failed start is logged, not shown as a dialog |
+
+| OS | Entry |
+|---|---|
+| Windows | Run value `wscript.exe //nologo "<configDir>\orchestrator-start.vbs"` (paste it into cmd.exe to emulate a login) |
+| macOS | LaunchAgent `ProgramArguments` = node, bootstrap, configDir, hint; `RunAtLoad`, no `KeepAlive`, `PATH` as before |
+| Linux | `ExecStart` = the same four words, `Restart=no`, `KillMode=process`; linger logic unchanged |
+
+The fourth word (hint) is the watchdog of the install that wrote the entry. Node is the `process.execPath` of that writer, baked in.
+
+The bootstrap runs the watchdog IN-PROCESS (`require`, argv reduced to the config dir): one resident node, and `config.launcher-pid` is its pid. A detached child would be a second process and a wrong pid. Search order, first file found wins (`<pkg>` = `@wadeck-app/orchestrator-cli/dist`):
+
+1. `LAUNCHER_BUNDLE_OVERRIDE`: the watchdog next to that daemon bundle; if absent, an error (never second-guessed)
+2. `<node folder>/node_modules/<pkg>` (Windows installer, nvm-windows)
+3. Not Windows: `<node folder>/../lib/node_modules/<pkg>`
+4. `npm_config_prefix` / `NPM_CONFIG_PREFIX`
+5. Windows: `%APPDATA%\npm\node_modules\<pkg>` (the global prefix outside node's folder)
+6. The hint (last: it names the install seen at write time and can be stale after `nvm use`)
+
+Nothing found, a package with no watchdog (an older version), or a watchdog that does not load: one `ERROR` line in `<configDir>/logs/YYYY-MM-DD-launcher.log` (same file and format as the watchdog) saying what to run, exit 1.
+
+### Migration and fallback
+
+| Situation | Check (`inspectStartupEntry`) | Result |
+|---|---|---|
+| Entry names the Go launcher, install has the watchdog | `outdated` | Rewritten to the bootstrap by the next `orch` command or daemon start |
+| Entry names the bootstrap, install has no watchdog (`npm install -g @older`) | `broken` | Rewritten to the Go launcher, with a warning; an older daemon's own refresh does the same |
+| Bootstrap, script or node missing, or the files differ from this version | `broken` | Rewritten |
+| Entry started under another node than the caller's | `drift` | Reported by `orch status`, never rewritten |
+
+Remaining gap: after `npm install -g @older` and a reboot before any `orch` command, the login runs the bootstrap, which logs "has no orchestrator-watchdog.cjs (an older version)" and exits 1; `orch start` repairs it. `orch uninstall` removes the entry, the bootstrap and the script. The Go fallback keeps its staged launcher and `node_modules` junction. `ORCH_LAUNCHER=go` does not change start at login: only an install without the watchdog registers the launcher.

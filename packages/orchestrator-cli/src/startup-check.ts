@@ -56,10 +56,24 @@ export function runStartupCheck(deps: StartupCheckDeps): void {
       report = (deps.inspect ?? inspectStartupEntry)(deps.configDir);
     }
 
+    if (report.state === 'outdated') {
+      // Works today (the Go launcher is still there), so it is a notice, not a "will not start" alarm.
+      const what = report.problems.join('; ');
+      if (repair?.ok) {
+        say(`Notice: the start-at-login entry was outdated (${what}); it was re-registered with this install's paths.`);
+        for (const w of repair.warnings ?? []) { say(`Warning: ${w}`); }
+        settle();
+        return;
+      }
+      const why = repair ? `it could not be re-registered (${repair.ok ? '' : repair.error})` : 'this development build does not rewrite it';
+      say(`Warning: the start-at-login entry is outdated (${what}): ${why}. Run \`orch install\` from the install you use.`);
+      return;
+    }
     if (report.state === 'broken') {
       const what = report.problems.join('; ');
       if (repair?.ok) {
         say(`Warning: the start-at-login entry was broken (${what}); it was re-registered with this install's paths.`);
+        for (const w of repair.warnings ?? []) { say(`Warning: ${w}`); }
         settle();
         return;
       }

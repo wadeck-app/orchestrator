@@ -4,7 +4,11 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import type { StartupResult } from './types.js';
 import { getErrorMessage } from './fsUtil.js';
-import { findLauncherBinary, findDaemonEntry, launcherToRun } from './platform-binary.js';
+import { findLauncherBinary, findDaemonEntry, findWatchdogEntry, launcherToRun } from './platform-binary.js';
+import {
+  BOOTSTRAP_FILE, BOOTSTRAP_SOURCE, START_VBS_FILE, bootstrapArgs, buildRunValue, buildStartVbs, decodeVbs, encodeVbs,
+  parseRunValue, parseStartVbs, removeStartFiles, writeIfChanged,
+} from './start-bootstrap.js';
 import {
   planMacPath, mergeMacPath, realShellRunner, realIsExecutableFile,
   type MacPathDeps,
@@ -34,7 +38,13 @@ function cmdQuote(s: string): string {
  * walking up node_modules. So there is nothing here that depends on whether npm hoisted or
  * nested the platform package, and no relative path to keep in sync.
  */
-function validateStartupTarget(): string | null {
+function validateStartupTarget(kind: EntryKind = 'launcher', watchdog: string | null = null): string | null {
+  if (kind === 'watchdog') {
+    return watchdog === null
+      ? `start-at-login cannot be registered: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}. `
+        + 'Re-install with: npm install -g @wadeck-app/orchestrator-cli'
+      : null;
+  }
   if (!findLauncherBinary()) {
     // Registering node + the bundle would start a daemon with no supervisor, so nothing
     // would restart it after an update. Refuse rather than register a crippled entry.
@@ -64,6 +74,12 @@ export function buildWindowsCommand(configDir: string): string {
   return `${cmdQuote(launcher)} ${cmdQuote(configDir)}`;
 }
 
+/**
+ * What the login entry starts. `watchdog`: node runs `<configDir>/orchestrator-start.cjs`, which finds the installed watchdog at
+ * every login (start-bootstrap.ts). `launcher`: the Go launcher, only for an install that has no watchdog (kept one release).
+ */
+export type EntryKind = 'watchdog' | 'launcher';
+
 export function buildMacArgs(configDir: string): string[] {
   const launcher = launcherToRun(configDir);
   if (!launcher) {
@@ -86,6 +102,12 @@ export interface StartupDeps {
   programArguments?: string[];
   windowsCommand?: string;
   validateTarget?: () => string | null;
+  /** Force what the entry starts (default: the watchdog when this install has one, else the Go launcher). */
+  entryKind?: EntryKind;
+  /** The node baked in the login entry (default: process.execPath). */
+  nodePath?: string;
+  /** This install's dist/orchestrator-watchdog.cjs, or null for none (default: findWatchdogEntry()). */
+  watchdogEntry?: string | null;
   /** Linux: where the systemd user unit lives (default: $XDG_CONFIG_HOME or ~/.config, then systemd/user). */
   unitPath?: string;
   /** Linux: the daemon bundle written as LAUNCHER_BUNDLE_OVERRIDE (null: none). Default: findDaemonEntry(). */
@@ -107,14 +129,17 @@ function xmlEscape(s: string): string {
  * @param pathEntries the PATH of the daemon, in order (see planMacPath). Without it only the
  *   historical fixed list is written, which cannot find anything under ~/.local/bin.
  */
-export function buildMacPlist(programArguments: string[], configDir: string, pathEntries?: readonly string[]): string {
+export function buildMacPlist(
+  programArguments: string[], configDir: string, pathEntries?: readonly string[], opts: { bundle?: string | null } = {},
+): string {
   const argsXml    = programArguments.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
   const logDir     = xmlEscape(path.join(configDir, 'logs'));
   const envPath    = xmlEscape((pathEntries ?? mergeMacPath(path.dirname(process.execPath), [])).join(':'));
   // launchd can inject environment variables, so on macOS the launcher is handed an absolute
   // bundle path and never has to resolve it relative to its own directory. That is what makes
   // start-at-login here independent of whether npm hoisted or nested the platform package.
-  const bundle = findDaemonEntry();
+  // The watchdog entry passes null: a fixed bundle would outlive an `nvm use` and defeat the bootstrap's own lookup.
+  const bundle = opts.bundle !== undefined ? opts.bundle : findDaemonEntry();
   const bundleEnv = bundle
     ? `\n    <key>LAUNCHER_BUNDLE_OVERRIDE</key>\n    <string>${xmlEscape(bundle)}</string>`
     : '';
@@ -242,14 +267,59 @@ function systemctlFailure(e: unknown, verb: string, state: string): string {
   return `\`systemctl --user ${verb}\` failed: ${raw}. ${state}`;
 }
 
-function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFileSync): StartupResult {
+interface EntryPlan {
+  kind: EntryKind;
+  /** This install's watchdog bundle (the hint written in the entry), null when it has none. */
+  watchdog: string | null;
+  warnings: string[];
+}
+
+/**
+ * The watchdog when this install has one, else the Go launcher with a warning. The test seams that hand over launcher-shaped
+ * arguments (programArguments, windowsCommand) keep meaning the launcher.
+ */
+function planEntry(deps: StartupDeps): EntryPlan {
+  const watchdog = deps.watchdogEntry !== undefined ? deps.watchdogEntry : findWatchdogEntry();
+  if (deps.entryKind !== undefined) {
+    return { kind: deps.entryKind, watchdog, warnings: [] };
+  }
+  if (deps.programArguments !== undefined || deps.windowsCommand !== undefined) {
+    return { kind: 'launcher', watchdog, warnings: [] };
+  }
+  if (watchdog !== null) {
+    return { kind: 'watchdog', watchdog, warnings: [] };
+  }
+  return {
+    kind: 'launcher', watchdog,
+    warnings: [`this install has no dist/orchestrator-watchdog.cjs next to ${__dirname}: start-at-login runs the Go launcher (fallback). Re-install with: npm install -g @wadeck-app/orchestrator-cli`],
+  };
+}
+
+/** Writes the bootstrap (only when its text changed) and returns the arguments of the login command. */
+function watchdogEntryArgs(configDir: string, plan: EntryPlan, deps: StartupDeps): string[] {
+  writeIfChanged(path.join(configDir, BOOTSTRAP_FILE), BOOTSTRAP_SOURCE);
+  return bootstrapArgs({ node: deps.nodePath ?? process.execPath, configDir, hint: plan.watchdog });
+}
+
+/**
+ * Windows: writes the bootstrap and the hidden-start script into the config dir (never into the npm package folder, which npm
+ * replaces), and returns the Run value. Both files exist before the registry value names them.
+ */
+function writeWindowsWatchdogEntry(configDir: string, plan: EntryPlan, deps: StartupDeps): string {
+  const args = watchdogEntryArgs(configDir, plan, deps);
+  const vbs  = path.join(configDir, START_VBS_FILE);
+  writeIfChanged(vbs, encodeVbs(buildStartVbs(args, configDir)));
+  return buildRunValue(vbs);
+}
+
+function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFileSync, entry: EntryPlan): StartupResult {
   const unitPath = deps.unitPath ?? defaultUnitPath();
   const diag: string[] = [];
   let warnings: string[] = [];
 
   try {
     fs.mkdirSync(path.dirname(unitPath), { recursive: true });
-    const args = deps.programArguments ?? buildMacArgs(configDir);
+    const args = deps.programArguments ?? (entry.kind === 'watchdog' ? watchdogEntryArgs(configDir, entry, deps) : buildMacArgs(configDir));
     // Same capture as macOS: a systemd user manager does not read ~/.bashrc or ~/.profile either,
     // and its own PATH is minimal, so `node` and the tools of the jobs would not be found.
     // violations-suppress: shared/no-out-of-repo-path the user's home is where ~/.local/bin lives; it is the point of the default list
@@ -267,14 +337,15 @@ function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFi
       rcFiles:          "~/.bashrc, ~/.profile or your shell's equivalent",
       ...deps.linuxPath,
     });
-    warnings = plan.warnings;
+    warnings = [...entry.warnings, ...plan.warnings];
     diag.push(plan.captured ? 'path=login-shell' : 'path=default');
-    const bundle = deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
+    // The watchdog entry carries no fixed daemon bundle: the watchdog finds it next to itself at every start.
+    const bundle = entry.kind === 'watchdog' ? null : deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
     const unit   = buildSystemdUnit(args, configDir, plan.entries, bundle);
     const tmp    = unitPath + '.tmp';
     fs.writeFileSync(tmp, unit, 'utf8');
     fs.renameSync(tmp, unitPath);
-    diag.push('unit=written');
+    diag.push('unit=written', `entry=${entry.kind}`);
   } catch (e) { return { ok: false, error: `Failed to write the systemd unit ${unitPath}: ${(e as Error).message}` }; }
 
   const written = `The unit was written to ${unitPath} but is not enabled.`;
@@ -320,12 +391,17 @@ function disableSystemd(deps: StartupDeps, exec: typeof execFileSync): StartupRe
 // ---- Is the registered entry still usable, and is it this install's? ----------------------------------
 
 export interface StartupEntryReport {
-  /** absent: nothing registered for this config dir. broken: it names a path that is gone. drift: it works but names another install. */
-  state: 'absent' | 'ok' | 'broken' | 'drift';
+  /**
+   * absent: nothing registered for this config dir. broken: it names a path that is gone, or a file of ours that is damaged.
+   * outdated: it works but starts the Go launcher while this install has the Node watchdog. drift: it works but names another install.
+   */
+  state: 'absent' | 'ok' | 'broken' | 'outdated' | 'drift';
   problems: string[];
 }
 
 export interface InspectDeps extends StartupDeps {
+  /** Reads a file of the entry (the bootstrap, the hidden-start script). Default: fs.readFileSync. */
+  readFile?: (p: string) => Buffer;
   isFile?: (p: string) => boolean;
   realpath?: (p: string) => string;
   /** The directory of the node this process runs (default: dirname(process.execPath)). */
@@ -364,10 +440,20 @@ function systemdUnquote(s: string, exec: boolean): string {
 }
 
 interface EntryFields {
+  /** First word of the command: the Go launcher, or node for a watchdog entry. */
   launcher: string | null;
+  /** Every word of the command (macOS, Linux); for a Windows watchdog entry see vbs. */
+  args: string[];
   bundle: string | null;
   /** The directories of the PATH the daemon will get (null: the entry carries none, the launcher uses the login's). */
   pathDirs: string[] | null;
+  /** Windows, Run value naming a hidden-start script: its path (null: the value is something else, e.g. the Go launcher's). */
+  vbsPath?: string | null;
+}
+
+/** The entry starts the bootstrap, whatever the platform: node, orchestrator-start.cjs, the config dir. */
+function isBootstrapArgs(args: readonly string[]): boolean {
+  return args.length >= 3 && path.posix.basename((args[1] ?? '').replace(/\\/g, '/')) === BOOTSTRAP_FILE;
 }
 
 function readSystemdFields(text: string): EntryFields {
@@ -377,10 +463,12 @@ function readSystemdFields(text: string): EntryFields {
     const eq = decoded.indexOf('=');
     if (eq > 0) { env.set(decoded.slice(0, eq), decoded.slice(eq + 1)); }
   }
-  const exec = /^ExecStart="((?:[^"\\]|\\.)*)"/m.exec(text);
+  const exec = /^ExecStart=(.*)$/m.exec(text);
+  const args = [...(exec?.[1] ?? '').matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((w) => systemdUnquote(w[1] ?? '', true));
   const p = env.get('PATH');
   return {
-    launcher: exec ? systemdUnquote(exec[1] ?? '', true) : null,
+    launcher: args[0] ?? null,
+    args,
     bundle:   env.get('LAUNCHER_BUNDLE_OVERRIDE') ?? null,
     pathDirs: p === undefined ? null : p.split(':').filter(d => d !== ''),
   };
@@ -391,10 +479,12 @@ function readPlistFields(text: string): EntryFields {
     const m = new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`).exec(text);
     return m ? xmlUnescape(m[1] ?? '') : null;
   };
-  const args = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(text);
+  const array = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text);
+  const args = [...(array?.[1] ?? '').matchAll(/<string>([^<]*)<\/string>/g)].map((w) => xmlUnescape(w[1] ?? ''));
   const p = after('PATH');
   return {
-    launcher: args ? xmlUnescape(args[1] ?? '') : null,
+    launcher: args[0] ?? null,
+    args,
     bundle:   after('LAUNCHER_BUNDLE_OVERRIDE'),
     pathDirs: p === null ? null : p.split(':').filter(d => d !== ''),
   };
@@ -427,8 +517,12 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
       const exec = deps.exec ?? execFileSync;
       const out  = String(exec('reg', ['query', REG_KEY, '/v', buildRegValueName(configDir)],
         { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }));
+      const vbsPath = parseRunValue(/REG_SZ\s+(.*?)\s*$/m.exec(out)?.[1] ?? '');
       const m = /REG_SZ\s+"((?:[^"]|"")*)"/.exec(out);
-      fields = { launcher: m ? (m[1] ?? '').replace(/""/g, '"') : null, bundle: null, pathDirs: null };
+      fields = {
+        launcher: vbsPath === null && m ? (m[1] ?? '').replace(/""/g, '"') : null,
+        args: [], bundle: null, pathDirs: null, vbsPath,
+      };
     } else {
       return { state: 'absent', problems: [] };
     }
@@ -436,23 +530,74 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
     return { state: 'broken', problems: [`the registered start-at-login entry cannot be read (${getErrorMessage(e)})`] };
   }
 
+  const readFile = deps.readFile ?? ((p: string) => fs.readFileSync(p));
+  const currentWatchdog = deps.watchdogEntry !== undefined ? deps.watchdogEntry : findWatchdogEntry();
+  // The entry's paths are the target platform's, whatever host reads them.
+  const pathLib  = platform === 'win32' ? path.win32 : path.posix;
   const problems: string[] = [];
-  if (fields.launcher === null) {
-    problems.push('the registered entry names no launcher');
-  } else if (!isFile(fields.launcher)) {
-    problems.push(`the launcher ${fields.launcher} is gone`);
-  }
-  if (fields.bundle !== null && !isFile(fields.bundle)) {
-    problems.push(`the daemon bundle ${fields.bundle} is gone`);
-  }
-  if (platform === 'win32' && fields.launcher !== null && isFile(fields.launcher)) {
-    const linkProblem = (deps.bundleLinkProblem ?? defaultBundleLinkProblem)(fields.launcher);
-    if (linkProblem !== null) {
-      problems.push(linkProblem);
+
+  // Windows: the Run value names the hidden-start script, and the command is in it.
+  let words = fields.args;
+  if (fields.vbsPath !== undefined && fields.vbsPath !== null) {
+    words = [];
+    try {
+      const text = decodeVbs(readFile(fields.vbsPath));
+      const parsed = parseStartVbs(text);
+      if (parsed === null) {
+        problems.push(`the start-at-login script ${fields.vbsPath} does not start anything (damaged): run orch install`);
+      } else {
+        words = parsed;
+        if (isBootstrapArgs(parsed) && text !== buildStartVbs(parsed, configDir)) {
+          problems.push(`the start-at-login script ${fields.vbsPath} is not the one of this version (damaged or edited)`);
+        }
+      }
+    } catch (e) {
+      problems.push(`the start-at-login script ${fields.vbsPath} cannot be read (${getErrorMessage(e)})`);
     }
   }
-  // The entry's paths are the target platform's, whatever host reads them.
-  const nodeExe  = platform === 'win32' ? path.win32.join : path.posix.join;
+  const watchdogEntry = isBootstrapArgs(words);
+  let entryNodeDir: string | null = null;
+
+  if (watchdogEntry) {
+    const [node = '', bootstrap = ''] = words;
+    entryNodeDir = pathLib.dirname(node);
+    if (!isFile(node)) {
+      problems.push(`the node ${node} is gone`);
+    }
+    if (!isFile(bootstrap)) {
+      problems.push(`the start-at-login bootstrap ${bootstrap} is missing`);
+    } else {
+      let text: string | null = null;
+      try { text = readFile(bootstrap).toString('utf8'); } catch (e) { problems.push(`the start-at-login bootstrap ${bootstrap} cannot be read (${getErrorMessage(e)})`); }
+      if (text !== null && text !== BOOTSTRAP_SOURCE) {
+        problems.push(`the start-at-login bootstrap ${bootstrap} is not the one of this version (damaged or written by another version)`);
+      }
+    }
+    if (currentWatchdog === null) {
+      // The reverse of the migration: an older package was installed under an entry for the watchdog. Re-registering names the Go launcher again.
+      problems.push('the entry starts the Node watchdog, but this install has no dist/orchestrator-watchdog.cjs (an older version was installed?): it will start the Go launcher instead');
+    }
+  } else if (fields.vbsPath !== undefined && fields.vbsPath !== null) {
+    if (problems.length === 0) {
+      problems.push(`the start-at-login script ${fields.vbsPath} does not run the bootstrap: run orch install`);
+    }
+  } else {
+    if (fields.launcher === null) {
+      problems.push('the registered entry names no launcher');
+    } else if (!isFile(fields.launcher)) {
+      problems.push(`the launcher ${fields.launcher} is gone`);
+    }
+    if (fields.bundle !== null && !isFile(fields.bundle)) {
+      problems.push(`the daemon bundle ${fields.bundle} is gone`);
+    }
+    if (platform === 'win32' && fields.launcher !== null && isFile(fields.launcher)) {
+      const linkProblem = (deps.bundleLinkProblem ?? defaultBundleLinkProblem)(fields.launcher);
+      if (linkProblem !== null) {
+        problems.push(linkProblem);
+      }
+    }
+  }
+  const nodeExe  = pathLib.join;
   const nodeName = platform === 'win32' ? 'node.exe' : 'node';
   const nodeDir  = fields.pathDirs?.find(d => isFile(nodeExe(d, nodeName))) ?? null;
   if (fields.pathDirs !== null && nodeDir === null) {
@@ -461,6 +606,12 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
   if (problems.length > 0) {
     return { state: 'broken', problems };
   }
+  if (!watchdogEntry && currentWatchdog !== null) {
+    return {
+      state: 'outdated',
+      problems: ['the entry still starts the Go launcher; this install starts at login through the Node watchdog (docs/watchdog.md)'],
+    };
+  }
 
   const drift: string[] = [];
   const currentBundle = deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
@@ -468,8 +619,9 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
     drift.push(`the entry starts the daemon bundle ${fields.bundle}, this orch runs from ${currentBundle}`);
   }
   const currentNodeDir = deps.nodeBinDir ?? path.dirname(process.execPath);
-  if (nodeDir !== null && !same(nodeDir, currentNodeDir)) {
-    drift.push(`the entry starts the daemon under the node in ${nodeDir}, this orch runs under the node in ${currentNodeDir}`);
+  const startedNodeDir = entryNodeDir ?? nodeDir;
+  if (startedNodeDir !== null && !same(startedNodeDir, currentNodeDir)) {
+    drift.push(`the entry starts the daemon under the node in ${startedNodeDir}, this orch runs under the node in ${currentNodeDir}`);
   }
   return drift.length > 0 ? { state: 'drift', problems: drift } : { state: 'ok', problems: [] };
 }
@@ -480,7 +632,7 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
  */
 export function repairStartupEntry(configDir: string, deps: InspectDeps = {}): { report: StartupEntryReport; repair: StartupResult | null } {
   const report = inspectStartupEntry(configDir, deps);
-  if (report.state !== 'broken') {
+  if (report.state !== 'broken' && report.state !== 'outdated') {
     return { report, repair: null };
   }
   return { report, repair: enableStartup(configDir, deps) };
@@ -586,13 +738,14 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
     return { ok: false, error: `Unsupported platform: ${platform}` };
   }
 
-  const unusable = (deps.validateTarget ?? validateStartupTarget)();
+  const entry = planEntry(deps);
+  const unusable = (deps.validateTarget ?? (() => validateStartupTarget(entry.kind, entry.watchdog)))();
   if (unusable) {
     return { ok: false, error: unusable };
   }
 
   if (platform === 'linux') {
-    return enableSystemd(configDir, deps, exec);
+    return enableSystemd(configDir, deps, exec, entry);
   }
 
   if (platform === 'darwin') {
@@ -604,7 +757,7 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
 
     try {
       fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-      const args  = deps.programArguments ?? buildMacArgs(configDir);
+      const args  = deps.programArguments ?? (entry.kind === 'watchdog' ? watchdogEntryArgs(configDir, entry, deps) : buildMacArgs(configDir));
       // Only here, only on darwin: the shell is read when the plist is written, never on Windows.
       const plan  = planMacPath({
         runShell:         realShellRunner,
@@ -616,13 +769,14 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
         env:              process.env,
         ...deps.macPath,
       });
-      warnings = plan.warnings;
+      warnings = [...entry.warnings, ...plan.warnings];
       diag.push(plan.captured ? 'path=login-shell' : 'path=default');
-      const plist = buildMacPlist(args, configDir, plan.entries);
+      // No fixed daemon bundle in the watchdog entry (null): the watchdog finds it next to itself at every start.
+      const plist = buildMacPlist(args, configDir, plan.entries, entry.kind === 'watchdog' ? { bundle: null } : {});
       const tmp   = plistPath + '.tmp';
       fs.writeFileSync(tmp, plist, 'utf8');
       fs.renameSync(tmp, plistPath);
-      diag.push('plist=written');
+      diag.push('plist=written', `entry=${entry.kind}`);
     } catch (e) { return { ok: false, error: `Failed to write plist: ${(e as Error).message}` }; }
 
     try { exec('launchctl', ['enable', target], { stdio: 'pipe', windowsHide: true }); diag.push('enable=ok'); }
@@ -635,11 +789,17 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
 
   if (platform === 'win32') {
     const valueName = buildRegValueName(configDir);
-    const value     = deps.windowsCommand ?? buildWindowsCommand(configDir);
+    let value: string;
+    try {
+      value = deps.windowsCommand ?? (entry.kind === 'watchdog' ? writeWindowsWatchdogEntry(configDir, entry, deps) : buildWindowsCommand(configDir));
+    } catch (e) { return { ok: false, error: `Failed to write the start-at-login files in ${configDir}: ${getErrorMessage(e)}` }; }
     try {
       exec('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe', windowsHide: true });
     } catch (e) { return { ok: false, error: `reg.exe failed: ${(e as Error).message}` }; }
-    const detail = `registry key set: ${REG_KEY}\\${valueName}`;
+    const detail = `registry key set: ${REG_KEY}\\${valueName} | entry=${entry.kind}`;
+    if (entry.kind === 'watchdog') {
+      return entry.warnings.length > 0 ? { ok: true, detail, warnings: entry.warnings } : { ok: true, detail };
+    }
     // The Run value cannot carry LAUNCHER_BUNDLE_OVERRIDE, so a launcher that cannot find the bundle by itself is shown where it is.
     // Said, not swallowed: without it the entry is written and the next login starts nothing.
     if (deps.windowsCommand === undefined) {
@@ -651,16 +811,16 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
           : planBundleLink({ daemonPath: daemon, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
         if (staged !== null && plan !== null) {
           const outcome = ensureBundleLink(path.dirname(staged), plan);
-          return { ok: true, detail: `${detail} | bundle-link=${outcome} (${plan.modulesDir})` };
+          return { ok: true, detail: `${detail} | bundle-link=${outcome} (${plan.modulesDir})`, ...(entry.warnings.length > 0 ? { warnings: entry.warnings } : {}) };
         }
       } catch (e) {
         return {
           ok: true, detail,
-          warnings: [`the launcher may not find the daemon bundle at login: ${getErrorMessage(e)}`],
+          warnings: [...entry.warnings, `the launcher may not find the daemon bundle at login: ${getErrorMessage(e)}`],
         };
       }
     }
-    return { ok: true, detail };
+    return entry.warnings.length > 0 ? { ok: true, detail, warnings: entry.warnings } : { ok: true, detail };
   }
 
   return { ok: false, error: `Unsupported platform: ${platform}` };
@@ -700,7 +860,7 @@ function foreignLoginEntry(platform: NodeJS.Platform, configDir: string, deps: S
     + 'Run orch uninstall with that config dir (set ORCH_CONFIG_DIR to it), or delete the entry by hand.';
 }
 
-export function disableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
+function disableEntry(configDir: string, deps: StartupDeps): StartupResult {
   const platform = deps.platform ?? process.platform;
   const exec     = deps.exec ?? execFileSync;
   if (/[\r\n\x00]/.test(configDir)) {
@@ -739,6 +899,26 @@ export function disableStartup(configDir: string, deps: StartupDeps = {}): Start
   }
 
   return { ok: false, error: `Unsupported platform: ${platform}` };
+}
+
+/**
+ * Removes the login entry, then the bootstrap and the hidden-start script of this config dir. An entry that belongs to another
+ * config dir is refused before anything is touched (its files are not ours either).
+ */
+export function disableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
+  const result = disableEntry(configDir, deps);
+  const platform = deps.platform ?? process.platform;
+  const known = platform === 'darwin' || platform === 'win32' || platform === 'linux';
+  if (!known || /[\r\n\x00]/.test(configDir) || foreignLoginEntry(platform, configDir, deps) !== null) {
+    return result;
+  }
+  try {
+    const removed = removeStartFiles(configDir);
+    return result.ok && removed.length > 0 ? { ...result, detail: `${result.detail} | removed ${removed.join(', ')}` } : result;
+  } catch (e) {
+    const error = `Failed to remove the start-at-login files in ${configDir}: ${getErrorMessage(e)}. Delete ${BOOTSTRAP_FILE} and ${START_VBS_FILE} there by hand.`;
+    return { ok: false, error: result.ok ? error : `${result.error} Also: ${error}` };
+  }
 }
 
 export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boolean {
