@@ -82,9 +82,8 @@ The Rust supervisor (`packages/orchestrator-cli/supervisor-rs`) ships on `latest
 `supervisor-go` is kept only for the CI differential (Go vs Rust scenarios) until the user's macOS and Linux tests are done. Remaining steps:
 
 1. Delete `supervisor-go`, its build script (`scripts/build-supervisor-binary.ts`, `build-supervisor`), its tests, the Go supervisor CI steps, the differential and measure/repro scripts that need it, and the `PLATFORM_TARGETS` and ci script references (the `*Dev` names and the source-checkout fallback in `src/platform-binary.ts`); update the docs that name the Go supervisor.
-2. Restore the user's `config.yml` (`autoUpdate: true`, no `channel`) on the user's machine and verify the auto-update follows `latest`.
-3. Phase C of the watchdog: remove the Go launcher from the platform packages, the junction/staging code, `LAUNCHER_BUNDLE_OVERRIDE` and the `--launcher` fallback (the tray stays Go).
-4. Remove this section.
+2. Phase C of the watchdog: remove the Go launcher from the platform packages, the junction/staging code, `LAUNCHER_BUNDLE_OVERRIDE` and the `--launcher` fallback (the tray stays Go).
+3. Remove this section.
 
 ## Agent reference docs
 
