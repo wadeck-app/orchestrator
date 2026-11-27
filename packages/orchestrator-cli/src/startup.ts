@@ -586,6 +586,48 @@ export function lingerAdvice(deps: LingerDeps & { registered: boolean }): string
   return `start-at-login is registered but ${user} does not linger: the daemon starts only after a login. Run \`orch install\` (it asks for sudo if needed), or \`sudo loginctl enable-linger ${user}\`.`;
 }
 
+/**
+ * launchd keeps the definition it loaded: rewriting the plist changes nothing for a service that is already loaded until the
+ * next login (a stale one can even respawn the removed launcher). Refreshes the loaded copy only when that cannot stop anything:
+ * not loaded -> nothing (the next login reads the file); running -> never bootout (it would stop the watchdog and the daemon,
+ * and this runs inside the daemon repairing its own entry), a warning with the manual commands instead; loaded and idle ->
+ * bootout then bootstrap. A failure is a warning: the plist is already written. Returns the warnings.
+ */
+function reloadLaunchAgent(exec: typeof execFileSync, uid: number, target: string, plistPath: string, args: readonly string[], diag: string[]): string[] {
+  let printed: string;
+  try {
+    printed = String(exec('launchctl', ['print', target], { stdio: 'pipe', encoding: 'utf8', windowsHide: true }) ?? '');
+  } catch {
+    return [];
+  }
+  // What launchd holds already starts what the plist now says (the node and the bootstrap it prints): nothing to refresh, and nothing
+  // to warn about. A daemon started by this very entry is in that case at every start.
+  if (args.length >= 2 && printed.includes(args[0] as string) && printed.includes(args[1] as string)) {
+    diag.push('reload=current');
+    return [];
+  }
+  const domain = `gui/${uid}`;
+  if (/^\s*pid = \d+\s*$/m.test(printed) || /^\s*state = running\s*$/m.test(printed)) {
+    diag.push('reload=skipped(running)');
+    return [`launchd still holds the previous definition of ${LAUNCH_AGENT_LABEL} (it is running, so it was not reloaded: that would stop the watchdog and the daemon). The new one applies at the next login, or run \`launchctl bootout ${target}\` then \`launchctl bootstrap ${domain} ${plistPath}\` by hand.`];
+  }
+  const step = (verb: 'bootout' | 'bootstrap', argv: string[]): string | null => {
+    try { exec('launchctl', [verb, ...argv], { stdio: 'pipe', windowsHide: true }); return null; }
+    catch (e) {
+      const err = e as { message?: string; stderr?: Buffer | string };
+      const text = String(err.stderr ?? '').trim() || (err.message ?? '').trim();
+      return `launchctl ${verb} failed (${text}): launchd still holds the previous definition of ${LAUNCH_AGENT_LABEL}; the plist is written and applies at the next login, or run \`launchctl bootout ${target}\` then \`launchctl bootstrap ${domain} ${plistPath}\` by hand.`;
+    }
+  };
+  const failed = step('bootout', [target]) ?? step('bootstrap', [domain, plistPath]);
+  if (failed) {
+    diag.push('reload=failed');
+    return [failed];
+  }
+  diag.push('reload=ok');
+  return [];
+}
+
 export function enableStartup(configDir: string, deps: StartupDeps = {}): StartupResult {
   const platform = deps.platform ?? process.platform;
   const exec     = deps.exec ?? execFileSync;
@@ -615,10 +657,11 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
     const target    = `gui/${uid}/${LAUNCH_AGENT_LABEL}`;
     const diag: string[] = [];
     let warnings: string[] = [];
+    let args: string[] = [];
 
     try {
       fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-      const args  = deps.programArguments ?? watchdogEntryArgs(configDir, watchdog, deps);
+      args = deps.programArguments ?? watchdogEntryArgs(configDir, watchdog, deps);
       // Only here, only on darwin: the shell is read when the plist is written, never on Windows.
       const plan  = planMacPath({
         runShell:         realShellRunner,
@@ -639,8 +682,11 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
       diag.push('plist=written', 'entry=watchdog');
     } catch (e) { return { ok: false, error: `Failed to write plist: ${(e as Error).message}` }; }
 
+    // Before the reload: `launchctl bootstrap` refuses a service that is disabled.
     try { exec('launchctl', ['enable', target], { stdio: 'pipe', windowsHide: true }); diag.push('enable=ok'); }
     catch (e) { diag.push(`enable=failed(${(e as Error).message?.trim()})`); }
+
+    warnings.push(...reloadLaunchAgent(exec, uid, target, plistPath, args, diag));
 
     return warnings.length > 0
       ? { ok: true, detail: diag.join(' | '), warnings }

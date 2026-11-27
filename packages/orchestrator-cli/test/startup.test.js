@@ -137,7 +137,7 @@ describe('macOS plist PATH: captured from the login shell', () => {
     }
     assert.ok(entries.indexOf(`${HOME}/.local/bin`) < entries.indexOf('/usr/bin'), 'user entries come before the system ones');
     assert.equal(new Set(entries).size, entries.length, 'no duplicates');
-    assert.deepEqual(launchctl.map((c) => c[0]), ['launchctl']);
+    assert.ok(launchctl.length > 0 && launchctl.every((c) => c[0] === 'launchctl'), JSON.stringify(launchctl));
   });
 
   test('the shell is run as login+interactive with a 5 s timeout and does not inherit the daemon PATH', () => {
@@ -362,5 +362,96 @@ describe('enableStartup on unsupported platform', () => {
     const result = enableStartup(FAKE_DIR, { platform: 'freebsd' });
     assert.equal(result.ok, false);
     assert.equal(result.error, 'Unsupported platform: freebsd');
+  });
+});
+
+// ---- macOS: refreshing the definition launchd already loaded -------------------------------------
+// launchctl is a fake: nothing here talks to a real launchd.
+describe('macOS: reload of the loaded LaunchAgent', () => {
+  const uid = process.getuid?.() ?? 0;
+  const target = `gui/${uid}/com.wadeck.orchestrator`;
+
+  function enableWith(onCall) {
+    const calls = [];
+    const dir = plistDir();
+    const plistPath = path.join(dir, 'LaunchAgents', 'com.wadeck.orchestrator.plist');
+    const result = enableStartup('/cfg', {
+      platform: 'darwin',
+      plistPath,
+      exec: (cmd, args) => {
+        calls.push([cmd, ...args]);
+        return onCall(args) ?? '';
+      },
+      validateTarget: () => null,
+      programArguments: ['/launcher', '/cfg'],
+      macPath: { runShell: fakeShell(ok(marked('/a'))), shellEnv: '/bin/zsh', isExecutableFile: () => true, home: HOME, nodeBinDir: NODE_BIN, env: { HOME } },
+    });
+    return { result, calls, plistPath, verbs: calls.map((c) => c[1]) };
+  }
+
+  test('not loaded: print fails, no bootout or bootstrap, no warning, no reload in the diag', () => {
+    const { result, calls, verbs } = enableWith((args) => {
+      if (args[0] === 'print') { throw new Error('Could not find service'); }
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.warnings, undefined);
+    assert.ok(!result.detail.includes('reload'), result.detail);
+    assert.deepEqual(verbs, ['enable', 'print'], JSON.stringify(calls));
+    assert.deepEqual(calls[1], ['launchctl', 'print', target]);
+  });
+
+  for (const [name, out] of [['pid line', '\tstate = spawn scheduled\n\tpid = 4242\n'], ['state = running', '\tstate = running\n']]) {
+    test(`loaded and running (${name}): never bootout, one warning with the manual commands`, () => {
+      const { result, verbs, plistPath } = enableWith((args) => (args[0] === 'print' ? out : ''));
+      assert.equal(result.ok, true);
+      assert.ok(!verbs.includes('bootout') && !verbs.includes('bootstrap'), verbs.join(','));
+      assert.equal(result.warnings.length, 1);
+      assert.ok(result.warnings[0].includes(`launchctl bootout ${target}`), result.warnings[0]);
+      assert.ok(result.warnings[0].includes(`launchctl bootstrap gui/${uid} ${plistPath}`), result.warnings[0]);
+      assert.ok(result.detail.includes('enable=ok'));
+    });
+  }
+
+  // The fake entry is ['/launcher', '/cfg']: what launchctl prints for a definition that already starts it.
+  for (const [name, out] of [['running', '\tprogram = /launcher\n\targuments = {\n\t\t/launcher\n\t\t/cfg\n\t}\n\tstate = running\n\tpid = 99\n'], ['not running', '\tprogram = /launcher\n\targuments = {\n\t\t/launcher\n\t\t/cfg\n\t}\n\tstate = waiting\n']]) {
+    test(`loaded with the definition the plist now says (${name}): nothing to reload, no warning, reload=current`, () => {
+      const { result, verbs } = enableWith((args) => (args[0] === 'print' ? out : ''));
+      assert.equal(result.ok, true);
+      assert.equal(result.warnings, undefined);
+      assert.deepEqual(verbs, ['enable', 'print']);
+      assert.ok(result.detail.includes('reload=current'), result.detail);
+    });
+  }
+
+  test('loaded and not running: enable, then print, bootout, bootstrap, reload=ok', () => {
+    const { result, calls, verbs, plistPath } = enableWith((args) => (args[0] === 'print' ? '\tstate = spawn scheduled\n\tlast exit code = 78\n' : ''));
+    assert.equal(result.ok, true);
+    assert.equal(result.warnings, undefined);
+    assert.deepEqual(verbs, ['enable', 'print', 'bootout', 'bootstrap']);
+    assert.deepEqual(calls[2], ['launchctl', 'bootout', target]);
+    assert.deepEqual(calls[3], ['launchctl', 'bootstrap', `gui/${uid}`, plistPath]);
+    assert.ok(result.detail.includes('reload=ok'), result.detail);
+  });
+
+  test('bootstrap fails: a warning with the real error, the result stays ok, enable still runs', () => {
+    const { result, verbs } = enableWith((args) => {
+      if (args[0] === 'print') { return '\tstate = waiting\n'; }
+      if (args[0] === 'bootstrap') { throw new Error('Bootstrap failed: 5: Input/output error'); }
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.warnings.length, 1);
+    assert.ok(result.warnings[0].includes('Bootstrap failed: 5: Input/output error'), result.warnings[0]);
+    assert.ok(result.detail.includes('reload=failed'), result.detail);
+    assert.deepEqual(verbs, ['enable', 'print', 'bootout', 'bootstrap']);
+  });
+
+  test('bootout fails: a warning with the real error, no bootstrap', () => {
+    const { result, verbs } = enableWith((args) => {
+      if (args[0] === 'print') { return '\tstate = waiting\n'; }
+      if (args[0] === 'bootout') { throw new Error('Boot-out failed: 1: Operation not permitted'); }
+    });
+    assert.equal(result.ok, true);
+    assert.ok(result.warnings[0].includes('Operation not permitted'), result.warnings[0]);
+    assert.ok(!verbs.includes('bootstrap'));
   });
 });

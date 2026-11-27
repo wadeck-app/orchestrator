@@ -78,6 +78,10 @@ Registered by `orch install`, rewritten at every daemon start. It names node and
 
 The fourth word (hint) is the watchdog of the install that wrote the entry. Node is the `process.execPath` of that writer, baked in.
 
+If that node is removed (`nvm uninstall`, a moved prefix), launchd and systemd start nothing at the next login and orch writes no log line for it: read `journalctl --user -u orchestrator` (systemd) or the last exit code of `launchctl print gui/<uid>/com.wadeck.orchestrator` (launchd). The next `orch` command reports the entry as broken (a release build also re-registers it at once, at most hourly), the next daemon start rewrites it, or run `orch install`. Windows differs: the hidden script logs the failure in the launcher log.
+
+macOS: launchd keeps the definition it loaded, so after rewriting the plist orch refreshes the loaded copy (`launchctl bootout` then `bootstrap`) only when that definition differs from the new one and the service is not running. A running service is never booted out (that would stop the watchdog and the daemon that is repairing its own entry): orch warns with the two commands to run by hand, and the new definition applies at the next login.
+
 The bootstrap runs the watchdog IN-PROCESS (`require`, argv reduced to the config dir): one resident node, and `config.launcher-pid` is its pid. A detached child would be a second process and a wrong pid. Search order, first file found wins (`<pkg>` = `@wadeck-app/orchestrator-cli/dist`):
 
 1. `LAUNCHER_BUNDLE_OVERRIDE`: the watchdog next to that daemon bundle; if absent, an error (never second-guessed)
