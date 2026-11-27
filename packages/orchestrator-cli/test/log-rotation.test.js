@@ -2,7 +2,7 @@
 
 // Size-based rotation of the log of ONE run: the pure rules (setting validation, resolution against the daemon default,
 // segment naming and listing). The writers have their own files: run-log-rotation.test.js (RunLogger) and
-// supervisor-go/run_test.go (the supervisor).
+// supervisor-rs/src/tests_rotation.rs (the supervisor).
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');

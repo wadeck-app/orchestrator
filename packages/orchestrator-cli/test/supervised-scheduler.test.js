@@ -18,8 +18,8 @@ const { endLeftoverRuns, withPidFile } = require('./helpers/end-leftover-runs');
 const supervisorPath = findSupervisorBinary();
 if (supervisorPath === null) {
   throw new Error(
-    'No supervisor binary for this platform. Build it with: npm run build-supervisor --workspace=packages/orchestrator-cli '
-    + '(needs Go). This test does not skip: a skipped test would report a green run that exercised nothing.',
+    'No supervisor binary for this platform. Build it with: cargo build --release --locked in supervisor-rs '
+    + '(or set ORCH_SUPERVISOR_BINARY; see docs/supervised-jobs.md). This test does not skip: a skipped test would report a green run that exercised nothing.',
   );
 }
 

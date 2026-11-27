@@ -12,7 +12,7 @@
  * upward, so the order is the numeric order of the suffix.
  *
  * Two writers append to the same run (the daemon with its markers, the supervisor with the job's output; see
- * supervisor-go/run.go, which implements the same rules). They never talk to each other: each one follows the files.
+ * supervisor-rs/src/runlog.rs, which implements the same rules). They never talk to each other: each one follows the files.
  */
 
 import fs from 'node:fs';
@@ -106,7 +106,7 @@ export function daemonLogRotation(config: { logMaxSizeMb: number; logKeepSegment
   return { maxBytes: Math.round(config.logMaxSizeMb * BYTES_PER_MB), keepSegments: config.logKeepSegments };
 }
 
-/** A size limit as the drop marker and the help say it. The Go supervisor writes the same words. */
+/** A size limit as the drop marker and the help say it. The supervisor writes the same words. */
 export function formatLimit(maxBytes: number): string {
   return maxBytes % BYTES_PER_MB === 0 ? `${maxBytes / BYTES_PER_MB} MB` : `${maxBytes} bytes`;
 }

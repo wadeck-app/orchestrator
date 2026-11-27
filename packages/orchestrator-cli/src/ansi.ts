@@ -7,7 +7,7 @@
  * The one helper of the CLI side, for the run log files (scheduler, supervisor) and every CLI view of them.
  * The dashboard cannot import it (build chain) and keeps its own in dsl-lib-orch/src/strip-ansi.ts;
  * dsl-lib-orch/test/ansi-parity.test.ts runs both over test/ansi-cases.js. Change both together.
- * The supervisor (supervisor-go/run.go) strips the same way in Go for the lines it writes itself.
+ * The supervisor (supervisor-rs/src/ansi.rs) strips the same way in Rust for the lines it writes itself.
  */
 const ANSI_RE = new RegExp([
   // OSC / DCS / SOS / PM / APC string, ended by BEL or ST (ESC \), or by the end of the line when it was cut.

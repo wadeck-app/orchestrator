@@ -60,3 +60,7 @@ Order: record the finished entry and flush state synchronously, run the effect g
 - On Windows a grandchild that outlives the shell survives a timeout (`taskkill /T` needs a live root).
 - Callers waiting with `--wait` get a connection error when the daemon restarts.
 - The heartbeat period (2 s) and the 5 s adoption tolerance are choices, not measurements.
+
+## Source checkout
+
+The supervisor is not built by `npm run build`. A checkout looks for it in `supervisor-rs/dist/<published name>` (CI staging), then `supervisor-rs/target/release/orchestrator-supervisor[.exe]`; with neither, the daemon and the supervised tests fail with the build command. Build it once: `cd packages/orchestrator-cli/supervisor-rs && cargo build --release --locked`. `ORCH_SUPERVISOR_BINARY=<path>` overrides the lookup (CI sets it for the full test run).

@@ -160,9 +160,6 @@ jobs:
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
 
-            - name: Build supervisor binary
-              run: npm run build-supervisor --workspace=packages/orchestrator-cli
-
             # The launcher is what start-at-login depends on, and its bundle resolution had no
             # coverage in this repo at all. go.mod sits inside go-launcher, so that is the module
             # root: running from the package above it fails with "does not contain main module".
@@ -170,15 +167,8 @@ jobs:
               run: go test ./...
               working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
-            # The per-job supervisor: its tests run the real binary logic against node, so the unix process
-            # group and the Windows taskkill paths are each exercised on their own platform.
-            - name: Run supervisor tests
-              run: go test ./...
-              working-directory: packages/orchestrator-cli/supervisor-go
-
-            # The Rust port of the supervisor (supervisor-rs), tested next to the Go one on each OS. Its unix branch
-            # (process group, SIGTERM then SIGKILL) was written on Windows and has never been compiled or run before
-            # this step. Its release build is what the publish job ships (artifact below).
+            # The per-job supervisor (supervisor-rs), tested on each OS so the unix process group and the Windows taskkill
+            # paths are each exercised on their own platform. Its release build is what the publish job ships (artifact below).
             # The version matches supervisor-rs/rust-toolchain.toml. Release profile, not `size`. std only, so there
             # is no crate to download and no cache to key.
             - name: Install Rust toolchain
@@ -188,33 +178,33 @@ jobs:
               run: cargo test --release --locked
               working-directory: packages/orchestrator-cli/supervisor-rs
 
-            # The binary the three checks below run, built the way a release would be (locked, release profile).
+            # The binary the JS suites run and the publish job ships, built the way a release would be (locked, release profile).
             - name: Build Rust supervisor (release)
               run: cargo build --release --locked
               working-directory: packages/orchestrator-cli/supervisor-rs
 
-            # Where each supervisor is on this runner. The Go names come from scripts/build-supervisor-binary.ts
-            # (windows-amd64 -> .exe, darwin-arm64 -> -arm64, linux-amd64 -> -linux-amd64): macos-latest is Apple Silicon
-            # and ubuntu-latest x64, as in PLATFORM_TARGETS. An unexpected runner fails here, by name, not later.
-            - name: Locate supervisor binaries
+            # Where the supervisor is on this runner, and the name the platform packages expect (windows-amd64 -> .exe,
+            # darwin-arm64 -> -arm64, linux-amd64 -> -linux-amd64): macos-latest is Apple Silicon and ubuntu-latest x64, as in
+            # PLATFORM_TARGETS. An unexpected runner fails here, by name, not later.
+            - name: Locate the supervisor binary
               run: |
                   case "$RUNNER_OS" in
-                      Windows) go_name=orchestrator-supervisor.exe; rs_name=orchestrator-supervisor.exe ;;
-                      macOS)   go_name=orchestrator-supervisor-arm64; rs_name=orchestrator-supervisor ;;
-                      Linux)   go_name=orchestrator-supervisor-linux-amd64; rs_name=orchestrator-supervisor ;;
+                      Windows) rs_name=orchestrator-supervisor.exe; published_name=orchestrator-supervisor.exe ;;
+                      macOS)   rs_name=orchestrator-supervisor; published_name=orchestrator-supervisor-arm64 ;;
+                      Linux)   rs_name=orchestrator-supervisor; published_name=orchestrator-supervisor-linux-amd64 ;;
                       *) echo "::error::Unknown runner OS '$RUNNER_OS': add its supervisor binary names to this step"; exit 1 ;;
                   esac
                   pkg="$GITHUB_WORKSPACE/packages/orchestrator-cli"
-                  echo "GO_SUPERVISOR=$pkg/supervisor-go/dist/$go_name" >> "$GITHUB_ENV"
                   echo "RS_SUPERVISOR=$pkg/supervisor-rs/target/release/$rs_name" >> "$GITHUB_ENV"
+                  echo "STAGED_SUPERVISOR=$pkg/supervisor-rs/dist/$published_name" >> "$GITHUB_ENV"
 
-            # The binary under the name the platform packages expect (the Go file name), so the publish job can copy it
+            # The binary under the name the platform packages expect, so the publish job can copy it
             # from the downloaded folder (supervisor-rs/dist) with copy-binaries.sh.
             - name: Stage the Rust supervisor under its published name
               run: |
                   test -f "$RS_SUPERVISOR" || { echo "::error::Rust supervisor not found at $RS_SUPERVISOR"; exit 1; }
                   mkdir -p packages/orchestrator-cli/supervisor-rs/dist
-                  cp "$RS_SUPERVISOR" "packages/orchestrator-cli/supervisor-rs/dist/$(basename "$GO_SUPERVISOR")"
+                  cp "$RS_SUPERVISOR" "$STAGED_SUPERVISOR"
 
             # One artifact per OS leg (names must be unique in a run); the publish job merges them back.
             - name: Upload the Rust supervisor
@@ -225,9 +215,8 @@ jobs:
                   if-no-files-found: error
                   retention-days: 7
 
-            # The JS suites that drive the real supervisor binary, run through the real daemon code with the Rust build
-            # instead of the Go one (ORCH_SUPERVISOR_BINARY, src/platform-binary.ts). The full `Run tests` step below keeps
-            # the Go supervisor, which is still the default, so these files run twice on purpose: once per implementation.
+            # The JS suites that drive the real supervisor binary, run through the real daemon code (ORCH_SUPERVISOR_BINARY,
+            # src/platform-binary.ts). The full `Run tests` step below runs them again with the same binary, in the whole suite.
             # Same runner flags as `npm test`; the preload keeps the config dir in a temp folder.
             - name: Supervised JS tests against the Rust supervisor
               run: |
@@ -245,21 +234,6 @@ jobs:
                       test/no-colour.test.js
               working-directory: packages/orchestrator-cli
               timeout-minutes: 10
-
-            # Same spec.json scenarios run through both supervisors: status.json, run log, files left behind, exit code
-            # and stderr must be identical. Fails the job on any divergence (a legitimate unix difference has to be
-            # normalised in the script, with a comment, not ignored here).
-            - name: 'Rust vs Go supervisor: differential'
-              run: node scripts/diff.mjs "$GO_SUPERVISOR" "$RS_SUPERVISOR"
-              working-directory: packages/orchestrator-cli/supervisor-rs
-
-            # One sample of each supervisor's memory, to read in the log: never a gate. Linux prints Private and Pss
-            # from smaps_rollup, macOS the rss (and `footprint` when the runner has it). Not comparable with the
-            # Windows Private Working Set of scripts/measure.mjs.
-            - name: 'Rust vs Go supervisor: memory (informational)'
-              if: runner.os != 'Windows'
-              run: node scripts/measure-unix.mjs "$GO_SUPERVISOR" "$RS_SUPERVISOR"
-              working-directory: packages/orchestrator-cli/supervisor-rs
 
             # Builds the Rust supervisor twice from two checkouts of different names and compares the bytes, with and
             # without --remap-path-prefix. The publish plan reuses a platform package only when the binary is
@@ -287,7 +261,7 @@ jobs:
               # Evidence, not a fix (ubuntu only), for the runs where the orchestrator-cli test run is killed
               # (run 419 "Interrupted while running", run 421 "Terminated" / exit 143), both about five seconds
               # after test/detach-exit.test.js passed. Two sources, printed by the report step below:
-              #   - strace records every kill/tkill/tgkill made by any process of the suite (the Go supervisor
+              #   - strace records every kill/tkill/tgkill made by any process of the suite (the supervisor
               #     included) with its sender and target; --seccomp-bpf makes tracing only those calls nearly free;
               #   - signal-trace.cjs, preloaded into every node process, records the node kills aimed at a group,
               #     at init or at a parent, with the caller's stack.
@@ -295,6 +269,7 @@ jobs:
                   NODE_OPTIONS: ${{ runner.os == 'Linux' && format('--require {0}/packages/orchestrator-cli/ci/scripts/signal-trace.cjs', github.workspace) || '' }}
                   SIGNAL_TRACE_LOG: ${{ runner.temp }}/signal-trace.log
                   KILL_TRACE_LOG: ${{ runner.temp }}/kill-trace.txt
+                  ORCH_SUPERVISOR_BINARY: ${{ env.STAGED_SUPERVISOR }}
               run: |
                   npm test --workspace=packages/orch-core --if-present
                   npm test --workspace=packages/orch-server --if-present

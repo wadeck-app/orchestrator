@@ -1,7 +1,7 @@
 'use strict';
 
 // The `kill` file of a supervised run is how the daemon tells the supervisor to end the job and why ("manual",
-// "timeout", "resource-limit"). The supervisor (supervisor-go/run.go) polls for the file and reads its content in the
+// "timeout", "resource-limit"). The supervisor (supervisor-rs/src/run.rs) polls for the file and reads its content in the
 // same step: a file that exists but is still empty is read as "unspecified", and the run is recorded as killed for
 // no stated reason (seen: supervised-run.test.js expected 'manual', got 'unspecified', once in a loaded full run).
 //

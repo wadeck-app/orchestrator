@@ -10,11 +10,11 @@ import { atomicWriteJson, getErrorMessage, readJsonFile } from './fsUtil.js';
 import type { TriggerSource } from './types.js';
 
 /*
- * A job run under orchestrator-supervisor (supervisor-go): a small detached process that runs the job, owns its
+ * A job run under orchestrator-supervisor (supervisor-rs): a small detached process that runs the job, owns its
  * output and records how it ended, so the daemon can stop, update and start again without touching the job.
  *
  * The daemon and the supervisor share files and nothing else (the contract is documented in
- * supervisor-go/run.go): spec.json goes in, status.json / heartbeat come out, a `kill` file asks for the end.
+ * supervisor-rs/src/run.rs): spec.json goes in, status.json / heartbeat come out, a `kill` file asks for the end.
  */
 
 const DEFAULT_HEARTBEAT_MS = 2000;

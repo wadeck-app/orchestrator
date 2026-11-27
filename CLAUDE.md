@@ -67,8 +67,8 @@ user unit (`~/.config/systemd/user/orchestrator.service`, `orch install` / `orch
 `orch install` then reboot); other distributions are covered by tests only. Linux on ARM (linux-arm64) is not shipped (never run on a real host or in CI) and Intel Macs (darwin-x64) are not supported; a platform with no package says so in `orch start` and the daemon log. Validated by the user on real
 hosts (stated 2026-11-13): Linux, macOS (Apple Silicon) and Windows 10 and 11, all with the CLI, the daemon and start at login.
 Only the Linux boot test carries a recorded date and procedure above. The platforms are listed
-once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts,
-`optionalDependencies` and `scripts/build-supervisor-binary.ts` agree with it.
+once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.test.js` fails until the ci scripts
+and `optionalDependencies` agree with it.
 
 Never assume a fixed path between the two packages: npm hoists the platform package next to the
 main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the launcher,
@@ -79,11 +79,10 @@ the package specifier in `ci/launcher.config.json`. That is what makes start-at-
 
 The Rust supervisor (`packages/orchestrator-cli/supervisor-rs`) ships on `latest` since 2026-11-22. The publish workflow has no channel, trailer or dispatch-input mechanism any more: the publish job always takes the binaries built by the three build-and-test legs (artifacts `rust-supervisor-<OS>`), and `copy-binaries.sh` and `publish-platform-packages.sh` read `supervisor-rs/dist`.
 
-`supervisor-go` is kept only for the CI differential (Go vs Rust scenarios) until the user's macOS and Linux tests are done. Remaining steps:
+`supervisor-go` and its differential/build/measure scripts were deleted on 2026-11-27. A source checkout finds the supervisor in `supervisor-rs/dist` then `supervisor-rs/target/release`, else fails with the build command (`docs/supervised-jobs.md`, "Source checkout"); CI sets `ORCH_SUPERVISOR_BINARY` for the full test run. Remaining steps:
 
-1. Delete `supervisor-go`, its build script (`scripts/build-supervisor-binary.ts`, `build-supervisor`), its tests, the Go supervisor CI steps, the differential and measure/repro scripts that need it, and the `PLATFORM_TARGETS` and ci script references (the `*Dev` names and the source-checkout fallback in `src/platform-binary.ts`); update the docs that name the Go supervisor.
-2. Phase C of the watchdog: remove the Go launcher from the platform packages, the junction/staging code, `LAUNCHER_BUNDLE_OVERRIDE` and the `--launcher` fallback (the tray stays Go).
-3. Remove this section.
+1. Phase C of the watchdog: remove the Go launcher from the platform packages, the junction/staging code, `LAUNCHER_BUNDLE_OVERRIDE` and the `--launcher` fallback (the tray stays Go).
+2. Remove this section.
 
 ## Agent reference docs
 

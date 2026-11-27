@@ -1,7 +1,7 @@
 'use strict';
 
 // The list of platforms the orchestrator ships for lived in six places (the resolution tables of platform-binary.ts,
-// generate/copy/publish-platform-packages, optionalDependencies, build-supervisor-binary.ts), and Linux was missing from
+// generate/copy/publish-platform-packages, optionalDependencies), and Linux was missing from
 // all of them at once without anything failing: an npm install there could not even start the daemon. PLATFORM_TARGETS is
 // the one table; this file makes every other place agree with it, so adding a platform is a change that fails until it is
 // complete.
@@ -23,7 +23,7 @@ describe('PLATFORM_TARGETS', () => {
   });
 
   test('linux-arm64 and darwin-x64 (Intel Mac) are shipped nowhere: no package, no binary copied, nothing published', () => {
-    for (const file of [['package.json'], ['ci', 'scripts', 'copy-binaries.sh'], ['ci', 'scripts', 'generate-platform-packages.sh'], ['ci', 'scripts', 'publish-platform-packages.sh'], ['scripts', 'build-supervisor-binary.ts']]) {
+    for (const file of [['package.json'], ['ci', 'scripts', 'copy-binaries.sh'], ['ci', 'scripts', 'generate-platform-packages.sh'], ['ci', 'scripts', 'publish-platform-packages.sh']]) {
       assert.doesNotMatch(read(...file), /linux[-_]arm64|darwin[-_]x64|darwin_amd64|tray-amd64|supervisor-amd64/, file.join('/'));
     }
   });
@@ -102,19 +102,11 @@ describe('everything else agrees with PLATFORM_TARGETS', () => {
   });
 
   // The published supervisor is the Rust one (the publish job downloads the artifacts of the build-and-test legs
-  // into supervisor-rs/dist). supervisor-go is only built in CI for the differential.
+  // into supervisor-rs/dist).
   test('both publish scripts read the supervisor from the Rust dist folder, with no override', () => {
     for (const name of ['copy-binaries.sh', 'publish-platform-packages.sh']) {
       const script = read('ci', 'scripts', name);
       assert.match(script, /^SUPERVISOR_DIST="packages\/orchestrator-cli\/supervisor-rs\/dist"$/m, name);
-      assert.ok(!script.includes('supervisor-go'), `${name} must not read the Go supervisor`);
-    }
-  });
-
-  test('the supervisor builder produces each supervisor name', () => {
-    const script = read('scripts', 'build-supervisor-binary.ts');
-    for (const key of KEYS) {
-      assert.ok(script.includes(PLATFORM_TARGETS[key].supervisorDev), `${key}: ${PLATFORM_TARGETS[key].supervisorDev}`);
     }
   });
 

@@ -71,7 +71,7 @@ describe('findSupervisorBinary', () => {
       assert.equal(p, null, `${key} has no supervisor, expected null`);
       return;
     }
-    assert.ok(p, 'no supervisor found: run npm run build-supervisor');
+    assert.ok(p, 'no supervisor found: cargo build --release --locked in supervisor-rs, or set ORCH_SUPERVISOR_BINARY');
     assert.ok(fs.existsSync(p), `resolved to a missing file: ${p}`);
     assert.ok([`orchestrator-supervisor${exe}`, target.supervisorDev].includes(path.basename(p)),
       `${path.basename(p)} is not a ${key} supervisor name`);

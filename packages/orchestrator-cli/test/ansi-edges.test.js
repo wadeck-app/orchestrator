@@ -1,7 +1,7 @@
 'use strict';
 
 // Edges of src/ansi.ts that are pinned for the JS helper only. They are NOT in test/ansi-cases.js on purpose: that
-// table is shared with the Go supervisor (supervisor-go/ansi.go) and the dashboard copy (dsl-lib-orch/src/strip-ansi.ts),
+// table is shared with the Rust supervisor (supervisor-rs/src/ansi.rs) and the dashboard copy (dsl-lib-orch/src/strip-ansi.ts),
 // which have not been checked against these inputs. Once they have, the rows below can move to the shared table.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');

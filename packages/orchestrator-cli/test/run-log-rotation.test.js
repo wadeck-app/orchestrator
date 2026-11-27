@@ -1,7 +1,7 @@
 'use strict';
 
 // RunLogger rotation: the daemon-side writer of a run's log. Tiny limits in bytes and an injected clock, no sleeps.
-// The supervisor (supervisor-go/run.go) implements the same rules and has its own tests; the end-to-end agreement
+// The supervisor (supervisor-rs/src/runlog.rs) implements the same rules and has its own tests; the end-to-end agreement
 // between the two is in run-log-rotation-supervised.test.js.
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');

@@ -11,11 +11,11 @@ import { getErrorMessage } from './fsUtil.js';
 
 /**
  * The one table of the platforms we ship for. Everything that lists platforms (the platform package scripts in
- * ci/scripts, optionalDependencies, scripts/build-supervisor-binary.ts) is checked against it by
+ * ci/scripts, optionalDependencies) is checked against it by
  * test/platform-targets.test.js, so a platform cannot be added here and forgotten there.
  *
- * *Dev names are the files a source checkout builds (launcher-go/dist, tray-go/dist, supervisor-go/dist); inside a
- * platform package the files are named plainly. `trayDev` is null where there is no systray build (Linux).
+ * *Dev names are the files a source checkout builds (launcher-go/dist, tray-go/dist) or stages (supervisor-rs/dist, the Rust
+ * supervisor under its published name); inside a platform package the files are named plainly. `trayDev` is null where there is no systray build (Linux).
  */
 export interface PlatformTarget {
   pkg:           string;
@@ -237,8 +237,8 @@ export const SUPERVISOR_BINARY_ENV = 'ORCH_SUPERVISOR_BINARY';
 /**
  * The per-job supervisor, started detached by the daemon for each job.
  *
- * Test/CI only: when ORCH_SUPERVISOR_BINARY is set (non-empty) it wins over the platform package and the dev build, so
- * the JS suites and a daemon started by them can run another supervisor build (e.g. the Rust one). It must name an
+ * When ORCH_SUPERVISOR_BINARY is set (non-empty) it wins over the platform package and the source-checkout build, so
+ * the JS suites and a daemon started by them can run another supervisor build (CI points it at the staged Rust binary). It must name an
  * existing file; otherwise this throws instead of falling back, because a silent fallback would make a test pass
  * against the wrong binary. The override is never staged (see supervisorToRun).
  */
@@ -268,7 +268,25 @@ export function findSupervisorBinary(): string | null {
   if (!devName) {
     return null;
   }
-  return firstExisting([path.join(__dirname, '..', 'supervisor-go', 'dist', devName)]);
+  const rsDir = path.join(__dirname, '..', 'supervisor-rs');
+  // Not a source checkout (supervisor-rs is not published): the platform package is the only source, and its absence is
+  // reported by the self-check.
+  if (!fs.existsSync(rsDir)) {
+    return null;
+  }
+  // Order: the staged copy under its published name (what CI builds and publishes), then a plain `cargo build --release`.
+  const found = firstExisting([
+    path.join(rsDir, 'dist', devName),
+    path.join(rsDir, 'target', 'release', SUPERVISOR_IN_PLATFORM_PKG),
+  ]);
+  if (found === null) {
+    throw new Error(
+      `No supervisor binary found in this source checkout. Build the Rust supervisor: `
+      + `cd ${rsDir} && cargo build --release --locked (expects ${path.join(rsDir, 'target', 'release', SUPERVISOR_IN_PLATFORM_PKG)}), `
+      + `or point ${SUPERVISOR_BINARY_ENV} at an existing supervisor executable.`,
+    );
+  }
+  return found;
 }
 
 /**

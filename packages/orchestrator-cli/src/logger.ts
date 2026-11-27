@@ -34,7 +34,7 @@ export interface RunLoggerOptions {
  * same run once the current one would pass the size limit (log-rotation.ts).
  * Filename: <prefix>-<YYYY-MM-DDTHH-MM-SS>.log  (colons replaced for Windows compatibility), then .log.2, .log.3...
  *
- * The rules, which the supervisor implements identically (supervisor-go/run.go):
+ * The rules, which the supervisor implements identically (supervisor-rs/src/runlog.rs):
  *  - A line goes whole into one segment. It starts the next segment when it would take a non-empty segment over the
  *    limit; a line longer than the limit sits alone in its segment, unsplit.
  *  - Another writer may append to the same run (the daemon's markers next to the supervisor's output): before each
@@ -95,7 +95,7 @@ export class RunLogger {
    * A line the JOB printed (stdout, or stderr with its prefix), as opposed to the daemon's own markers: escape
    * sequences are stripped (colour has no value in a file read by editors, grep, the dashboard and agents), and a
    * line that is empty once stripped and trimmed writes nothing. The supervisor does the same for a supervised
-   * job (supervisor-go/run.go), so the file reads the same whichever path ran the job.
+   * job (supervisor-rs/src/runlog.rs), so the file reads the same whichever path ran the job.
    */
   writeOutput(line: string, prefix = ''): void {
     const text = stripAnsi(line).trimEnd();
