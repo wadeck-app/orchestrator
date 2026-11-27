@@ -468,7 +468,7 @@ export interface SendOptions {
 export interface CliDeps {
   /** RPC-style send: command name + optional payload. 'version' resolves via client.version(). */
   send: (command: string, payload?: unknown, options?: SendOptions) => Promise<unknown>;
-  /** Starts the daemon detached; `watchdog` (orch start --watchdog) picks the experimental Node watchdog instead of the Go launcher. */
+  /** Starts the daemon detached under the Node watchdog; `watchdog` and `launcher` carry the deprecated/removed flags so they are reported. */
   startDaemon: (opts?: { watchdog?: boolean; launcher?: boolean }) => void;
   configDir: string;
   /** Where the one-line success answers of `add` and `edit` go (default: stdout). `ensure` runs those two and says its own outcome instead. */

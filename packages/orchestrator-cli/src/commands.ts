@@ -486,10 +486,10 @@ export function makeCommands(
     'quit': () => {},
 
     // restart: gracefully kill the tray (sends {type:exit} via stdin) THEN exit so the
-    // Go launcher re-spawns the daemon. Using trayManager.triggerRestart() ensures the same
+    // watchdog re-spawns the daemon. Using trayManager.triggerRestart() ensures the same
     // clean kill path as the tray "Restart" button, preventing orphan tray processes.
     // NOTE: config.restart is written by the index.ts 'restart' event handler AFTER tray is
-    // killed - do NOT write it here, or the Go launcher would spawn a second daemon before
+    // killed - do NOT write it here, or the watchdog would spawn a second daemon before
     // this one exits, causing multiple daemon/tray instances.
     'restart': () => {
       audit?.log('daemon.restart');

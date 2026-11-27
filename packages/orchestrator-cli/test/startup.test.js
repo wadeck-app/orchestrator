@@ -6,8 +6,6 @@ const path   = require('node:path');
 
 const {
   buildRegValueName,
-  buildWindowsCommand,
-  buildMacArgs,
   buildMacPlist,
   enableStartup,
   disableStartup,
@@ -31,36 +29,11 @@ describe('buildRegValueName', () => {
   });
 });
 
-// Both builders now REQUIRE the Go launcher and throw without it. The node fallback these
-// tests used to cover was removed deliberately: registering node + the bundle produces a daemon
-// with no supervisor, so nothing would restart it after an update, and nothing said so. The
-// launcher is absent on any host that is not a published target, which is what CI runs on.
-const { findLauncherBinary } = require('../src/platform-binary');
-const hasLauncher = findLauncherBinary() !== null;
-
-describe('buildWindowsCommand', () => {
-  test('two quoted segments, launcher then configDir', () => {
-    if (!hasLauncher) {
-      assert.throws(() => buildWindowsCommand(FAKE_DIR), /no launcher binary/);
-      return;
-    }
-    const cmd = buildWindowsCommand(FAKE_DIR);
-    assert.ok(cmd.includes(FAKE_DIR), 'expected configDir in the command');
-    assert.match(cmd, /^"[^"]+" "[^"]+"$/, `expected exactly two quoted segments, got: ${cmd}`);
-    assert.ok(!cmd.includes(process.execPath), 'must not fall back to node + bundle');
-  });
-});
-
-describe('buildMacArgs', () => {
-  test('exactly [launcher, configDir]', () => {
-    if (!hasLauncher) {
-      assert.throws(() => buildMacArgs(FAKE_DIR), /no launcher binary/);
-      return;
-    }
-    const args = buildMacArgs(FAKE_DIR);
-    assert.equal(args.length, 2, `expected [launcher, configDir], got ${JSON.stringify(args)}`);
-    assert.equal(args[1], FAKE_DIR);
-    assert.notEqual(args[0], process.execPath, 'must not fall back to node + bundle');
+describe('the Go launcher builders are gone', () => {
+  test('buildWindowsCommand and buildMacArgs are not exported any more', () => {
+    const startup = require('../src/startup');
+    assert.equal(startup.buildWindowsCommand, undefined);
+    assert.equal(startup.buildMacArgs, undefined);
   });
 });
 

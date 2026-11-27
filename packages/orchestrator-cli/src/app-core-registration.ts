@@ -71,7 +71,7 @@ function stagedModulesRoot(orchConfigDir: string): string {
  * that dies, and app-core would be left reporting a module that cannot load. The copy lives in the
  * config dir, which belongs to the user and not to npm: the module keeps working across updates and
  * after an uninstall, until it is removed from app-core on purpose. Same reason, same shape as the
- * native launcher binary (platform-binary.ts).
+ * native binaries (platform-binary.ts).
  *
  * Once per stamp: a complete copy is kept. Written beside the target and renamed, so a crash cannot
  * leave a half-copied folder at the path app-core would load from.

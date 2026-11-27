@@ -1,9 +1,10 @@
 'use strict';
 
-// A registered start-at-login entry names paths (launcher, daemon bundle, the node of its PATH). A node or npm prefix change can
+// A registered start-at-login entry names paths (node, the bootstrap, the node of its PATH). A node or npm prefix change can
 // leave it naming paths that are gone: the daemon then does not start at the next login, and the reason sits in a launcher log.
 // inspectStartupEntry reads the entry back; repairStartupEntry re-registers it, only when it is broken. The paths the entry names
 // are a fake file set (POSIX-style strings on any host); only the unit and its enable link are real files in a temp directory.
+// An entry that still names the removed Go launcher is covered here and in startup-watchdog.test.js.
 const { test, describe, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs   = require('node:fs');
@@ -11,6 +12,7 @@ const os   = require('node:os');
 const path = require('node:path');
 
 const { buildSystemdUnit, inspectStartupEntry, repairStartupEntry } = require('../src/startup');
+const { BOOTSTRAP_SOURCE, bootstrapArgs } = require('../src/start-bootstrap');
 
 const tmpDirs = [];
 function tmp() {
@@ -26,20 +28,27 @@ function fakeFiles(...paths) {
   return { set, isFile: (p) => set.has(p), realpath: (p) => p };
 }
 
-/** A registered Linux entry: the unit text is real, the paths it names are fake. */
+const readBootstrap = () => Buffer.from(BOOTSTRAP_SOURCE, 'utf8');
+
+/** A registered Linux entry for the watchdog: the unit text is real, the paths it names are fake. */
 function linux({ base = '/opt/a' } = {}) {
-  const launcher = `${base}/launcher`;
-  const bundle   = `${base}/lib/orchestrator.cjs`;
-  const nodeBin  = `${base}/bin`;
-  const fake     = fakeFiles(launcher, bundle, `${nodeBin}/node`);
-  const root     = tmp();
-  const unitPath = path.join(root, 'systemd', 'user', 'orchestrator.service');
-  const wants    = path.join(root, 'systemd', 'user', 'default.target.wants', 'orchestrator.service');
+  const node      = `${base}/bin/node`;
+  const watchdog  = `${base}/lib/orchestrator-watchdog.cjs`;
+  const nodeBin   = `${base}/bin`;
+  const args      = bootstrapArgs({ node, configDir: '/cfg', hint: watchdog });
+  const bootstrap = args[1];
+  const fake      = fakeFiles(node, bootstrap, watchdog);
+  const root      = tmp();
+  const unitPath  = path.join(root, 'systemd', 'user', 'orchestrator.service');
+  const wants     = path.join(root, 'systemd', 'user', 'default.target.wants', 'orchestrator.service');
   fs.mkdirSync(path.dirname(wants), { recursive: true });
-  fs.writeFileSync(unitPath, buildSystemdUnit([launcher, '/cfg'], '/cfg', [nodeBin, '/usr/bin'], bundle));
+  fs.writeFileSync(unitPath, buildSystemdUnit(args, '/cfg', [nodeBin, '/usr/bin']));
   fs.writeFileSync(wants, '');
-  const deps = { platform: 'linux', unitPath, daemonEntry: bundle, nodeBinDir: nodeBin, isFile: fake.isFile, realpath: fake.realpath, validateTarget: () => null };
-  return { deps, launcher, bundle, nodeBin, fake };
+  const deps = {
+    platform: 'linux', unitPath, watchdogEntry: watchdog, nodeBinDir: nodeBin, readFile: readBootstrap,
+    isFile: fake.isFile, realpath: fake.realpath, validateTarget: () => null,
+  };
+  return { deps, node, bootstrap, watchdog, nodeBin, fake };
 }
 
 describe('inspectStartupEntry on Linux', () => {
@@ -59,12 +68,20 @@ describe('inspectStartupEntry on Linux', () => {
     assert.equal(inspectStartupEntry('/cfg', { ...deps, unitPath: path.join(tmp(), 'none.service') }).state, 'absent');
   });
 
-  test('a daemon bundle that is gone is broken, and the path is named', () => {
-    const { deps, bundle, fake } = linux();
-    fake.set.delete(bundle);
+  test('a node that is gone is broken, and the path is named', () => {
+    const { deps, node, fake } = linux();
+    fake.set.delete(node);
     const r = inspectStartupEntry('/cfg', deps);
     assert.equal(r.state, 'broken');
-    assert.ok(r.problems.some((p) => p.includes(bundle)), JSON.stringify(r));
+    assert.ok(r.problems.some((p) => p.includes(node)), JSON.stringify(r));
+  });
+
+  test('a bootstrap that is gone is broken, and the path is named', () => {
+    const { deps, bootstrap, fake } = linux();
+    fake.set.delete(bootstrap);
+    const r = inspectStartupEntry('/cfg', deps);
+    assert.equal(r.state, 'broken');
+    assert.ok(r.problems.some((p) => p.includes(bootstrap)), JSON.stringify(r));
   });
 
   test('a PATH with no node left is broken, and the PATH is named', () => {
@@ -75,36 +92,51 @@ describe('inspectStartupEntry on Linux', () => {
     assert.ok(r.problems.some((p) => /no node/.test(p) && p.includes(nodeBin)), JSON.stringify(r));
   });
 
-  test('a launcher that is gone is broken', () => {
-    const { deps, launcher, fake } = linux();
-    fake.set.delete(launcher);
-    const r = inspectStartupEntry('/cfg', deps);
-    assert.equal(r.state, 'broken');
-    assert.ok(r.problems.some((p) => p.includes(launcher)), JSON.stringify(r));
+  test('an entry that works but starts under another node than this one is a drift, naming both', () => {
+    const { deps, nodeBin } = linux();
+    const r = inspectStartupEntry('/cfg', { ...deps, nodeBinDir: '/opt/b/bin' });
+    assert.equal(r.state, 'drift');
+    assert.ok(r.problems.some((p) => p.includes(nodeBin) && p.includes('/opt/b/bin')), JSON.stringify(r));
   });
 
-  test('an entry that works but starts another install than this one is a drift, naming both', () => {
-    const { deps, bundle, fake } = linux();
-    fake.set.add('/opt/b/lib/orchestrator.cjs');
-    const r = inspectStartupEntry('/cfg', { ...deps, daemonEntry: '/opt/b/lib/orchestrator.cjs', nodeBinDir: '/opt/b/bin' });
-    assert.equal(r.state, 'drift');
-    assert.ok(r.problems.some((p) => p.includes(bundle) && p.includes('/opt/b/lib/orchestrator.cjs')), JSON.stringify(r));
-    assert.ok(r.problems.some((p) => p.includes('/opt/b/bin')), JSON.stringify(r));
+  test('an entry for the watchdog over an install without it is broken and says to re-install', () => {
+    const { deps } = linux();
+    const r = inspectStartupEntry('/cfg', { ...deps, watchdogEntry: null });
+    assert.equal(r.state, 'broken');
+    assert.match(r.problems.join(), /npm install -g @wadeck-app\/orchestrator-cli, then run orch install/);
+  });
+
+  // remove one release after phase C, with the detection it covers
+  test('an entry that still names the removed Go launcher is outdated whatever its files, with nothing about the launcher checked', () => {
+    const { deps, fake } = linux();
+    fs.writeFileSync(deps.unitPath, buildSystemdUnit(['/gone/launcher', '/cfg'], '/cfg', ['/gone/bin', '/usr/bin']));
+    assert.equal(fake.isFile('/gone/launcher'), false);
+    const r = inspectStartupEntry('/cfg', deps);
+    assert.equal(r.state, 'outdated');
+    assert.match(r.problems.join(), /still starts the Go launcher, which was removed/);
+  });
+
+  test('an entry that names the Go launcher over an install with no watchdog is broken and says to re-install', () => {
+    const { deps } = linux();
+    fs.writeFileSync(deps.unitPath, buildSystemdUnit(['/gone/launcher', '/cfg'], '/cfg', ['/gone/bin', '/usr/bin']));
+    const r = inspectStartupEntry('/cfg', { ...deps, watchdogEntry: null });
+    assert.equal(r.state, 'broken');
+    assert.match(r.problems.join(), /npm install -g @wadeck-app\/orchestrator-cli, then run orch install/);
   });
 });
 
 describe('inspectStartupEntry on macOS', () => {
-  function plist({ bundleExists = true } = {}) {
-    const launcher = '/Users/t/.config/orchestrator/launcher';
-    const bundle   = '/opt/a/lib/orchestrator.cjs';
-    const nodeBin  = '/opt/a/bin';
-    const fake     = fakeFiles(launcher, `${nodeBin}/node`, ...(bundleExists ? [bundle] : []));
+  function plist({ nodeExists = true } = {}) {
+    const node      = '/opt/a/bin/node';
+    const nodeBin   = '/opt/a/bin';
+    const watchdog  = '/opt/a/lib/orchestrator-watchdog.cjs';
+    const args      = bootstrapArgs({ node, configDir: '/cfg', hint: watchdog });
+    const fake      = fakeFiles(args[1], watchdog, ...(nodeExists ? [node] : []));
     const plistPath = path.join(tmp(), 'com.wadeck.orchestrator.plist');
     fs.writeFileSync(plistPath, `<plist version="1.0"><dict>
   <key>ProgramArguments</key>
   <array>
-    <string>${launcher}</string>
-    <string>/cfg</string>
+${args.map((a) => `    <string>${a}</string>`).join('\n')}
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -112,53 +144,40 @@ describe('inspectStartupEntry on macOS', () => {
     <string>${nodeBin}:/usr/bin</string>
     <key>ORCH_CONFIG_DIR</key>
     <string>/cfg</string>
-    <key>LAUNCHER_BUNDLE_OVERRIDE</key>
-    <string>${bundle}</string>
   </dict>
 </dict></plist>
 `);
-    return { deps: { platform: 'darwin', plistPath, daemonEntry: bundle, nodeBinDir: nodeBin, isFile: fake.isFile, realpath: fake.realpath }, bundle };
+    return { deps: { platform: 'darwin', plistPath, watchdogEntry: watchdog, nodeBinDir: nodeBin, readFile: readBootstrap, isFile: fake.isFile, realpath: fake.realpath }, node };
   }
 
   test('a plist whose paths exist is ok', () => {
     assert.equal(inspectStartupEntry('/cfg', plist().deps).state, 'ok');
   });
 
-  test('a plist whose bundle is gone is broken', () => {
-    const { deps, bundle } = plist({ bundleExists: false });
+  test('a plist whose node is gone is broken', () => {
+    const { deps, node } = plist({ nodeExists: false });
     const r = inspectStartupEntry('/cfg', deps);
     assert.equal(r.state, 'broken');
-    assert.ok(r.problems.some((p) => p.includes(bundle)), JSON.stringify(r));
+    assert.ok(r.problems.some((p) => p.includes(node)), JSON.stringify(r));
   });
 });
 
 describe('inspectStartupEntry on Windows', () => {
-  function registry(launcher, exists) {
+  // remove one release after phase C: the Run value of the removed Go launcher
+  function registry(launcher) {
     const exec = () => `\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\r\n    Orchestrator (/cfg)    REG_SZ    "${launcher}" "/cfg"\r\n`;
-    return { platform: 'win32', exec, daemonEntry: null, isFile: (p) => exists && p === launcher };
+    return { platform: 'win32', exec, isFile: () => false };
   }
 
-  test('a registered launcher that exists is ok', () => {
-    assert.equal(inspectStartupEntry('/cfg', registry('C:\\cfg\\launcher.exe', true)).state, 'ok');
+  test('a Run value that names the removed Go launcher is outdated whether or not the file is there', () => {
+    const r = inspectStartupEntry('/cfg', { ...registry('C:\\cfg\\launcher.exe'), watchdogEntry: 'C:\\pkg\\orchestrator-watchdog.cjs' });
+    assert.equal(r.state, 'outdated');
   });
 
-  test('a launcher that cannot find the daemon bundle (no node_modules link in its folder) makes the entry broken, so it is repaired', () => {
-    const r = inspectStartupEntry('/cfg', {
-      ...registry('C:\\cfg\\bin\\1\\launcher.exe', true),
-      bundleLinkProblem: (launcher) => `${launcher} has no node_modules link`,
-    });
+  test('the same value over an install with no watchdog is broken and says to re-install', () => {
+    const r = inspectStartupEntry('/cfg', { ...registry('C:\\cfg\\launcher.exe'), watchdogEntry: null });
     assert.equal(r.state, 'broken');
-    assert.ok(r.problems.some((p) => p.includes('no node_modules link')), JSON.stringify(r));
-  });
-
-  test('a launcher with nothing to be shown is ok', () => {
-    assert.equal(inspectStartupEntry('/cfg', { ...registry('C:\\cfg\\launcher.exe', true), bundleLinkProblem: () => null }).state, 'ok');
-  });
-
-  test('a registered launcher that is gone is broken', () => {
-    const r = inspectStartupEntry('/cfg', registry('C:\\cfg\\launcher.exe', false));
-    assert.equal(r.state, 'broken');
-    assert.ok(r.problems.some((p) => p.includes('C:\\cfg\\launcher.exe')), JSON.stringify(r));
+    assert.match(r.problems.join(), /npm install -g @wadeck-app\/orchestrator-cli, then run orch install/);
   });
 });
 
@@ -173,14 +192,18 @@ describe('repairStartupEntry', () => {
   }
 
   test('a broken entry is written again with this install\'s paths, and is ok afterwards', () => {
-    const { deps, bundle, fake } = linux();
-    fake.set.delete(bundle);
-    // The node of the new install, and its bundle and launcher.
-    fake.set.add('/opt/b/lib/orchestrator.cjs');
-    fake.set.add('/opt/b/launcher');
-    fake.set.add('/opt/b/bin/node');
+    const { deps, node, fake } = linux();
+    fake.set.delete(node);
+    // The node and the watchdog of the new install; its bootstrap is the one the repair writes.
+    const newNode = '/opt/b/bin/node';
+    const newWatchdog = '/opt/b/lib/orchestrator-watchdog.cjs';
+    // programArguments is the seam that keeps the repair from writing a bootstrap into the real '/cfg'.
+    const newArgs = bootstrapArgs({ node: newNode, configDir: '/cfg', hint: newWatchdog });
+    fake.set.add(newNode);
+    fake.set.add(newWatchdog);
+    fake.set.add(newArgs[1]);
     const calls = [];
-    const d = repairDeps({ ...deps, daemonEntry: '/opt/b/lib/orchestrator.cjs', nodeBinDir: '/opt/b/bin', programArguments: ['/opt/b/launcher', '/cfg'] }, calls);
+    const d = repairDeps({ ...deps, watchdogEntry: newWatchdog, nodeBinDir: '/opt/b/bin', programArguments: newArgs }, calls);
     d.linuxPath.fallbackEntries = ['/opt/b/bin'];
     const { report, repair } = repairStartupEntry('/cfg', d);
     assert.equal(report.state, 'broken');
@@ -194,7 +217,7 @@ describe('repairStartupEntry', () => {
     const { deps } = linux();
     const before = fs.readFileSync(deps.unitPath, 'utf8');
     const calls = [];
-    for (const d of [deps, { ...deps, daemonEntry: '/opt/b/lib/orchestrator.cjs' }]) {
+    for (const d of [deps, { ...deps, nodeBinDir: '/opt/b/bin' }]) {
       const { repair } = repairStartupEntry('/cfg', repairDeps(d, calls));
       assert.equal(repair, null);
     }

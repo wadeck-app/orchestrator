@@ -75,7 +75,7 @@ function configDirFromArgv(argv: string[]): string | null {
 
 // argv wins over the environment: it is the more explicit of the two, and a caller passing the flag
 // has clearly chosen a target. The env var stays supported because start-at-login relies on it --
-// the Windows Run key cannot inject variables, so the launcher plist and registry entry set it.
+// the Windows Run key cannot inject variables, so the watchdog plist and registry entry set it.
 function resolveConfigDir(): string {
   try {
     return (
@@ -426,7 +426,7 @@ async function main(): Promise<void> {
     // The tray's quit and restart exit the process directly, past the kit's stop: they flush first (bounded).
     trayManager.on('quit',    () => { void events.flush().finally(() => process.exit(0)); });
     trayManager.on('restart', () => {
-      // Write config.restart sentinel so Go launcher restarts the daemon after exit.
+      // Write config.restart sentinel so the watchdog restarts the daemon after exit.
       const { writeFileSync } = require('node:fs') as typeof import('node:fs');
       try { writeFileSync(path.join(CONFIG_DIR, 'config.restart'), '1'); } catch { /* ignore */ }
       void events.flush().finally(() => process.exit(0));

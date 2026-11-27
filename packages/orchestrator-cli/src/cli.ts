@@ -2,9 +2,8 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { launcherBundleOverride, nodeDirOnPath, LAUNCHER_BUNDLE_SPEC } from './launcher-bundle.js';
 import { runStartupCheck } from './startup-check.js';
-import { resolveStartMode, watchdogSpawnSpec, WATCHDOG_FLAG, LAUNCHER_FLAG } from './watchdog/launch.js';
+import { resolveStartMode, watchdogSpawnSpec, hasLauncherFlag, WATCHDOG_FLAG } from './watchdog/launch.js';
 import type { CliDeps, DaemonInfo, LivenessConfig, RuntimeEntry } from './types.js';
 import type { ProgressEstimate } from './progress/types.js';
 import { UNSETTABLE_FIELDS, unsettableFieldError, type ResourceLimits, type JobProgressSetting } from './types.js';
@@ -984,10 +983,10 @@ export async function runCli(argv: string[], deps: Partial<CliDeps> = {}): Promi
     }
 
     case 'start': {
-      startDaemon({ watchdog: has(rest, WATCHDOG_FLAG), launcher: has(rest, LAUNCHER_FLAG) });
+      startDaemon({ watchdog: has(rest, WATCHDOG_FLAG), launcher: hasLauncherFlag(rest) });
 
       // Readiness is confirmed on BOTH paths. Exiting 0 straight after spawning reported
-      // success to scripts even when the launcher failed to bring the daemon up, so
+      // success to scripts even when the watchdog failed to bring the daemon up, so
       // `orch start --no-follow && orch trigger job` raced against startup.
       if (!await waitForDaemonAlive(configDir, 5000)) {
         console.error('Daemon did not start within 5s. Check: orch logs');
@@ -2432,7 +2431,7 @@ export async function main(): Promise<void> {
   const client = createDaemonClient({ configDir, commands });
 
   function startDaemon(opts: { watchdog?: boolean; launcher?: boolean } = {}): void {
-    const { launcherToRun, findDaemonEntry, findWatchdogEntry, platformPackage, unsupportedPlatformMessage } =
+    const { findDaemonEntry, findWatchdogEntry } =
       require('./platform-binary.js') as typeof import('./platform-binary.js');
 
     const daemonPath = findDaemonEntry();
@@ -2442,7 +2441,7 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // The Node watchdog is the default (docs/watchdog.md); the Go launcher only on request (--launcher, ORCH_LAUNCHER=go).
+    // The Node watchdog is the only parent of the daemon (docs/watchdog.md); --launcher and ORCH_LAUNCHER (the removed Go launcher) are an error.
     let mode: ReturnType<typeof resolveStartMode>;
     try {
       mode = resolveStartMode({ launcherFlag: opts.launcher === true, watchdogFlag: opts.watchdog === true, env: process.env });
@@ -2453,75 +2452,21 @@ export async function main(): Promise<void> {
     for (const note of mode.notes) {
       console.error(note);
     }
-    if (!mode.launcher) {
-      const watchdogPath = findWatchdogEntry();
-      if (!watchdogPath) {
-        console.error(`Cannot start the daemon: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}.`);
-        console.error('Installed: re-install with: npm install -g @wadeck-app/orchestrator-cli');
-        console.error('Checkout:  npm run bundle --workspace=packages/orchestrator-cli');
-        console.error('Or start with the Go launcher (fallback): orch start --launcher');
-        process.exit(1);
-      }
-      const spec = watchdogSpawnSpec({ execPath: process.execPath, watchdogPath, configDir, env: process.env });
-      const watchdog = spawn(spec.command, spec.args, spec.options);
-      watchdog.on('error', (err) => {
-        console.error(`Failed to execute the Node watchdog (${spec.command} ${watchdogPath}): ${getErrorMessage(err)}`);
-        console.error('Start with the Go launcher instead: orch start --launcher. Or re-install with: npm install -g @wadeck-app/orchestrator-cli');
-        process.exit(1);
-      });
-      watchdog.unref();
-      console.log('Orchestrator starting...');
-      return;
-    }
-
-    // The Go launcher (explicit fallback, removed in a later release) is required once chosen, with no degraded mode behind it. It supervises the daemon,
-    // which is what makes auto-restart after an update work, and on Windows it is also the
-    // only thing that detaches cleanly: the shell tracks every descendant of an MSYS2/Git Bash
-    // spawn() in its process group, so it waits for them even with detached+unref().  // violations-suppress: cli/no-spawn-without-windows-hide prose, not a call
-    // Starting the daemon without it used to be a silent fallback through wscript.exe, which
-    // produced a daemon that looked fine and never restarted itself after an update.
-    const launcherPath = launcherToRun(configDir);
-    if (!launcherPath) {
-      const pkg = platformPackage();
-      console.error('Cannot start the daemon: the Go launcher binary was not found.');
-      console.error('It supervises the daemon and auto-restarts it after an update, so there is');
-      console.error('no degraded mode to fall back to.');
-      if (pkg) {
-        console.error(`  expected in ${pkg}, or in launcher-go/dist for a monorepo checkout`);
-        console.error('  installed:  npm install -g @wadeck-app/orchestrator-cli');
-        console.error('  checkout:   npm run build-launcher --workspace=packages/orchestrator-cli');
-      } else {
-        // A reinstall cannot help here: there is no package for this platform.
-        console.error(`  ${unsupportedPlatformMessage(process.platform, process.arch)}`);
-      }
+    const watchdogPath = findWatchdogEntry();
+    if (!watchdogPath) {
+      console.error(`Cannot start the daemon: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}.`);
+      console.error('Installed: re-install with: npm install -g @wadeck-app/orchestrator-cli');
+      console.error('Checkout:  npm run bundle --workspace=packages/orchestrator-cli');
       process.exit(1);
     }
-
-    // Hand the launcher an absolute bundle path when it cannot find this one itself: its baked nodeScript is resolved relative
-    // to its own directory, which breaks as soon as npm nests the platform package instead of hoisting it next to the main
-    // package. When it can (under the directory of the node on PATH), nothing is fixed: a fixed path outlives `nvm use`
-    // and makes the launcher start a bundle the updater no longer updates (see launcher-bundle.ts).
-    const bundleOverride = launcherBundleOverride({ daemonPath, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
-    const { LAUNCHER_BUNDLE_OVERRIDE: _inherited, ...inheritedEnv } = process.env;
-    const child = spawn(launcherPath, [configDir], {
-      stdio: 'ignore',
-      detached: true,
-      windowsHide: true,
-      env: {
-        ...inheritedEnv,
-        ...(bundleOverride === undefined ? {} : { LAUNCHER_BUNDLE_OVERRIDE: bundleOverride }),
-        ORCH_CONFIG_DIR: configDir,
-      },
-    });
-    // Without this, a launcher that cannot be executed (wrong arch, missing exec bit,
-    // corrupt binary) surfaces as an unhandled 'error' event and a raw ENOEXEC/EACCES stack
-    // printed after we already said "starting...".
-    child.on('error', (err) => {
-      console.error(`Failed to execute the Go launcher at ${launcherPath}: ${getErrorMessage(err)}`);
+    const spec = watchdogSpawnSpec({ execPath: process.execPath, watchdogPath, configDir, env: process.env });
+    const watchdog = spawn(spec.command, spec.args, spec.options);
+    watchdog.on('error', (err) => {
+      console.error(`Failed to execute the Node watchdog (${spec.command} ${watchdogPath}): ${getErrorMessage(err)}`);
       console.error('Re-install with: npm install -g @wadeck-app/orchestrator-cli');
       process.exit(1);
     });
-    child.unref();
+    watchdog.unref();
     console.log('Orchestrator starting...');
   }
 

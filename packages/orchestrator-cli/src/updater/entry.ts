@@ -5,7 +5,7 @@
 // Strategy: without-daemon + restartDaemon.
 // npm install is done by Node.js (windowsHide:true) - zero terminal windows, proven by PoC.
 // After successful install, writes config.restart sentinel then POST /quit so the
-// Go launcher restarts the daemon with the new version.
+// watchdog restarts the daemon with the new version.
 import { runUpdater, execNpm, appendLog, readState, stateFilePath } from '@wadeck-app/shared-updater';
 import { ConfigDir } from '@wadeck-app/shared-cli/ConfigDir';
 import { join } from 'node:path';

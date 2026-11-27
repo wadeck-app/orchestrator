@@ -21,7 +21,7 @@ orch cli update              # update orch itself -- never `npm install -g` by h
 
 `orch cli update` is the only supported way to move to a new version: it installs first, then restarts
 the daemon (`config.restart` sentinel + `POST /quit`), so the CLI and the daemon end on the same version. Nothing is
-stopped before the install: the launcher, the tray and the supervisor run from `<configDir>/bin/` (staged copies,
+stopped before the install: the tray and the supervisor run from `<configDir>/bin/` (staged copies,
 `src/platform-binary.ts`), so npm never has to replace a running executable. See `.claude/kb/lessons-learned.md`.
 
 **Restarting the daemon is routine, not a decision to ask about.** Each job runs under its own supervisor, so
@@ -53,14 +53,14 @@ The published `@wadeck-app/orchestrator-cli` ships **only** JS: `dist/orchestrat
 (daemon), `dist/orchestrator-cli.cjs` (CLI), `dist/orchestrator-updater.cjs`, plus `bin/` and
 `server/`. No native binary.
 
-The launcher (Go), the supervisor (Rust) and (Windows, macOS) the tray (Go) live in
+The supervisor (Rust) and (Windows, macOS) the tray (Go) live in
 `@wadeck-app/orchestrator-cli-{win32-x64,darwin-arm64,linux-x64}`,
 pulled in as `optionalDependencies` with an **exact** version pin, so `npm install -g` updates
 them in the same transaction and a rollback restores the matching pair. They are republished
 only when the binary hash changes, so their version has gaps and legitimately lags the main
 package.
 
-Linux packages carry the launcher and the supervisor but no tray (there is no Linux systray build: the daemon
+Linux packages carry the supervisor but no tray (there is no Linux systray build: the daemon
 says so in its log and the dashboard is reached with `orch server start`). Start at login on Linux is a systemd
 user unit (`~/.config/systemd/user/orchestrator.service`, `orch install` / `orch uninstall`; see
 `docs/daemon-config.md`); start at boot on Ubuntu x64 was validated by the user on a real host (2026-10-31,
@@ -71,18 +71,12 @@ once, in `PLATFORM_TARGETS` (`src/platform-binary.ts`); `test/platform-targets.t
 and `optionalDependencies` agree with it.
 
 Never assume a fixed path between the two packages: npm hoists the platform package next to the
-main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the launcher,
-the tray and the daemon entry via `require.resolve`; the Go launcher resolves its own bundle from
-the package specifier in `ci/launcher.config.json`. That is what makes start-at-login work.
-
-## TEMPORARY: Rust supervisor migration (remove this section when done)
-
-The Rust supervisor (`packages/orchestrator-cli/supervisor-rs`) ships on `latest` since 2026-11-22. The publish workflow has no channel, trailer or dispatch-input mechanism any more: the publish job always takes the binaries built by the three build-and-test legs (artifacts `rust-supervisor-<OS>`), and `copy-binaries.sh` and `publish-platform-packages.sh` read `supervisor-rs/dist`.
-
-`supervisor-go` and its differential/build/measure scripts were deleted on 2026-11-27. A source checkout finds the supervisor in `supervisor-rs/dist` then `supervisor-rs/target/release`, else fails with the build command (`docs/supervised-jobs.md`, "Source checkout"); CI sets `ORCH_SUPERVISOR_BINARY` for the full test run. Remaining steps:
-
-1. Phase C of the watchdog: remove the Go launcher from the platform packages, the junction/staging code, `LAUNCHER_BUNDLE_OVERRIDE` and the `--launcher` fallback (the tray stays Go).
-2. Remove this section.
+main one or nests it underneath, and both happen. `src/platform-binary.ts` resolves the tray,
+the supervisor and the daemon and watchdog entries via `require.resolve`; the start-at-login bootstrap finds the watchdog
+itself (`docs/watchdog.md`). The publish job takes the supervisor binaries built by the three build-and-test legs
+(artifacts `rust-supervisor-<OS>`; `copy-binaries.sh` and `publish-platform-packages.sh` read `supervisor-rs/dist`). A source
+checkout finds the supervisor in `supervisor-rs/dist` then `supervisor-rs/target/release`, else fails with the build command
+(`docs/supervised-jobs.md`, "Source checkout"); CI sets `ORCH_SUPERVISOR_BINARY` for the full test run.
 
 ## Agent reference docs
 

@@ -23,16 +23,12 @@ set -euo pipefail
 VERSION="${1:?missing version}"
 DIST_TAG="${2:?missing dist tag}"
 
-LAUNCHER_DIST="packages/orchestrator-cli/launcher-go/dist"
 TRAY_DIST="packages/orchestrator-cli/tray-go/dist"
 # The Rust supervisor, built natively by each build-and-test leg and downloaded by the publish job.
 SUPERVISOR_DIST="packages/orchestrator-cli/supervisor-rs/dist"
 MAIN_PKG="packages/orchestrator-cli"
 
 BIN_HASH=$(cat \
-  "$LAUNCHER_DIST/orchestrator_windows_release.exe" \
-  "$LAUNCHER_DIST/orchestrator_darwin_arm64_release" \
-  "$LAUNCHER_DIST/orchestrator_linux_amd64_release" \
   "$TRAY_DIST/orchestrator-tray.exe" \
   "$TRAY_DIST/orchestrator-tray-arm64" \
   "$SUPERVISOR_DIST/orchestrator-supervisor.exe" \

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 // Thin shim: every command, including 'start', goes to the CLI bundle. The CLI owns daemon
-// lifecycle decisions (spawning the Go launcher detached, --follow vs exit) so that logic
+// lifecycle decisions (spawning the Node watchdog detached, --follow vs exit) so that logic
 // stays in one place, in TypeScript, and is testable. This shim must not special-case any
-// command: doing that for 'start' ran the windowsgui launcher through execFileSync, whose
+// command: doing that for 'start' ran a windowsgui binary through execFileSync, whose
 // output goes to NUL, so `orch start` printed nothing and never returned.
 const { execFileSync } = require('child_process');
 const path = require('path');

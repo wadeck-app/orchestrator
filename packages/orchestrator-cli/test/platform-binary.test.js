@@ -9,7 +9,6 @@ const path = require('node:path');
 // directory, so only the dist/ copy sees the layout that ships. Requires `npm run build` first.
 const {
   platformPackage,
-  findLauncherBinary,
   findTrayBinary,
   findSupervisorBinary,
   supervisorToRun,
@@ -36,17 +35,14 @@ describe('platformPackage', () => {
   });
 });
 
-describe('findLauncherBinary', () => {
-  test('resolves to an existing file with a name valid for this platform', () => {
-    const p = findLauncherBinary();
-    if (!supported) {
-      assert.equal(p, null, `${key} has no launcher, expected null rather than another platform's binary`);
-      return;
+describe('the Go launcher is gone', () => {
+  test('no platform target lists a launcher and nothing resolves one', () => {
+    const exports = require('../dist/platform-binary.js');
+    assert.equal(exports.findLauncherBinary, undefined);
+    assert.equal(exports.launcherToRun, undefined);
+    for (const t of Object.values(PLATFORM_TARGETS)) {
+      assert.equal(t.launcherDev, undefined);
     }
-    assert.ok(p, 'no launcher found: run npm run build-launcher');
-    assert.ok(fs.existsSync(p), `resolved to a missing file: ${p}`);
-    assert.ok([`orchestrator${exe}`, target.launcherDev].includes(path.basename(p)),
-      `${path.basename(p)} is not a ${key} launcher name`);
   });
 });
 

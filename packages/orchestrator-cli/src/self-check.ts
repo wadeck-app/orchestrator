@@ -96,14 +96,13 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           return { name: 'server-binary', ok: false, detail: (err as Error).message };
         }
       },
-      // Check: native-binaries -- the Go launcher supervises the daemon and the tray is
-      // spawned from the same platform package. npm skips optionalDependencies failures
+      // Check: native-binaries -- the supervisor and the tray come from the platform package. npm skips optionalDependencies failures
       // silently, so without this check the updater's rollback gate would accept an install
       // whose platform package never landed, and the daemon could then never start again.
       async () => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { findLauncherBinary, findTrayBinary, findSupervisorBinary, platformPackage, nativeBinaryProblem } =
+          const { findTrayBinary, findSupervisorBinary, platformPackage, nativeBinaryProblem } =
             require('./platform-binary.js') as typeof import('./platform-binary.js');
           const pkg = platformPackage();
           if (pkg === null) {
@@ -120,7 +119,7 @@ export async function runSelfCheck(quiet = false): Promise<void> {
           }
           const problem = nativeBinaryProblem({
             platform: process.platform, pkg,
-            launcher: findLauncherBinary() !== null, tray: findTrayBinary() !== null, supervisor: findSupervisorBinary() !== null,
+            tray: findTrayBinary() !== null, supervisor: findSupervisorBinary() !== null,
           });
           if (problem !== null) {
             throw new Error(problem);

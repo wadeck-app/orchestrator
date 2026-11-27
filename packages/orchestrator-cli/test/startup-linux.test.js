@@ -54,7 +54,6 @@ function setup({ fail = {}, shellPath = marked('/home/tester/.local/bin:/usr/bin
     platform: 'linux', unitPath, exec,
     validateTarget: () => null,
     programArguments: ['/staged/launcher', '/cfg'],
-    daemonEntry: '/pkg/dist/orchestrator.cjs',
     linuxPath: { runShell, shellEnv: '/bin/bash', isExecutableFile: () => true, home: HOME, nodeBinDir: '/opt/node/bin', env: { HOME } },
   };
   return { deps, unitPath, wants, calls, shellCalls, dir };
@@ -101,23 +100,22 @@ describe('systemdUnitPath', () => {
 
 describe('buildSystemdUnit', () => {
   test('exact text', () => {
-    const unit = buildSystemdUnit(['/opt/o/launcher', '/cfg'], '/cfg', ['/opt/node/bin', '/usr/bin'], '/pkg/dist/orchestrator.cjs');
+    const unit = buildSystemdUnit(['/opt/o/node', '/cfg'], '/cfg', ['/opt/node/bin', '/usr/bin']);
     assert.equal(unit, [
       '# Written by `orch install` and rewritten at every daemon start: do not edit.',
       '[Unit]',
-      'Description=Orchestrator daemon (launcher and supervisor)',
+      'Description=Orchestrator daemon (watchdog and supervisor)',
       '',
       '[Service]',
       'Type=simple',
-      // The launcher supervises the daemon and restarts it itself: systemd must not add a second restarter.
+      // The watchdog supervises the daemon and restarts it itself: systemd must not add a second restarter.
       'Restart=no',
-      // A stop ends the launcher, so the unit ends: only the launcher may be signalled. The default (the whole cgroup) would
+      // A stop ends the watchdog, so the unit ends: only the watchdog may be signalled. The default (the whole cgroup) would
       // also kill the supervisors and the jobs, which a stop must leave running.
       'KillMode=process',
-      'ExecStart="/opt/o/launcher" "/cfg"',
+      'ExecStart="/opt/o/node" "/cfg"',
       'Environment="PATH=/opt/node/bin:/usr/bin"',
       'Environment="ORCH_CONFIG_DIR=/cfg"',
-      'Environment="LAUNCHER_BUNDLE_OVERRIDE=/pkg/dist/orchestrator.cjs"',
       '',
       '[Install]',
       'WantedBy=default.target',
@@ -125,17 +123,16 @@ describe('buildSystemdUnit', () => {
     ].join('\n'));
   });
 
-  test('no bundle: no LAUNCHER_BUNDLE_OVERRIDE line', () => {
-    const unit = buildSystemdUnit(['/l', '/cfg'], '/cfg', ['/usr/bin'], null);
+  test('the unit never carries a fixed daemon bundle', () => {
+    const unit = buildSystemdUnit(['/l', '/cfg'], '/cfg', ['/usr/bin']);
     assert.ok(!unit.includes('LAUNCHER_BUNDLE_OVERRIDE'));
   });
 
   test('spaces, %, $ and quotes in every path are escaped', () => {
-    const unit = buildSystemdUnit(['/o p/100%/l$x', '/c f/%h'], '/c f/%h', ['/n "q"/bin'], '/b$/%t.cjs');
+    const unit = buildSystemdUnit(['/o p/100%/l$x', '/c f/%h'], '/c f/%h', ['/n "q"/bin']);
     assert.ok(unit.includes('ExecStart="/o p/100%%/l$$x" "/c f/%%h"\n'), unit);
     assert.ok(unit.includes('Environment="PATH=/n \\"q\\"/bin"\n'), unit);
     assert.ok(unit.includes('Environment="ORCH_CONFIG_DIR=/c f/%%h"\n'), unit);
-    assert.ok(unit.includes('Environment="LAUNCHER_BUNDLE_OVERRIDE=/b$/%%t.cjs"\n'), unit);
   });
 });
 
@@ -151,7 +148,7 @@ describe('enableStartup on linux', () => {
     ]);
     const unit = fs.readFileSync(unitPath, 'utf8');
     assert.ok(unit.includes('ExecStart="/staged/launcher" "/cfg"\n'));
-    assert.ok(unit.includes('Environment="LAUNCHER_BUNDLE_OVERRIDE=/pkg/dist/orchestrator.cjs"\n'));
+    assert.ok(!unit.includes('LAUNCHER_BUNDLE_OVERRIDE'));
     assert.match(result.detail, /unit=written/);
     assert.match(result.detail, /enable=ok/);
     assert.match(result.detail, /enable-linger/, 'the install output says what a boot without login needs');

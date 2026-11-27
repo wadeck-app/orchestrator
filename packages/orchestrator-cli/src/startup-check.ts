@@ -57,7 +57,7 @@ export function runStartupCheck(deps: StartupCheckDeps): void {
     }
 
     if (report.state === 'outdated') {
-      // Works today (the Go launcher is still there), so it is a notice, not a "will not start" alarm.
+      // An entry written by an older version (the removed Go launcher): rewritten here, a notice and not a "will not start" alarm.
       const what = report.problems.join('; ');
       if (repair?.ok) {
         say(`Notice: the start-at-login entry was outdated (${what}); it was re-registered with this install's paths.`);

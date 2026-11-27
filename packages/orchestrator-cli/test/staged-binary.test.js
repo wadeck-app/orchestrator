@@ -153,34 +153,25 @@ describe('what happens when staging cannot work', () => {
 });
 
 describe('what the callers actually get', () => {
-  const { findLauncherBinary, launcherToRun, trayToRun } = require('../src/platform-binary');
+  const { findTrayBinary, trayToRun } = require('../src/platform-binary');
 
   // Both branches are real environments: the published install resolves inside node_modules, a dev
-  // checkout resolves to launcher-go/dist. Each is asserted rather than skipped.
+  // checkout resolves to tray-go/dist. Each is asserted rather than skipped.
   test('a binary from node_modules is staged, a dev build is not', () => {
     const dir = tmpDir();
-    const resolved = findLauncherBinary();
+    const resolved = findTrayBinary();
 
-    const toRun = launcherToRun(dir);
+    const toRun = trayToRun(dir);
 
     if (resolved === null) {
       assert.equal(toRun, null, 'invented a path for a platform with no binary');
     } else if (resolved.includes('node_modules')) {
       assert.ok(!toRun.includes('node_modules'),
-        `the launcher would still run from node_modules: ${toRun}`);
+        `the tray would still run from node_modules: ${toRun}`);
       assert.ok(toRun.startsWith(dir));
       assert.equal(fs.statSync(toRun).size, fs.statSync(resolved).size);
     } else {
       assert.equal(toRun, resolved, 'a dev build was copied, so it would go stale');
-    }
-  });
-
-  test('the tray goes through the same rule', () => {
-    const dir = tmpDir();
-    const toRun = trayToRun(dir);
-
-    if (toRun !== null && toRun.includes('node_modules')) {
-      assert.fail(`the tray would still run from node_modules: ${toRun}`);
     }
   });
 });

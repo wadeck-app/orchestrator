@@ -28,12 +28,17 @@ describe('PLATFORM_TARGETS', () => {
     }
   });
 
-  test('every target names its package after its key, and has a launcher and a supervisor', () => {
+  test('every target names its package after its key, and has a supervisor', () => {
     for (const key of KEYS) {
       const t = PLATFORM_TARGETS[key];
       assert.equal(t.pkg, `@wadeck-app/orchestrator-cli-${key}`, key);
-      assert.ok(t.launcherDev, `${key}: launcher`);
       assert.ok(t.supervisorDev, `${key}: supervisor`);
+    }
+  });
+
+  test('the Go launcher is shipped nowhere: no ci script, no package file list, no build script names it', () => {
+    for (const file of [['package.json'], ['ci', 'scripts', 'copy-binaries.sh'], ['ci', 'scripts', 'generate-platform-packages.sh'], ['ci', 'scripts', 'publish-platform-packages.sh']]) {
+      assert.doesNotMatch(read(...file), /launcher/i, file.join('/'));
     }
   });
 
@@ -76,14 +81,13 @@ describe('everything else agrees with PLATFORM_TARGETS', () => {
     assert.deepEqual(loop[1].trim().split(/\s+/).sort(), KEYS);
   });
 
-  test('copy-binaries.sh copies the launcher and the supervisor into every package, and the tray where there is one', () => {
+  test('copy-binaries.sh copies the supervisor into every package, and the tray where there is one', () => {
     const script = read('ci', 'scripts', 'copy-binaries.sh');
     for (const key of KEYS) {
       const dir = `packages/orchestrator-cli-${key}/`;
       const copied = script.split('\n').filter((l) => l.startsWith('cp ') && l.includes(dir));
       const names = (suffix) => copied.some((l) => l.includes(`${dir}orchestrator${suffix}`));
       const exe = key.startsWith('win32') ? '.exe' : '';
-      assert.ok(names(exe) , `${key}: launcher`);
       assert.ok(names(`-supervisor${exe}`), `${key}: supervisor`);
       assert.equal(names(`-tray${exe}`), PLATFORM_TARGETS[key].trayDev !== null, `${key}: tray only where it exists`);
     }
@@ -93,7 +97,6 @@ describe('everything else agrees with PLATFORM_TARGETS', () => {
     const script = read('ci', 'scripts', 'copy-binaries.sh');
     for (const key of KEYS) {
       const t = PLATFORM_TARGETS[key];
-      assert.ok(script.includes(`$LAUNCHER_DIST/${t.launcherDev}`), `${key}: ${t.launcherDev}`);
       assert.ok(script.includes(`$SUPERVISOR_DIST/${t.supervisorDev}`), `${key}: ${t.supervisorDev}`);
       if (t.trayDev !== null) {
         assert.ok(script.includes(`$TRAY_DIST/${t.trayDev}`), `${key}: ${t.trayDev}`);
@@ -114,7 +117,6 @@ describe('everything else agrees with PLATFORM_TARGETS', () => {
     const script = read('ci', 'scripts', 'publish-platform-packages.sh');
     for (const key of KEYS) {
       const t = PLATFORM_TARGETS[key];
-      assert.ok(script.includes(`$LAUNCHER_DIST/${t.launcherDev}`), `${key}: ${t.launcherDev}`);
       assert.ok(script.includes(`$SUPERVISOR_DIST/${t.supervisorDev}`), `${key}: ${t.supervisorDev}`);
       if (t.trayDev !== null) {
         assert.ok(script.includes(`$TRAY_DIST/${t.trayDev}`), `${key}: ${t.trayDev}`);
@@ -136,7 +138,7 @@ describe('unsupportedPlatformMessage', () => {
 });
 
 describe('nativeBinaryProblem (the self-check behind the updater rollback gate)', () => {
-  const found = (extra) => ({ platform: 'linux', pkg: '@wadeck-app/orchestrator-cli-linux-x64', launcher: true, tray: false, supervisor: true, ...extra });
+  const found = (extra) => ({ platform: 'linux', pkg: '@wadeck-app/orchestrator-cli-linux-x64', tray: false, supervisor: true, ...extra });
 
   test('Linux without a tray is fine: there is no Linux tray to find', () => {
     assert.equal(nativeBinaryProblem(found({})), null);
@@ -149,9 +151,8 @@ describe('nativeBinaryProblem (the self-check behind the updater rollback gate)'
     }
   });
 
-  test('a missing launcher or supervisor fails on every platform, naming the package', () => {
+  test('a missing supervisor fails on every platform, naming the package', () => {
     for (const platform of ['win32', 'darwin', 'linux']) {
-      assert.match(nativeBinaryProblem(found({ platform, tray: true, launcher: false })), /Go launcher not found/);
       assert.match(nativeBinaryProblem(found({ platform, tray: true, supervisor: false })), /supervisor not found/);
     }
   });

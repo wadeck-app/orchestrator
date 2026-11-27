@@ -14,12 +14,11 @@ import { getErrorMessage } from './fsUtil.js';
  * ci/scripts, optionalDependencies) is checked against it by
  * test/platform-targets.test.js, so a platform cannot be added here and forgotten there.
  *
- * *Dev names are the files a source checkout builds (launcher-go/dist, tray-go/dist) or stages (supervisor-rs/dist, the Rust
+ * *Dev names are the files a source checkout builds (tray-go/dist) or stages (supervisor-rs/dist, the Rust
  * supervisor under its published name); inside a platform package the files are named plainly. `trayDev` is null where there is no systray build (Linux).
  */
 export interface PlatformTarget {
   pkg:           string;
-  launcherDev:   string;
   trayDev:       string | null;
   supervisorDev: string;
 }
@@ -27,15 +26,15 @@ export interface PlatformTarget {
 export const PLATFORM_TARGETS: Readonly<Record<string, PlatformTarget>> = {
   'win32-x64': {
     pkg: '@wadeck-app/orchestrator-cli-win32-x64',
-    launcherDev: 'orchestrator_windows_release.exe', trayDev: 'orchestrator-tray.exe', supervisorDev: 'orchestrator-supervisor.exe',
+    trayDev: 'orchestrator-tray.exe', supervisorDev: 'orchestrator-supervisor.exe',
   },
   'darwin-arm64': {
     pkg: '@wadeck-app/orchestrator-cli-darwin-arm64',
-    launcherDev: 'orchestrator_darwin_arm64_release', trayDev: 'orchestrator-tray-arm64', supervisorDev: 'orchestrator-supervisor-arm64',
+    trayDev: 'orchestrator-tray-arm64', supervisorDev: 'orchestrator-supervisor-arm64',
   },
   'linux-x64': {
     pkg: '@wadeck-app/orchestrator-cli-linux-x64',
-    launcherDev: 'orchestrator_linux_amd64_release', trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-amd64',
+    trayDev: null, supervisorDev: 'orchestrator-supervisor-linux-amd64',
   },
 };
 
@@ -58,10 +57,7 @@ export function platformHasTray(platform: string): boolean {
  * What is wrong with the installed native binaries, or null. The tray is required only where one is built. Each name carries
  * the package it should have come from, because npm skips a failed optionalDependency without a word.
  */
-export function nativeBinaryProblem(found: { platform: string; pkg: string; launcher: boolean; tray: boolean; supervisor: boolean }): string | null {
-  if (!found.launcher) {
-    return `Go launcher not found; expected in ${found.pkg}`;
-  }
+export function nativeBinaryProblem(found: { platform: string; pkg: string; tray: boolean; supervisor: boolean }): string | null {
   if (!found.supervisor) {
     return `supervisor not found; expected in ${found.pkg}`;
   }
@@ -88,7 +84,6 @@ export function platformPackage(): string | null {
 
 // Inside the platform package the arch is encoded in the package name, so the files are
 // named plainly. The dev build in tray-go/dist keeps the arch suffix.
-const LAUNCHER_IN_PLATFORM_PKG = process.platform === 'win32' ? 'orchestrator.exe' : 'orchestrator';
 const TRAY_IN_PLATFORM_PKG     = process.platform === 'win32' ? 'orchestrator-tray.exe' : 'orchestrator-tray';
 const SUPERVISOR_IN_PLATFORM_PKG = process.platform === 'win32' ? 'orchestrator-supervisor.exe' : 'orchestrator-supervisor';
 
@@ -161,7 +156,7 @@ export function stageBinary(source: string, configDir: string, stamp: string): s
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     // Written beside the target then renamed, so a copy interrupted by a crash or a power loss cannot
-    // leave a short file at the path the launcher is started from.
+    // leave a short file at the path the binary is started from.
     const partial = `${target}.partial`;
     fs.copyFileSync(source, partial);
     fs.renameSync(partial, target);
@@ -203,19 +198,6 @@ export function pruneStagedBinaries(configDir: string, keepStamp: string): numbe
     }
   }
   return removed;
-}
-
-/** Go launcher binary: the process that supervises the daemon. */
-export function findLauncherBinary(): string | null {
-  const fromPkg = resolveInPlatformPackage(LAUNCHER_IN_PLATFORM_PKG);
-  if (fromPkg) {
-    return fromPkg;
-  }
-  const devName = PLATFORM_TARGETS[platformKey()]?.launcherDev;
-  if (!devName) {
-    return null;
-  }
-  return firstExisting([path.join(__dirname, '..', 'launcher-go', 'dist', devName)]);
 }
 
 /** Systray binary, spawned by the daemon. */
@@ -314,7 +296,7 @@ function platformPackageVersion(): string | null {
  * Stages a resolved binary when it came from the platform package, and returns what to execute.
  *
  * A dev build is returned untouched: nothing npm-managed is at stake in a checkout, and freezing a
- * copy of a binary that is rebuilt by hand would silently run yesterday's launcher.
+ * copy of a binary that is rebuilt by hand would silently run yesterday's binary.
  */
 function toRun(resolved: string | null, configDir: string): string | null {
   if (resolved === null) {
@@ -332,11 +314,6 @@ function toRun(resolved: string | null, configDir: string): string | null {
     );
   }
   return stageBinary(resolved, configDir, stamp);
-}
-
-/** The launcher to execute or to register at login: staged out of node_modules. */
-export function launcherToRun(configDir: string): string | null {
-  return toRun(findLauncherBinary(), configDir);
 }
 
 /** The tray binary to spawn: staged out of node_modules. */
@@ -368,7 +345,7 @@ export function pruneStaleStagedBinaries(configDir: string): number {
 
 /**
  * Daemon entry point sitting next to this module: the published bundle, or the tsc output
- * in a dev checkout. Resolved from __dirname rather than from the launcher's location, so
+ * in a dev checkout. Resolved from __dirname rather than from the watchdog's location, so
  * it does not care where npm put the platform package.
  */
 export function findDaemonEntry(): string | null {

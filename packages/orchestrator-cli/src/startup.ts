@@ -4,7 +4,7 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import type { StartupResult } from './types.js';
 import { getErrorMessage } from './fsUtil.js';
-import { findLauncherBinary, findDaemonEntry, findWatchdogEntry, launcherToRun } from './platform-binary.js';
+import { findWatchdogEntry } from './platform-binary.js';
 import {
   BOOTSTRAP_FILE, BOOTSTRAP_SOURCE, START_VBS_FILE, bootstrapArgs, buildRunValue, buildStartVbs, decodeVbs, encodeVbs,
   parseRunValue, parseStartVbs, removeStartFiles, writeIfChanged,
@@ -13,8 +13,6 @@ import {
   planMacPath, mergeMacPath, realShellRunner, realIsExecutableFile,
   type MacPathDeps,
 } from './login-shell-path.js';
-import { ensureBundleLink, planBundleLink } from './bundle-link.js';
-import { LAUNCHER_BUNDLE_SPEC, nodeDirOnPath } from './launcher-bundle.js';
 
 const REG_KEY           = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const LAUNCH_AGENT_LABEL = 'com.wadeck.orchestrator';
@@ -24,68 +22,17 @@ export function buildRegValueName(configDir: string): string {
   return `Orchestrator (${configDir})`;
 }
 
-function cmdQuote(s: string): string {
-  return `"${s.replace(/"/g, '""')}"`;
-}
-
 /**
- * Verifies the entry we are about to register will actually resolve at login.
- * Returns an actionable error message, or null when the target is sound.
- * Without this a broken entry is written silently and only fails at the next login.
- *
- * The launcher finds its own bundle: `nodeScript` in ci/launcher.config.json is the package
- * specifier @wadeck-app/orchestrator-cli/dist/orchestrator.cjs, which the SDK resolves by
- * walking up node_modules. So there is nothing here that depends on whether npm hoisted or
- * nested the platform package, and no relative path to keep in sync.
+ * Verifies the entry we are about to register will actually resolve at login: the login entry is node running
+ * `<configDir>/orchestrator-start.cjs`, which finds the installed watchdog at every login (start-bootstrap.ts). Returns an
+ * actionable error message, or null when the target is sound. There is no fallback (the Go launcher was removed): an install
+ * without the watchdog cannot register anything. Without this a broken entry is written silently and only fails at the next login.
  */
-function validateStartupTarget(kind: EntryKind = 'launcher', watchdog: string | null = null): string | null {
-  if (kind === 'watchdog') {
-    return watchdog === null
-      ? `start-at-login cannot be registered: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}. `
-        + 'Re-install with: npm install -g @wadeck-app/orchestrator-cli'
-      : null;
-  }
-  if (!findLauncherBinary()) {
-    // Registering node + the bundle would start a daemon with no supervisor, so nothing
-    // would restart it after an update. Refuse rather than register a crippled entry.
-    return 'start-at-login cannot be registered: the Go launcher binary was not found, and it '
-      + 'is what supervises the daemon and restarts it after an update. Re-install with: '
-      + 'npm install -g @wadeck-app/orchestrator-cli';
-  }
-  if (!findDaemonEntry()) {
-    return `start-at-login cannot be registered: no daemon bundle next to ${__dirname}. `
-      + 'Re-install with: npm install -g @wadeck-app/orchestrator-cli';
-  }
-  return null;
-}
-
-/**
- * Both builders assume validateStartupTarget() already passed.
- *
- * The registered path is the staged copy, never the one inside node_modules: an entry pointing into
- * node_modules would start the launcher from a directory npm has to move aside on every update, and
- * a running image there is what makes that move fail.
- */
-export function buildWindowsCommand(configDir: string): string {
-  const launcher = launcherToRun(configDir);
-  if (!launcher) {
-    throw new Error('buildWindowsCommand: no launcher binary');
-  }
-  return `${cmdQuote(launcher)} ${cmdQuote(configDir)}`;
-}
-
-/**
- * What the login entry starts. `watchdog`: node runs `<configDir>/orchestrator-start.cjs`, which finds the installed watchdog at
- * every login (start-bootstrap.ts). `launcher`: the Go launcher, only for an install that has no watchdog (kept one release).
- */
-export type EntryKind = 'watchdog' | 'launcher';
-
-export function buildMacArgs(configDir: string): string[] {
-  const launcher = launcherToRun(configDir);
-  if (!launcher) {
-    throw new Error('buildMacArgs: no launcher binary');
-  }
-  return [launcher, configDir];
+function validateStartupTarget(watchdog: string | null): string | null {
+  return watchdog === null
+    ? `start-at-login cannot be registered: dist/orchestrator-watchdog.cjs was not found next to ${__dirname}, and there is no `
+      + 'fallback (the Go launcher was removed). Re-install with: npm install -g @wadeck-app/orchestrator-cli, then run orch install'
+    : null;
 }
 
 /**
@@ -98,20 +45,17 @@ export interface StartupDeps {
   plistPath?: string;
   exec?: typeof execFileSync;
   macPath?: Partial<MacPathDeps>;
-  /** Replaces buildMacArgs / buildWindowsCommand (both need the Go launcher, absent on CI). */
+  /** Replaces the bootstrap arguments of the macOS and Linux entry. */
   programArguments?: string[];
+  /** Replaces the Run value of the Windows entry. */
   windowsCommand?: string;
   validateTarget?: () => string | null;
-  /** Force what the entry starts (default: the watchdog when this install has one, else the Go launcher). */
-  entryKind?: EntryKind;
   /** The node baked in the login entry (default: process.execPath). */
   nodePath?: string;
   /** This install's dist/orchestrator-watchdog.cjs, or null for none (default: findWatchdogEntry()). */
   watchdogEntry?: string | null;
   /** Linux: where the systemd user unit lives (default: $XDG_CONFIG_HOME or ~/.config, then systemd/user). */
   unitPath?: string;
-  /** Linux: the daemon bundle written as LAUNCHER_BUNDLE_OVERRIDE (null: none). Default: findDaemonEntry(). */
-  daemonEntry?: string | null;
   /** Linux: how the unit PATH is captured (same mechanism as macOS; see planMacPath). */
   linuxPath?: Partial<MacPathDeps>;
 }
@@ -130,19 +74,12 @@ function xmlEscape(s: string): string {
  *   historical fixed list is written, which cannot find anything under ~/.local/bin.
  */
 export function buildMacPlist(
-  programArguments: string[], configDir: string, pathEntries?: readonly string[], opts: { bundle?: string | null } = {},
+  programArguments: string[], configDir: string, pathEntries?: readonly string[],
 ): string {
   const argsXml    = programArguments.map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
   const logDir     = xmlEscape(path.join(configDir, 'logs'));
   const envPath    = xmlEscape((pathEntries ?? mergeMacPath(path.dirname(process.execPath), [])).join(':'));
-  // launchd can inject environment variables, so on macOS the launcher is handed an absolute
-  // bundle path and never has to resolve it relative to its own directory. That is what makes
-  // start-at-login here independent of whether npm hoisted or nested the platform package.
-  // The watchdog entry passes null: a fixed bundle would outlive an `nvm use` and defeat the bootstrap's own lookup.
-  const bundle = opts.bundle !== undefined ? opts.bundle : findDaemonEntry();
-  const bundleEnv = bundle
-    ? `\n    <key>LAUNCHER_BUNDLE_OVERRIDE</key>\n    <string>${xmlEscape(bundle)}</string>`
-    : '';
+  // No fixed daemon bundle: it would outlive an `nvm use` and defeat the bootstrap's own lookup.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -158,7 +95,7 @@ ${argsXml}
     <key>PATH</key>
     <string>${envPath}</string>
     <key>ORCH_CONFIG_DIR</key>
-    <string>${xmlEscape(configDir)}</string>${bundleEnv}
+    <string>${xmlEscape(configDir)}</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -215,30 +152,28 @@ function systemdEnvLine(key: string, value: string): string {
 }
 
 /**
- * Restart=no because the launcher already supervises the daemon and restarts it: a second restarter
- * would fight it on `orch stop`. LAUNCHER_BUNDLE_OVERRIDE is set like in the macOS plist, so the
- * launcher never has to find its bundle relative to itself. The unit declares what runs at login;
- * it is never started by enabling it.
+ * Restart=no because the watchdog already supervises the daemon and restarts it: a second restarter
+ * would fight it on `orch stop`. No bundle path is written: the watchdog finds the daemon next to itself. The unit declares
+ * what runs at login; it is never started by enabling it.
  */
 export function buildSystemdUnit(
-  programArguments: string[], configDir: string, pathEntries: readonly string[], bundle: string | null,
+  programArguments: string[], configDir: string, pathEntries: readonly string[],
 ): string {
   return [
     '# Written by `orch install` and rewritten at every daemon start: do not edit.',
     '[Unit]',
-    'Description=Orchestrator daemon (launcher and supervisor)',
+    'Description=Orchestrator daemon (watchdog and supervisor)',
     '',
     '[Service]',
     'Type=simple',
-    // The launcher supervises the daemon and restarts it itself: systemd must not add a second restarter.
+    // The watchdog supervises the daemon and restarts it itself: systemd must not add a second restarter.
     'Restart=no',
-    // A stop ends the launcher and so the unit. With the default KillMode (control-group) systemd would then kill every process
+    // A stop ends the watchdog and so the unit. With the default KillMode (control-group) systemd would then kill every process
     // of the unit, the job supervisors and the jobs with them, which a stop must leave running (docs/daemon-config.md).
     'KillMode=process',
     `ExecStart=${programArguments.map((a) => systemdQuote(a, { exec: true })).join(' ')}`,
     systemdEnvLine('PATH', pathEntries.join(':')),
     systemdEnvLine('ORCH_CONFIG_DIR', configDir),
-    ...(bundle ? [systemdEnvLine('LAUNCHER_BUNDLE_OVERRIDE', bundle)] : []),
     '',
     '[Install]',
     'WantedBy=default.target',
@@ -267,59 +202,34 @@ function systemctlFailure(e: unknown, verb: string, state: string): string {
   return `\`systemctl --user ${verb}\` failed: ${raw}. ${state}`;
 }
 
-interface EntryPlan {
-  kind: EntryKind;
-  /** This install's watchdog bundle (the hint written in the entry), null when it has none. */
-  watchdog: string | null;
-  warnings: string[];
-}
-
 /**
- * The watchdog when this install has one, else the Go launcher with a warning. The test seams that hand over launcher-shaped
- * arguments (programArguments, windowsCommand) keep meaning the launcher.
+ * Writes the bootstrap (only when its text changed) and returns the arguments of the login command. `watchdog` is this install's
+ * dist/orchestrator-watchdog.cjs, the hint written in the entry.
  */
-function planEntry(deps: StartupDeps): EntryPlan {
-  const watchdog = deps.watchdogEntry !== undefined ? deps.watchdogEntry : findWatchdogEntry();
-  if (deps.entryKind !== undefined) {
-    return { kind: deps.entryKind, watchdog, warnings: [] };
-  }
-  if (deps.programArguments !== undefined || deps.windowsCommand !== undefined) {
-    return { kind: 'launcher', watchdog, warnings: [] };
-  }
-  if (watchdog !== null) {
-    return { kind: 'watchdog', watchdog, warnings: [] };
-  }
-  return {
-    kind: 'launcher', watchdog,
-    warnings: [`this install has no dist/orchestrator-watchdog.cjs next to ${__dirname}: start-at-login runs the Go launcher (fallback). Re-install with: npm install -g @wadeck-app/orchestrator-cli`],
-  };
-}
-
-/** Writes the bootstrap (only when its text changed) and returns the arguments of the login command. */
-function watchdogEntryArgs(configDir: string, plan: EntryPlan, deps: StartupDeps): string[] {
+function watchdogEntryArgs(configDir: string, watchdog: string | null, deps: StartupDeps): string[] {
   writeIfChanged(path.join(configDir, BOOTSTRAP_FILE), BOOTSTRAP_SOURCE);
-  return bootstrapArgs({ node: deps.nodePath ?? process.execPath, configDir, hint: plan.watchdog });
+  return bootstrapArgs({ node: deps.nodePath ?? process.execPath, configDir, hint: watchdog });
 }
 
 /**
  * Windows: writes the bootstrap and the hidden-start script into the config dir (never into the npm package folder, which npm
  * replaces), and returns the Run value. Both files exist before the registry value names them.
  */
-function writeWindowsWatchdogEntry(configDir: string, plan: EntryPlan, deps: StartupDeps): string {
-  const args = watchdogEntryArgs(configDir, plan, deps);
+function writeWindowsWatchdogEntry(configDir: string, watchdog: string | null, deps: StartupDeps): string {
+  const args = watchdogEntryArgs(configDir, watchdog, deps);
   const vbs  = path.join(configDir, START_VBS_FILE);
   writeIfChanged(vbs, encodeVbs(buildStartVbs(args, configDir)));
   return buildRunValue(vbs);
 }
 
-function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFileSync, entry: EntryPlan): StartupResult {
+function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFileSync, watchdog: string | null): StartupResult {
   const unitPath = deps.unitPath ?? defaultUnitPath();
   const diag: string[] = [];
   let warnings: string[] = [];
 
   try {
     fs.mkdirSync(path.dirname(unitPath), { recursive: true });
-    const args = deps.programArguments ?? (entry.kind === 'watchdog' ? watchdogEntryArgs(configDir, entry, deps) : buildMacArgs(configDir));
+    const args = deps.programArguments ?? watchdogEntryArgs(configDir, watchdog, deps);
     // Same capture as macOS: a systemd user manager does not read ~/.bashrc or ~/.profile either,
     // and its own PATH is minimal, so `node` and the tools of the jobs would not be found.
     // violations-suppress: shared/no-out-of-repo-path the user's home is where ~/.local/bin lives; it is the point of the default list
@@ -337,15 +247,14 @@ function enableSystemd(configDir: string, deps: StartupDeps, exec: typeof execFi
       rcFiles:          "~/.bashrc, ~/.profile or your shell's equivalent",
       ...deps.linuxPath,
     });
-    warnings = [...entry.warnings, ...plan.warnings];
+    warnings = [...plan.warnings];
     diag.push(plan.captured ? 'path=login-shell' : 'path=default');
-    // The watchdog entry carries no fixed daemon bundle: the watchdog finds it next to itself at every start.
-    const bundle = entry.kind === 'watchdog' ? null : deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
-    const unit   = buildSystemdUnit(args, configDir, plan.entries, bundle);
+    // No fixed daemon bundle in the unit: the watchdog finds it next to itself at every start.
+    const unit   = buildSystemdUnit(args, configDir, plan.entries);
     const tmp    = unitPath + '.tmp';
     fs.writeFileSync(tmp, unit, 'utf8');
     fs.renameSync(tmp, unitPath);
-    diag.push('unit=written', `entry=${entry.kind}`);
+    diag.push('unit=written', 'entry=watchdog');
   } catch (e) { return { ok: false, error: `Failed to write the systemd unit ${unitPath}: ${(e as Error).message}` }; }
 
   const written = `The unit was written to ${unitPath} but is not enabled.`;
@@ -393,7 +302,7 @@ function disableSystemd(deps: StartupDeps, exec: typeof execFileSync): StartupRe
 export interface StartupEntryReport {
   /**
    * absent: nothing registered for this config dir. broken: it names a path that is gone, or a file of ours that is damaged.
-   * outdated: it works but starts the Go launcher while this install has the Node watchdog. drift: it works but names another install.
+   * outdated: it starts the removed Go launcher (written by an older version) while this install has the Node watchdog. drift: it works but names another install.
    */
   state: 'absent' | 'ok' | 'broken' | 'outdated' | 'drift';
   problems: string[];
@@ -406,23 +315,6 @@ export interface InspectDeps extends StartupDeps {
   realpath?: (p: string) => string;
   /** The directory of the node this process runs (default: dirname(process.execPath)). */
   nodeBinDir?: string;
-  /** Windows: what is wrong with the node_modules link of the staged launcher, or null (default: bundle-link.ts against this install). Tests set it. */
-  bundleLinkProblem?: (launcher: string) => string | null;
-}
-
-/** Windows: the staged launcher has to be shown the global node_modules when it cannot find the bundle itself (bundle-link.ts). */
-function defaultBundleLinkProblem(launcher: string): string | null {
-  const daemon = findDaemonEntry();
-  const plan = daemon === null ? null : planBundleLink({ daemonPath: daemon, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
-  if (plan === null) {
-    return null;
-  }
-  const link = path.join(path.dirname(launcher), 'node_modules');
-  try {
-    return fs.realpathSync(link) === fs.realpathSync(plan.modulesDir) ? null : `${link} leads to ${fs.realpathSync(link)}, not to ${plan.modulesDir}`;
-  } catch {
-    return `${link} is missing: the launcher cannot find the daemon bundle in ${plan.modulesDir}`;
-  }
 }
 
 const defaultIsFile = (p: string): boolean => {
@@ -440,14 +332,11 @@ function systemdUnquote(s: string, exec: boolean): string {
 }
 
 interface EntryFields {
-  /** First word of the command: the Go launcher, or node for a watchdog entry. */
-  launcher: string | null;
   /** Every word of the command (macOS, Linux); for a Windows watchdog entry see vbs. */
   args: string[];
-  bundle: string | null;
-  /** The directories of the PATH the daemon will get (null: the entry carries none, the launcher uses the login's). */
+  /** The directories of the PATH the daemon will get (null: the entry carries none). */
   pathDirs: string[] | null;
-  /** Windows, Run value naming a hidden-start script: its path (null: the value is something else, e.g. the Go launcher's). */
+  /** Windows, Run value naming a hidden-start script: its path (null: the value is something else, e.g. the removed Go launcher's). */
   vbsPath?: string | null;
 }
 
@@ -467,9 +356,7 @@ function readSystemdFields(text: string): EntryFields {
   const args = [...(exec?.[1] ?? '').matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((w) => systemdUnquote(w[1] ?? '', true));
   const p = env.get('PATH');
   return {
-    launcher: args[0] ?? null,
     args,
-    bundle:   env.get('LAUNCHER_BUNDLE_OVERRIDE') ?? null,
     pathDirs: p === undefined ? null : p.split(':').filter(d => d !== ''),
   };
 }
@@ -483,9 +370,7 @@ function readPlistFields(text: string): EntryFields {
   const args = [...(array?.[1] ?? '').matchAll(/<string>([^<]*)<\/string>/g)].map((w) => xmlUnescape(w[1] ?? ''));
   const p = after('PATH');
   return {
-    launcher: args[0] ?? null,
     args,
-    bundle:   after('LAUNCHER_BUNDLE_OVERRIDE'),
     pathDirs: p === null ? null : p.split(':').filter(d => d !== ''),
   };
 }
@@ -518,11 +403,7 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
       const out  = String(exec('reg', ['query', REG_KEY, '/v', buildRegValueName(configDir)],
         { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }));
       const vbsPath = parseRunValue(/REG_SZ\s+(.*?)\s*$/m.exec(out)?.[1] ?? '');
-      const m = /REG_SZ\s+"((?:[^"]|"")*)"/.exec(out);
-      fields = {
-        launcher: vbsPath === null && m ? (m[1] ?? '').replace(/""/g, '"') : null,
-        args: [], bundle: null, pathDirs: null, vbsPath,
-      };
+      fields = { args: [], pathDirs: null, vbsPath };
     } else {
       return { state: 'absent', problems: [] };
     }
@@ -574,28 +455,19 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
       }
     }
     if (currentWatchdog === null) {
-      // The reverse of the migration: an older package was installed under an entry for the watchdog. Re-registering names the Go launcher again.
-      problems.push('the entry starts the Node watchdog, but this install has no dist/orchestrator-watchdog.cjs (an older version was installed?): it will start the Go launcher instead');
+      // An older package was installed under an entry for the watchdog: re-registering cannot work, only a current install can.
+      problems.push('the entry starts the Node watchdog, but this install has no dist/orchestrator-watchdog.cjs (an older version was installed?): re-install with npm install -g @wadeck-app/orchestrator-cli, then run orch install');
     }
   } else if (fields.vbsPath !== undefined && fields.vbsPath !== null) {
     if (problems.length === 0) {
       problems.push(`the start-at-login script ${fields.vbsPath} does not run the bootstrap: run orch install`);
     }
   } else {
-    if (fields.launcher === null) {
-      problems.push('the registered entry names no launcher');
-    } else if (!isFile(fields.launcher)) {
-      problems.push(`the launcher ${fields.launcher} is gone`);
-    }
-    if (fields.bundle !== null && !isFile(fields.bundle)) {
-      problems.push(`the daemon bundle ${fields.bundle} is gone`);
-    }
-    if (platform === 'win32' && fields.launcher !== null && isFile(fields.launcher)) {
-      const linkProblem = (deps.bundleLinkProblem ?? defaultBundleLinkProblem)(fields.launcher);
-      if (linkProblem !== null) {
-        problems.push(linkProblem);
-      }
-    }
+    // remove one release after phase C: an entry written by a version that started the Go launcher. That binary is no longer
+    // published and nothing about it is checked (its files, its node_modules link): the entry is rewritten, or reported broken.
+    return currentWatchdog !== null
+      ? { state: 'outdated', problems: ['the entry still starts the Go launcher, which was removed; this install starts at login through the Node watchdog (docs/watchdog.md)'] }
+      : { state: 'broken', problems: ['the entry still starts the Go launcher, which was removed, and this install has no dist/orchestrator-watchdog.cjs: re-install with npm install -g @wadeck-app/orchestrator-cli, then run orch install'] };
   }
   const nodeExe  = pathLib.join;
   const nodeName = platform === 'win32' ? 'node.exe' : 'node';
@@ -606,18 +478,7 @@ export function inspectStartupEntry(configDir: string, deps: InspectDeps = {}): 
   if (problems.length > 0) {
     return { state: 'broken', problems };
   }
-  if (!watchdogEntry && currentWatchdog !== null) {
-    return {
-      state: 'outdated',
-      problems: ['the entry still starts the Go launcher; this install starts at login through the Node watchdog (docs/watchdog.md)'],
-    };
-  }
-
   const drift: string[] = [];
-  const currentBundle = deps.daemonEntry !== undefined ? deps.daemonEntry : findDaemonEntry();
-  if (fields.bundle !== null && currentBundle && !same(fields.bundle, currentBundle)) {
-    drift.push(`the entry starts the daemon bundle ${fields.bundle}, this orch runs from ${currentBundle}`);
-  }
   const currentNodeDir = deps.nodeBinDir ?? path.dirname(process.execPath);
   const startedNodeDir = entryNodeDir ?? nodeDir;
   if (startedNodeDir !== null && !same(startedNodeDir, currentNodeDir)) {
@@ -733,19 +594,19 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
   }
 
   // Platform first: on a target with no start-at-login mechanism at all, reporting a missing
-  // launcher would name a consequence instead of the actual reason.
+  // watchdog would name a consequence instead of the actual reason.
   if (platform !== 'darwin' && platform !== 'win32' && platform !== 'linux') {
     return { ok: false, error: `Unsupported platform: ${platform}` };
   }
 
-  const entry = planEntry(deps);
-  const unusable = (deps.validateTarget ?? (() => validateStartupTarget(entry.kind, entry.watchdog)))();
+  const watchdog = deps.watchdogEntry !== undefined ? deps.watchdogEntry : findWatchdogEntry();
+  const unusable = (deps.validateTarget ?? (() => validateStartupTarget(watchdog)))();
   if (unusable) {
     return { ok: false, error: unusable };
   }
 
   if (platform === 'linux') {
-    return enableSystemd(configDir, deps, exec, entry);
+    return enableSystemd(configDir, deps, exec, watchdog);
   }
 
   if (platform === 'darwin') {
@@ -757,7 +618,7 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
 
     try {
       fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-      const args  = deps.programArguments ?? (entry.kind === 'watchdog' ? watchdogEntryArgs(configDir, entry, deps) : buildMacArgs(configDir));
+      const args  = deps.programArguments ?? watchdogEntryArgs(configDir, watchdog, deps);
       // Only here, only on darwin: the shell is read when the plist is written, never on Windows.
       const plan  = planMacPath({
         runShell:         realShellRunner,
@@ -769,14 +630,13 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
         env:              process.env,
         ...deps.macPath,
       });
-      warnings = [...entry.warnings, ...plan.warnings];
+      warnings = [...plan.warnings];
       diag.push(plan.captured ? 'path=login-shell' : 'path=default');
-      // No fixed daemon bundle in the watchdog entry (null): the watchdog finds it next to itself at every start.
-      const plist = buildMacPlist(args, configDir, plan.entries, entry.kind === 'watchdog' ? { bundle: null } : {});
+      const plist = buildMacPlist(args, configDir, plan.entries);
       const tmp   = plistPath + '.tmp';
       fs.writeFileSync(tmp, plist, 'utf8');
       fs.renameSync(tmp, plistPath);
-      diag.push('plist=written', `entry=${entry.kind}`);
+      diag.push('plist=written', 'entry=watchdog');
     } catch (e) { return { ok: false, error: `Failed to write plist: ${(e as Error).message}` }; }
 
     try { exec('launchctl', ['enable', target], { stdio: 'pipe', windowsHide: true }); diag.push('enable=ok'); }
@@ -791,36 +651,12 @@ export function enableStartup(configDir: string, deps: StartupDeps = {}): Startu
     const valueName = buildRegValueName(configDir);
     let value: string;
     try {
-      value = deps.windowsCommand ?? (entry.kind === 'watchdog' ? writeWindowsWatchdogEntry(configDir, entry, deps) : buildWindowsCommand(configDir));
+      value = deps.windowsCommand ?? writeWindowsWatchdogEntry(configDir, watchdog, deps);
     } catch (e) { return { ok: false, error: `Failed to write the start-at-login files in ${configDir}: ${getErrorMessage(e)}` }; }
     try {
       exec('reg', ['add', REG_KEY, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f'], { stdio: 'pipe', windowsHide: true });
     } catch (e) { return { ok: false, error: `reg.exe failed: ${(e as Error).message}` }; }
-    const detail = `registry key set: ${REG_KEY}\\${valueName} | entry=${entry.kind}`;
-    if (entry.kind === 'watchdog') {
-      return entry.warnings.length > 0 ? { ok: true, detail, warnings: entry.warnings } : { ok: true, detail };
-    }
-    // The Run value cannot carry LAUNCHER_BUNDLE_OVERRIDE, so a launcher that cannot find the bundle by itself is shown where it is.
-    // Said, not swallowed: without it the entry is written and the next login starts nothing.
-    if (deps.windowsCommand === undefined) {
-      try {
-        const staged = launcherToRun(configDir);
-        const daemon = findDaemonEntry();
-        const plan = staged === null || daemon === null || !staged.startsWith(path.join(configDir, 'bin'))
-          ? null
-          : planBundleLink({ daemonPath: daemon, spec: LAUNCHER_BUNDLE_SPEC, nodeDir: nodeDirOnPath(process.env) });
-        if (staged !== null && plan !== null) {
-          const outcome = ensureBundleLink(path.dirname(staged), plan);
-          return { ok: true, detail: `${detail} | bundle-link=${outcome} (${plan.modulesDir})`, ...(entry.warnings.length > 0 ? { warnings: entry.warnings } : {}) };
-        }
-      } catch (e) {
-        return {
-          ok: true, detail,
-          warnings: [...entry.warnings, `the launcher may not find the daemon bundle at login: ${getErrorMessage(e)}`],
-        };
-      }
-    }
-    return entry.warnings.length > 0 ? { ok: true, detail, warnings: entry.warnings } : { ok: true, detail };
+    return { ok: true, detail: `registry key set: ${REG_KEY}\\${valueName} | entry=watchdog` };
   }
 
   return { ok: false, error: `Unsupported platform: ${platform}` };
@@ -935,8 +771,8 @@ export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boo
     const valueName = buildRegValueName(configDir);
     try {
       // `reg query /v` exits non-zero when the value is absent, so reaching here means the
-      // entry exists. Do NOT match on process.execPath: in launcher mode the recorded
-      // command is the Go launcher, not node, which made this always report "disabled".
+      // entry exists. Do NOT match on process.execPath: the recorded
+      // command is not always node (an old entry names the removed Go launcher), which made this always report "disabled".
       const out = (deps.exec ?? execFileSync)('reg', ['query', REG_KEY, '/v', valueName],
         { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
       return String(out).includes(valueName);
@@ -959,7 +795,7 @@ export function isStartupEnabled(configDir: string, deps: StartupDeps = {}): boo
 
 /**
  * Rewrites an existing start-at-login entry so it points at the current install paths.
- * Called on daemon start: an nvm/node upgrade or an npm prefix change moves the launcher,
+ * Called on daemon start: an nvm/node upgrade or an npm prefix change moves the node the entry names,
  * leaving a registry value or plist that points at a path that no longer exists. The daemon
  * would then simply stop starting at login, with nothing to show why.
  * No-op when start-at-login is not enabled.

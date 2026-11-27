@@ -154,18 +154,8 @@ jobs:
                       ${{ github.workspace }}/.gomodcache
                   key: go-${{ runner.os }}-1.26.8-${{ hashFiles('packages/orchestrator-cli/package.json') }}
 
-            - name: Build Go launchers
-              run: npm run build-launcher --workspace=packages/orchestrator-cli
-
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli
-
-            # The launcher is what start-at-login depends on, and its bundle resolution had no
-            # coverage in this repo at all. go.mod sits inside go-launcher, so that is the module
-            # root: running from the package above it fails with "does not contain main module".
-            - name: Run Go launcher tests
-              run: go test ./...
-              working-directory: node_modules/@wadeck-app/singleton-daemon-kit/go-launcher
 
             # The per-job supervisor (supervisor-rs), tested on each OS so the unix process group and the Windows taskkill
             # paths are each exercised on their own platform. Its release build is what the publish job ships (artifact below).
@@ -427,9 +417,6 @@ jobs:
                       ${{ github.workspace }}/.gocache
                       ${{ github.workspace }}/.gomodcache
                   key: go-${{ runner.os }}-1.26.8-${{ hashFiles('packages/orchestrator-cli/package.json') }}
-
-            - name: Build Go launchers
-              run: npm run build-launcher --workspace=packages/orchestrator-cli
 
             - name: Build tray binary
               run: npm run build-tray --workspace=packages/orchestrator-cli

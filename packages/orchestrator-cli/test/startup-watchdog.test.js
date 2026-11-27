@@ -318,7 +318,7 @@ describe('enableStartup, Windows: the Run value starts the hidden script, which 
     assert.ok(fs.existsSync(path.join(configDir, START_VBS_FILE)));
   });
 
-  test('no staged launcher and no node_modules junction for the watchdog entry (the Go fallback keeps them)', () => {
+  test('nothing is staged and no node_modules junction is made for the watchdog entry', () => {
     const { configDir, deps } = winSetup();
     enableStartup(configDir, deps);
     assert.ok(!fs.existsSync(path.join(configDir, 'bin')), 'nothing is staged for the watchdog');
@@ -343,7 +343,7 @@ describe('enableStartup, Windows: the Run value starts the hidden script, which 
   });
 
   test('an install with no watchdog bundle and a forced watchdog entry is refused, naming the file and the fix', () => {
-    const { configDir, deps } = winSetup({ entryKind: 'watchdog', watchdogEntry: null });
+    const { configDir, deps } = winSetup({ watchdogEntry: null });
     const r = enableStartup(configDir, deps);
     assert.equal(r.ok, false);
     assert.match(r.error, /dist\/orchestrator-watchdog\.cjs was not found.*npm install -g @wadeck-app\/orchestrator-cli/);
@@ -411,19 +411,14 @@ describe('enableStartup, Linux: ExecStart is node, the bootstrap and the config 
     assert.equal(isStartupEnabled(configDir, deps), true);
   });
 
-  test('no watchdog in this install and a forced watchdog entry: an error naming the file, no unit written', () => {
-    const { configDir, unitPath, deps } = linuxSetup({ entryKind: 'watchdog', watchdogEntry: null });
+  test('no watchdog in this install: an error naming the file and the fix, no fallback, no unit written', () => {
+    const { configDir, unitPath, deps } = linuxSetup({ watchdogEntry: null });
     const r = enableStartup(configDir, deps);
     assert.equal(r.ok, false);
     assert.match(r.error, /orchestrator-watchdog\.cjs was not found/);
+    assert.match(r.error, /no fallback \(the Go launcher was removed\)/);
+    assert.match(r.error, /npm install -g @wadeck-app\/orchestrator-cli, then run orch install/);
     assert.ok(!fs.existsSync(unitPath));
-  });
-
-  test('no watchdog and no seam: the Go launcher is the fallback, with a warning, or an error that says the launcher is missing', () => {
-    const { configDir, deps } = linuxSetup({ watchdogEntry: null, validateTarget: () => null });
-    const r = enableStartup(configDir, deps);
-    // The Go launcher binary exists on a developer machine and not on CI: both outcomes name the reason.
-    assert.ok(r.ok ? (r.warnings ?? []).some((w) => /no dist\/orchestrator-watchdog\.cjs.*Go launcher \(fallback\)/.test(w)) : /no launcher binary/.test(r.error), JSON.stringify(r));
   });
 });
 
@@ -515,49 +510,47 @@ describe('inspectStartupEntry: an entry for the watchdog', () => {
     assert.equal(repairStartupEntry(configDir, { ...deps, nodeBinDir: path.join(tmp(), 'other-node') }).repair, null);
   });
 
-  test('NEW ENTRY, OLD PACKAGE: an entry for the watchdog over an install without it is broken, and repaired to the Go launcher', () => {
+  test('NEW ENTRY, OLD PACKAGE: an entry for the watchdog over an install without it is broken, and the repair is refused with the fix (no fallback)', () => {
     const s = linuxSetup();
     assert.equal(enableStartup(s.configDir, s.deps).ok, true);
     const oldPackage = { ...s.deps, watchdogEntry: null };
     const report = inspectStartupEntry(s.configDir, oldPackage);
     assert.equal(report.state, 'broken');
-    assert.match(report.problems.join(), /no dist\/orchestrator-watchdog\.cjs \(an older version was installed\?\): it will start the Go launcher instead/);
+    assert.match(report.problems.join(), /no dist\/orchestrator-watchdog\.cjs \(an older version was installed\?\): re-install with npm install -g @wadeck-app\/orchestrator-cli, then run orch install/);
 
-    const launcher = path.join(tmp(), 'orchestrator-launcher');
-    fs.writeFileSync(launcher, '');
-    const goDeps = { ...oldPackage, programArguments: [launcher, s.configDir], validateTarget: () => null, daemonEntry: s.install.daemon };
-    const { repair } = repairStartupEntry(s.configDir, goDeps);
-    assert.equal(repair.ok, true, JSON.stringify(repair));
-    const unit = fs.readFileSync(s.unitPath, 'utf8');
-    assert.ok(unit.includes(`ExecStart=${systemdQuote(launcher, { exec: true })} `), unit);
-    assert.ok(unit.includes('LAUNCHER_BUNDLE_OVERRIDE'), 'the Go entry keeps its bundle');
-    assert.equal(inspectStartupEntry(s.configDir, goDeps).state, 'ok');
+    const before = fs.readFileSync(s.unitPath, 'utf8');
+    const { repair } = repairStartupEntry(s.configDir, oldPackage);
+    assert.equal(repair.ok, false);
+    assert.match(repair.error, /no fallback \(the Go launcher was removed\)/);
+    assert.equal(fs.readFileSync(s.unitPath, 'utf8'), before, 'a refused repair leaves the entry as it was');
   });
 
-  test('NEW ENTRY, OLD PACKAGE on Windows: the Run value goes back to the launcher and the files stay harmless', () => {
+  test('NEW ENTRY, OLD PACKAGE on Windows: the repair is refused and the Run value is left alone', () => {
     const s = win();
-    const launcher = path.join(tmp(), 'orchestrator.exe');
-    fs.writeFileSync(launcher, '');
-    const goDeps = { ...s.deps, watchdogEntry: null, validateTarget: () => null, windowsCommand: `"${launcher}" "${s.configDir}"`, bundleLinkProblem: () => null };
-    assert.equal(inspectStartupEntry(s.configDir, goDeps).state, 'broken');
-    assert.equal(repairStartupEntry(s.configDir, goDeps).repair.ok, true);
-    assert.equal(s.reg.store.get(s.valueName), `"${launcher}" "${s.configDir}"`);
-    assert.equal(inspectStartupEntry(s.configDir, goDeps).state, 'ok');
+    const before = s.reg.store.get(s.valueName);
+    const oldPackage = { ...s.deps, watchdogEntry: null };
+    assert.equal(inspectStartupEntry(s.configDir, oldPackage).state, 'broken');
+    const { repair } = repairStartupEntry(s.configDir, oldPackage);
+    assert.equal(repair.ok, false);
+    assert.match(repair.error, /npm install -g @wadeck-app\/orchestrator-cli, then run orch install/);
+    assert.equal(s.reg.store.get(s.valueName), before);
   });
 });
 
-describe('OLD ENTRY, NEW PACKAGE: an entry for the Go launcher is outdated and rewritten', () => {
+// remove one release after phase C, with the detection it covers
+describe('OLD ENTRY, NEW PACKAGE: an entry for the removed Go launcher is outdated and rewritten', () => {
   test('Linux: a launcher unit becomes a bootstrap unit, and the next inspection is ok', () => {
     const s = linuxSetup();
     const launcher = path.join(tmp(), 'orchestrator-launcher');
     fs.writeFileSync(launcher, '');
     fs.mkdirSync(path.dirname(s.unitPath), { recursive: true });
-    fs.writeFileSync(s.unitPath, buildSystemdUnit([launcher, s.configDir], s.configDir, [NODE_BIN], s.install.daemon));
+    // An old unit: the launcher, and the LAUNCHER_BUNDLE_OVERRIDE line the old writer added.
+    fs.writeFileSync(s.unitPath, `${buildSystemdUnit([launcher, s.configDir], s.configDir, [NODE_BIN])}Environment="LAUNCHER_BUNDLE_OVERRIDE=${s.install.daemon}"\n`);
     fs.mkdirSync(path.dirname(s.wants), { recursive: true });
     fs.writeFileSync(s.wants, '');
     const report = inspectStartupEntry(s.configDir, s.deps);
     assert.equal(report.state, 'outdated');
-    assert.match(report.problems.join(), /still starts the Go launcher; this install starts at login through the Node watchdog/);
+    assert.match(report.problems.join(), /still starts the Go launcher, which was removed; this install starts at login through the Node watchdog/);
 
     const { repair } = repairStartupEntry(s.configDir, s.deps);
     assert.equal(repair.ok, true, JSON.stringify(repair));
@@ -565,13 +558,11 @@ describe('OLD ENTRY, NEW PACKAGE: an entry for the Go launcher is outdated and r
     assert.deepEqual(inspectStartupEntry(s.configDir, s.deps), { state: 'ok', problems: [] });
   });
 
-  test('Windows: a launcher Run value becomes the wscript value; the reverse (no watchdog in the install) stays ok', () => {
+  test('Windows: a launcher Run value becomes the wscript value, whether or not its file is still there', () => {
     const s = winSetup();
     const launcher = path.join(tmp(), 'orchestrator.exe');
-    fs.writeFileSync(launcher, '');
     s.reg.store.set(s.valueName, `"${launcher}" "${s.configDir}"`);
-    const deps = { ...s.deps, bundleLinkProblem: () => null };
-    assert.equal(inspectStartupEntry(s.configDir, { ...deps, watchdogEntry: null }).state, 'ok');
+    const deps = s.deps;
     assert.equal(inspectStartupEntry(s.configDir, deps).state, 'outdated');
     assert.equal(repairStartupEntry(s.configDir, deps).repair.ok, true);
     assert.match(s.reg.store.get(s.valueName), /^wscript\.exe \/\/nologo "/);
@@ -585,7 +576,7 @@ describe('OLD ENTRY, NEW PACKAGE: an entry for the Go launcher is outdated and r
     const plistPath = path.join(dir, 'a.plist');
     const launcher = path.join(dir, 'orchestrator-launcher');
     fs.writeFileSync(launcher, '');
-    fs.writeFileSync(plistPath, buildMacPlist([launcher, configDir], configDir, [NODE_BIN], { bundle: install.daemon }));
+    fs.writeFileSync(plistPath, buildMacPlist([launcher, configDir], configDir, [NODE_BIN]));
     const deps = { platform: 'darwin', plistPath, exec: () => '', macPath: shell, watchdogEntry: install.watchdog, nodePath: `${NODE_BIN}/node`, nodeBinDir: NODE_BIN, isFile: fakeNodeIsFile };
     const report = inspectStartupEntry(configDir, deps);
     assert.equal(report.state, 'outdated', JSON.stringify(report));
